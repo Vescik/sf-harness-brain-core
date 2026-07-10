@@ -9,8 +9,10 @@
 - Baseline commit: `66649b6` (`Baseline brain-core harness`)
 - Working copy: `/Users/dmachowski/Desktop/sf-harness-brain-core`
 - Protected source: `/Users/dmachowski/Desktop/sf_harness` — never edited by this implementation
-- Overall state: current hardening loop complete locally; publication and GitHub CI confirmation
-  are the only remaining actions in this loop
+- Draft pull request: `https://github.com/Vescik/sf-harness-brain-core/pull/1`
+- Overall state: current hardening loop complete; branch and draft PR published; local and GitHub
+  validation green; live developer/policy inputs remain rollout gates rather than implementation
+  work in this loop
 
 ## Goal
 
@@ -75,9 +77,8 @@ repository protects future internal Salesforce, ADO, QA, and decision data.
 - Iteration 1 — native Copilot correctness and safety: complete.
 - Iteration 2 — executable intelligence and contracts: complete for the repository layer.
 - Iteration 3 — deterministic quality, governance artifacts, and local proof: complete.
-- Publication — commit, push, draft PR, and GitHub Actions confirmation: in progress.
-- Stop condition — end the active goal after publication validation; do not begin another
-  enhancement iteration.
+- Publication — commit, push, draft PR, Linux/Windows GitHub Actions, and GitGuardian: complete.
+- Stop condition — satisfied; end the active goal and do not begin another enhancement iteration.
 
 ## Iteration 1 — Native Copilot correctness and safety
 
@@ -216,6 +217,10 @@ current loop. Preview-host behavior still requires the live gates listed below.
   broad Salesforce MCP/data surfaces, ADO scope drift, browser credential/navigation surfaces,
   metadata path traversal, out-of-role edits/terminal commands, ambiguous writes, allowlist suffix
   bypasses, and contradictory completeness states: denied, rejected, or escalated as designed.
+- GitHub Actions run `29106567102`: Linux PASS, Windows PASS, with SHA-pinned Node 24 action
+  runtimes and no deprecation annotation. GitGuardian: PASS.
+- Independent read-only final audit: GO — no remaining P0/P1 blocker for the controlled-pilot
+  branch.
 
 ### Readiness assessment
 
@@ -224,7 +229,7 @@ current loop. Preview-host behavior still requires the live gates listed below.
 | Copilot instruction configuration | 8/10 | Static discovery, precedence, references, and fail-closed rules pass; live VS Code Diagnostics remain. |
 | Agent orchestration | 8/10 | Native tools, subagents, structured correction handoffs, edit/terminal boundaries, and tool paths validate; live handoff/tool resolution remains. |
 | Skills and prompts | 7.5/10 | Stable public surface, executable contracts, guarded runtimes, and negative fixtures exist; real external smoke tests and seeded organization Knowledge remain. |
-| Pipeline and governance artifacts | 8/10 | Cross-platform SHA-pinned CI and ownership/review policy exist; repository-side enforcement depends on GitHub plan/settings. |
+| Pipeline and governance artifacts | 8/10 | Cross-platform SHA-pinned CI is green; squash-only/branch cleanup are configured, but private-repository branch protection requires a GitHub plan upgrade. |
 | Developer readiness | Conditional controlled pilot | Not ready for unsupervised/team-wide rollout until the live gates and human inputs below are closed. |
 
 ### Live gates intentionally not claimed by local CI
@@ -238,8 +243,22 @@ current loop. Preview-host behavior still requires the live gates listed below.
 - Execute the twelve manual agent scenarios and attach observed evidence to the PR.
 - Seed a small verified organization/package/QA Knowledge slice; current mechanics are testable,
   but organizational intelligence is intentionally not fabricated.
-- Confirm GitHub branch protection/status-check enforcement and add another maintainer before a
-  team rollout; the current repository owner/bus factor is one.
+- Upgrade the private repository to a GitHub plan that supports branch protection (or move it to
+  an eligible organization), then require both Harness CI contexts. The API returned HTTP 403 on
+  the current plan. Add another maintainer before team rollout; current bus factor is one.
+
+## Publication result
+
+- Enhancement branch is pushed and draft PR #1 is open.
+- Repository merge policy is squash-only; merge commits and rebase merges are disabled; merged
+  branches are deleted automatically.
+- Classic protection was attempted with strict Linux/Windows Harness CI, pull-request-only flow,
+  linear history, conversation resolution, and force-push/deletion bans. GitHub rejected it with
+  `Upgrade to GitHub Pro or make this repository public to enable this feature` (HTTP 403).
+- The private repository remains the correct choice for future Salesforce/ADO/QA Knowledge. Do
+  not make it public to obtain free protection; upgrade/move the repository instead.
+- The original `/Users/dmachowski/Desktop/sf_harness` workspace was not edited; all implementation,
+  validation, commits, and publication occurred in the sibling clone.
 
 ## Human-owned inputs that must not be invented
 
