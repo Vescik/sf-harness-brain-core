@@ -1,0 +1,42 @@
+# ─── Brain-core harness .gitignore ───────────────────────────────────────────
+# This repository versions the "brain" — Principles, Knowledge, Memory, the QA
+# index, skills, agents, prompts and templates. It is deliberately NOT the
+# Salesforce metadata / deployment repository: that topic is parked (blueprint §15).
+
+# ── Raw fetched data ──
+# Gitignored by design (blueprint §13 and §17). The folder structure itself stays
+# tracked via .gitkeep, so re-include directories and .gitkeep explicitly.
+.cache/**
+!.cache/**/
+!.cache/**/.gitkeep
+
+# ── Generated AI artifacts ──
+# output/ holds AI-generated content for human review / manual promotion (docs to the
+# wiki, DOCX/PDF export, Playwright scripts moved to tests/ after review) — not curated
+# brain. PROVISIONAL: blueprint §13 says output/ git policy "depends on the subfolder"
+# and does not resolve which subfolders are committed. Until that is decided, ignore the
+# generated CONTENT but keep the folder structure (same pattern as .cache/). Without this,
+# the SETUP.md §4 sync ritual (git add -A) would silently commit every generated artifact.
+# Revisit per §13 — see BUILD_REPORT.md flag 24.
+output/**
+!output/**/
+!output/**/.gitkeep
+
+# ── OS noise ──
+.DS_Store
+
+# ── Safety net: keep Salesforce metadata & tooling OUT of the brain repo ──
+# The recommended model (SETUP.md) keeps this harness as its OWN repo, separate from the
+# SFDX project. IF an SFDX project ever colocates at this root, the rules below stop
+# metadata/tooling from leaking into the brain repo — preserving the §15 parking (brain
+# repo ≠ metadata repo). Metadata is still read at RUNTIME from the working tree by skills
+# (e.g. generate-technical-documentation reads manifest/package.xml); it simply is not
+# committed HERE. Deliberate, documented safety net — not a metadata-versioning decision.
+# Root-anchored (leading /) so a legitimately-named nested folder is never caught by accident.
+/force-app/
+/manifest/
+/.sfdx/
+/.sf/
+/.localdevserver/
+node_modules/
+*.log
