@@ -22,6 +22,9 @@ sf-harness-brain-core/       # Git repository, SFDX root, workspace folder: brai
 Open `sf-harness-brain-core/sf-harness.code-workspace`. It exposes one named folder:
 `brain-core` maps to `.`. There is no second named Salesforce folder and no nested SFDX project.
 The single root keeps metadata, governance, source control, review, and branch history together.
+Opening the repository directory directly is also valid. Runtime configuration uses unqualified
+`${workspaceFolder}` variables, which resolve in both direct-folder and single-root workspace-file
+sessions.
 
 The root owns `sfdx-project.json`, `force-app/`, `manifest/`, `tests/e2e/`, instructions, agents,
 skills, Knowledge, Memory, QA indexes, cache, and generated drafts. Skills must resolve

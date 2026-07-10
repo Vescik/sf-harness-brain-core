@@ -41,6 +41,8 @@ Follow [SETUP.md](SETUP.md). Clone this repository once, then open `sf-harness.c
 The repository root is both the harness root and the only Salesforce DX project root. The
 workspace exposes it once as `brain-core`; `sfdx-project.json`, `force-app/`, `manifest/`, and
 `tests/e2e/` share the same branch, pull request, and commit history as the governance artifacts.
+Opening the repository root directly is also supported; MCP and tasks use the unqualified
+`${workspaceFolder}` variable so they do not depend on a display-name alias.
 
 From the repository root, create/activate the virtual environment as described in SETUP, install
 the pinned Node runtime, then run:

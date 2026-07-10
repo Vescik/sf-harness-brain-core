@@ -23,7 +23,7 @@
     "salesforce-readonly": {
       "type": "stdio",
       "command": "node",
-      "cwd": "${workspaceFolder:brain-core}",
+      "cwd": "${workspaceFolder}",
       "args": [
         "scripts/start_salesforce_mcp.mjs",
         "--mode",
@@ -36,7 +36,7 @@
     "salesforce-development": {
       "type": "stdio",
       "command": "node",
-      "cwd": "${workspaceFolder:brain-core}",
+      "cwd": "${workspaceFolder}",
       "args": [
         "scripts/start_salesforce_mcp.mjs",
         "--mode",
@@ -50,28 +50,28 @@
   "sandbox": {
     "filesystem": {
       "allowWrite": [
-        "${workspaceFolder:brain-core}/force-app",
-        "${workspaceFolder:brain-core}/manifest",
-        "${workspaceFolder:brain-core}/tests/e2e"
+        "${workspaceFolder}/force-app",
+        "${workspaceFolder}/manifest",
+        "${workspaceFolder}/tests/e2e"
       ],
       "denyWrite": [
-        "${workspaceFolder:brain-core}/.ai",
-        "${workspaceFolder:brain-core}/.github",
-        "${workspaceFolder:brain-core}/.vscode",
-        "${workspaceFolder:brain-core}/config",
-        "${workspaceFolder:brain-core}/schemas",
-        "${workspaceFolder:brain-core}/scripts",
-        "${workspaceFolder:brain-core}/sfdx-project.json",
-        "${workspaceFolder:brain-core}/package.json",
-        "${workspaceFolder:brain-core}/package-lock.json"
+        "${workspaceFolder}/.ai",
+        "${workspaceFolder}/.github",
+        "${workspaceFolder}/.vscode",
+        "${workspaceFolder}/config",
+        "${workspaceFolder}/schemas",
+        "${workspaceFolder}/scripts",
+        "${workspaceFolder}/sfdx-project.json",
+        "${workspaceFolder}/package.json",
+        "${workspaceFolder}/package-lock.json"
       ],
       "denyRead": [
-        "${workspaceFolder:brain-core}/.git",
-        "${workspaceFolder:brain-core}/.ai",
-        "${workspaceFolder:brain-core}/.github",
-        "${workspaceFolder:brain-core}/.cache",
-        "${workspaceFolder:brain-core}/output",
-        "${workspaceFolder:brain-core}/.env"
+        "${workspaceFolder}/.git",
+        "${workspaceFolder}/.ai",
+        "${workspaceFolder}/.github",
+        "${workspaceFolder}/.cache",
+        "${workspaceFolder}/output",
+        "${workspaceFolder}/.env"
       ]
     },
     "network": {

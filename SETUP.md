@@ -29,6 +29,10 @@ This is one Git repository and one Salesforce DX project. The repository root is
 do not create a nested Salesforce project or clone a second metadata repository. The workspace
 presents exactly one named folder: `brain-core` → repository root (`.`).
 
+Opening `sf-harness.code-workspace` is preferred, but opening the repository folder directly is
+supported. MCP servers and tasks use `${workspaceFolder}` without a folder-name qualifier, so the
+folder does not need to be displayed as `brain-core` for variable resolution.
+
 Confirm `sfdx-project.json`, `force-app/`, `manifest/package.xml`, and `tests/e2e/` are present at
 the repository root before continuing. Metadata-dependent skills reject a missing or ambiguous
 root rather than searching subfolders, parent directories, sibling directories, or other checkouts.
@@ -161,6 +165,9 @@ Evals, and Harness: Preflight.
 
 - Missing customizations: check VS Code version, workspace file, Settings UI, and Chat Diagnostics.
 - MCP server missing: run `MCP: List Servers`; validate local config and OAuth/CLI authorization.
+  If VS Code reports that `workspaceFolder` cannot be resolved, pull the current configuration,
+  confirm `.vscode/mcp.json` contains `${workspaceFolder}` without `:brain-core`, then restart the
+  MCP server or reload the window.
 - Salesforce review blocked: verify the exact alias, expected hostname/organization ID, review
   permission, package namespace, component allowlist, pinned runtime, and dual-source result. Never
   bypass the facade with raw MCP, `ALLOW_ALL_ORGS`, a default org, or direct CLI.

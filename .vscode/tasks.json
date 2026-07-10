@@ -51,7 +51,7 @@
       "command": "npm",
       "args": ["run", "prettier:verify"],
       "options": {
-        "cwd": "${workspaceFolder:brain-core}"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
     },
@@ -61,7 +61,7 @@
       "command": "npm",
       "args": ["run", "lint"],
       "options": {
-        "cwd": "${workspaceFolder:brain-core}"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
     },
@@ -71,7 +71,7 @@
       "command": "npm",
       "args": ["run", "test:unit:ci"],
       "options": {
-        "cwd": "${workspaceFolder:brain-core}"
+        "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
     },

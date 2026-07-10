@@ -410,10 +410,14 @@ def check_settings_and_mcp(audit: Audit) -> None:
     for name in ("salesforce-readonly", "salesforce-development"):
         server = servers.get(name, {})
         audit.require(server.get("command") == "node", f"{name}: wrapper must run with node")
-        audit.require(server.get("cwd") == "${workspaceFolder:brain-core}", f"{name}: wrapper must start in the root SFDX workspace")
+        audit.require(server.get("cwd") == "${workspaceFolder}", f"{name}: wrapper must start in the direct-folder-safe root SFDX workspace")
         audit.require("scripts/start_salesforce_mcp.mjs" in server.get("args", []), f"{name}: guarded wrapper is required")
         audit.require(server.get("sandboxEnabled") is True, f"{name}: sandboxEnabled must be true")
     serialized = json.dumps(mcp).lower()
+    audit.require(
+        "${workspacefolder:" not in serialized,
+        "MCP configuration must not use a named workspaceFolder variable; direct folder opens cannot resolve it",
+    )
     for forbidden in ("@latest", "allow_all_orgs", "default_target_org", "login.salesforce.com"):
         audit.require(forbidden not in serialized, f"MCP config contains forbidden token {forbidden!r}")
     filesystem_sandbox = mcp.get("sandbox", {}).get("filesystem", {})
@@ -421,39 +425,43 @@ def check_settings_and_mcp(audit: Audit) -> None:
     audit.require(
         allow_write
         == [
-            "${workspaceFolder:brain-core}/force-app",
-            "${workspaceFolder:brain-core}/manifest",
-            "${workspaceFolder:brain-core}/tests/e2e",
+            "${workspaceFolder}/force-app",
+            "${workspaceFolder}/manifest",
+            "${workspaceFolder}/tests/e2e",
         ],
         "MCP write sandbox must contain only root Salesforce source, manifest, and E2E paths",
     )
     deny_write = set(filesystem_sandbox.get("denyWrite", []))
     required_denied = {
-        "${workspaceFolder:brain-core}/.ai",
-        "${workspaceFolder:brain-core}/.github",
-        "${workspaceFolder:brain-core}/.vscode",
-        "${workspaceFolder:brain-core}/config",
-        "${workspaceFolder:brain-core}/schemas",
-        "${workspaceFolder:brain-core}/scripts",
-        "${workspaceFolder:brain-core}/sfdx-project.json",
-        "${workspaceFolder:brain-core}/package.json",
-        "${workspaceFolder:brain-core}/package-lock.json",
+        "${workspaceFolder}/.ai",
+        "${workspaceFolder}/.github",
+        "${workspaceFolder}/.vscode",
+        "${workspaceFolder}/config",
+        "${workspaceFolder}/schemas",
+        "${workspaceFolder}/scripts",
+        "${workspaceFolder}/sfdx-project.json",
+        "${workspaceFolder}/package.json",
+        "${workspaceFolder}/package-lock.json",
     }
     audit.require(required_denied.issubset(deny_write), "MCP sandbox must explicitly deny writes to harness authority and project configuration")
     deny_read = set(filesystem_sandbox.get("denyRead", []))
     required_read_denied = {
-        "${workspaceFolder:brain-core}/.git",
-        "${workspaceFolder:brain-core}/.ai",
-        "${workspaceFolder:brain-core}/.github",
-        "${workspaceFolder:brain-core}/.cache",
-        "${workspaceFolder:brain-core}/output",
-        "${workspaceFolder:brain-core}/.env",
+        "${workspaceFolder}/.git",
+        "${workspaceFolder}/.ai",
+        "${workspaceFolder}/.github",
+        "${workspaceFolder}/.cache",
+        "${workspaceFolder}/output",
+        "${workspaceFolder}/.env",
     }
     audit.require(required_read_denied.issubset(deny_read), "MCP sandbox must deny reads of repository governance, generated state, Git internals, and local env files")
     allowed_domains = set(mcp.get("sandbox", {}).get("network", {}).get("allowedDomains", []))
     audit.require("registry.npmjs.org" not in allowed_domains, "MCP runtime must not have package-registry egress")
 
     tasks_document = load_json(ROOT / ".vscode/tasks.json", audit)
+    audit.require(
+        "${workspacefolder:" not in json.dumps(tasks_document).lower(),
+        "VS Code tasks must use direct-folder-safe unqualified workspaceFolder variables",
+    )
     tasks = tasks_document.get("tasks", []) if isinstance(tasks_document, dict) else []
     tasks_by_label = {
         item.get("label"): item
@@ -473,7 +481,7 @@ def check_settings_and_mcp(audit: Audit) -> None:
     for label in required_salesforce_tasks - {"Salesforce: Check"}:
         task = tasks_by_label.get(label, {})
         audit.require(
-            task.get("options", {}).get("cwd") == "${workspaceFolder:brain-core}",
+            task.get("options", {}).get("cwd") == "${workspaceFolder}",
             f"{label} must execute in the root SFDX workspace folder",
         )
     domains = set(mcp.get("sandbox", {}).get("network", {}).get("allowedDomains", []))
