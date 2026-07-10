@@ -108,9 +108,10 @@ class PreflightValidationTests(unittest.TestCase):
 
     def test_absolute_workspace_path_is_rejected(self) -> None:
         with TemporaryDirectory() as name:
+            outside = (Path(name).parent / "private.xml").resolve()
             with self.assertRaisesRegex(ValueError, "must be relative"):
                 preflight.contained_workspace_path(
-                    Path(name), "/tmp/private.xml", "workspace.manifestPath"
+                    Path(name), str(outside), "workspace.manifestPath"
                 )
 
     def test_ado_runtime_org_must_match_config(self) -> None:
