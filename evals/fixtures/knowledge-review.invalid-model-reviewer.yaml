@@ -1,0 +1,29 @@
+schemaVersion: 3
+reviewId: KREV-EXAMPLEMANAGEDOBJECT-MODEL-INVALID
+reviewType: promotion
+claimId: KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001
+claimRevision: 1
+reviewedStatus: proposed
+decision: verify
+resultingStatus: verified
+reviewer: {type: model, identity: synthetic-model}
+reviewedAt: "2026-07-09T11:00:00Z"
+evidenceRefs: [KEVD-EXAMPLEMANAGEDOBJECT-DESCRIBE-001]
+policyVersion: 1
+scopeMatch: true
+freshness:
+  status: current
+  evaluatedAt: "2026-07-09T11:00:00Z"
+  triggeredInvalidators: []
+conflictingClaimRefs: []
+claimDigest: sha256:cbee381716700786c37e875a1e1f0a00edc076e2fb35fec7df916cfc92c89a1f
+scopeDigest: sha256:def4eb08ea02a76679ff6cce01f6d05719e0f576c2c9a7ff91c0188c3875f257
+evidenceManifest:
+  - evidenceId: KEVD-EXAMPLEMANAGEDOBJECT-DESCRIBE-001
+    recordDigest: sha256:3955215b8713fd717aa82d91d74f938bae3a1cc3db6865ef12b1c354089f9600
+auditReceipt:
+  mechanism: signed-approval-receipt
+  reference: synthetic://review-approval/KREV-EXAMPLEMANAGEDOBJECT-MODEL-INVALID
+  verifiedAt: "2026-07-09T10:59:00Z"
+  receiptDigest: sha256:9042e28a06e51a47e8e15f058104621959a49ade9c1437435e4091e0f6d0f4f8
+rationale: Synthetic invalid fixture; a model cannot promote Knowledge.

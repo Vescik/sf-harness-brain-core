@@ -3,10 +3,6 @@
     {
       "name": "brain-core",
       "path": "."
-    },
-    {
-      "name": "salesforce",
-      "path": "../salesforce-metadata"
     }
   ],
   "settings": {
@@ -23,6 +19,9 @@
     "chat.useCustomAgentHooks": true,
     "chat.useCustomizationsInParentRepositories": false,
     "search.exclude": {
+      "**/node_modules": true,
+      "**/.sfdx": true,
+      "**/.sf": true,
       ".cache/**": true,
       "output/**": true
     }
@@ -33,6 +32,9 @@
       "salesforce.salesforcedx-vscode-expanded",
       "ms-playwright.playwright",
       "redhat.vscode-yaml",
+      "redhat.vscode-xml",
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
       "davidanson.vscode-markdownlint"
     ]
   }

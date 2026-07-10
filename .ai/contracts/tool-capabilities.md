@@ -6,7 +6,9 @@ upgrade.
 | Logical capability | Configured implementation | Consumers |
 |---|---|---|
 | ADO work-item/query/wiki/test-plan reads | `ado-readonly/*` remote MCP, server-side read-only | intake, feature health, QA sync, handover |
-| Salesforce org list and SOQL read | `salesforce-readonly/*` guarded DX MCP | investigator, design, review, QA |
+| Reconciled Salesforce org identity | `salesforce-readonly/review_org_identity` | investigator, design, review |
+| Reconciled installed package inventory | `salesforce-readonly/review_installed_packages` | investigator, design, review |
+| Reconciled allowlisted object contract | `salesforce-readonly/review_object_contract` | investigator, design, review, QA |
 | Salesforce non-production metadata/test operations | `salesforce-development/*` guarded DX MCP | development only |
 | Browser exploration/test generation | pinned `playwright-cli` through guarded terminal execution | Test Strategist only |
 | Interactive human confirmation | `vscode/askQuestions` | prompts and approval gates |
@@ -27,8 +29,17 @@ project/ADO URL. No ADO write tool is enabled in this version.
 
 ## Salesforce tools used
 
-Read-only mode registers `list_all_orgs` and `run_soql_query`. Development mode registers only
-the pinned GA `metadata`, `testing`, and `code-analysis` toolsets plus those same two read tools
-for one locally authorized, allowlisted, non-production alias. It starts in the named Salesforce
-metadata root only after an approval reference enables shared-sandbox writes. It does not enable
-the broad data-write toolset, `ALLOW_ALL_ORGS`, users, DevOps Center, or non-GA tools.
+The model-facing read server is a narrow local facade bound to one configured, exact non-production
+alias. It exposes only the three review tools above. Internally it executes fixed, checked-in query
+profiles through the pinned Salesforce MCP and a private Salesforce CLI allowlist, normalizes both
+receipts, removes credentials/identity details/raw records, and returns `VERIFIED`, `MISMATCH`,
+`INCOMPLETE`, or `BLOCKED`.
+
+Raw `list_all_orgs`, arbitrary `run_soql_query`, aliases, directories, Tooling flags, CLI commands,
+and vendor payloads are not exposed to an agent. MCP/CLI agreement is transport corroboration from
+the same org, not independent truth.
+
+Development mode registers only approved metadata, testing, and code-analysis capabilities for one
+locally authorized, allowlisted development sandbox. All reads use the facade. Development starts
+in the named metadata root only after an approval reference enables shared-sandbox writes. It does
+not enable broad data tools, `ALLOW_ALL_ORGS`, default orgs, users, DevOps Center, or non-GA tools.

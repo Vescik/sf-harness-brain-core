@@ -23,7 +23,10 @@ class SalesforceProofTests(unittest.TestCase):
                 stdout=json.dumps(
                     {
                         "status": 0,
-                        "result": {"instanceUrl": "https://acme.my.salesforce.com"},
+                        "result": {
+                            "instanceUrl": "https://acme.my.salesforce.com",
+                            "id": "00D000000000001AAA",
+                        },
                     }
                 ),
                 stderr="",
@@ -43,7 +46,8 @@ class SalesforceProofTests(unittest.TestCase):
                         {
                             "status": 0,
                             "result": {
-                                "instanceUrl": "https://acme--dev.sandbox.my.salesforce.com"
+                                "instanceUrl": "https://acme--dev.sandbox.my.salesforce.com",
+                                "id": "00D000000000001AAA",
                             },
                         }
                     ),
@@ -54,7 +58,11 @@ class SalesforceProofTests(unittest.TestCase):
                     stdout=json.dumps(
                         {
                             "status": 0,
-                            "result": {"records": [{"IsSandbox": False}]},
+                            "result": {
+                                "records": [
+                                    {"Id": "00D000000000001AAA", "IsSandbox": False}
+                                ]
+                            },
                         }
                     ),
                     stderr="",
@@ -74,7 +82,8 @@ class SalesforceProofTests(unittest.TestCase):
                         {
                             "status": 0,
                             "result": {
-                                "instanceUrl": "https://acme--dev.sandbox.my.salesforce.com"
+                                "instanceUrl": "https://acme--dev.sandbox.my.salesforce.com",
+                                "id": "00D000000000001AAA",
                             },
                         }
                     ),
@@ -85,7 +94,11 @@ class SalesforceProofTests(unittest.TestCase):
                     stdout=json.dumps(
                         {
                             "status": 0,
-                            "result": {"records": [{"IsSandbox": True}]},
+                            "result": {
+                                "records": [
+                                    {"Id": "00D000000000001AAA", "IsSandbox": True}
+                                ]
+                            },
                         }
                     ),
                     stderr="",

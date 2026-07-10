@@ -15,21 +15,40 @@
         "alias": "<DEV_ALIAS>",
         "environment": "development",
         "allowAgentRead": true,
-        "allowAgentWrite": false
+        "allowAgentWrite": false,
+        "allowAgentReview": false,
+        "expectedInstanceHost": "<MY_DOMAIN>--<DEV_SANDBOX>.sandbox.my.salesforce.com",
+        "expectedOrganizationId": "<DEV_ORGANIZATION_ID>"
       },
       {
         "alias": "<QA_ALIAS>",
         "environment": "qa",
         "allowAgentRead": true,
-        "allowAgentWrite": false
+        "allowAgentWrite": false,
+        "allowAgentReview": false,
+        "expectedInstanceHost": "<MY_DOMAIN>--<QA_SANDBOX>.sandbox.my.salesforce.com",
+        "expectedOrganizationId": "<QA_ORGANIZATION_ID>"
       },
       {
         "alias": "<UAT_ALIAS>",
         "environment": "uat",
         "allowAgentRead": true,
-        "allowAgentWrite": false
+        "allowAgentWrite": false,
+        "allowAgentReview": false,
+        "expectedInstanceHost": "<MY_DOMAIN>--<UAT_SANDBOX>.sandbox.my.salesforce.com",
+        "expectedOrganizationId": "<UAT_ORGANIZATION_ID>"
       }
-    ]
+    ],
+    "review": {
+      "enabled": false,
+      "apiVersion": "67.0",
+      "requireDualSource": true,
+      "allowedPackageNamespaces": [],
+      "allowedObjectApiNames": [],
+      "maxObjectsPerCall": 10,
+      "maxFieldsPerObject": 500,
+      "evidenceMaxAgeMinutes": 30
+    }
   },
   "safety": {
     "sharedSandboxWritesApproved": false,
@@ -42,9 +61,9 @@
     "profileDirectory": "<ABSOLUTE_LOCAL_PROFILE_PATH>"
   },
   "workspace": {
-    "salesforceRootName": "salesforce",
+    "salesforceRootName": "brain-core",
     "manifestPath": "manifest/package.xml",
-    "promotedTestsPath": "<RELATIVE_PATH_IN_SALESFORCE_ROOT>"
+    "promotedTestsPath": "<RELATIVE_PATH_IN_REPOSITORY_ROOT>"
   },
   "cache": {
     "adoItemMaxAgeMinutes": 30,

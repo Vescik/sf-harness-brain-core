@@ -3,5 +3,18 @@
 
 /.github/ @Vescik
 /.ai/contracts/ @Vescik
+/.ai/knowledge/ @Vescik
+/.ai/change-records/ @Vescik
+/.github/instructions/rule-registry.yaml @Vescik
+/config/knowledge-policy.json @Vescik
+/config/salesforce-review-policy.json @Vescik
+/config/verification-policy.json @Vescik
+/sfdx-project.json @Vescik
+/force-app/ @Vescik
+/manifest/ @Vescik
+/tests/e2e/ @Vescik
+/config/project-scratch-def.json @Vescik
+/package.json @Vescik
+/package-lock.json @Vescik
 /scripts/ @Vescik
 /schemas/ @Vescik

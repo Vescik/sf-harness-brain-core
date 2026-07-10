@@ -27,7 +27,7 @@
     "salesforce": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["orgs"],
+      "required": ["orgs", "review"],
       "properties": {
         "orgs": {
           "type": "array",
@@ -35,14 +35,105 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["alias", "environment", "allowAgentRead", "allowAgentWrite"],
+            "required": [
+              "alias",
+              "environment",
+              "allowAgentRead",
+              "allowAgentWrite",
+              "allowAgentReview",
+              "expectedInstanceHost",
+              "expectedOrganizationId"
+            ],
             "properties": {
-              "alias": { "type": "string", "minLength": 1 },
+              "alias": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+              },
               "environment": { "enum": ["development", "qa", "uat"] },
               "allowAgentRead": { "type": "boolean" },
-              "allowAgentWrite": { "type": "boolean" }
-            }
+              "allowAgentWrite": { "type": "boolean" },
+              "allowAgentReview": { "type": "boolean" },
+              "expectedInstanceHost": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*--[A-Za-z0-9][A-Za-z0-9-]*\\.sandbox\\.my\\.salesforce\\.com$"
+              },
+              "expectedOrganizationId": {
+                "type": "string",
+                "pattern": "^00D[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?$"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": { "allowAgentReview": { "const": true } },
+                  "required": ["allowAgentReview"]
+                },
+                "then": {
+                  "properties": { "allowAgentRead": { "const": true } }
+                }
+              }
+            ]
           }
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "apiVersion",
+            "requireDualSource",
+            "allowedPackageNamespaces",
+            "allowedObjectApiNames",
+            "maxObjectsPerCall",
+            "maxFieldsPerObject",
+            "evidenceMaxAgeMinutes"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "apiVersion": { "type": "string", "pattern": "^[0-9]{2}\\.0$" },
+            "requireDualSource": { "const": true },
+            "allowedPackageNamespaces": {
+              "type": "array",
+              "maxItems": 20,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9]{0,14}$"
+              }
+            },
+            "allowedObjectApiNames": {
+              "type": "array",
+              "maxItems": 100,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+              }
+            },
+            "maxObjectsPerCall": { "type": "integer", "minimum": 1, "maximum": 10 },
+            "maxFieldsPerObject": { "type": "integer", "minimum": 1, "maximum": 500 },
+            "evidenceMaxAgeMinutes": { "type": "integer", "minimum": 1, "maximum": 30 }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": { "enabled": { "const": true } },
+                "required": ["enabled"]
+              },
+              "then": {
+                "properties": {
+                  "allowedPackageNamespaces": { "minItems": 1 },
+                  "allowedObjectApiNames": { "minItems": 1 }
+                }
+              },
+              "else": {
+                "properties": {
+                  "allowedPackageNamespaces": { "maxItems": 0 },
+                  "allowedObjectApiNames": { "maxItems": 0 }
+                }
+              }
+            }
+          ]
         }
       }
     },
@@ -88,7 +179,7 @@
       "additionalProperties": false,
       "required": ["salesforceRootName", "manifestPath", "promotedTestsPath"],
       "properties": {
-        "salesforceRootName": { "const": "salesforce" },
+        "salesforceRootName": { "const": "brain-core" },
         "manifestPath": { "type": "string", "minLength": 1 },
         "promotedTestsPath": { "type": "string", "minLength": 1 }
       }

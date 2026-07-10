@@ -1,0 +1,33 @@
+{
+  "$schema": "../schemas/verification-policy.schema.json",
+  "schemaVersion": 1,
+  "requiredForSafe": ["salesforce-metadata-validate"],
+  "profiles": {
+    "salesforce-metadata-validate": {
+      "description": "Validate the configured manifest against the exact allowlisted sandbox without deploying metadata.",
+      "workspaceRoot": "brain-core",
+      "allowedRoles": [
+        "development-assistant",
+        "test-strategist",
+        "guardrail-reviewer"
+      ],
+      "command": [
+        "sf",
+        "project",
+        "deploy",
+        "validate",
+        "--manifest",
+        "${MANIFEST_PATH}",
+        "--target-org",
+        "${SALESFORCE_ALIAS}",
+        "--test-level",
+        "RunLocalTests",
+        "--wait",
+        "60",
+        "--json"
+      ],
+      "timeoutSeconds": 3900,
+      "maxOutputBytes": 1048576
+    }
+  }
+}

@@ -77,6 +77,21 @@ FILESYSTEM_KEYS = {
 }
 
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
+SALESFORCE_REVIEW_TOOLS = {
+    "review_org_identity",
+    "review_installed_packages",
+    "review_object_contract",
+}
+SALESFORCE_OBJECT_API_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}$")
+WORK_RECORD_SCRIPT = re.compile(
+    r"(?:^|[\s\"';&|()])(?:[A-Za-z]:)?/?(?:[^\s\"';&|()]+/)*"
+    r"work_record\.py(?=$|[\s\"';&|()])",
+    re.IGNORECASE,
+)
+WORK_RECORD_MODULE = re.compile(
+    r"(?:^|[\s\"';&|()])-m\s+scripts\.work_record(?=$|[\s\"';&|()])",
+    re.IGNORECASE,
+)
 
 
 def hook_response(decision: str | None = None, reason: str | None = None) -> dict[str, Any]:
@@ -143,6 +158,42 @@ def sandbox_write_approved(config: dict[str, Any]) -> bool:
     )
 
 
+def salesforce_review_tool_error(
+    config: dict[str, Any] | None,
+    tool_name: str,
+    tool_input: Any,
+) -> str | None:
+    if config is None:
+        return "local harness configuration is missing"
+    review = config.get("salesforce", {}).get("review", {})
+    if review.get("enabled") is not True or review.get("requireDualSource") is not True:
+        return "dual-source Salesforce org review is disabled"
+    if not any(
+        org.get("allowAgentRead") is True and org.get("allowAgentReview") is True
+        for org in config.get("salesforce", {}).get("orgs", [])
+    ):
+        return "no configured sandbox alias grants agent review"
+    lowered = tool_name.lower()
+    matched = next((name for name in SALESFORCE_REVIEW_TOOLS if lowered.endswith(name)), None)
+    if matched is None:
+        return "raw or unknown Salesforce read tool is forbidden"
+    if not isinstance(tool_input, dict):
+        return "Salesforce review input must be an object"
+    keys = set(tool_input)
+    if matched in {"review_org_identity", "review_installed_packages"}:
+        if keys:
+            return "this Salesforce review tool accepts no model-controlled arguments"
+        return None
+    if keys != {"objectApiName"}:
+        return "object review accepts only objectApiName"
+    object_name = tool_input.get("objectApiName")
+    if not isinstance(object_name, str) or not SALESFORCE_OBJECT_API_NAME.fullmatch(object_name):
+        return "objectApiName is malformed"
+    if object_name not in review.get("allowedObjectApiNames", []):
+        return "objectApiName is outside the configured review allowlist"
+    return None
+
+
 def development_tool_requires_confirmation(tool_name: str) -> bool:
     lowered = tool_name.lower()
     return any(
@@ -171,6 +222,38 @@ def terminal_command(tool_input: Any) -> str:
             if isinstance(value, str):
                 return value
     return flatten(tool_input)
+
+
+def is_terminal_tool(tool_name: str) -> bool:
+    """Return whether a Copilot tool name represents terminal/shell execution."""
+
+    lowered = tool_name.lower()
+    return any(
+        token in lowered for token in ("terminal", "execute", "shell", "command", "run")
+    )
+
+
+def is_work_record_approval_command(command: str) -> bool:
+    """Detect human-only work-record approval, including wrapped and Windows forms."""
+
+    normalized = re.sub(r"\\\r?\n", " ", command).replace("\\", "/")
+    matches = list(WORK_RECORD_SCRIPT.finditer(normalized)) + list(
+        WORK_RECORD_MODULE.finditer(normalized)
+    )
+    for match in matches:
+        # Approval may follow global parser flags, but not a later shell command.
+        same_command = re.split(r"[;&|\r\n]", normalized[match.end() :], maxsplit=1)[0]
+        if re.search(r"[$`*?\[]", same_command):
+            # The resulting subcommand cannot be proven before shell expansion.
+            return True
+        lexical_command = same_command.replace('"', "").replace("'", "")
+        if re.search(
+            r"(?:^|\s)approve(?=$|\s|[()])",
+            lexical_command,
+            re.IGNORECASE,
+        ):
+            return True
+    return False
 
 
 def target_orgs(parts: list[str]) -> list[str]:
@@ -279,6 +362,24 @@ def within_root(raw: str, root: Path) -> bool:
         return False
 
 
+def within_salesforce_source(raw: str, root: Path) -> bool:
+    """Restrict MCP filesystem arguments to Salesforce project artifacts at repo root."""
+
+    if not raw or raw.startswith(("http://", "https://")):
+        return True
+    candidate = Path(os.path.expanduser(raw))
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    try:
+        relative = candidate.resolve(strict=False).relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return False
+    return relative == "sfdx-project.json" or any(
+        relative == prefix or relative.startswith(f"{prefix}/")
+        for prefix in ("force-app", "manifest", "tests/e2e")
+    )
+
+
 def guarded_playwright_subcommand(command: str) -> str | None:
     if re.search(r"[;&|`$<>\n\r]", command):
         return None
@@ -318,6 +419,19 @@ def main() -> int:
     tool_input = event.get("tool_input", {})
     text = flatten(tool_input)
     root = HARNESS_ROOT
+    command = terminal_command(tool_input)
+
+    if is_terminal_tool(tool_name) and is_work_record_approval_command(command):
+        print(
+            json.dumps(
+                hook_response(
+                    "deny",
+                    "SAFE-HUMAN-001: Copilot cannot invoke work-record approval; "
+                    "a named human must run it directly outside Copilot.",
+                )
+            )
+        )
+        return 0
 
     if any(pattern.search(text) for pattern in DESTRUCTIVE_PATTERNS):
         print(json.dumps(hook_response("deny", "Destructive operation blocked by SAFE-ROLE-001.")))
@@ -337,6 +451,18 @@ def main() -> int:
         if scope_error:
             print(json.dumps(hook_response("deny", f"ADO read blocked: {scope_error}.")))
             return 0
+    if "salesforce-readonly" in lowered_name:
+        scope_error = salesforce_review_tool_error(config, tool_name, tool_input)
+        if scope_error:
+            print(
+                json.dumps(
+                    hook_response(
+                        "deny",
+                        f"Salesforce org review blocked: {scope_error}.",
+                    )
+                )
+            )
+            return 0
     for raw_url in extract_urls(text):
         parsed_url = urlparse(raw_url.rstrip(".,);]"))
         hostname = (parsed_url.hostname or "").lower()
@@ -346,23 +472,32 @@ def main() -> int:
             print(json.dumps(hook_response("deny", "Non-sandbox Salesforce URL blocked by SAFE-ENV-001.")))
             return 0
     if "salesforce-development" in lowered_name:
+        if any(token in lowered_name for token in ("run_soql_query", "list_all_orgs")):
+            print(
+                json.dumps(
+                    hook_response(
+                        "deny",
+                        "Raw Salesforce query/org enumeration is disabled; use the review facade.",
+                    )
+                )
+            )
+            return 0
         if config is None or not sandbox_write_approved(config):
             print(json.dumps(hook_response("deny", "Salesforce development blocked: shared-sandbox approval is missing.")))
             return 0
-        metadata_root = root.parent / "salesforce-metadata"
+        metadata_root = root
         paths = collect_filesystem_paths(tool_input)
         filesystem_tool = any(token in lowered_name for token in ("deploy_metadata", "retrieve_metadata"))
         if filesystem_tool and not paths:
-            print(json.dumps(hook_response("deny", "Salesforce metadata tool must declare a directory/path inside the named metadata root.")))
+            print(json.dumps(hook_response("deny", "Salesforce metadata tool must declare a root project source path.")))
             return 0
-        outside = [path for path in paths if not within_root(path, metadata_root)]
+        outside = [path for path in paths if not within_salesforce_source(path, metadata_root)]
         if outside:
-            print(json.dumps(hook_response("deny", "Salesforce development path is outside the named metadata root.")))
+            print(json.dumps(hook_response("deny", "Salesforce development path is outside root force-app/manifest/tests/e2e source.")))
             return 0
         if development_tool_requires_confirmation(lowered_name):
             print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation for this approved non-production mutation.")))
             return 0
-    command = terminal_command(tool_input)
     try:
         sf_parts = direct_sf_command(command)
     except ValueError as exc:

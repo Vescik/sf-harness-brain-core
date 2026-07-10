@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/verification-policy.schema.json",
+  "title": "Fixed verification profile policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "requiredForSafe", "profiles"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "requiredForSafe": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/profileId" }
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "$ref": "#/$defs/profileId" },
+      "additionalProperties": { "$ref": "#/$defs/profile" }
+    }
+  },
+  "$defs": {
+    "profileId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,63}$"
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "workspaceRoot",
+        "allowedRoles",
+        "command",
+        "timeoutSeconds",
+        "maxOutputBytes"
+      ],
+      "properties": {
+        "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "workspaceRoot": { "const": "brain-core" },
+        "allowedRoles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "development-assistant",
+              "test-strategist",
+              "guardrail-reviewer"
+            ]
+          }
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "pattern": "^(?:(?![\\n\\r]).)+$"
+          }
+        },
+        "timeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 7200 },
+        "maxOutputBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 }
+      }
+    }
+  }
+}

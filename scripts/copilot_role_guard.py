@@ -15,18 +15,13 @@ from typing import Any, Iterable
 
 ALLOWED_PREFIXES = {
     "solution-designer": (
-        ".ai/memory/decisions-log.md",
-        ".ai/change-records/",
         ".cache/ado-items/",
     ),
     "config-investigator": (
-        ".ai/knowledge/",
-        ".ai/memory/decisions-log.md",
+        ".cache/knowledge-proposals/",
     ),
     "test-strategist": (
         ".ai/qa/",
-        ".ai/memory/decisions-log.md",
-        ".ai/change-records/",
         "output/generated-tests/",
         "output/feature-health/",
         "output/handover/",
@@ -34,26 +29,95 @@ ALLOWED_PREFIXES = {
         ".cache/test-cases/",
     ),
     "development-assistant": (
-        ".ai/change-records/",
         "output/documentation/",
         ".cache/ado-items/",
     ),
+    "guardrail-reviewer": (),
 }
 
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
-METADATA_ROOT = HARNESS_ROOT.parent / "salesforce-metadata"
-METADATA_EDIT_PREFIXES = ("force-app/", "manifest/", "tests/")
+METADATA_ROOT = HARNESS_ROOT
+METADATA_EDIT_PREFIXES = ("force-app/", "manifest/", "tests/e2e/")
 PREFLIGHT_CAPABILITIES = {
-    "solution-designer": {"base", "ado", "salesforce-read"},
-    "config-investigator": {"base", "salesforce-read"},
+    "solution-designer": {"base", "ado", "salesforce-review"},
+    "config-investigator": {"base", "salesforce-review"},
     "development-assistant": {
         "base",
         "ado",
         "metadata",
-        "salesforce-read",
+        "salesforce-review",
         "salesforce-write",
     },
-    "test-strategist": {"base", "ado", "playwright", "release", "salesforce-read"},
+    "test-strategist": {"base", "ado", "playwright", "release", "salesforce-review"},
+    "guardrail-reviewer": {"base", "salesforce-review"},
+}
+
+WORK_RECORD_COMMANDS = {
+    "solution-designer": {
+        "init",
+        "validate",
+        "context",
+        "transition",
+        "accept-handoff",
+        "append-evidence",
+        "attach-rule",
+        "bind-claim",
+        "add-question",
+        "resolve-question",
+        "capture-repository",
+        "capture-org-review",
+        "create-handoff",
+    },
+    "config-investigator": {
+        "validate",
+        "context",
+        "accept-handoff",
+        "append-evidence",
+        "add-question",
+        "capture-org-review",
+        "create-handoff",
+    },
+    "development-assistant": {
+        "validate",
+        "context",
+        "transition",
+        "accept-handoff",
+        "append-evidence",
+        "capture-repository",
+        "run-verification",
+        "create-handoff",
+    },
+    "test-strategist": {
+        "validate",
+        "context",
+        "transition",
+        "accept-handoff",
+        "append-evidence",
+        "capture-repository",
+        "run-verification",
+        "create-handoff",
+    },
+    "guardrail-reviewer": {
+        "validate",
+        "context",
+        "accept-handoff",
+        "capture-repository",
+        "capture-org-review",
+        "run-verification",
+        "append-review",
+        "create-handoff",
+    },
+}
+
+# Knowledge mutation is intentionally narrower than filesystem edit permission. Models may validate
+# the registry, and only the Investigator may submit a schema-valid proposed claim/evidence set.
+# Human review and promotion commands are never agent-allowlisted.
+KNOWLEDGE_REGISTRY_COMMANDS = {
+    "solution-designer": {"validate", "query"},
+    "config-investigator": {"validate", "query", "propose"},
+    "development-assistant": {"validate", "query"},
+    "test-strategist": {"validate", "query"},
+    "guardrail-reviewer": {"validate", "query"},
 }
 
 PATH_KEYS = {
@@ -97,6 +161,126 @@ def terminal_command(tool_input: Any) -> str:
     return ""
 
 
+def flag_values(parts: list[str], flag: str) -> list[str]:
+    values: list[str] = []
+    for index, part in enumerate(parts):
+        if part == flag and index + 1 < len(parts):
+            values.append(parts[index + 1])
+        elif part.startswith(f"{flag}="):
+            values.append(part.split("=", 1)[1])
+    return values
+
+
+def work_record_command_allowed(parts: list[str], role: str) -> bool:
+    if not parts or "--root" in parts or any(part.startswith("--root=") for part in parts):
+        return False
+    command = parts[0]
+    if command == "approve" or command not in WORK_RECORD_COMMANDS.get(role, set()):
+        return False
+    if command in {
+        "context",
+        "transition",
+        "append-evidence",
+        "accept-handoff",
+        "append-review",
+        "attach-rule",
+        "bind-claim",
+        "add-question",
+        "resolve-question",
+        "capture-repository",
+        "capture-org-review",
+        "run-verification",
+    }:
+        return flag_values(parts[1:], "--role") == [role]
+    if command == "create-handoff":
+        return flag_values(parts[1:], "--from-role") == [role]
+    return command in {"init", "validate"}
+
+
+def proposal_draft_path_allowed(raw: str, root: Path) -> bool:
+    path = Path(raw)
+    if path.is_absolute():
+        return False
+    draft_root = (root / ".cache/knowledge-proposals").resolve(strict=False)
+    candidate = (root / path).resolve(strict=False)
+    try:
+        relative = candidate.relative_to(draft_root)
+    except ValueError:
+        return False
+    return bool(relative.parts) and candidate.suffix.lower() in {".yaml", ".yml"}
+
+
+def knowledge_registry_command_allowed(
+    parts: list[str], role: str, root: Path = HARNESS_ROOT
+) -> bool:
+    if not parts or "--root" in parts or any(part.startswith("--root=") for part in parts):
+        return False
+    command = parts[0]
+    if command not in KNOWLEDGE_REGISTRY_COMMANDS.get(role, set()):
+        return False
+    if command == "validate":
+        return len(parts) == 1
+    if command == "query":
+        allowed_flags = {
+            "--claim-id",
+            "--domain",
+            "--claim-type",
+            "--subject-kind",
+            "--subject-identity",
+            "--environment",
+            "--org-key",
+            "--package-namespace",
+            "--at",
+        }
+        semantic_filter_seen = False
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                if flag not in allowed_flags or not value:
+                    return False
+                semantic_filter_seen = semantic_filter_seen or flag != "--at"
+                index += 1
+                continue
+            if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
+                return False
+            semantic_filter_seen = semantic_filter_seen or token != "--at"
+            index += 2
+        return index == len(parts) and semantic_filter_seen
+    if command != "propose" or role != "config-investigator":
+        return False
+    values: dict[str, list[str]] = {
+        "--claim-file": [],
+        "--evidence-file": [],
+        "--expected-revision": [],
+    }
+    index = 1
+    while index < len(parts):
+        token = parts[index]
+        if "=" in token:
+            flag, value = token.split("=", 1)
+            if flag not in values or not value:
+                return False
+            values[flag].append(value)
+            index += 1
+            continue
+        if token not in values or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
+            return False
+        values[token].append(parts[index + 1])
+        index += 2
+    if (
+        len(values["--claim-file"]) != 1
+        or not values["--evidence-file"]
+        or len(values["--evidence-file"]) > 10
+        or len(values["--expected-revision"]) != 1
+        or not values["--expected-revision"][0].isdigit()
+    ):
+        return False
+    draft_paths = [*values["--claim-file"], *values["--evidence-file"]]
+    return all(proposal_draft_path_allowed(value, root) for value in draft_paths)
+
+
 def allowed_role_command(command: str, root: Path, role: str) -> bool:
     if not command or re.search(r"[;&|`$<>\n\r]", command):
         return False
@@ -120,6 +304,8 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     script = script.resolve(strict=False)
     preflight = (root / "scripts/preflight.py").resolve()
     browser_guard = (root / "scripts/playwright_guard.py").resolve()
+    work_record = (root / "scripts/work_record.py").resolve()
+    knowledge_registry = (root / "scripts/knowledge_registry.py").resolve()
     remainder = parts[index + 1 :]
     if script == preflight:
         return (
@@ -127,6 +313,10 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
             and remainder[0] == "--capability"
             and remainder[1] in PREFLIGHT_CAPABILITIES.get(role, set())
         )
+    if script == work_record:
+        return work_record_command_allowed(remainder, role)
+    if script == knowledge_registry:
+        return knowledge_registry_command_allowed(remainder, role, root)
     return role == "test-strategist" and script == browser_guard and bool(remainder)
 
 
@@ -144,15 +334,14 @@ def development_edit_allowed(raw: str, resolution_root: Path) -> bool:
     if candidate is None:
         return True
     try:
-        brain_relative = candidate.relative_to(HARNESS_ROOT).as_posix()
-        return allowed(brain_relative, ALLOWED_PREFIXES["development-assistant"])
-    except ValueError:
-        pass
-    try:
-        metadata_relative = candidate.relative_to(METADATA_ROOT.resolve()).as_posix()
+        brain_relative = candidate.relative_to(METADATA_ROOT.resolve()).as_posix()
     except ValueError:
         return False
-    return any(metadata_relative.startswith(prefix) for prefix in METADATA_EDIT_PREFIXES)
+    if any(brain_relative.startswith(prefix) for prefix in METADATA_EDIT_PREFIXES):
+        return True
+    if is_governed_record_path(brain_relative):
+        return False
+    return allowed(brain_relative, ALLOWED_PREFIXES["development-assistant"])
 
 
 def guarded_browser_subcommand(command: str) -> str | None:
@@ -210,11 +399,31 @@ def normalize_path(raw: str, resolution_root: Path, policy_root: Path) -> str | 
 def allowed(relative_path: str, prefixes: tuple[str, ...]) -> bool:
     if relative_path.startswith("OUTSIDE::"):
         return False
+    if is_governed_record_path(relative_path):
+        return False
     return any(
         relative_path.startswith(prefix)
         if prefix.endswith("/")
         else relative_path == prefix
         for prefix in prefixes
+    )
+
+
+def role_path_allowed(relative_path: str, role: str) -> bool:
+    if role == "solution-designer" and re.fullmatch(
+        r"\.ai/change-records/[^/]+/design\.md", relative_path
+    ):
+        return True
+    return allowed(relative_path, ALLOWED_PREFIXES[role])
+
+
+def is_governed_record_path(relative_path: str) -> bool:
+    return bool(
+        re.fullmatch(r"\.ai/change-records/[^/]+/record\.json", relative_path)
+        or re.fullmatch(r"\.ai/change-records/[^/]+/handoffs/[^/]+\.json", relative_path)
+        or re.fullmatch(r"\.ai/change-records/[^/]+/evidence/[^/]+\.json", relative_path)
+        or re.fullmatch(r"\.ai/knowledge/(claims|evidence|reviews)/[^/]+\.(yaml|yml|json)", relative_path)
+        or re.fullmatch(r"\.ai/knowledge/(automation-map|business-processes|current-implementation|field-descriptions|glossary|integration-map|known-limitations|object-descriptions|object-relations)\.md", relative_path)
     )
 
 
@@ -299,7 +508,7 @@ def main() -> int:
                 json.dumps(
                     response(
                         "deny",
-                        f"development-assistant may edit only metadata force-app/manifest/tests, reviewed documentation/change records, and ignored ADO cache: {', '.join(denied_raw)}",
+                        f"development-assistant may edit only root Salesforce force-app/manifest/tests/e2e source, reviewed documentation/change records, and ignored ADO cache: {', '.join(denied_raw)}",
                     )
                 )
             )
@@ -323,7 +532,7 @@ def main() -> int:
         )
         return 0
 
-    denied = sorted(path for path in found if not allowed(path, ALLOWED_PREFIXES[args.role]))
+    denied = sorted(path for path in found if not role_path_allowed(path, args.role))
     if denied:
         print(
             json.dumps(

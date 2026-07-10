@@ -1,18 +1,36 @@
 # Implementation Handoff — Copilot Brain-Core Enhancement
 
+> Current topology (2026-07-10): the repository root is the only named `brain-core` workspace
+> folder and the only SFDX project root. Root `sfdx-project.json`, `force-app/`, `manifest/`, and
+> `tests/e2e/` are authoritative. Earlier two-folder or nested-`salesforce/` descriptions in this
+> iteration history are superseded.
+
+## Current flat-root validation — 2026-07-10
+
+- Harness validation: PASS — 1,536 checks.
+- Python unit suite: PASS — 125 tests.
+- Deterministic safety evaluations: PASS — 28 scenarios.
+- Salesforce Prettier and ESLint gates: PASS.
+- LWC unit gate: PASS with `--passWithNoTests`; this proves the runner works, not test coverage.
+- Root `npm ci --ignore-scripts`: PASS. `npm audit` still reports 24 transitive findings
+  (6 low, 17 moderate, 1 high); no automatic or breaking dependency fix was applied.
+
 ## Status
 
 - Repository: `https://github.com/Vescik/sf-harness-brain-core`
 - Visibility: private
 - Baseline branch: `main`
-- Enhancement branch: `agent/enhance-copilot-harness`
+- Prior enhancement branch: `agent/enhance-copilot-harness`
+- Active grounding/topology branch: `agent/hallucination-grounding-upgrade`
 - Baseline commit: `66649b6` (`Baseline brain-core harness`)
 - Working copy: `/Users/dmachowski/Desktop/sf-harness-brain-core`
 - Protected source: `/Users/dmachowski/Desktop/sf_harness` — never edited by this implementation
-- Draft pull request: `https://github.com/Vescik/sf-harness-brain-core/pull/1`
-- Overall state: current hardening loop complete; branch and draft PR published; local and GitHub
-  validation green; live developer/policy inputs remain rollout gates rather than implementation
-  work in this loop
+- Prior enhancement draft pull request: `https://github.com/Vescik/sf-harness-brain-core/pull/1`
+- Publication state: verify the active branch and CI live in Git/GitHub; this handoff does not use
+  a stale prose assertion as repository authority.
+- Overall state: grounding and flat-root implementation is locally green for a controlled pilot;
+  live Copilot/MCP/model evidence, real configuration/Knowledge, dependency risk acceptance, and
+  authenticated approvals remain rollout gates.
 
 ## Goal
 
@@ -37,7 +55,7 @@ This file is updated after every iteration with changes, evidence, remaining ris
 ### Changes
 
 - Created the private GitHub repository `Vescik/sf-harness-brain-core`.
-- Cloned it to a sibling directory, outside the original workspace.
+- Cloned it to an isolated directory, outside the original workspace.
 - Copied the current harness content without its `.git` directory or `.DS_Store` files.
 - Created and pushed an immutable baseline commit on `main`.
 - Created `agent/enhance-copilot-harness` for all implementation work.
@@ -77,8 +95,41 @@ repository protects future internal Salesforce, ADO, QA, and decision data.
 - Iteration 1 — native Copilot correctness and safety: complete.
 - Iteration 2 — executable intelligence and contracts: complete for the repository layer.
 - Iteration 3 — deterministic quality, governance artifacts, and local proof: complete.
-- Publication — commit, push, draft PR, Linux/Windows GitHub Actions, and GitGuardian: complete.
-- Stop condition — satisfied; end the active goal and do not begin another enhancement iteration.
+- Iteration 4 — Principles → Knowledge → repository/org review grounding, work-record v2,
+  false-`SAFE` rejection, and one-root SFDX topology: complete locally.
+- Prior enhancement publication evidence remains historical. Current branch publication and CI
+  must be verified live after each new commit.
+
+## Iteration 4 — Grounded Salesforce solution design and flat-root SFDX
+
+### Changes
+
+- Added schema-v3 Knowledge claims, immutable evidence, human review bindings, effective-claim
+  queries, contradiction/freshness checks, and deterministic generated indexes.
+- Added revisioned work records that bind Principles, verified claims, component ownership,
+  repository commits, bounded Salesforce org receipts, durable artifacts, human approval,
+  verification profiles, reviews, and handoffs to exact hashes.
+- Made `SAFE` a derived state: fabricated ownership, environment labels, evidence, approvals,
+  test results, and verdict strings are rejected by runtime contracts and adversarial tests.
+- Restricted the Investigator to ignored proposal drafts and `proposed` canonical Knowledge;
+  review/promotion and work-record approval remain human-only commands.
+- Moved the Salesforce DX project to the repository root so the first/only `brain-core` workspace
+  is directly recognized by Salesforce extensions. MCP development writes remain bounded to
+  `force-app/`, `manifest/`, and `tests/e2e/`, with governance/config paths explicitly denied.
+- Kept the package generic: no invoice object, namespace, installed version, or business meaning
+  exists in runtime authority until scoped evidence and human review establish it.
+
+### Known limits
+
+- Static tests cannot certify VS Code extension-host discovery or model behavior; run Chat
+  Diagnostics, handoffs, MCP tool resolution, and the manual model/version scenarios on the pilot
+  workstation.
+- Human approval/review identities are currently asserted and hash-bound, not provider/signature
+  authenticated.
+- Both local Salesforce MCP servers share VS Code's top-level sandbox policy; the read-only facade
+  is tool-surface read-only but inherits the same narrow source write allowance at OS level.
+- The pinned Node dependency tree has 24 audit findings (6 low, 17 moderate, 1 high). Do not apply
+  an untested automatic upgrade; record a risk decision or certify a vendor-supported update.
 
 ## Iteration 1 — Native Copilot correctness and safety
 
@@ -102,9 +153,9 @@ repository protects future internal Salesforce, ADO, QA, and decision data.
   exactly seven stable public prompt commands and eliminating prompt/skill name collisions.
 - Removed the obsolete placeholder `.github/chatmodes/test.chatmode.md`.
 - Added `AGENTS.md`, current activation settings, referenced-instruction loading, hook loading,
-  extension recommendations, VS Code tasks, and a canonical two-root `sf-harness.code-workspace`.
-- Established `brain-core` and `salesforce` as the named workspace roots and removed the historical
-  silent ignore of root `force-app` / `manifest` so an unsupported combined topology is visible.
+  extension recommendations, VS Code tasks, and a canonical `sf-harness.code-workspace`.
+- Established `brain-core` (`.`) as the one named workspace folder and the repository root as the
+  SFDX root; Salesforce metadata and harness governance share one branch and pull-request lineage.
 - Added compatibility and workspace-topology contracts.
 - Added a common skill execution contract, tool-capability map, change-record template, local
   configuration example, global production/destructive-operation hook, and role write guard.
@@ -113,8 +164,9 @@ repository protects future internal Salesforce, ADO, QA, and decision data.
 
 - The five-role SDLC and twelve capabilities remain intact; orchestration is now encoded in native
   objects rather than prose-only intentions.
-- The separate brain repository remains, but “open alongside somehow” is replaced by one named
-  two-root workspace contract.
+- The harness and Salesforce DX project use the same repository root. Deterministic tool routing
+  resolves `brain-core` once, while least-privilege MCP writes remain bounded to approved root
+  metadata/test subpaths.
 - Human-owned business/package values remain placeholders. Each now has a conservative runtime
   fallback instead of silently weakening safety.
 - Hooks are introduced despite the original parking-lot decision because the new hardening goal
@@ -158,9 +210,9 @@ current loop. Preview-host behavior still requires the live gates listed below.
   `Organization.IsSandbox=true`, and enables writes only for an approved development alias.
 - Bound the ADO MCP organization to the preflight-checked `ADO_ORGANIZATION` environment value and
   made the global hook reject calls without the configured project or with mismatched ADO URLs.
-- Removed raw Salesforce CLI from all supported agent workflows and limited MCP write scope to the
-  named Salesforce root. Development edits are restricted to metadata/tests plus reviewed
-  documentation/change-record paths.
+- Removed raw Salesforce CLI from all supported agent workflows and limited MCP write scope to
+  approved metadata/test subpaths under the repository/SFDX root. Development edits are restricted
+  to those paths plus reviewed documentation/change-record paths.
 - Added a pinned guarded Playwright runner that denies credential/storage/code/upload/network
   surfaces, checks current/all-tab origins around actions, and closes on origin drift. Generated
   test code is never executed before human review/promotion.
@@ -171,7 +223,7 @@ current loop. Preview-host behavior still requires the live gates listed below.
   cache, Test Case cache, generated-output evidence, and local configuration.
 - Added sanitized complete/partial cache and output fixtures. The exact cache field vocabulary now
   matches the shared contract (`schemaVersion`, `source.retrievedAt`, and `completeness`).
-- Replaced historical setup claims with a current two-root operating guide and marked the
+- Replaced historical setup claims with a current single-repository operating guide and marked the
   blueprint/build/Fable/diagram documents as historical input rather than runtime authority.
 
 ### Architecture decisions
@@ -206,7 +258,10 @@ current loop. Preview-host behavior still requires the live gates listed below.
 - Added CODEOWNERS, a pull-request template, contribution policy, and security policy.
 - Added VS Code tasks for preflight, validation, unit tests, and deterministic evaluations.
 
-### Local verification evidence — 2026-07-10
+### Historical local verification snapshot — pre-grounding/topology hardening, 2026-07-10
+
+The counts below describe that completed iteration and are not current certification totals. Use
+the latest local/CI run for the current one-root topology and record its exact counts separately.
 
 - `python scripts/validate_harness.py`: PASS — 942 checks.
 - `python -m unittest discover -s tests -v`: PASS — 52 tests.
@@ -258,14 +313,14 @@ current loop. Preview-host behavior still requires the live gates listed below.
 - The private repository remains the correct choice for future Salesforce/ADO/QA Knowledge. Do
   not make it public to obtain free protection; upgrade/move the repository instead.
 - The original `/Users/dmachowski/Desktop/sf_harness` workspace was not edited; all implementation,
-  validation, commits, and publication occurred in the sibling clone.
+  validation, commits, and publication occurred in the isolated clone.
 
 ## Human-owned inputs that must not be invented
 
 - Company naming and code-review conventions.
 - Shared Full Copy Sandbox coordination rules.
-- Complete managed-package high-risk object register and authoritative sources.
-- Safe condition for `Invoice__c` update-triggered automation.
+- Package/component ownership and risk registry with authoritative, version-scoped sources.
+- Supported extension-point and transaction-interaction evidence for the selected pilot component.
 - Azure DevOps organization/project and saved release Query ID.
 - Salesforce dev/QA/UAT aliases and package namespace.
 - Final promoted Playwright test directory.

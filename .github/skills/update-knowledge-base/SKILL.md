@@ -1,31 +1,43 @@
 ---
 name: update-knowledge-base
-description: Validate, deduplicate, route, and atomically record a sourced system fact in the allowlisted Knowledge domains while keeping the Knowledge index accurate. Never use for rules, guesses, or raw record dumps.
+description: Govern proposed Salesforce/package claims, immutable evidence, human reviews, lifecycle transitions, reconciliation, and generated Knowledge indexes. Never promote model inference or unreviewed observations.
 user-invocable: false
 ---
 
-# Update Knowledge base
+# Govern the Knowledge base
 
-Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md).
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
+[Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md), and
+[source authority contract](../../../.ai/contracts/source-authority.md).
 
 ## Input
 
-Require a typed finding: name/API identity, factual statement, confidence, method, source
-environment/IDs, UTC verification date, investigator, sensitivity, related evidence, and optional
-existing taxonomy keywords. Reject unsupported confidence, missing source, secrets/PII, or a rule.
+Require a schema-valid claim/evidence/review operation with stable IDs, normalized
+`(subject, predicate, scope)`, source authority, scope lineage, timestamps, sensitivity,
+limitations, and expected revision. Reject raw records, secrets/PII, rules disguised as facts,
+model-only evidence, mutable evidence, or unknown fields.
 
 ## Procedure
 
-1. Consult the Knowledge index and route only to an allowlisted `.ai/knowledge/*.md` domain.
-2. Search API identity, aliases, and semantic content for duplicates or conflicts. Update/relate a
-   verified entry instead of creating a second source of truth.
-3. If no domain fits, propose a new domain and receive human approval before creating it.
-4. Re-read target and index immediately before writing; stop on concurrent change.
-5. Build the entry with the Knowledge template. Keywords must already exist in the taxonomy.
-6. Apply target plus any required README index update as one reviewed operation; if either fails,
-   report partial state and do not claim success.
+1. Validate schemas and apply the claim-type evidence/freshness policy.
+2. Search canonical claims using normalized subject, predicate, scope, environment, package version,
+   repository lineage, aliases, and related claims.
+3. Evidence is immutable. Corrections create a new evidence record and retain history.
+4. Investigators/models may create `proposed` only. Prepare sanitized schema-v3 claim/evidence
+   drafts under `.cache/knowledge-proposals/`, then run the guarded `propose` command; it is the
+   only agent path that writes canonical Knowledge. `verified`, `rejected`, `contested`,
+   `superseded`, and re-verification require the lifecycle transition and human review defined by
+   policy. A human cannot make unsupported evidence true.
+5. A different value in the same normalized scope marks the claim contested; never overwrite.
+   Different environments/package versions may retain parallel claims.
+6. Re-read target revisions immediately before the atomic operation; stop on concurrency drift.
+7. Regenerate human-readable domain indexes deterministically from canonical claims. Unreviewed,
+   stale, contested, rejected, and superseded states remain visible but are never presented as
+   trusted current facts.
+8. Append claim/evidence/review references to the relevant work record and retain audit history.
 
 ## Return
 
-Return `RECORDED`, `DUPLICATE`, `CONFLICT — NEEDS HUMAN`, or `REJECTED`; target path; source and
-confidence; files changed; index status; and any proposed Principle/taxonomy action separately.
+Return `PROPOSED`, `VERIFIED`, `REJECTED`, `CONTESTED`, `STALE`, `SUPERSEDED`, `DUPLICATE`, or
+`INVALID`; IDs/revisions; transition/review; source authority; freshness; files changed; index
+status; conflicts; and recovery action. Never return `VERIFIED` without a valid human review.

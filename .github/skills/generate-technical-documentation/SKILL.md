@@ -1,6 +1,6 @@
 ---
 name: generate-technical-documentation
-description: Generate a sourced technical-documentation draft for one accepted Salesforce metadata change by validating the named metadata workspace, manifest, source components, ADO context, Knowledge, tests, and human manual steps.
+description: Generate a sourced technical-documentation draft for one accepted Salesforce metadata change by validating the repository-root SFDX project, manifest, source components, ADO context, Knowledge, tests, and human manual steps.
 user-invocable: false
 ---
 
@@ -11,10 +11,12 @@ Apply the [shared execution contract](../../../.ai/contracts/execution-contract.
 
 ## Inputs and gate
 
-- Positive `itemId` with an accepted design record.
-- Named `salesforce` workspace root; optional manifest path defaults from local config.
+- Positive `itemId` plus a schema-valid `recordId` whose human approval matches the current scope
+  and design hashes.
+- Named `brain-core` workspace root, which is also the SFDX root; optional manifest path defaults
+  from local config.
 
-Require exactly one SFDX root with `sfdx-project.json`. Parse the manifest safely, reject malformed
+Require `brain-core` to be the only SFDX root and contain root `sfdx-project.json`. Parse the manifest safely, reject malformed
 XML/path traversal, show detected components, and require confirmation when the scope is unusually
 large or heterogeneous. Do not infer which manifest members belong to the work item.
 
@@ -29,12 +31,14 @@ large or heterogeneous. Do not infer which manifest members belong to the work i
 5. Run `suggest-test-cases` on structured touched artifacts and context.
 6. Ask the human for non-metadata deployment steps with `vscode/askQuestions`; record explicit
    `None` when confirmed. Never infer activation/data-fix steps from absence in the manifest.
-7. Fill every section of the technical-documentation template and common output envelope.
+7. Fill every section of the technical-documentation template and common output envelope,
+   including `recordId` plus rule/claim/evidence references and any stale/contested premise.
 8. Write a collision-safe draft under `output/documentation/<itemId>.md`; never overwrite an
    accepted/reviewed artifact without confirmation.
 
 ## Return
 
-Return draft path, component counts, missing/ambiguous components, source freshness/completeness,
-manual-step status, suggested-test status, checks performed, and publication next step. ADO wiki
+Return `recordId`, draft path, component counts, missing/ambiguous components, source
+freshness/completeness, manual-step status, suggested-test status, checks performed, work-record
+artifact reference, and publication next step. ADO wiki
 publication remains human-controlled.

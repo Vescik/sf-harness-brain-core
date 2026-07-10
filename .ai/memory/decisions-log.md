@@ -1,17 +1,20 @@
 # Decisions Log
 
-Persistent, versioned memory of the project — distinct from VS Code's built-in Memory tool
-(local, per-machine) and Copilot Memory (automatic, per-repo, not team-curated). This file IS
-the team's curated memory (HARNESS_BLUEPRINT.md section 9).
+Persistent, versioned cross-work-item memory of the project — distinct from VS Code's built-in
+Memory tool (local, per-machine), Copilot Memory, canonical Knowledge claims, and active work
+records. This file records durable architectural decisions; it is not the workflow state store.
 
 Two kinds of entries belong here:
 
 1. **Discoveries of system facts with practical consequences** (e.g. "we established that field
    X controls Y — this changes the plan for Z").
-2. **Design notes from the Solution Design phase** — the Solution Designer's note MUST land
-   here at the moment it is created, not only live in chat history, or it is lost when the
-   session ends. The same obligation applies to the Test Strategist's coverage assessments
-   (blueprint section 10).
+2. **Accepted cross-work-item architectural decisions** whose effect outlives an individual work
+   record. Active designs, approvals, evidence, coverage assessments, reviews, and handoffs live
+   under `.ai/change-records/<record-id>/` and are referenced here only when they establish a
+   durable project decision.
+
+System facts are canonical Knowledge claims and must not be duplicated here. Chat-only decisions
+are not durable.
 
 ## Entry format (template — copy for each new entry)
 

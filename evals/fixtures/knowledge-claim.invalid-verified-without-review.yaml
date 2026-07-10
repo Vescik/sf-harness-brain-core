@@ -1,0 +1,30 @@
+schemaVersion: 3
+claimId: KCLM-EXAMPLEMANAGEDOBJECT-INVALID-001
+revision: 1
+domain: object-descriptions
+claimType: object-existence
+subject: {kind: object, identity: examplepkg__ExampleManagedObject__c}
+assertion: {predicate: exists-in-accessible-schema, value: true}
+statement: Synthetic invalid fixture; verification has no human review.
+polarity: positive
+status: verified
+assurance: observed
+scope:
+  environment: qa
+  orgKey: synthetic-qa
+  packageNamespace: examplepkg
+  packageKey: synthetic-example-package
+  packageVersion: "1.0.0"
+  repositoryCommit: null
+evidenceRefs: [KEVD-EXAMPLEMANAGEDOBJECT-DESCRIBE-001]
+reviewRef: null
+observedAt: "2026-07-09T10:00:00Z"
+verifiedAt: null
+reviewBy: "2026-08-08T10:00:00Z"
+sensitivity: internal-sanitized
+keywords: []
+limitations: []
+supersedes: []
+supersededBy: null
+contradicts: []
+relatedClaims: []

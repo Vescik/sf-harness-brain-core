@@ -26,6 +26,9 @@ except ModuleNotFoundError:  # imported as scripts.preflight by unit tests
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "config" / "harness.local.json"
 SCHEMA_PATH = ROOT / "schemas" / "harness-config.schema.json"
+REVIEW_POLICY_PATH = ROOT / "config" / "salesforce-review-policy.json"
+REVIEW_POLICY_SCHEMA_PATH = ROOT / "schemas" / "salesforce-review-policy.schema.json"
+SALESFORCE_MCP_BIN = ROOT / "node_modules" / "@salesforce" / "mcp" / "bin" / "run.js"
 PLACEHOLDER = re.compile(r"<[^>]+>")
 PLAYWRIGHT_CLI_VERSION = "0.1.17"
 
@@ -86,6 +89,8 @@ def validate_origins(values: list[str], label: str) -> list[str]:
 def validate_config(config: dict) -> list[str]:
     failures: list[str] = []
     aliases: set[str] = set()
+    review_hosts: set[str] = set()
+    review_org_ids: set[str] = set()
     for org in config.get("salesforce", {}).get("orgs", []):
         alias = str(org.get("alias", ""))
         environment = str(org.get("environment", "")).lower()
@@ -98,6 +103,19 @@ def validate_config(config: dict) -> list[str]:
             failures.append(f"Production-like Salesforce alias is forbidden: {alias}")
         if org.get("allowAgentWrite") and environment != "development":
             failures.append(f"Only development aliases may allow agent writes: {alias}")
+        if org.get("allowAgentReview") is True and org.get("allowAgentRead") is not True:
+            failures.append(f"Salesforce review requires read permission: {alias}")
+        expected_host = str(org.get("expectedInstanceHost", "")).lower()
+        expected_org_id = str(org.get("expectedOrganizationId", ""))
+        if not is_salesforce_sandbox_origin(f"https://{expected_host}"):
+            failures.append(f"Configured Salesforce identity host is not an explicit sandbox: {alias}")
+        if org.get("allowAgentReview") is True:
+            if expected_host in review_hosts:
+                failures.append("Salesforce review identity hosts must be unique")
+            if expected_org_id in review_org_ids:
+                failures.append("Salesforce review organization IDs must be unique")
+            review_hosts.add(expected_host)
+            review_org_ids.add(expected_org_id)
     write_aliases = [
         str(org.get("alias", ""))
         for org in config.get("salesforce", {}).get("orgs", [])
@@ -123,24 +141,63 @@ def validate_config(config: dict) -> list[str]:
         failures.append(
             "ado.allowedHttpsOrigins must contain only the configured organization origin"
         )
-    if config.get("workspace", {}).get("salesforceRootName") != "salesforce":
-        failures.append("workspace.salesforceRootName must be 'salesforce'")
+    if config.get("workspace", {}).get("salesforceRootName") != "brain-core":
+        failures.append("workspace.salesforceRootName must be 'brain-core'")
+    review = config.get("salesforce", {}).get("review", {})
+    review_aliases = [
+        org
+        for org in config.get("salesforce", {}).get("orgs", [])
+        if org.get("allowAgentReview") is True
+    ]
+    if review.get("enabled") is True and not review_aliases:
+        failures.append("Salesforce org review is enabled but no alias grants allowAgentReview")
+    namespaces = review.get("allowedPackageNamespaces", [])
+    if len(namespaces) != len(set(namespaces)):
+        failures.append("Salesforce review package namespaces must be unique")
+    object_names = review.get("allowedObjectApiNames", [])
+    if len(object_names) != len(set(object_names)):
+        failures.append("Salesforce review object API names must be unique")
+    return failures
+
+
+def validate_review_policy() -> list[str]:
+    failures: list[str] = []
+    try:
+        policy = json.loads(REVIEW_POLICY_PATH.read_text(encoding="utf-8"))
+        schema = json.loads(REVIEW_POLICY_SCHEMA_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [f"Salesforce review policy could not be loaded: {exc}"]
+    errors = sorted(
+        Draft202012Validator(schema).iter_errors(policy),
+        key=lambda item: list(item.path),
+    )
+    if errors:
+        first = errors[0]
+        location = ".".join(str(part) for part in first.path) or "<root>"
+        failures.append(f"Salesforce review policy schema failed at {location}: {first.message}")
+    queries = [
+        str(profile.get("query", ""))
+        for profile in policy.get("profiles", {}).values()
+        if isinstance(profile, dict)
+    ]
+    if any(";" in query or "--" in query or "/*" in query for query in queries):
+        failures.append("Salesforce review query profiles contain forbidden multi-statement/comment syntax")
     return failures
 
 
 def metadata_root() -> Path:
-    return ROOT.parent / "salesforce-metadata"
+    return ROOT
 
 
 def contained_workspace_path(root: Path, raw: str, label: str) -> Path:
     path = Path(raw)
     if path.is_absolute():
-        raise ValueError(f"{label} must be relative to the named Salesforce root")
+        raise ValueError(f"{label} must be relative to the repository root")
     candidate = (root / path).resolve(strict=False)
     try:
         candidate.relative_to(root.resolve())
     except ValueError as exc:
-        raise ValueError(f"{label} escapes the named Salesforce root") from exc
+        raise ValueError(f"{label} escapes the repository root") from exc
     return candidate
 
 
@@ -148,7 +205,7 @@ def validate_metadata(config: dict) -> list[str]:
     failures: list[str] = []
     root = metadata_root()
     if not (root / "sfdx-project.json").is_file():
-        failures.append(f"named Salesforce root is missing sfdx-project.json: {root}")
+        failures.append(f"repository root is missing sfdx-project.json: {root}")
     try:
         manifest = contained_workspace_path(
             root, config["workspace"]["manifestPath"], "workspace.manifestPath"
@@ -165,8 +222,8 @@ def validate_metadata(config: dict) -> list[str]:
         failures.append(f"configured manifest does not exist: {manifest}")
     if not (root / "force-app").is_dir():
         failures.append(f"force-app does not exist: {root / 'force-app'}")
-    if (ROOT / "force-app").exists() or (ROOT / "manifest").exists():
-        failures.append("unsupported combined topology: metadata exists inside brain-core")
+    if (root / "salesforce" / "sfdx-project.json").exists():
+        failures.append("legacy nested salesforce/ project is forbidden; the repository root is the SFDX project")
     return failures
 
 
@@ -181,15 +238,30 @@ def validate_capability(config: dict, capability: str) -> list[str]:
             failures.append(
                 "ADO_ORGANIZATION must exactly match ado.organization in local configuration"
             )
-    if capability in {"salesforce-read", "salesforce-write"}:
-        for command in ("node", "npx", "sf"):
+    if capability in {"salesforce-read", "salesforce-write", "salesforce-review"}:
+        required_commands = (
+            ("node", "sf")
+            if capability == "salesforce-review"
+            else ("node", "npx", "sf")
+        )
+        for command in required_commands:
             if shutil.which(command) is None:
                 failures.append(f"required command is not installed: {command}")
-        key = "allowAgentWrite" if capability == "salesforce-write" else "allowAgentRead"
+        key = (
+            "allowAgentWrite"
+            if capability == "salesforce-write"
+            else "allowAgentReview"
+            if capability == "salesforce-review"
+            else "allowAgentRead"
+        )
         if shutil.which("sf") is not None:
             for org in config.get("salesforce", {}).get("orgs", []):
                 if org.get(key) is True:
-                    ok, reason = verify_is_sandbox(str(org.get("alias", "")))
+                    ok, reason = verify_is_sandbox(
+                        str(org.get("alias", "")),
+                        expected_host=str(org.get("expectedInstanceHost", "")),
+                        expected_org_id=str(org.get("expectedOrganizationId", "")),
+                    )
                     if not ok:
                         failures.append(
                             f"Salesforce alias {org.get('alias')!r} failed live sandbox proof: {reason}"
@@ -198,6 +270,34 @@ def validate_capability(config: dict, capability: str) -> list[str]:
         org.get("allowAgentWrite") is True for org in config["salesforce"]["orgs"]
     ):
         failures.append("no non-production Salesforce alias allows agent writes")
+    if capability == "salesforce-review":
+        failures.extend(validate_review_policy())
+        review = config.get("salesforce", {}).get("review", {})
+        if review.get("enabled") is not True:
+            failures.append("Salesforce org review is disabled")
+        if not any(
+            org.get("allowAgentReview") is True
+            for org in config.get("salesforce", {}).get("orgs", [])
+        ):
+            failures.append("no non-production Salesforce alias allows agent review")
+        if not SALESFORCE_MCP_BIN.is_file():
+            failures.append("pinned @salesforce/mcp runtime is missing; run npm ci")
+        executable = shutil.which("sf")
+        if executable is not None:
+            try:
+                version = subprocess.run(
+                    [executable, "version", "--json"],
+                    text=True,
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
+                payload = json.loads(version.stdout) if version.returncode == 0 else {}
+                match = re.match(r"^@salesforce/cli/(\d+)\.", str(payload.get("cliVersion", "")))
+                if match is None or int(match.group(1)) != 2:
+                    failures.append("Salesforce CLI major version 2 is required for org review")
+            except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+                failures.append("Salesforce CLI version check failed")
     if capability == "playwright":
         if shutil.which("playwright-cli") is None:
             failures.append("playwright-cli is not installed")
@@ -237,6 +337,7 @@ def main() -> int:
             "metadata",
             "salesforce-read",
             "salesforce-write",
+            "salesforce-review",
             "playwright",
             "release",
         ),

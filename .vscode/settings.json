@@ -1,7 +1,6 @@
 {
-  // Copilot customization activation for single-folder use. The checked-in multi-root
-  // sf-harness.code-workspace repeats these editor-wide settings because folder-scoped editor
-  // settings can be ignored in a multi-root workspace. scripts/validate_harness.py checks parity.
+  // Copilot customization activation for direct-folder use. The checked-in single-root
+  // sf-harness.code-workspace repeats these settings; scripts/validate_harness.py checks parity.
   "github.copilot.chat.codeGeneration.useInstructionFiles": true,
   "chat.includeApplyingInstructions": true,
   "chat.includeReferencedInstructions": true,
@@ -20,7 +19,11 @@
     ".cache/**": true
   },
   "search.exclude": {
+    "**/node_modules": true,
+    "**/.sfdx": true,
+    "**/.sf": true,
     ".cache/**": true,
     "output/**": true
-  }
+  },
+  "xml.preferences.showSchemaDocumentationType": "none"
 }

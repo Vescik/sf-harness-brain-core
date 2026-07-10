@@ -1,11 +1,10 @@
-# Field Descriptions
+# Field Descriptions — Generated Claim Index
 
-What each field means — especially fields whose name does not make their purpose obvious.
-Facts only, never rules. Entry format: `.ai/templates/knowledge-entry.md`.
+Generated view of canonical field-schema and approved business-meaning claims. A describe result
+can establish accessible schema, but not business meaning by itself. Do not hand-edit.
 
-Scaling threshold (blueprint sections 3 and 8): at ~15-20 described objects, this file splits
-into `.ai/knowledge/objects/<Name>.md` together with object descriptions and automation. Not
-built now.
+<!-- BEGIN GENERATED CLAIM INDEX -->
 
-<!-- No entries yet. Entries are added by investigate-object / update-knowledge-base as facts
-are established — never fabricated at build time. -->
+_No canonical claims are indexed._
+
+<!-- END GENERATED CLAIM INDEX -->

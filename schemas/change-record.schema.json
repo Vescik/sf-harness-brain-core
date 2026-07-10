@@ -1,0 +1,500 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/change-record.schema.json",
+  "title": "Governed change work record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "recordId",
+    "recordRevision",
+    "createdAt",
+    "updatedAt",
+    "workItem",
+    "state",
+    "requestedOutcome",
+    "scope",
+    "scopeHash",
+    "groundingHash",
+    "environment",
+    "ruleRefs",
+    "claimRefs",
+    "contextRefs",
+    "assumptions",
+    "unknowns",
+    "blockingQuestions",
+    "design",
+    "approvals",
+    "evidenceRefs",
+    "implementation",
+    "verification",
+    "review",
+    "repositories",
+    "currentHandoffId",
+    "handoffHistoryRefs",
+    "events"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "recordId": {
+      "type": "string",
+      "pattern": "^ADO-[a-z0-9][a-z0-9-]{0,62}-[1-9][0-9]*$"
+    },
+    "recordRevision": { "type": "integer", "minimum": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "workItem": { "$ref": "#/$defs/workItem" },
+    "state": { "$ref": "#/$defs/state" },
+    "requestedOutcome": { "type": "string", "minLength": 1, "maxLength": 4000 },
+    "scope": { "$ref": "#/$defs/scope" },
+    "scopeHash": { "$ref": "#/$defs/sha256" },
+    "groundingHash": { "$ref": "#/$defs/sha256" },
+    "environment": { "$ref": "#/$defs/environment" },
+    "ruleRefs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ruleRef" }
+    },
+    "claimRefs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claimRef" }
+    },
+    "contextRefs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/contextRef" },
+      "uniqueItems": true
+    },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+    },
+    "blockingQuestions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/blockingQuestion" }
+    },
+    "design": { "$ref": "#/$defs/design" },
+    "approvals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/approval" }
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidenceRef" }
+    },
+    "implementation": { "$ref": "#/$defs/implementation" },
+    "verification": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/verification" }
+    },
+    "review": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/review" }
+      ]
+    },
+    "repositories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/repository" }
+    },
+    "currentHandoffId": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^HO-[A-Za-z0-9][A-Za-z0-9._-]{5,127}$" }
+      ]
+    },
+    "handoffHistoryRefs": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^handoffs/[^/]+\\.json$" },
+      "uniqueItems": true
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nullableDateTime": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
+    "role": {
+      "enum": [
+        "solution-designer",
+        "config-investigator",
+        "development-assistant",
+        "test-strategist",
+        "guardrail-reviewer",
+        "human",
+        "system"
+      ]
+    },
+    "workItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "organization", "project", "id", "type", "url", "revision", "fetchedAt"],
+      "properties": {
+        "system": { "const": "azure-devops" },
+        "organization": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "project": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "id": { "type": "integer", "minimum": 1 },
+        "type": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "url": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "format": "uri", "pattern": "^https://" }
+          ]
+        },
+        "revision": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 1 },
+            { "type": "string", "minLength": 1, "maxLength": 128 }
+          ]
+        },
+        "fetchedAt": { "$ref": "#/$defs/nullableDateTime" }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase", "status"],
+      "properties": {
+        "phase": { "enum": ["intake", "design", "development", "qa", "review", "complete"] },
+        "status": {
+          "enum": [
+            "draft",
+            "awaiting_human",
+            "accepted",
+            "in_progress",
+            "ready",
+            "needs_fixes",
+            "incomplete",
+            "blocked",
+            "safe",
+            "stopped",
+            "complete"
+          ]
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceRoot", "components", "paths"],
+      "properties": {
+        "workspaceRoot": { "const": "brain-core" },
+        "components": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/component" },
+          "uniqueItems": true
+        },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "ownership", "ownershipClaimRef", "packageNamespace", "packageVersion"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "type": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "ownership": {
+          "enum": ["package-owned", "subscriber-owned", "platform", "unknown"]
+        },
+        "ownershipClaimRef": {
+          "type": ["string", "null"],
+          "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$"
+        },
+        "packageNamespace": { "type": ["string", "null"], "maxLength": 64 },
+        "packageVersion": { "type": ["string", "null"], "maxLength": 128 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "ownership": { "const": "unknown" } }, "required": ["ownership"] },
+          "then": {
+            "properties": {
+              "ownershipClaimRef": { "type": "null" },
+              "packageNamespace": { "type": "null" },
+              "packageVersion": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "ownership": { "const": "package-owned" } }, "required": ["ownership"] },
+          "then": {
+            "properties": {
+              "ownershipClaimRef": { "type": "string" },
+              "packageNamespace": { "type": "string", "minLength": 1 },
+              "packageVersion": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "ownership": { "enum": ["subscriber-owned", "platform"] } },
+            "required": ["ownership"]
+          },
+          "then": {
+            "properties": {
+              "ownershipClaimRef": { "type": "string" },
+              "packageNamespace": { "type": "null" },
+              "packageVersion": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+    "ruleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ruleId", "tier", "sourceFile", "registrySha256", "sourceSha256"],
+      "properties": {
+        "ruleId": { "type": "string", "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$" },
+        "tier": { "enum": ["kernel", "1", "2", "3"] },
+        "sourceFile": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "registrySha256": { "$ref": "#/$defs/sha256" },
+        "sourceSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "claimRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claimId", "revision", "path", "sha256", "claimType", "subject", "assertion",
+        "scope", "reviewRef", "verifiedAt", "reviewBy"
+      ],
+      "properties": {
+        "claimId": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
+        "revision": { "type": "integer", "minimum": 2 },
+        "path": { "type": "string", "pattern": "^\\.ai/knowledge/claims/[^/]+\\.yaml$" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "claimType": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "subject": { "type": "object" },
+        "assertion": { "type": "object" },
+        "scope": { "type": "object" },
+        "reviewRef": { "type": "string", "pattern": "^KREV-[A-Z0-9][A-Z0-9-]{2,79}$" },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "reviewBy": { "type": "string", "format": "date-time" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "alias", "isSandbox", "verificationRef", "verifiedAt"],
+      "properties": {
+        "status": { "enum": ["unverified", "verified"] },
+        "alias": { "type": ["string", "null"], "maxLength": 128 },
+        "isSandbox": { "type": ["boolean", "null"] },
+        "verificationRef": { "type": ["string", "null"], "maxLength": 2048 },
+        "verifiedAt": { "$ref": "#/$defs/nullableDateTime" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "unverified" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "isSandbox": { "type": "null" },
+              "verificationRef": { "type": "null" },
+              "verifiedAt": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "alias": { "type": "string", "minLength": 1 },
+              "isSandbox": { "const": true },
+              "verificationRef": { "type": "string", "pattern": "^evidence/EV-[^/]+\\.json$" },
+              "verifiedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      ]
+    },
+    "contextRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "sha256"],
+      "properties": {
+        "kind": { "enum": ["policy", "knowledge", "contract", "source", "decision"] },
+        "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "sha256": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/sha256" }
+          ]
+        }
+      }
+    },
+    "blockingQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "question", "owner", "status", "resolutionRef"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^BQ-[A-Za-z0-9._-]+$" },
+        "question": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "owner": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "status": { "enum": ["open", "resolved"] },
+        "resolutionRef": { "type": ["string", "null"], "maxLength": 2048 }
+      }
+    },
+    "design": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^design\\.md$" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approvalId",
+        "kind",
+        "approver",
+        "approvedAt",
+        "mechanism",
+        "approvalRef",
+        "scopeHash",
+        "designHash",
+        "groundingHash",
+        "status",
+        "invalidatedAt",
+        "invalidationReason"
+      ],
+      "properties": {
+        "approvalId": { "type": "string", "pattern": "^AP-[A-Za-z0-9._-]+$" },
+        "kind": { "const": "design" },
+        "approver": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "approvedAt": { "type": "string", "format": "date-time" },
+        "mechanism": { "enum": ["human-terminal", "github-review"] },
+        "approvalRef": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "scopeHash": { "$ref": "#/$defs/sha256" },
+        "designHash": { "$ref": "#/$defs/sha256" },
+        "groundingHash": { "$ref": "#/$defs/sha256" },
+        "status": { "enum": ["active", "superseded"] },
+        "invalidatedAt": { "$ref": "#/$defs/nullableDateTime" },
+        "invalidationReason": { "type": ["string", "null"], "maxLength": 2000 }
+      }
+    },
+    "evidenceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidenceId", "path", "sha256", "type", "completeness", "durability", "sourceRef", "sourceRevision", "retrievedAt"],
+      "properties": {
+        "evidenceId": { "type": "string", "pattern": "^EV-[A-Za-z0-9._-]+$" },
+        "path": { "type": "string", "pattern": "^evidence/[^/]+\\.json$" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "type": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "completeness": { "enum": ["complete", "partial"] },
+        "durability": { "enum": ["durable", "ephemeral"] },
+        "sourceRef": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "sourceRevision": { "type": ["string", "integer", "null"] },
+        "retrievedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filesChanged", "notes"],
+      "properties": {
+        "filesChanged": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "uniqueItems": true
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verificationId", "profileId", "performedAt", "role", "status", "evidenceRef",
+        "receiptSha256", "repositoryHeadCommit"
+      ],
+      "properties": {
+        "verificationId": { "type": "string", "pattern": "^VR-[A-Za-z0-9._-]+$" },
+        "profileId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$" },
+        "performedAt": { "type": "string", "format": "date-time" },
+        "role": { "$ref": "#/$defs/role" },
+        "status": { "enum": ["passed", "failed", "timed-out", "output-limit-exceeded"] },
+        "evidenceRef": { "type": "string", "pattern": "^evidence/EV-[^/]+\\.json$" },
+        "receiptSha256": { "$ref": "#/$defs/sha256" },
+        "repositoryHeadCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewId", "reviewedAt", "role", "verdict", "findings"],
+      "properties": {
+        "reviewId": { "type": "string", "pattern": "^RV-[A-Za-z0-9._-]+$" },
+        "reviewedAt": { "type": "string", "format": "date-time" },
+        "role": { "const": "guardrail-reviewer" },
+        "verdict": { "enum": ["SAFE", "NEEDS_FIXES", "INCOMPLETE", "STOPPED"] },
+        "findings": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceRoot", "remote", "branch", "baseCommit", "headCommit", "dirtyPaths", "capturedAt"],
+      "properties": {
+        "workspaceRoot": { "const": "brain-core" },
+        "remote": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
+        "branch": { "type": ["string", "null"], "maxLength": 512 },
+        "baseCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "headCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "dirtyPaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "uniqueItems": true
+        },
+        "capturedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "at", "action", "role", "fromState", "toState", "note"],
+      "properties": {
+        "eventId": { "type": "string", "pattern": "^ET-[A-Za-z0-9._-]+$" },
+        "at": { "type": "string", "format": "date-time" },
+        "action": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "role": { "$ref": "#/$defs/role" },
+        "fromState": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/state" }
+          ]
+        },
+        "toState": { "$ref": "#/$defs/state" },
+        "note": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    }
+  }
+}

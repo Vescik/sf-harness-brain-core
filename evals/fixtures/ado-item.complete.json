@@ -20,7 +20,7 @@
   "item": {
     "id": 1201,
     "type": "User Story",
-    "title": "Sanitized invoice review",
+    "title": "Sanitized managed-component review",
     "state": "Active",
     "parentId": 1100,
     "childIds": [1202, 1203],

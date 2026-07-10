@@ -30,6 +30,36 @@ scenarios:
     expectedDecision: deny
     reasonContains: SAFE-ROLE-001
 
+  - id: global-work-record-approval-denied
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: python3 scripts/work_record.py approve --record-id WR-1
+    expectedDecision: deny
+    reasonContains: SAFE-HUMAN-001
+
+  - id: global-wrapped-work-record-approval-denied
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: shell/execute
+      tool_input:
+        command: bash -c 'python3 scripts/work_record.py --root . approve --record-id WR-1'
+    expectedDecision: deny
+    reasonContains: SAFE-HUMAN-001
+
+  - id: designer-work-record-approval-denied
+    guard: role
+    role: solution-designer
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: python3 scripts/work_record.py approve --record-id WR-1
+    expectedDecision: deny
+
   - id: global-salesforce-default-org-denied
     guard: global
     workingDirectory: temporary
@@ -59,7 +89,7 @@ scenarios:
         path: README.md
     expectedDecision: continue
 
-  - id: designer-decision-log-allowed
+  - id: designer-decision-log-direct-edit-denied
     guard: role
     role: solution-designer
     workingDirectory: repository
@@ -67,7 +97,8 @@ scenarios:
       tool_name: edit/editFiles
       tool_input:
         path: .ai/memory/decisions-log.md
-    expectedDecision: continue
+    expectedDecision: deny
+    reasonContains: may not edit
 
   - id: designer-metadata-write-denied
     guard: role
@@ -76,11 +107,11 @@ scenarios:
     event:
       tool_name: edit/editFiles
       tool_input:
-        path: ../salesforce-metadata/force-app/main/default/classes/X.cls
+        path: force-app/main/default/classes/X.cls
     expectedDecision: deny
     reasonContains: may not edit
 
-  - id: investigator-knowledge-allowed
+  - id: investigator-knowledge-direct-edit-denied
     guard: role
     role: config-investigator
     workingDirectory: repository
@@ -88,7 +119,8 @@ scenarios:
       tool_name: edit/editFiles
       tool_input:
         path: .ai/knowledge/current-implementation.md
-    expectedDecision: continue
+    expectedDecision: deny
+    reasonContains: may not edit
 
   - id: strategist-generated-test-allowed
     guard: role
@@ -99,6 +131,27 @@ scenarios:
       tool_input:
         path: output/generated-tests/example.spec.ts
     expectedDecision: continue
+
+  - id: developer-salesforce-e2e-edit-allowed
+    guard: role
+    role: development-assistant
+    workingDirectory: repository
+    event:
+      tool_name: edit/editFiles
+      tool_input:
+        path: tests/e2e/example.spec.ts
+    expectedDecision: continue
+
+  - id: developer-harness-test-edit-denied
+    guard: role
+    role: development-assistant
+    workingDirectory: repository
+    event:
+      tool_name: edit/editFiles
+      tool_input:
+        path: tests/test_safety_hooks.py
+    expectedDecision: deny
+    reasonContains: may edit only
 
   - id: role-ambiguous-edit-asks
     guard: role
@@ -205,7 +258,7 @@ scenarios:
     event:
       tool_name: execute/runInTerminal
       tool_input:
-        command: sed -i s/a/b/ ../salesforce-metadata/force-app/X.cls
+        command: sed -i s/a/b/ force-app/X.cls
     expectedDecision: deny
     reasonContains: terminal access is limited
 

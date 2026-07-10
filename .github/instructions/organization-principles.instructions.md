@@ -1,6 +1,5 @@
 ---
-description: Company policy, review, naming, decision, and shared-sandbox rules. Apply to every proposed or implemented change after managed-package constraints.
-applyTo: "**"
+description: Company policy, review, naming, decision, Knowledge-promotion, handoff, and shared-sandbox rules. Load explicitly for governed design, implementation, and review.
 ---
 
 # Organization Principles — Tier 2
@@ -29,6 +28,23 @@ These rules override general Salesforce practice and are overridden by Tier 1 pa
   [decisions-log.md](../../.ai/memory/decisions-log.md) and record approver plus related evidence.
 - **ORG-DEC-002 — accepted design is an implementation precondition.** Development requires a
   design record with `Status: Accepted`, an approver, timestamp, and no blocking question.
+
+## Knowledge and handoffs
+
+- **ORG-KNOW-001 — observations are proposals.** An investigator or model may create sanitized
+  evidence and a proposed claim. Only a named human review bound to the evidence and scope may
+  promote a claim to `verified`.
+- **ORG-KNOW-002 — freshness is claim-specific.** A historically verified claim that passed its
+  review-by time or an invalidating event is not safe to rely on until revalidated. Never extend
+  freshness because the value looks plausible.
+- **ORG-KNOW-003 — conflicting evidence is retained.** Do not overwrite, delete, or hide a prior
+  claim when a new observation differs. Create immutable evidence and mark the normalized claim
+  `contested` pending human reconciliation.
+- **ORG-HAND-001 — persisted state outranks conversation.** Every governed role transition requires
+  a schema-valid work record and handoff addressed to the target role. Missing, stale, wrong-role,
+  or hash-mismatched handoffs must be rejected.
+- **ORG-HAND-002 — approval is revision-bound.** Approval binds to the exact scope and design
+  hashes. Any change invalidates approval and returns the work to human review.
 
 ## Shared Full Copy Sandbox
 

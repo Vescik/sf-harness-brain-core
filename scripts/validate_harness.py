@@ -7,6 +7,7 @@ import json
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Iterable
@@ -27,7 +28,9 @@ ALLOWED_TOOLS = {
     "vscode/askQuestions",
     "agent",
     "ado-readonly/*",
-    "salesforce-readonly/*",
+    "salesforce-readonly/review_org_identity",
+    "salesforce-readonly/review_installed_packages",
+    "salesforce-readonly/review_object_contract",
     "salesforce-development/*",
 }
 LEGACY_TOOLS = {"readFile", "editFiles", "runInTerminal", "fetch", "codebase", "githubRepo"}
@@ -46,11 +49,6 @@ REQUIRED_SETTINGS = (
     "chat.useCustomizationsInParentRepositories",
 )
 EXPECTED_HUMAN_PLACEHOLDERS = {
-    "<TU_WSTAW_INVOICE_UPDATE_SAFE_CONDITION>",
-    "<TU_WSTAW_INVOICE_RULE_SOURCE>",
-    "<TU_WSTAW_PACKAGE_VERSION>",
-    "<TU_WSTAW_RULE_VERIFICATION_DATE>",
-    "<TU_WSTAW_PELNA_LISTA_OBIEKTOW_WYSOKIEGO_RYZYKA>",
     "<TU_WSTAW_KONWENCJE_NAZEWNICZE_FIRMY>",
     "<TU_WSTAW_ZASADY_CODE_REVIEW>",
     "<TU_WSTAW_FORMAT_DOKUMENTOWANIA_DECYZJI>",
@@ -113,6 +111,14 @@ def load_jsonc(path: Path, audit: Audit) -> Any:
         return {}
 
 
+def load_yaml(path: Path, audit: Audit) -> Any:
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        audit.require(False, f"{relative(path)}: invalid YAML: {exc}")
+        return {}
+
+
 def check_required_files(audit: Audit) -> None:
     required = (
         "AGENTS.md",
@@ -131,14 +137,105 @@ def check_required_files(audit: Audit) -> None:
         "requirements-dev.lock",
         "scripts/playwright_guard.py",
         "scripts/verify_salesforce_org.py",
+        "scripts/salesforce_review_server.mjs",
+        "scripts/work_record.py",
+        "scripts/knowledge_registry.py",
         ".ai/contracts/execution-contract.md",
         ".ai/contracts/tool-capabilities.md",
+        ".ai/contracts/knowledge-lifecycle.md",
+        ".ai/contracts/source-authority.md",
+        ".ai/contracts/workflow-state-machine.md",
+        "schemas/knowledge-claim.schema.json",
+        "schemas/knowledge-evidence.schema.json",
+        "schemas/knowledge-review.schema.json",
+        "schemas/change-record.schema.json",
+        "schemas/handoff-envelope.schema.json",
+        "schemas/salesforce-org-review-evidence.schema.json",
+        ".github/instructions/rule-registry.yaml",
+        "config/knowledge-policy.json",
+        "config/salesforce-review-policy.json",
+        "docs/grounding-architecture.md",
+        "sfdx-project.json",
+        "package.json",
+        "package-lock.json",
+        "manifest/package.xml",
+        "config/project-scratch-def.json",
+        ".forceignore",
+        ".prettierignore",
+        ".prettierrc",
+        "eslint.config.js",
+        "jest.config.js",
     )
     for name in required:
         audit.require((ROOT / name).is_file(), f"required file is missing: {name}")
     audit.require(not any((ROOT / ".github/chatmodes").glob("*")), "legacy chat mode files remain")
-    audit.require(not (ROOT / "force-app").exists(), "brain-core must not contain force-app")
-    audit.require(not (ROOT / "manifest").exists(), "brain-core must not contain manifest")
+    audit.require((ROOT / "force-app").is_dir(), "required Salesforce metadata directory is missing: force-app")
+    audit.require(not (ROOT / "salesforce").exists(), "legacy nested salesforce/ project remains")
+
+
+def check_salesforce_project(audit: Audit) -> None:
+    salesforce_root = ROOT
+    project = load_json(salesforce_root / "sfdx-project.json", audit)
+    package_directories = project.get("packageDirectories", []) if isinstance(project, dict) else []
+    audit.require(
+        any(
+            isinstance(entry, dict)
+            and entry.get("path") == "force-app"
+            and entry.get("default") is True
+            for entry in package_directories
+        ),
+        "sfdx-project.json must define force-app as the default package directory",
+    )
+    audit.require(project.get("name") == "sf-harness-salesforce", "embedded SFDX project name is unexpected")
+    audit.require(project.get("namespace") == "", "embedded SFDX scaffold must not bake in a package namespace")
+    audit.require(
+        project.get("sfdcLoginUrl") == "https://test.salesforce.com",
+        "embedded SFDX project must default to the Salesforce sandbox login URL",
+    )
+    api_version = project.get("sourceApiVersion")
+    audit.require(
+        isinstance(api_version, str) and re.fullmatch(r"\d+\.0", api_version) is not None,
+        "embedded SFDX sourceApiVersion must use the major.0 form",
+    )
+    audit.require(
+        (salesforce_root / "force-app/main/default").is_dir(),
+        "embedded SFDX project is missing force-app/main/default",
+    )
+    audit.require(
+        (salesforce_root / ".git").is_dir(),
+        "the root SFDX project must use the repository's existing Git directory",
+    )
+
+    manifest_path = salesforce_root / "manifest/package.xml"
+    try:
+        manifest_root = ET.parse(manifest_path).getroot()
+    except (OSError, ET.ParseError) as exc:
+        audit.require(False, f"manifest/package.xml: invalid XML: {exc}")
+        manifest_root = None
+    if manifest_root is not None:
+        namespace = "{http://soap.sforce.com/2006/04/metadata}"
+        audit.require(manifest_root.tag == f"{namespace}Package", "Salesforce manifest root must be Metadata API Package")
+        manifest_version = manifest_root.findtext(f"{namespace}version")
+        audit.require(manifest_version == api_version, "Salesforce manifest and SFDX API versions must match")
+        type_names = [
+            item.findtext(f"{namespace}name")
+            for item in manifest_root.findall(f"{namespace}types")
+        ]
+        audit.require(all(type_names), "Salesforce manifest types must have names")
+        audit.require(len(type_names) == len(set(type_names)), "Salesforce manifest type names must be unique")
+
+    package = load_json(salesforce_root / "package.json", audit)
+    package_lock = load_json(salesforce_root / "package-lock.json", audit)
+    audit.require(package.get("private") is True, "package.json must remain private")
+    required_scripts = {"lint", "test:unit:ci", "prettier:verify"}
+    audit.require(
+        required_scripts.issubset(package.get("scripts", {})),
+        "package.json must expose root Salesforce lint, unit-test, and formatting checks",
+    )
+    audit.require(
+        package_lock.get("packages", {}).get("", {}).get("name") == package.get("name"),
+        "package-lock.json must match package.json",
+    )
 
 
 def check_customizations(audit: Audit) -> None:
@@ -195,8 +292,10 @@ def check_customizations(audit: Audit) -> None:
 
     guardrail_tools = set(agents.get("guardrail-reviewer", {}).get("tools", []))
     audit.require("edit/editFiles" not in guardrail_tools, "guardrail-reviewer must not edit")
-    audit.require("execute/runInTerminal" not in guardrail_tools, "guardrail-reviewer must not execute")
+    audit.require("execute/runInTerminal" in guardrail_tools, "guardrail-reviewer needs guarded work-record execution")
     audit.require("salesforce-development/*" not in guardrail_tools, "guardrail-reviewer must not mutate Salesforce")
+    reviewer_hooks = agents.get("guardrail-reviewer", {}).get("hooks", {})
+    audit.require("guardrail-reviewer" in json.dumps(reviewer_hooks), "guardrail-reviewer role guard is required")
 
     prompt_names: list[str] = []
     for path in prompt_paths:
@@ -235,7 +334,25 @@ def check_customizations(audit: Audit) -> None:
     for path in instruction_paths:
         data, _ = frontmatter(path, audit)
         audit.require(bool(data.get("description")), f"{relative(path)}: description is required")
-        audit.require(bool(data.get("applyTo")), f"{relative(path)}: applyTo is required")
+        audit.require("applyTo" not in data, f"{relative(path)}: detailed Principles must load explicitly by role, not automatically")
+
+    all_agent_bodies = "\n".join(path.read_text(encoding="utf-8") for path in agent_paths)
+    for required_link in (
+        "knowledge-lifecycle.md",
+        "source-authority.md",
+        "workflow-state-machine.md",
+        "managed-package-constraints.instructions.md",
+    ):
+        audit.require(required_link in all_agent_bodies, f"agents do not explicitly load required resource {required_link}")
+    for path in agent_paths:
+        data, body = frontmatter(path, audit)
+        for handoff in data.get("handoffs", []) or []:
+            if isinstance(handoff, dict):
+                prompt = str(handoff.get("prompt", "")).lower()
+                audit.require("recordid" in prompt and "handoffid" in prompt, f"{relative(path)}: handoff must require recordId and handoffId")
+                audit.require(" above" not in prompt and "previous response" not in prompt, f"{relative(path)}: handoff depends on chat context")
+        if data.get("handoffs"):
+            audit.require("recordid" in body.lower() and "handoffid" in body.lower(), f"{relative(path)}: completion contract must return record and handoff IDs")
 
 
 def check_links(audit: Audit) -> None:
@@ -266,9 +383,21 @@ def check_settings_and_mcp(audit: Audit) -> None:
         if key in settings and key in workspace_settings:
             audit.require(settings[key] == workspace_settings[key], f"workspace setting differs from folder setting: {key}")
     audit.require(settings.get("chat.useCustomizationsInParentRepositories") is False, "parent repository customizations must be disabled")
-    folders = {(item.get("name"), item.get("path")) for item in workspace.get("folders", [])}
-    audit.require(("brain-core", ".") in folders, "workspace must name the brain-core root")
-    audit.require(("salesforce", "../salesforce-metadata") in folders, "workspace must name the Salesforce metadata root")
+    workspace_folders = workspace.get("folders", []) if isinstance(workspace, dict) else []
+    folders = {
+        (item.get("name"), item.get("path"))
+        for item in workspace_folders
+        if isinstance(item, dict)
+    }
+    audit.require(folders == {("brain-core", ".")}, "workspace must contain only the root SFDX folder named brain-core")
+    for item in workspace_folders:
+        if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+            continue
+        path = Path(item["path"])
+        audit.require(
+            not path.is_absolute() and ".." not in path.parts,
+            f"workspace folder {item.get('name')!r} must not escape the harness repository",
+        )
 
     mcp = load_json(ROOT / ".vscode/mcp.json", audit)
     servers = mcp.get("servers", {}) if isinstance(mcp, dict) else {}
@@ -281,13 +410,72 @@ def check_settings_and_mcp(audit: Audit) -> None:
     for name in ("salesforce-readonly", "salesforce-development"):
         server = servers.get(name, {})
         audit.require(server.get("command") == "node", f"{name}: wrapper must run with node")
+        audit.require(server.get("cwd") == "${workspaceFolder:brain-core}", f"{name}: wrapper must start in the root SFDX workspace")
         audit.require("scripts/start_salesforce_mcp.mjs" in server.get("args", []), f"{name}: guarded wrapper is required")
         audit.require(server.get("sandboxEnabled") is True, f"{name}: sandboxEnabled must be true")
     serialized = json.dumps(mcp).lower()
     for forbidden in ("@latest", "allow_all_orgs", "default_target_org", "login.salesforce.com"):
         audit.require(forbidden not in serialized, f"MCP config contains forbidden token {forbidden!r}")
-    allow_write = mcp.get("sandbox", {}).get("filesystem", {}).get("allowWrite", [])
-    audit.require(allow_write == ["${workspaceFolder:salesforce}"], "MCP write sandbox must contain only the named Salesforce root")
+    filesystem_sandbox = mcp.get("sandbox", {}).get("filesystem", {})
+    allow_write = filesystem_sandbox.get("allowWrite", [])
+    audit.require(
+        allow_write
+        == [
+            "${workspaceFolder:brain-core}/force-app",
+            "${workspaceFolder:brain-core}/manifest",
+            "${workspaceFolder:brain-core}/tests/e2e",
+        ],
+        "MCP write sandbox must contain only root Salesforce source, manifest, and E2E paths",
+    )
+    deny_write = set(filesystem_sandbox.get("denyWrite", []))
+    required_denied = {
+        "${workspaceFolder:brain-core}/.ai",
+        "${workspaceFolder:brain-core}/.github",
+        "${workspaceFolder:brain-core}/.vscode",
+        "${workspaceFolder:brain-core}/config",
+        "${workspaceFolder:brain-core}/schemas",
+        "${workspaceFolder:brain-core}/scripts",
+        "${workspaceFolder:brain-core}/sfdx-project.json",
+        "${workspaceFolder:brain-core}/package.json",
+        "${workspaceFolder:brain-core}/package-lock.json",
+    }
+    audit.require(required_denied.issubset(deny_write), "MCP sandbox must explicitly deny writes to harness authority and project configuration")
+    deny_read = set(filesystem_sandbox.get("denyRead", []))
+    required_read_denied = {
+        "${workspaceFolder:brain-core}/.git",
+        "${workspaceFolder:brain-core}/.ai",
+        "${workspaceFolder:brain-core}/.github",
+        "${workspaceFolder:brain-core}/.cache",
+        "${workspaceFolder:brain-core}/output",
+        "${workspaceFolder:brain-core}/.env",
+    }
+    audit.require(required_read_denied.issubset(deny_read), "MCP sandbox must deny reads of repository governance, generated state, Git internals, and local env files")
+    allowed_domains = set(mcp.get("sandbox", {}).get("network", {}).get("allowedDomains", []))
+    audit.require("registry.npmjs.org" not in allowed_domains, "MCP runtime must not have package-registry egress")
+
+    tasks_document = load_json(ROOT / ".vscode/tasks.json", audit)
+    tasks = tasks_document.get("tasks", []) if isinstance(tasks_document, dict) else []
+    tasks_by_label = {
+        item.get("label"): item
+        for item in tasks
+        if isinstance(item, dict) and isinstance(item.get("label"), str)
+    }
+    required_salesforce_tasks = {
+        "Salesforce: Format Check",
+        "Salesforce: Lint",
+        "Salesforce: Unit Tests",
+        "Salesforce: Check",
+    }
+    audit.require(
+        required_salesforce_tasks.issubset(tasks_by_label),
+        "VS Code tasks must expose the embedded Salesforce project checks",
+    )
+    for label in required_salesforce_tasks - {"Salesforce: Check"}:
+        task = tasks_by_label.get(label, {})
+        audit.require(
+            task.get("options", {}).get("cwd") == "${workspaceFolder:brain-core}",
+            f"{label} must execute in the root SFDX workspace folder",
+        )
     domains = set(mcp.get("sandbox", {}).get("network", {}).get("allowedDomains", []))
     audit.require("*.salesforce.com" not in domains and "*.force.com" not in domains, "broad production-capable Salesforce domains are forbidden")
     audit.require("*.sandbox.my.salesforce.com" in domains, "sandbox Salesforce API domain is required")
@@ -360,6 +548,27 @@ def check_ci(audit: Audit) -> None:
         audit.require(bool(re.fullmatch(r"[0-9a-f]{40}", revision)), f"CI action is not SHA-pinned: {value}")
     audit.require("ubuntu-latest" in serialized and "windows-latest" in serialized, "CI must cover Linux and Windows")
     audit.require("requirements-dev.lock" in serialized, "CI must install the resolved dependency lock")
+    audit.require("npm run prettier:verify" in serialized, "CI must run the root Salesforce formatting gate")
+    audit.require("npm run lint" in serialized, "CI must run the root Salesforce lint gate")
+    audit.require("npm run test:unit:ci" in serialized, "CI must run the root LWC unit gate")
+    codeowners = (ROOT / ".github/CODEOWNERS").read_text(encoding="utf-8")
+    for owned_path in ("/sfdx-project.json", "/force-app/", "/manifest/", "/tests/e2e/"):
+        audit.require(owned_path in codeowners, f"CODEOWNERS is missing root Salesforce path: {owned_path}")
+    audit.require("/salesforce/" not in codeowners, "CODEOWNERS retains the legacy nested Salesforce path")
+    for canary in (
+        "config/harness.local.json",
+        ".cache/knowledge-proposals/example.yaml",
+        ".env",
+        "force-app/main/default/lwc/jsconfig.json",
+        "deploy-options.json",
+    ):
+        completed = subprocess.run(
+            ["git", "check-ignore", "--quiet", canary],
+            cwd=ROOT,
+            check=False,
+            timeout=5,
+        )
+        audit.require(completed.returncode == 0, f"local/generated path is not ignored: {canary}")
 
 
 def check_secret_signatures(audit: Audit) -> None:
@@ -441,6 +650,96 @@ def check_schemas_and_evals(audit: Audit) -> None:
         audit.require(len(ids) == len(set(ids)), f"{relative(path)}: scenario IDs must be unique")
 
 
+def check_grounding_contracts(audit: Audit) -> None:
+    root_instructions = (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8")
+    agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    markdown_link = re.compile(r"(?<!!)\[[^\]]+\]\([^)]+\)")
+    audit.require(not markdown_link.search(root_instructions), "always-on safety kernel must not pull role resources through Markdown links")
+    audit.require(len(agents_md.split()) <= 120, "AGENTS.md must remain a bounded compatibility shim")
+    for marker in ("SAFE-CLAIM-001", "SAFE-TOOL-001", "SAFE-CHAT-001", "SAFE-DRIFT-001"):
+        audit.require(marker in root_instructions, f"always-on grounding rule is missing: {marker}")
+
+    principle_paths = [ROOT / ".github/copilot-instructions.md"] + sorted(
+        (ROOT / ".github/instructions").glob("*.instructions.md")
+    )
+    source_ids: set[str] = set()
+    for path in principle_paths:
+        source_ids.update(re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", path.read_text(encoding="utf-8")))
+
+    registry_path = ROOT / ".github/instructions/rule-registry.yaml"
+    registry = load_yaml(registry_path, audit)
+    registry_schema = load_json(ROOT / "schemas/principle-registry.schema.json", audit)
+    errors = sorted(
+        Draft202012Validator(registry_schema, format_checker=FormatChecker()).iter_errors(registry),
+        key=lambda item: list(item.path),
+    )
+    audit.require(not errors, f"{relative(registry_path)}: schema failure: {errors[0].message if errors else ''}")
+    rules = registry.get("rules", []) if isinstance(registry, dict) else []
+    registry_ids = [item.get("ruleId") for item in rules if isinstance(item, dict)]
+    audit.require(len(registry_ids) == len(set(registry_ids)), "rule registry IDs must be unique")
+    audit.require(set(registry_ids) == source_ids, f"rule registry/source mismatch: missing={sorted(source_ids - set(registry_ids))}, extra={sorted(set(registry_ids) - source_ids)}")
+
+    for data_name, schema_name in (
+        ("config/knowledge-policy.json", "knowledge-policy.schema.json"),
+        ("config/salesforce-review-policy.json", "salesforce-review-policy.schema.json"),
+    ):
+        data = load_json(ROOT / data_name, audit)
+        schema = load_json(ROOT / "schemas" / schema_name, audit)
+        errors = sorted(
+            Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(data),
+            key=lambda item: list(item.path),
+        )
+        audit.require(not errors, f"{data_name}: schema failure: {errors[0].message if errors else ''}")
+
+    for schema_name in (
+        "knowledge-claim.schema.json",
+        "knowledge-evidence.schema.json",
+        "knowledge-review.schema.json",
+        "change-record.schema.json",
+        "handoff-envelope.schema.json",
+        "salesforce-org-review-evidence.schema.json",
+    ):
+        schema = load_json(ROOT / "schemas" / schema_name, audit)
+        try:
+            Draft202012Validator.check_schema(schema)
+        except Exception as exc:
+            audit.require(False, f"schemas/{schema_name}: invalid JSON Schema: {exc}")
+
+    for command in (
+        [sys.executable, "scripts/knowledge_registry.py", "validate"],
+        [sys.executable, "scripts/knowledge_registry.py", "render-indexes", "--check"],
+    ):
+        completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=30, check=False)
+        audit.require(completed.returncode == 0, f"grounding command failed: {' '.join(command[1:])}: {completed.stderr.strip() or completed.stdout.strip()}")
+
+    runtime_roots = (ROOT / ".github", ROOT / ".ai", ROOT / "config", ROOT / "schemas", ROOT / "scripts")
+    for base in runtime_roots:
+        for path in base.glob("**/*"):
+            if path.resolve() == Path(__file__).resolve():
+                continue
+            if path.is_file() and path.stat().st_size <= 1_000_000:
+                try:
+                    text = path.read_text(encoding="utf-8")
+                except UnicodeDecodeError:
+                    continue
+                audit.require("Invoice__c" not in text and "MP-INV-" not in text, f"{relative(path)}: dummy package example leaked into runtime authority")
+
+    package = load_json(ROOT / "package.json", audit)
+    audit.require(package.get("private") is True, "package.json must remain private")
+    salesforce_mcp = package.get("dependencies", {}).get("@salesforce/mcp")
+    audit.require(salesforce_mcp == "0.30.15", "Salesforce MCP dependency must match the compatibility-tested pin 0.30.15")
+    package_lock = load_json(ROOT / "package-lock.json", audit)
+    locked_mcp = package_lock.get("packages", {}).get("node_modules/@salesforce/mcp", {})
+    audit.require(locked_mcp.get("version") == "0.30.15", "package-lock.json must resolve @salesforce/mcp 0.30.15")
+    harness_example = load_json(ROOT / "config/harness.example.json", audit)
+    example_review = harness_example.get("salesforce", {}).get("review", {})
+    audit.require(example_review.get("enabled") is False, "example Salesforce review must be disabled")
+    audit.require(example_review.get("allowedPackageNamespaces") == [], "disabled example package allowlist must be empty")
+    audit.require(example_review.get("allowedObjectApiNames") == [], "disabled example object allowlist must be empty")
+    workflow = (ROOT / ".github/workflows/harness-ci.yml").read_text(encoding="utf-8")
+    audit.require("npm ci --ignore-scripts" in workflow, "CI must install the pinned Salesforce review runtime without lifecycle scripts")
+
+
 def check_placeholders(audit: Audit) -> None:
     found: set[str] = set()
     for base in (ROOT / ".github", ROOT / ".ai/contracts"):
@@ -453,11 +752,13 @@ def check_placeholders(audit: Audit) -> None:
 def main() -> int:
     audit = Audit()
     check_required_files(audit)
+    check_salesforce_project(audit)
     check_customizations(audit)
     check_links(audit)
     check_settings_and_mcp(audit)
     check_ci(audit)
     check_schemas_and_evals(audit)
+    check_grounding_contracts(audit)
     check_placeholders(audit)
     check_secret_signatures(audit)
     if audit.errors:

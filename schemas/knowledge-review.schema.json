@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/knowledge-review.schema.json",
+  "title": "Immutable human Knowledge review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "reviewId", "reviewType", "claimId", "claimRevision", "reviewedStatus", "decision",
+    "resultingStatus", "reviewer", "reviewedAt", "evidenceRefs", "policyVersion",
+    "scopeMatch", "freshness", "conflictingClaimRefs", "claimDigest", "scopeDigest",
+    "evidenceManifest", "auditReceipt", "rationale"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "reviewId": { "type": "string", "pattern": "^KREV-[A-Z0-9][A-Z0-9-]{2,79}$" },
+    "reviewType": { "enum": ["promotion", "revalidation", "conflict-resolution", "rejection", "supersession"] },
+    "claimId": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
+    "claimRevision": { "type": "integer", "minimum": 1 },
+    "reviewedStatus": { "enum": ["proposed", "stale", "contested", "verified"] },
+    "decision": { "enum": ["verify", "keep-proposed", "mark-stale", "mark-contested", "reject", "supersede"] },
+    "resultingStatus": { "enum": ["proposed", "verified", "stale", "contested", "superseded", "rejected"] },
+    "reviewer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "identity"],
+      "properties": {
+        "type": { "const": "human" },
+        "identity": { "type": "string", "minLength": 1 }
+      }
+    },
+    "reviewedAt": { "type": "string", "format": "date-time" },
+    "evidenceRefs": {
+      "type": "array", "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^KEVD-[A-Z0-9][A-Z0-9-]{2,79}$" }
+    },
+    "policyVersion": { "const": 1 },
+    "scopeMatch": { "type": "boolean" },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evaluatedAt", "triggeredInvalidators"],
+      "properties": {
+        "status": { "enum": ["current", "stale"] },
+        "evaluatedAt": { "type": "string", "format": "date-time" },
+        "triggeredInvalidators": {
+          "type": "array", "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "conflictingClaimRefs": {
+      "type": "array", "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" }
+    },
+    "claimDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "scopeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "evidenceManifest": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidenceId", "recordDigest"],
+        "properties": {
+          "evidenceId": { "type": "string", "pattern": "^KEVD-[A-Z0-9][A-Z0-9-]{2,79}$" },
+          "recordDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "auditReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mechanism", "reference", "verifiedAt", "receiptDigest"],
+      "properties": {
+        "mechanism": { "enum": ["github-review", "ado-approval", "signed-approval-receipt"] },
+        "reference": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "verifiedAt": { "type": "string", "format": "date-time" },
+        "receiptDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "rationale": { "type": "string", "minLength": 1, "maxLength": 4000 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "decision": { "const": "verify" } }, "required": ["decision"] },
+      "then": {
+        "properties": {
+          "resultingStatus": { "const": "verified" },
+          "reviewedStatus": { "enum": ["proposed", "stale", "contested"] },
+          "evidenceRefs": { "minItems": 1 },
+          "evidenceManifest": { "minItems": 1 },
+          "scopeMatch": { "const": true },
+          "freshness": {
+            "properties": {
+              "status": { "const": "current" },
+              "triggeredInvalidators": { "maxItems": 0 }
+            }
+          },
+          "conflictingClaimRefs": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "mark-contested" } }, "required": ["decision"] },
+      "then": {
+        "properties": {
+          "resultingStatus": { "const": "contested" },
+          "conflictingClaimRefs": { "minItems": 1 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "mark-stale" } }, "required": ["decision"] },
+      "then": { "properties": { "resultingStatus": { "const": "stale" } } }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "reject" } }, "required": ["decision"] },
+      "then": { "properties": { "resultingStatus": { "const": "rejected" } } }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "supersede" } }, "required": ["decision"] },
+      "then": { "properties": { "resultingStatus": { "const": "superseded" } } }
+    },
+    {
+      "if": { "properties": { "decision": { "const": "keep-proposed" } }, "required": ["decision"] },
+      "then": {
+        "properties": {
+          "reviewedStatus": { "const": "proposed" },
+          "resultingStatus": { "const": "proposed" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "reviewType": { "const": "promotion" } }, "required": ["reviewType"] },
+      "then": { "properties": { "reviewedStatus": { "const": "proposed" } } }
+    },
+    {
+      "if": { "properties": { "reviewType": { "const": "revalidation" } }, "required": ["reviewType"] },
+      "then": { "properties": { "reviewedStatus": { "const": "stale" } } }
+    },
+    {
+      "if": { "properties": { "reviewType": { "const": "conflict-resolution" } }, "required": ["reviewType"] },
+      "then": { "properties": { "reviewedStatus": { "const": "contested" } } }
+    }
+  ]
+}

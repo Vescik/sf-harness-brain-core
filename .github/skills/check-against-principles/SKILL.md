@@ -1,41 +1,46 @@
 ---
 name: check-against-principles
-description: Evaluate a scoped Salesforce design or implementation against managed-package, organization, and platform rules with evidence completeness. Use during design or independent review; never use it to implement fixes.
+description: Evaluate a scoped design or implementation using the governed rule registry, fresh verified claims, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.
 user-invocable: false
 ---
 
-# Check against principles
+# Check against Principles and evidence
 
-Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md).
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
+[source authority contract](../../../.ai/contracts/source-authority.md),
+[Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md), and
+[workflow state machine](../../../.ai/contracts/workflow-state-machine.md).
 
 ## Inputs
 
-- Proposed change or implementation diff, affected artifacts, environment, and accepted design.
-- Evidence sources with fetch/verification timestamps.
-- Current package version when a package surface is affected.
-
-Reject an unspecified scope or unproven non-production environment.
+Require a valid `recordId`, optional incoming `handoffId`, exact proposed/implemented scope,
+repository revisions/diff, environment proof, rule/claim/evidence references, current package
+identity when applicable, and accepted design/approval hashes. Reject unspecified or chat-only scope.
 
 ## Procedure
 
-1. Build the affected-artifact list; do not review only the user's summary when a diff exists.
-2. Check Tier 1 [Managed Package Constraints](../../instructions/managed-package-constraints.instructions.md)
-   and relevant [Known Limitations](../../../.ai/knowledge/known-limitations.md).
-3. Check Tier 2 [Organization Principles](../../instructions/organization-principles.instructions.md).
-4. Check Tier 3 [Salesforce Best Practices](../../instructions/salesforce-best-practices.instructions.md).
-5. Check evidence completeness, accepted-design alignment, environment proof, role boundaries,
-   verification evidence, manual steps, and test coverage.
-6. A relevant placeholder, stale/partial source, unknown ownership, missing package source/version,
-   or missing acceptance makes `SAFE` impossible.
+1. Validate work state, handoff target/revision, approval binding, and affected-artifact list.
+2. Load the governed rule registry and check Tier 1 package constraints, Tier 2 organization policy,
+   and Tier 3 Salesforce practice in order. Apply precedence only to competing prescriptions.
+3. For every material factual premise, require a `verified`, fresh, scope-matched, uncontested claim
+   backed by the claim-type evidence policy. Proposals and model inference are not trusted facts.
+4. Compare intended customer-owned repository state with the latest complete org-review evidence.
+   Report drift instead of selecting one source.
+5. Distinguish an observed fact that violates a Principle from evidence that contests a factual
+   claim. Principles do not rewrite facts; observations do not weaken rules.
+6. Require complete environment proof, package/component ownership, version, supported extension
+   point, role compliance, verification, coverage, and manual steps where relevant.
+7. A stale/unreviewed/partial/contested claim, incomplete org review, unknown ownership, missing
+   source/version, stale approval, or unresolved blocking question makes `SAFE` impossible.
 
 ## Output
 
-Return a table with: tier, rule ID, affected artifact, evidence, finding, required action. End with
-exactly one verdict:
+Return a table with: tier, rule ID, claim/evidence IDs, affected artifact, scope/freshness,
+reconciliation, finding, and required action. End with exactly one verdict:
 
 - `SAFE`
 - `NEEDS FIXES`
 - `INCOMPLETE — NEEDS HUMAN`
 - `STOP — TOO RISKY`
 
-State the evidence completeness and whether anything was changed (`none`; this skill is read-only).
+State `recordId`, evidence completeness, repository/org drift, and that nothing was changed.

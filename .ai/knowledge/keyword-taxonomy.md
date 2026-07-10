@@ -6,6 +6,10 @@ purpose: two descriptions of the same thing (e.g. "Billing" vs "Invoicing") reso
 shared term once, instead of the model re-guessing synonymy every time
 (HARNESS_BLUEPRINT.md section 3).
 
+This file is separately human-curated; it is not a generated claim index. A taxonomy term is never
+evidence that an object, field, process, or package behavior exists. Canonical claims may reference
+only already-approved terms, and evidence must establish the underlying fact independently.
+
 **Growth rule — the defining property of this file**: the taxonomy grows **only through
 explicit human confirmation**. Skills (`tune-test-case-keywords`, `investigate-object`,
 `suggest-test-cases`) may *suggest* a new term, but may never add one silently. Uncontrolled

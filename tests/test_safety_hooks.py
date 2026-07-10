@@ -5,8 +5,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from io import StringIO
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from scripts import copilot_safety_hook as safety
 
@@ -44,14 +46,30 @@ def write_local_config(root: Path) -> None:
                     "environment": "development",
                     "allowAgentRead": True,
                     "allowAgentWrite": True,
+                    "allowAgentReview": True,
+                    "expectedInstanceHost": "example--dev.sandbox.my.salesforce.com",
+                    "expectedOrganizationId": "00D000000000001AAA",
                 },
                 {
                     "alias": "qa-sbx",
                     "environment": "qa",
                     "allowAgentRead": True,
                     "allowAgentWrite": False,
+                    "allowAgentReview": False,
+                    "expectedInstanceHost": "example--qa.sandbox.my.salesforce.com",
+                    "expectedOrganizationId": "00D000000000002AAA",
                 },
-            ]
+            ],
+            "review": {
+                "enabled": True,
+                "apiVersion": "67.0",
+                "requireDualSource": True,
+                "allowedPackageNamespaces": ["examplepkg"],
+                "allowedObjectApiNames": ["ExampleManagedObject__c"],
+                "maxObjectsPerCall": 10,
+                "maxFieldsPerObject": 500,
+                "evidenceMaxAgeMinutes": 30,
+            },
         },
         "browser": {
             "allowedOrigins": ["https://example--dev.sandbox.my.salesforce.com"]
@@ -179,7 +197,70 @@ class GlobalSafetyHookTests(unittest.TestCase):
 
 
 class RoleGuardTests(unittest.TestCase):
-    def test_designer_can_edit_decision_log(self) -> None:
+    def test_investigator_can_edit_only_ignored_knowledge_proposal_drafts(self) -> None:
+        allowed = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "edit/editFiles",
+                "tool_input": {
+                    "path": ".cache/knowledge-proposals/claim.yaml"
+                },
+            },
+            "--role",
+            "config-investigator",
+        )
+        denied = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "edit/editFiles",
+                "tool_input": {
+                    "path": ".ai/knowledge/claims/CLM-FAKE.yaml"
+                },
+            },
+            "--role",
+            "config-investigator",
+        )
+        self.assertEqual(hook_decision(allowed), "continue")
+        self.assertEqual(hook_decision(denied), "deny")
+
+    def test_investigator_propose_command_is_bound_to_draft_directory(self) -> None:
+        command = (
+            "python3 scripts/knowledge_registry.py propose "
+            "--claim-file .cache/knowledge-proposals/claim.yaml "
+            "--evidence-file .cache/knowledge-proposals/evidence.yaml "
+            "--expected-revision 0"
+        )
+        allowed = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "execute/runInTerminal",
+                "tool_input": {"command": command},
+            },
+            "--role",
+            "config-investigator",
+        )
+        denied = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "execute/runInTerminal",
+                "tool_input": {
+                    "command": command.replace(
+                        ".cache/knowledge-proposals/claim.yaml",
+                        "output/claim.yaml",
+                    )
+                },
+            },
+            "--role",
+            "config-investigator",
+        )
+        self.assertEqual(hook_decision(allowed), "continue")
+        self.assertEqual(hook_decision(denied), "deny")
+
+    def test_designer_cannot_edit_decision_log_directly(self) -> None:
         output = run_hook(
             "copilot_role_guard.py",
             {
@@ -190,7 +271,7 @@ class RoleGuardTests(unittest.TestCase):
             "--role",
             "solution-designer",
         )
-        self.assertEqual(hook_decision(output), "continue")
+        self.assertEqual(hook_decision(output), "deny")
 
     def test_designer_can_write_ado_cache_only(self) -> None:
         allowed = run_hook(
@@ -242,12 +323,11 @@ class RoleGuardTests(unittest.TestCase):
         )
         self.assertEqual(hook_decision(output), "deny")
 
-    def test_role_root_cannot_be_shadowed_by_metadata_cwd(self) -> None:
-        metadata_root = ROOT.parent / "salesforce-metadata"
+    def test_role_policy_remains_enforced_from_single_root(self) -> None:
         output = run_hook(
             "copilot_role_guard.py",
             {
-                "cwd": str(metadata_root),
+                "cwd": str(ROOT),
                 "tool_name": "edit/editFiles",
                 "tool_input": {"path": ".ai/knowledge/fake.md"},
             },
@@ -276,7 +356,7 @@ class RoleGuardTests(unittest.TestCase):
                 "cwd": str(ROOT),
                 "tool_name": "execute/runInTerminal",
                 "tool_input": {
-                    "command": "sed -i '' s/a/b/ ../salesforce-metadata/force-app/X.cls"
+                    "command": "sed -i '' s/a/b/ force-app/X.cls"
                 },
             },
             "--role",
@@ -321,13 +401,37 @@ class RoleGuardTests(unittest.TestCase):
                 "cwd": str(ROOT),
                 "tool_name": "edit/editFiles",
                 "tool_input": {
-                    "path": "../salesforce-metadata/force-app/main/default/classes/X.cls"
+                    "path": "force-app/main/default/classes/X.cls"
                 },
             },
             "--role",
             "development-assistant",
         )
         self.assertEqual(hook_decision(output), "continue")
+
+    def test_developer_can_edit_salesforce_e2e_but_not_harness_tests(self) -> None:
+        allowed = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "edit/editFiles",
+                "tool_input": {"path": "tests/e2e/example.spec.ts"},
+            },
+            "--role",
+            "development-assistant",
+        )
+        denied = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "edit/editFiles",
+                "tool_input": {"path": "tests/test_safety_hooks.py"},
+            },
+            "--role",
+            "development-assistant",
+        )
+        self.assertEqual(hook_decision(allowed), "continue")
+        self.assertEqual(hook_decision(denied), "deny")
 
     def test_developer_policy_edit_is_denied(self) -> None:
         output = run_hook(
@@ -424,6 +528,156 @@ class RoleGuardTests(unittest.TestCase):
 
 
 class SafetyClassificationTests(unittest.TestCase):
+    def test_salesforce_review_identity_with_empty_input_is_allowed(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            write_local_config(root)
+            event = {
+                "tool_name": "salesforce-readonly/review_org_identity",
+                "tool_input": {},
+            }
+            stdout = StringIO()
+            with (
+                patch.object(safety, "HARNESS_ROOT", root),
+                patch("sys.stdin", StringIO(json.dumps(event))),
+                patch("sys.stdout", stdout),
+            ):
+                self.assertEqual(safety.main(), 0)
+            self.assertEqual(hook_decision(json.loads(stdout.getvalue())), "continue")
+
+    def test_salesforce_review_surface_is_exact_and_model_cannot_supply_scope(self) -> None:
+        config = {
+            "salesforce": {
+                "orgs": [
+                    {
+                        "allowAgentRead": True,
+                        "allowAgentReview": True,
+                    }
+                ],
+                "review": {
+                    "enabled": True,
+                    "requireDualSource": True,
+                    "allowedObjectApiNames": ["ExampleManagedObject__c"],
+                },
+            }
+        }
+        self.assertIsNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/review_org_identity",
+                {},
+            )
+        )
+        self.assertIsNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/review_object_contract",
+                {"objectApiName": "ExampleManagedObject__c"},
+            )
+        )
+        for tool, tool_input in (
+            ("salesforce-readonly/run_soql_query", {"query": "SELECT Name FROM Contact"}),
+            ("salesforce-readonly/list_all_orgs", {}),
+            ("salesforce-readonly/review_org_identity", {"usernameOrAlias": "other"}),
+            (
+                "salesforce-readonly/review_object_contract",
+                {"objectApiName": "Unlisted__c"},
+            ),
+        ):
+            with self.subTest(tool=tool):
+                self.assertIsNotNone(
+                    safety.salesforce_review_tool_error(config, tool, tool_input)
+                )
+
+    def test_work_record_commands_are_role_bound_and_approval_is_never_allowed(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        self.assertTrue(
+            role_guard.work_record_command_allowed(
+                ["context", "--record-id", "WR-1", "--role", "solution-designer"],
+                "solution-designer",
+            )
+        )
+        self.assertFalse(
+            role_guard.work_record_command_allowed(
+                ["context", "--record-id", "WR-1", "--role", "development-assistant"],
+                "solution-designer",
+            )
+        )
+        self.assertTrue(
+            role_guard.work_record_command_allowed(
+                [
+                    "append-review",
+                    "--record-id",
+                    "WR-1",
+                    "--role",
+                    "guardrail-reviewer",
+                ],
+                "guardrail-reviewer",
+            )
+        )
+        for role in role_guard.WORK_RECORD_COMMANDS:
+            with self.subTest(role=role):
+                self.assertFalse(
+                    role_guard.work_record_command_allowed(
+                        ["approve", "--record-id", "WR-1"], role
+                    )
+                )
+
+    def test_governed_work_record_json_cannot_be_edited_directly(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        self.assertTrue(
+            role_guard.is_governed_record_path(
+                ".ai/change-records/WR-1/record.json"
+            )
+        )
+        self.assertFalse(
+            role_guard.allowed(
+                ".ai/change-records/WR-1/record.json",
+                (".ai/change-records/",),
+            )
+        )
+
+    def test_knowledge_registry_agent_surface_cannot_promote(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        self.assertTrue(
+            role_guard.knowledge_registry_command_allowed(
+                [
+                    "propose",
+                    "--claim-file",
+                    ".cache/knowledge-proposals/claim.yaml",
+                    "--evidence-file",
+                    ".cache/knowledge-proposals/evidence.yaml",
+                    "--expected-revision",
+                    "0",
+                ],
+                "config-investigator",
+            )
+        )
+        self.assertFalse(
+            role_guard.knowledge_registry_command_allowed(
+                [
+                    "propose",
+                    "--claim-file",
+                    "output/claim.yaml",
+                    "--evidence-file",
+                    ".cache/knowledge-proposals/evidence.yaml",
+                    "--expected-revision",
+                    "0",
+                ],
+                "config-investigator",
+            )
+        )
+        for command in ("review", "promote", "reconcile", "render-indexes"):
+            with self.subTest(command=command):
+                self.assertFalse(
+                    role_guard.knowledge_registry_command_allowed(
+                        [command], "config-investigator"
+                    )
+                )
+
     def test_ado_scope_requires_matching_org_and_project(self) -> None:
         config = {
             "ado": {"organization": "example-org", "project": "Example Project"}
@@ -482,34 +736,40 @@ class SafetyClassificationTests(unittest.TestCase):
         ]
         self.assertEqual(safety.target_orgs(parts), ["dev-sbx", "qa-sbx"])
 
-    def test_salesforce_development_path_must_stay_in_metadata_root(self) -> None:
-        metadata_root = ROOT.parent / "salesforce-metadata"
-        self.assertTrue(
-            safety.within_root(
-                str(metadata_root / "force-app/main/default/classes/X.cls"),
-                metadata_root,
-            )
-        )
-        self.assertFalse(
-            safety.within_root(str(ROOT / ".github/copilot-instructions.md"), metadata_root)
-        )
+    def test_salesforce_development_paths_are_bounded_inside_single_root(self) -> None:
+        for path in (
+            ROOT / "sfdx-project.json",
+            ROOT / "force-app/main/default/classes/X.cls",
+            ROOT / "manifest/package.xml",
+            ROOT / "tests/e2e/example.spec.ts",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(safety.within_salesforce_source(str(path), ROOT))
+        for path in (
+            ROOT,
+            ROOT / ".github/copilot-instructions.md",
+            ROOT / "scripts/preflight.py",
+            ROOT / "tests/test_safety_hooks.py",
+        ):
+            with self.subTest(path=path):
+                self.assertFalse(safety.within_salesforce_source(str(path), ROOT))
 
     def test_source_dir_array_is_included_in_path_enforcement(self) -> None:
         paths = safety.collect_filesystem_paths(
             {
-                "directory": str(ROOT.parent / "salesforce-metadata"),
+                "directory": str(ROOT / "force-app"),
                 "sourceDir": ["/tmp/outside.cls"],
             }
         )
         self.assertEqual(
             paths,
-            [str(ROOT.parent / "salesforce-metadata"), "/tmp/outside.cls"],
+            [str(ROOT / "force-app"), "/tmp/outside.cls"],
         )
 
     def test_code_analyzer_path_arrays_are_included(self) -> None:
         paths = safety.collect_filesystem_paths(
             {
-                "directory": str(ROOT.parent / "salesforce-metadata"),
+                "directory": str(ROOT / "force-app"),
                 "target": ["/tmp/outside.cls"],
                 "configPath": "/tmp/analyzer.yml",
                 "resultsFile": "/tmp/results.html",

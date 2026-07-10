@@ -1,7 +1,10 @@
-# Integration Map
+# Integration Map — Generated Claim Index
 
-External systems connected to the org and the direction of data flow for each connection.
-Facts only, never rules. Entry format: `.ai/templates/knowledge-entry.md`.
+Generated view of canonical integration and data-flow claims. Configuration evidence and business
+ownership evidence remain distinct. Do not hand-edit.
 
-<!-- No entries yet. Entries are added by investigate-object / update-knowledge-base as facts
-are established — never fabricated at build time. -->
+<!-- BEGIN GENERATED CLAIM INDEX -->
+
+_No canonical claims are indexed._
+
+<!-- END GENERATED CLAIM INDEX -->

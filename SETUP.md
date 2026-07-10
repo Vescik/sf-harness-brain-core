@@ -22,22 +22,35 @@ See [docs/compatibility.md](docs/compatibility.md) for the tested contract.
 
 ```bash
 git clone https://github.com/Vescik/sf-harness-brain-core.git
-git clone <salesforce-metadata-repository-url> salesforce-metadata
 code sf-harness-brain-core/sf-harness.code-workspace
 ```
 
-Both repositories must share a parent directory. The workspace names them `brain-core` and
-`salesforce`. Metadata-dependent skills reject missing or ambiguous roots.
+This is one Git repository and one Salesforce DX project. The repository root is the SFDX root;
+do not create a nested Salesforce project or clone a second metadata repository. The workspace
+presents exactly one named folder: `brain-core` → repository root (`.`).
+
+Confirm `sfdx-project.json`, `force-app/`, `manifest/package.xml`, and `tests/e2e/` are present at
+the repository root before continuing. Metadata-dependent skills reject a missing or ambiguous
+root rather than searching subfolders, parent directories, sibling directories, or other checkouts.
 
 ## 3. Local configuration
 
-Copy `config/harness.example.json` to ignored `config/harness.local.json`, then replace every
-placeholder with approved values. Do not add production aliases/origins. Only a development alias
+From the repository root, copy `config/harness.example.json` to ignored
+`config/harness.local.json`, then replace every placeholder with approved values. Keep
+`workspace.salesforceRootName` set to `brain-core`; manifest and promoted-test paths are relative
+to the repository/SFDX root. Do not add production aliases/origins. For each review-enabled
+alias, record the exact expected sandbox hostname and organization ID, explicitly allow agent
+review, configure the package namespaces and component API-name allowlist, and keep the review API
+version/current evidence window deliberate. Only a development alias
 may set `allowAgentWrite: true`. The example deliberately disables all writes. Enable a
 development alias only after setting `safety.sharedSandboxWritesApproved: true` and recording the
 human decision/work-item in `sharedSandboxApprovalRef`.
 
-The file holds identifiers and paths, not secrets. ADO uses OAuth through VS Code; Salesforce uses
+The checked-in `manifest/package.xml` is only a generic starter. Narrow it to the exact components
+in the accepted work record before retrieve, validation, or deployment; a wildcard does not grant
+scope and must not be used as a substitute for claim-backed ownership or human approval.
+
+The file holds identifiers, allowlists, and paths, not secrets. ADO uses OAuth through VS Code; Salesforce uses
 existing CLI authorization; Playwright uses a human-created persistent profile outside Git.
 Alias names and environment labels are not treated as proof: Salesforce MCP startup first checks
 the locally authorized sandbox instance hostname, then queries `Organization.IsSandbox`, and stops
@@ -65,11 +78,15 @@ python3 -m venv .venv
 # macOS/Linux: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install -r requirements-dev.lock
+npm ci --ignore-scripts
 npm install --global @playwright/cli@0.1.17
-python3 scripts/validate_harness.py
-python3 -m unittest discover -s tests -v
-python3 scripts/run_evals.py
-python3 scripts/preflight.py
+python scripts/validate_harness.py
+python -m unittest discover -s tests -v
+python scripts/run_evals.py
+python scripts/preflight.py
+npm run prettier:verify
+npm run lint
+npm run test:unit:ci
 ```
 
 Use the equivalent `py -3` command on Windows when a virtual environment is not active. The same
@@ -78,22 +95,31 @@ Evals, and Harness: Preflight.
 
 ## 5. Verify Copilot customizations
 
-1. Trust both workspace roots only after reviewing them.
+1. Trust the cloned repository only after reviewing it; the single named workspace folder
+   `brain-core` resolves to its root.
 2. Open **Chat: Open Customizations** / Chat Diagnostics.
 3. Confirm exactly five agents, seven public prompts, twelve internal skills, three Principle
    files, the safety hook, and three MCP servers without diagnostics.
 4. Confirm `/` shows the seven prompts once each and their argument hints.
 5. Verify Solution Designer and Development Assistant handoff buttons use `send: false`.
-6. Run one harmless read-only call through `ado-readonly` and `salesforce-readonly`.
+6. Run one harmless ADO read, then the three bounded Salesforce review calls against the configured
+   synthetic/pilot component. Confirm no raw CLI/query/alias or sensitive payload appears in Chat.
 7. Run a negative canary: a request to deploy/query production must be denied.
 
 ## 6. External runtimes
 
 - `ado-readonly` uses the Azure-hosted remote MCP with `wit,wiki,testplan` toolsets and
   `X-MCP-Readonly: true`.
-- Salesforce servers start through `scripts/start_salesforce_mcp.mjs`, which rejects aliases not
-  allowlisted by local configuration. The development server exposes writes only for the approved
-  development alias.
+- `salesforce-readonly` starts through `scripts/salesforce_review_server.mjs`. It binds one exact
+  review-enabled sandbox and exposes only identity, configured-package, and allowlisted-object
+  review. Internally it reconciles fixed Salesforce MCP and private CLI receipts, redacts raw
+  identity/record payloads, and returns `VERIFIED`, `MISMATCH`, `INCOMPLETE`, or `BLOCKED`.
+- The model never receives direct `sf`/`sfdx`, arbitrary SOQL, an alias, directory, Tooling flag,
+  `list_all_orgs`, or raw vendor output. MCP/CLI agreement is transport corroboration from the same
+  org, not independent package/business authority.
+- Salesforce development starts separately through `scripts/start_salesforce_mcp.mjs`, which
+  rejects aliases not allowlisted by local configuration and exposes writes only for the approved
+  development alias. Its reads use the review facade.
 - Browser workflows use `scripts/playwright_guard.py`, not direct CLI or an MCP server. The wrapper
   exposes a narrow non-credential command set, uses the configured profile, checks current/all-tab
   origins around every action, and closes the session on drift. State-changing UI actions still
@@ -103,8 +129,30 @@ Evals, and Harness: Preflight.
 
 - Pull before starting work.
 - Create a branch; do not commit directly to `main`.
-- Review generated `.ai/knowledge`, Memory, QA, and taxonomy changes carefully; raw cache and
-  unreviewed `output/` remain ignored.
+- Investigators prepare sanitized schema-v3 YAML only in ignored `.cache/knowledge-proposals/` and
+  use the guarded `propose` command to create immutable evidence and `proposed` claims. A named human uses
+  the Knowledge review/promotion command before a claim becomes trusted; raw cache and unreviewed
+  `output/` remain ignored.
+- Resume governed work from `recordId` and `handoffId`. Validate record revision, role, scope/design
+  hashes, approval, evidence, and repository commits; chat history is not workflow state.
+- Agents stop at `design/awaiting_human`. After reviewing the persisted record and design, a named
+  human may bind approval from a direct terminal outside Copilot with the exact guarded command:
+
+  ```bash
+  python scripts/work_record.py approve \
+    --record-id "$RECORD_ID" \
+    --expected-revision "$RECORD_REVISION" \
+    --expected-record-hash "$RECORD_HASH" \
+    --expected-design-hash "$DESIGN_HASH" \
+    --approver "$APPROVER" \
+    --mechanism human-terminal \
+    --approval-ref "$APPROVAL_REF"
+  ```
+
+  The global Copilot hook always denies agent-originated invocation of this subcommand. Approval
+  never comes from chat text, an agent confirmation, or a manually edited record. In the current
+  controlled pilot the approver identity/reference is human-asserted and hash-bound, not verified
+  through a provider API or signature; close that identity-authenticity gate before team-wide use.
 - Run validation and tests before pushing.
 - Open a PR and obtain the owners/reviewers required by repository governance.
 - Never use broad `git add -A` in a mixed workspace; stage intentional paths.
@@ -113,14 +161,17 @@ Evals, and Harness: Preflight.
 
 - Missing customizations: check VS Code version, workspace file, Settings UI, and Chat Diagnostics.
 - MCP server missing: run `MCP: List Servers`; validate local config and OAuth/CLI authorization.
-- Salesforce server blocked: verify the exact alias and permission in `harness.local.json`; never
-  bypass the wrapper with `ALLOW_ALL_ORGS` or a default org.
-- Metadata root missing: clone/link the SFDX repository as sibling `salesforce-metadata`.
+- Salesforce review blocked: verify the exact alias, expected hostname/organization ID, review
+  permission, package namespace, component allowlist, pinned runtime, and dual-source result. Never
+  bypass the facade with raw MCP, `ALLOW_ALL_ORGS`, a default org, or direct CLI.
+- Salesforce project missing: restore root `sfdx-project.json`, `force-app/`, `manifest/`, and
+  `tests/e2e/` from this repository; do not fall back to a subfolder, parent/sibling directory, or
+  second checkout.
 - Preflight failure: fix the reported dependency/configuration; do not ask the model to bypass it.
 
 ## 9. Human-owned rollout blockers
 
 Before a real developer pilot, provide company naming/review policy, shared-sandbox coordination,
-complete high-risk package rules with sources, the Invoice update condition, ADO project/query,
-approved Salesforce aliases, allowed browser origins/profile, and promoted tests path. The harness
+the real package/component ownership and risk registry with version-scoped sources, ADO
+project/query, approved Salesforce aliases, allowed browser origins/profile, and promoted tests path. The harness
 will remain conservative while any relevant value is unknown.

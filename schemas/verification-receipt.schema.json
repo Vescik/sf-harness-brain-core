@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/verification-receipt.schema.json",
+  "title": "Deterministic verification execution receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "receiptType",
+    "verificationId",
+    "profileId",
+    "startedAt",
+    "completedAt",
+    "performedBy",
+    "workspaceRoot",
+    "repositoryHeadCommit",
+    "policySha256",
+    "commandSha256",
+    "status",
+    "exitCode",
+    "timedOut",
+    "stdout",
+    "stderr"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "receiptType": { "const": "verification-execution" },
+    "verificationId": { "type": "string", "pattern": "^VR-[A-Za-z0-9._-]+$" },
+    "profileId": { "type": "string", "pattern": "^[a-z][a-z0-9-]{2,63}$" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "performedBy": {
+      "enum": ["development-assistant", "test-strategist", "guardrail-reviewer"]
+    },
+    "workspaceRoot": { "const": "brain-core" },
+    "repositoryHeadCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "policySha256": { "$ref": "#/$defs/sha256" },
+    "commandSha256": { "$ref": "#/$defs/sha256" },
+    "status": { "enum": ["passed", "failed", "timed-out", "output-limit-exceeded"] },
+    "exitCode": { "type": ["integer", "null"] },
+    "timedOut": { "type": "boolean" },
+    "stdout": { "$ref": "#/$defs/stream" },
+    "stderr": { "$ref": "#/$defs/stream" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stream": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bytes", "sha256", "retained"],
+      "properties": {
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "retained": { "const": false }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "passed" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "exitCode": { "const": 0 },
+          "timedOut": { "const": false }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "timed-out" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "exitCode": { "type": "null" },
+          "timedOut": { "const": true }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "failed" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "exitCode": { "type": "integer", "not": { "const": 0 } },
+          "timedOut": { "const": false }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "output-limit-exceeded" } },
+        "required": ["status"]
+      },
+      "then": { "properties": { "timedOut": { "const": false } } }
+    }
+  ]
+}

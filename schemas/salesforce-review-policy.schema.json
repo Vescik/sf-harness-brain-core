@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/salesforce-review-policy.schema.json",
+  "title": "Salesforce org-review fixed query policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "salesforceMcpPackage",
+    "mcpProtocolVersion",
+    "salesforceCliMajor",
+    "commandTimeoutSeconds",
+    "maxVendorPayloadBytes",
+    "profiles"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "salesforceMcpPackage": { "const": "@salesforce/mcp@0.30.15" },
+    "mcpProtocolVersion": { "const": "2025-06-18" },
+    "salesforceCliMajor": { "const": 2 },
+    "commandTimeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 60 },
+    "maxVendorPayloadBytes": { "type": "integer", "minimum": 65536, "maximum": 1048576 },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orgIdentity", "installedPackages", "objectEntity", "objectFields"],
+      "properties": {
+        "orgIdentity": { "$ref": "#/$defs/fixedProfile" },
+        "installedPackages": { "$ref": "#/$defs/packageProfile" },
+        "objectEntity": { "$ref": "#/$defs/objectProfile" },
+        "objectFields": { "$ref": "#/$defs/objectProfile" }
+      }
+    }
+  },
+  "$defs": {
+    "fixedProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["useToolingApi", "query"],
+      "properties": {
+        "useToolingApi": { "type": "boolean" },
+        "query": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    },
+    "objectProfile": {
+      "allOf": [
+        { "$ref": "#/$defs/fixedProfile" },
+        {
+          "properties": {
+            "query": { "type": "string", "pattern": "\\$\\{OBJECT_API_NAME\\}" }
+          }
+        }
+      ]
+    },
+    "packageProfile": {
+      "allOf": [
+        { "$ref": "#/$defs/fixedProfile" },
+        {
+          "properties": {
+            "query": { "type": "string", "pattern": "\\$\\{PACKAGE_NAMESPACES\\}" }
+          }
+        }
+      ]
+    }
+  }
+}

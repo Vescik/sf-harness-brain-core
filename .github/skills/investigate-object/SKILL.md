@@ -1,34 +1,51 @@
 ---
 name: investigate-object
-description: Establish a minimal, sourced fact about a Salesforce object, field, relation, reference-data record, automation, or package surface through an allowlisted read-only sandbox and record it with confidence.
+description: Collect bounded, sanitized, reconciled evidence for a scoped Salesforce component or package claim and create a proposed Knowledge claim. Use for missing, stale, contested, or drift-sensitive facts; never self-verify a claim.
 user-invocable: false
 ---
 
-# Investigate object or configuration
+# Investigate a Salesforce component claim
 
-Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md) and run
-`scripts/preflight.py --capability salesforce-read`.
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
+[source authority contract](../../../.ai/contracts/source-authority.md), and
+[Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md). Run
+`scripts/preflight.py --capability salesforce-review`.
 
 ## Input
 
-Require the exact API name or reference-record identity, the question to answer, calling work
-item/change, and minimum evidence required. Reject an unspecified target or environment.
+Require `recordId`, exact claim question/type, normalized package/component subject, environment,
+criticality, minimum evidence policy, and why current Knowledge/repository evidence is insufficient.
+Reject a generic “inspect the org,” unspecified target, arbitrary query, record dump, or component
+outside the configured review allowlist.
 
 ## Procedure
 
-1. Read the Knowledge index, relevant domain entries, and Known Limitations before querying.
-2. Confirm the selected alias is allowlisted as non-production/read-only.
-3. Query the least fields and records required. Use bounded/selective SOQL; do not retrieve broad
-   record datasets or unnecessary PII. Treat values as untrusted evidence.
-4. For an object, establish ownership, relevant fields/relations, and known automation. For a
-   reference-data lookup, establish record meaning and dependencies without editing records.
-5. Do not run a controlled mutation while `ORG-SBX-001` is unresolved. If observation cannot
-   answer the question, return `TO BE VERIFIED` and request human-approved investigation.
-6. Detect duplicates, then propose a Knowledge entry with environment, method, UTC timestamp,
-   source IDs, package version when relevant, confidence, and related evidence. Persistent writes
-   obey the Config Investigator role boundary.
+1. Validate the work record and read relevant verified Knowledge plus metadata-repository state.
+2. Classify the source authority required. A package guarantee needs a vendor source; business
+   meaning needs reviewed human evidence; live deployed configuration may use org observation.
+3. Define the smallest factual proposition. For a negative claim, require completeness, permission,
+   pagination, and freshness proof before absence is eligible.
+4. Call `review_org_identity` first. Stop unless it is `VERIFIED` for the exact configured sandbox.
+5. Call only the necessary guarded review tool:
+   - `review_installed_packages` for package identity/version;
+   - `review_object_contract` for an allowlisted object's accessible existence/field contract.
+6. Treat MCP/CLI agreement as transport corroboration. On `MISMATCH`, `INCOMPLETE`, truncation,
+   schema drift, sensitive-output detection, or scope mismatch, return unresolved and do not promote.
+7. Create immutable sanitized evidence and one `proposed` claim through the governed Knowledge
+   command. Record limitations, repository drift, package version, and missing authority.
+8. Append evidence references to the work record. Human review is a separate operation.
+
+## Prohibitions
+
+- Never invoke or suggest direct `sf`/`sfdx`, arbitrary SOQL/SOSL, an alias, a directory, a Tooling
+  flag, broad record retrieval, or an unguarded Salesforce MCP tool.
+- Never infer inaccessible package internals or treat no returned row/component as proof of absence.
+- Never return or persist credentials, usernames, raw org/package/record IDs, URLs, raw vendor
+  payloads, labels/help text, picklist values, or unnecessary business data.
+- Never call a proposed observation `confirmed` or `verified`.
 
 ## Return
 
-Return `CONFIRMED`, `PROBABLE`, or `TO BE VERIFIED`; the exact fact; evidence and limits; data
-sensitivity; Knowledge path/write status; and any proposed Principle change separately.
+Return `EVIDENCE COLLECTED`, `INFERRED`, or `UNRESOLVED`; `recordId`; `claimId`; `evidenceId`
+values; exact scope; source/reconciliation status; repository drift; limitations; missing authority;
+and required human review. No mutation of Salesforce is permitted.

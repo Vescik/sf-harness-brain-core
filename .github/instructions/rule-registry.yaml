@@ -1,0 +1,402 @@
+schemaVersion: 1
+rules:
+  - ruleId: SAFE-ENV-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-EVID-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-CLAIM-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-TOOL-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-UNTRUST-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-CHAT-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-HUMAN-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-CRED-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-ROLE-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-PROV-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SAFE-DRIFT-001
+    tier: kernel
+    status: active
+    sourceFile: .github/copilot-instructions.md
+    ownerRole: harness-governance-owner
+    basis: {kind: repository-policy, completeness: complete, sourceRefs: [.github/copilot-instructions.md], claimRefs: []}
+    scope: global
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-GEN-001
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-GEN-002
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-GEN-003
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-GEN-004
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-GEN-005
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-GEN-006
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-OWN-001
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-EXT-001
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-AUTO-001
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-ABS-001
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-DRIFT-001
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-REG-001
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: MP-UNKNOWN-001
+    tier: "1"
+    status: active
+    sourceFile: .github/instructions/managed-package-constraints.instructions.md
+    ownerRole: managed-package-governance-owner
+    basis: {kind: managed-package-policy, completeness: complete, sourceRefs: [.github/instructions/managed-package-constraints.instructions.md], claimRefs: []}
+    scope: managed-package
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-NAME-001
+    tier: "2"
+    status: provisional
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: partial, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-REVIEW-001
+    tier: "2"
+    status: provisional
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: partial, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-REVIEW-002
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-DEC-001
+    tier: "2"
+    status: provisional
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: partial, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-DEC-002
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-KNOW-001
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-KNOW-002
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-KNOW-003
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-HAND-001
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-HAND-002
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-SBX-001
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: ORG-SBX-002
+    tier: "2"
+    status: active
+    sourceFile: .github/instructions/organization-principles.instructions.md
+    ownerRole: organization-policy-owner
+    basis: {kind: organization-policy, completeness: complete, sourceRefs: [.github/instructions/organization-principles.instructions.md], claimRefs: []}
+    scope: organization
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-BULK-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-LIMIT-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-TRIG-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-SEC-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-SOQL-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-AUTO-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-NAME-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-TEST-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-ERR-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-META-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-EVID-001
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-EVID-002
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-EVID-003
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}
+  - ruleId: SF-EVID-004
+    tier: "3"
+    status: provisional
+    sourceFile: .github/instructions/salesforce-best-practices.instructions.md
+    ownerRole: salesforce-platform-owner
+    basis: {kind: salesforce-platform-practice, completeness: partial, sourceRefs: [.github/instructions/salesforce-best-practices.instructions.md], claimRefs: []}
+    scope: salesforce-platform
+    review: {lastReviewedAt: null, reviewBy: null}

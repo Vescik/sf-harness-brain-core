@@ -1,7 +1,6 @@
 # ─── Brain-core harness .gitignore ───────────────────────────────────────────
-# This repository versions the "brain" — Principles, Knowledge, Memory, the QA
-# index, skills, agents, prompts and templates. It is deliberately NOT the
-# Salesforce metadata / deployment repository: that topic is parked (blueprint §15).
+# This repository versions the complete developer workspace: the harness at the
+# repository root and the Salesforce DX project under salesforce/.
 
 # ── Raw fetched data ──
 # Gitignored by design (blueprint §13 and §17). The folder structure itself stays
@@ -26,17 +25,23 @@ output/**
 .DS_Store
 
 # ── Salesforce local tooling state ──
-# Salesforce metadata belongs in the named sibling workspace root. Do not ignore force-app or
-# manifest here: silently ignoring an accidentally combined topology can lose metadata changes.
-# scripts/preflight.py detects and rejects those folders at the brain root.
+# The repository root is the Salesforce DX project. Ignore only local tooling/generated state;
+# never ignore force-app/, manifest/, or sfdx-project.json.
 /.sfdx/
 /.sf/
 /.localdevserver/
+deploy-options.json
+coverage/
+.pmdCache
+.eslintcache
+**/lwc/jsconfig.json
 node_modules/
+logs/
 *.log
 
 # ── Local harness configuration and runtime state ──
 config/harness.local.json
+.env
 .playwright/
 *.local.code-workspace
 .venv/

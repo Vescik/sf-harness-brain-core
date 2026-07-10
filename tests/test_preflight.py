@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from scripts import preflight
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def safe_config() -> dict:
@@ -24,14 +28,30 @@ def safe_config() -> dict:
                     "environment": "development",
                     "allowAgentRead": True,
                     "allowAgentWrite": True,
+                    "allowAgentReview": True,
+                    "expectedInstanceHost": "example--dev.sandbox.my.salesforce.com",
+                    "expectedOrganizationId": "00D000000000001AAA",
                 },
                 {
                     "alias": "qa-sbx",
                     "environment": "qa",
                     "allowAgentRead": True,
                     "allowAgentWrite": False,
+                    "allowAgentReview": False,
+                    "expectedInstanceHost": "example--qa.sandbox.my.salesforce.com",
+                    "expectedOrganizationId": "00D000000000002AAA",
                 },
-            ]
+            ],
+            "review": {
+                "enabled": True,
+                "apiVersion": "67.0",
+                "requireDualSource": True,
+                "allowedPackageNamespaces": ["examplepkg"],
+                "allowedObjectApiNames": ["ExampleManagedObject__c"],
+                "maxObjectsPerCall": 10,
+                "maxFieldsPerObject": 500,
+                "evidenceMaxAgeMinutes": 30,
+            },
         },
         "safety": {
             "sharedSandboxWritesApproved": True,
@@ -42,7 +62,7 @@ def safe_config() -> dict:
             "profileDirectory": "/tmp/example-profile",
         },
         "workspace": {
-            "salesforceRootName": "salesforce",
+            "salesforceRootName": "brain-core",
             "manifestPath": "manifest/package.xml",
             "promotedTestsPath": "tests/e2e",
         },
@@ -55,6 +75,28 @@ def safe_config() -> dict:
 
 
 class PreflightValidationTests(unittest.TestCase):
+    def test_workspace_root_is_the_only_salesforce_project(self) -> None:
+        workspace = json.loads(
+            (ROOT / "sf-harness.code-workspace").read_text(encoding="utf-8")
+        )
+        folders = {
+            (item.get("name"), item.get("path"))
+            for item in workspace.get("folders", [])
+        }
+        self.assertEqual(folders, {("brain-core", ".")})
+        self.assertTrue((ROOT / "sfdx-project.json").is_file())
+        self.assertTrue((ROOT / "manifest/package.xml").is_file())
+        self.assertTrue((ROOT / "force-app").is_dir())
+        self.assertTrue((ROOT / "tests/e2e").is_dir())
+        self.assertFalse((ROOT / "salesforce/sfdx-project.json").exists())
+        self.assertFalse(
+            any(
+                Path(item["path"]).is_absolute()
+                or ".." in Path(item["path"]).parts
+                for item in workspace.get("folders", [])
+            )
+        )
+
     def test_safe_non_production_config_passes(self) -> None:
         self.assertEqual(preflight.validate_config(safe_config()), [])
 
@@ -69,6 +111,18 @@ class PreflightValidationTests(unittest.TestCase):
         config["salesforce"]["orgs"][1]["allowAgentWrite"] = True
         failures = preflight.validate_config(config)
         self.assertTrue(any("Only development aliases" in item for item in failures))
+
+    def test_review_requires_read_permission(self) -> None:
+        config = safe_config()
+        config["salesforce"]["orgs"][0]["allowAgentRead"] = False
+        failures = preflight.validate_config(config)
+        self.assertTrue(any("review requires read permission" in item for item in failures))
+
+    def test_review_requires_explicit_alias(self) -> None:
+        config = safe_config()
+        config["salesforce"]["orgs"][0]["allowAgentReview"] = False
+        failures = preflight.validate_config(config)
+        self.assertTrue(any("no alias grants" in item for item in failures))
 
     def test_unknown_environment_is_rejected(self) -> None:
         config = safe_config()

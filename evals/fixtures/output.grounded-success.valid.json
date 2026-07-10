@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 3,
+  "workflow": "generate-technical-documentation",
+  "workflowClass": "governed",
+  "generatedAt": "2026-07-10T12:00:00Z",
+  "status": "success",
+  "recordRef": {
+    "recordId": "ADO-example-project-1201",
+    "recordRevision": 9,
+    "recordHash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "scopeHash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "designHash": "3333333333333333333333333333333333333333333333333333333333333333",
+    "groundingHash": "4444444444444444444444444444444444444444444444444444444444444444",
+    "consumedHandoffId": "HO-EXAMPLE-DOC-IN",
+    "createdHandoffId": "HO-EXAMPLE-DOC-OUT"
+  },
+  "sourceRefs": [
+    "ado:example-org/example-project/1201@7",
+    "repo:brain-core@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  "ruleRefs": ["SAFE-EVID-001", "MP-GEN-001"],
+  "claimRefs": ["KCLM-EXAMPLE-COMPONENT-OWNERSHIP"],
+  "evidenceRefs": ["KEVD-EXAMPLE-COMPONENT-CONTRACT"],
+  "knowledgeSnapshotAt": "2026-07-10T11:55:00Z",
+  "reconciliation": {
+    "status": "matched",
+    "mismatches": [],
+    "missingEvidence": []
+  },
+  "completeness": {
+    "status": "complete",
+    "missingEvidence": []
+  },
+  "reviewStatus": "draft",
+  "assumptions": [],
+  "warnings": [],
+  "filesWritten": ["output/documentation/1201.md"],
+  "verification": [
+    "Validated the output envelope and compared the accepted record hashes with the persisted record."
+  ],
+  "artifactPath": "output/documentation/1201.md"
+}

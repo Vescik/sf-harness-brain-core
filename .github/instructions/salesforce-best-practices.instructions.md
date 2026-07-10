@@ -1,6 +1,5 @@
 ---
-description: General Salesforce engineering practices for Apex, Flow, security, limits, testing, and metadata. Apply only after Tier 1 and Tier 2 rules.
-applyTo: "**"
+description: General Salesforce engineering and evidence practices for Apex, Flow, security, limits, testing, metadata, and source/org reconciliation. Load explicitly after Tier 1 and Tier 2.
 ---
 
 # Salesforce Best Practices — Tier 3
@@ -29,3 +28,15 @@ These rules apply only when they do not conflict with Tier 1 or Tier 2.
   secrets or sensitive record data. Avoid silent catch blocks and swallowed Flow faults.
 - **SF-META-001 — source and manifest agree.** Validate referenced metadata exists, preserve API
   versions intentionally, and report missing/decomposed components rather than omitting them.
+- **SF-EVID-001 — intended and deployed state are distinct.** Treat the source-controlled metadata
+  commit as intended customer-owned state and the allowlisted org as deployed state at an observed
+  time. Report drift; do not declare either universally authoritative.
+- **SF-EVID-002 — read the minimum surface.** Org review uses schema-first, bounded, allowlisted
+  component reads with explicit API version, row/field caps, permission limitations, pagination,
+  and sanitization. Do not retrieve broad business records to answer a metadata question.
+- **SF-EVID-003 — absence needs completeness.** A claim that a field, automation, dependency, or
+  record does not exist requires complete enumeration within the proven permission and API scope.
+  Empty or inaccessible results remain `UNRESOLVED`.
+- **SF-EVID-004 — tools report observations, not meaning.** Salesforce labels, descriptions, and
+  record values may support an investigation but do not establish business semantics without a
+  reviewed organization source.
