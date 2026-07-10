@@ -1,33 +1,39 @@
 ---
 name: sync-test-cases
-description: Sync Test Cases from Azure Test Plans into the local QA layer — accepts a link, a Suite ID, or a Plan ID (all suites); writes a lightweight committed index per suite and reports orphaned keywords-map entries.
+description: Synchronize an allowlisted Azure Test Plan or Suite into deterministic committed QA indexes, with pagination, partial-run reporting, and global orphan candidates. Use internally from the public sync prompt or Test Strategist.
+user-invocable: false
 ---
 
-# Skill: sync-test-cases
+# Sync Test Cases
 
-The actual procedure behind the `/sync-test-cases` prompt (blueprint section 11). Two-tier
-storage (blueprint section 3): full detail (steps, expected results) goes to
-`.cache/test-cases/<id>.json` — a pure mirror of ADO, not versioned, ADO stays the source of
-truth; the lightweight index goes to `.ai/qa/test-cases/`, committed, a shared team resource.
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md) and run
+`scripts/preflight.py --capability ado`.
+
+## Input
+
+Accept exactly one scope:
+
+- configured HTTPS Test Plans URL; or
+- positive `suiteId` plus its `planId`; or
+- positive `planId` for all suites.
+
+Reject zero/multiple forms, arbitrary hosts, a mismatched organization/project, or path traversal.
+Confirm before a plan-wide sync above the configured suite/case limit.
 
 ## Procedure
 
-1. **Parse the input** — one of three equivalent forms:
-   - a link to Azure Test Plans → extract `suiteId` / `planId` from it;
-   - a direct `suiteId`;
-   - a `planId` only → **enumerate all suites in that plan**, then repeat the rest of this
-     procedure for each suite in a loop. The file structure (one file per suite) handles this
-     without changes — it simply produces more files at once.
-2. **List Test Case IDs in the suite** via the Test Plans API (Plan → Suite → Test Case is a
-   separate API model from work-item relations).
-   <!-- TODO(verify): exact tool names in the test-plans domain — blueprint section 14. -->
-3. **For each ID, call the `fetch-test-case` skill** — the cache updates itself as a side
-   effect.
-4. **Write the lightweight index** to `.ai/qa/test-cases/<suiteId>-<name>.md` — ID, title,
-   priority/tags if available, last-synced timestamp (`_fetchedAt` from cache); **no full
-   steps** (those stay in cache). Entry format per `.ai/qa/test-cases/README.md`. These files
-   are machine-written and overwritten on every sync.
-5. **Orphan check**: scan `.ai/qa/keywords-map.md` for entries pointing at Test Cases that no
-   longer exist in the freshly fetched list. **Report any orphaned entries explicitly** — never
-   delete them silently, never ignore them; the keywords map is human-curated and only a human
-   removes its entries.
+1. List suites when the scope is a plan; continue all pages and record continuation/partial state.
+2. List Test Case IDs for each suite, then call `fetch-test-case` with `onStale=refresh`.
+3. Sanitize suite names to a deterministic slug and write one sorted index to
+   `.ai/qa/test-cases/<suiteId>-<slug>.md`. Use atomic replacement only after that suite succeeds;
+   retain the previous index on partial failure.
+4. Include schema version, plan/suite IDs, source revision/timestamp, retrievedAt, completeness, and
+   each Case's ID/title/priority/tags. Full steps stay in ignored cache.
+5. Deduplicate a Case within an index. A Case may legitimately appear in several suites.
+6. Compute orphan candidates against the union of every successfully refreshed in-scope index
+   plus direct ADO existence—not absence from one suite. Report; never delete curated keywords.
+
+## Return
+
+Report suites/cases requested, completed, unchanged, failed, and partial; files written/retained;
+orphan candidates; pagination; and a rerun/resume action.

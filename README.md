@@ -1,38 +1,49 @@
-# Salesforce Managed-Package Workspace — brain-core harness
+# Salesforce Managed-Package Copilot Brain-Core
 
-A GitHub Copilot "brain-core" harness for a VS Code workspace, built for SDLC work on a **closed
-Salesforce managed package**. It gives Copilot an explicit, structured brain — Principles,
-Knowledge, Memory, Orchestration, QA — so the agent stays effective despite having no access to
-the package's source.
+A private, team-versioned GitHub Copilot harness for Salesforce development around a closed
+managed package. It combines an always-on safety contract, five SDLC agents, seven public prompt
+commands, twelve internal skills, verified Knowledge/Memory/QA layers, guarded external tools,
+and repeatable validation.
 
-**The binding specification is [`HARNESS_BLUEPRINT.md`](HARNESS_BLUEPRINT.md).** This README is
-a short orientation only; the blueprint is the source of truth (with
-[`HARNESS_DIAGRAMS.md`](HARNESS_DIAGRAMS.md) as a companion) and [`BUILD_REPORT.md`](BUILD_REPORT.md)
-records how the workspace was actually built and every open item.
+## Current authority
 
-## Layout
+1. [.github/copilot-instructions.md](.github/copilot-instructions.md) — always-on safety kernel.
+2. [docs/workspace-topology.md](docs/workspace-topology.md) — supported two-root workspace.
+3. [docs/compatibility.md](docs/compatibility.md) — runtime/version contract.
+4. [.ai/contracts/execution-contract.md](.ai/contracts/execution-contract.md) — common skill
+   execution, cache, output, and failure behavior.
+5. [IMPLEMENTATION_HANDOFF.md](IMPLEMENTATION_HANDOFF.md) — as-built changes and remaining roadmap.
 
-| Path | What it is | Loaded |
+`HARNESS_BLUEPRINT.md`, `BUILD_REPORT.md`, `HARNESS_DIAGRAMS.md`, and `HANDOFF_FOR_FABLE.md` retain
+the original design history. They are no longer the normative runtime specification where they
+conflict with the files above.
+
+## Architecture
+
+| Layer | Location | Purpose |
 |---|---|---|
-| `.github/copilot-instructions.md` | Thin table-of-contents + precedence order | Always |
-| `.github/instructions/` | 3 Principles files (`applyTo: "**"`) | Always |
-| `.github/agents/` | 5 SDLC agent profiles | On selection / handoff |
-| `.github/skills/` | 12 reusable skill procedures | Progressive discovery |
-| `.github/prompts/` | 7 thin `/command` wrappers | On `/name` |
-| `.ai/knowledge/` | Facts about the system (start at its `README.md`) | On demand |
-| `.ai/memory/decisions-log.md` | The team's curated decision memory | On demand |
-| `.ai/qa/` | Synced Test Case index, keywords map, UI quirks | On demand |
-| `.ai/templates/` | Output formats | On demand |
-| `.cache/` | Raw fetched data (gitignored) | — |
-| `output/` | AI-generated artifacts for human review | — |
-| `.vscode/settings.json` | Activation layer — pins Copilot file loading | At workspace open |
+| Safety and Principles | `.github/copilot-instructions.md`, `.github/instructions/` | Always-on rules with Tier 1 → 2 → 3 precedence |
+| Orchestration | `.github/agents/` | Design, investigation, development, QA strategy, independent review |
+| Public commands | `.github/prompts/` | Seven deterministic slash-command entry points |
+| Internal capabilities | `.github/skills/` | Twelve progressively loaded procedures hidden from the slash menu |
+| Knowledge and contracts | `.ai/knowledge/`, `.ai/contracts/` | Sourced facts and execution/data contracts |
+| Memory and QA | `.ai/memory/`, `.ai/change-records/`, `.ai/qa/` | Accepted decisions, handoffs, and test inventory |
+| Runtime | `.vscode/mcp.json`, `.github/hooks/`, `scripts/` | Guarded non-production tools and deterministic policy checks |
+| Local/generated data | `.cache/`, `output/` | Ignored raw cache and human-review drafts |
 
-## Getting started
+## Start here
 
-See **[`SETUP.md`](SETUP.md)** for prerequisites, how this repo is distributed and kept in sync
-across the team, and how to confirm Copilot has actually loaded the harness.
+Follow [SETUP.md](SETUP.md). The supported layout uses `sf-harness.code-workspace` with the
+`brain-core` repository beside a `salesforce-metadata` SFDX repository.
 
-## Deliberately not here (parked — blueprint §15)
+Run:
 
-A configured `.vscode/mcp.json`, `.github/hooks/`, and anything tied to the deployment
-git / Salesforce DevOps Center flow. This repo versions the **brain**, not the package metadata.
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 scripts/validate_harness.py
+python3 scripts/preflight.py
+python3 -m unittest discover -s tests -v
+```
+
+The repository intentionally fails closed until `config/harness.local.json` contains real,
+non-production, human-owned environment and process values.

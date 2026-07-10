@@ -1,4 +1,9 @@
-# Harness Blueprint — Salesforce Managed Package Workspace (GitHub Copilot w VS Code)
+# Harness Blueprint — Salesforce Managed Package Workspace (historical design record)
+
+> Historical status: this document preserves the original rationale and functional essence. The
+> operational hardening branch reopened Git/MCP/hooks/CI topics that this blueprint parked. Current
+> runtime authority is listed in `README.md`; do not use a conflicting historical statement as an
+> execution rule.
 
 ## 0. Jak czytać ten dokument
 

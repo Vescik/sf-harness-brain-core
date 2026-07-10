@@ -1,0 +1,54 @@
+name: Harness CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: harness-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate brain-core contracts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.lock
+
+      - name: Compile Python controls
+        run: python -m compileall -q scripts tests
+
+      - name: Parse Salesforce MCP launcher
+        run: node --check scripts/start_salesforce_mcp.mjs
+
+      - name: Validate harness structure and contracts
+        run: python scripts/validate_harness.py
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run deterministic safety evaluations
+        run: python scripts/run_evals.py
+
+      - name: Confirm local and generated state is ignored
+        run: git check-ignore config/harness.local.json .cache/ado-items/example.json output/handover/example.md

@@ -1,0 +1,65 @@
+{
+  "inputs": [
+    {
+      "id": "sf_read_org",
+      "type": "promptString",
+      "description": "Allowlisted non-production Salesforce alias for read-only investigation"
+    },
+    {
+      "id": "sf_dev_org",
+      "type": "promptString",
+      "description": "Allowlisted non-production Salesforce alias with agent write permission"
+    }
+  ],
+  "servers": {
+    "ado-readonly": {
+      "type": "http",
+      "url": "https://mcp.dev.azure.com/${env:ADO_ORGANIZATION}",
+      "headers": {
+        "X-MCP-Toolsets": "wit,wiki,testplan",
+        "X-MCP-Readonly": "true"
+      }
+    },
+    "salesforce-readonly": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "scripts/start_salesforce_mcp.mjs",
+        "--mode",
+        "readonly",
+        "--org",
+        "${input:sf_read_org}"
+      ],
+      "sandboxEnabled": true
+    },
+    "salesforce-development": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "scripts/start_salesforce_mcp.mjs",
+        "--mode",
+        "development",
+        "--org",
+        "${input:sf_dev_org}"
+      ],
+      "sandboxEnabled": true
+    }
+  },
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "${workspaceFolder:salesforce}"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "mcp.dev.azure.com",
+        "registry.npmjs.org",
+        "test.salesforce.com",
+        "*.sandbox.my.salesforce.com",
+        "*.sandbox.lightning.force.com",
+        "*.sandbox.my.site.com"
+      ]
+    }
+  }
+}

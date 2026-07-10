@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/harness-config.schema.json",
+  "title": "Brain-core local configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "ado", "salesforce", "safety", "browser", "workspace", "cache"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "ado": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organization", "project", "releaseQueryId", "allowedHttpsOrigins"],
+      "properties": {
+        "organization": { "type": "string", "minLength": 1 },
+        "project": { "type": "string", "minLength": 1 },
+        "releaseQueryId": { "type": "string", "minLength": 1 },
+        "allowedHttpsOrigins": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^https://" }
+        }
+      }
+    },
+    "salesforce": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orgs"],
+      "properties": {
+        "orgs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["alias", "environment", "allowAgentRead", "allowAgentWrite"],
+            "properties": {
+              "alias": { "type": "string", "minLength": 1 },
+              "environment": { "enum": ["development", "qa", "uat"] },
+              "allowAgentRead": { "type": "boolean" },
+              "allowAgentWrite": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sharedSandboxWritesApproved", "sharedSandboxApprovalRef"],
+      "properties": {
+        "sharedSandboxWritesApproved": { "type": "boolean" },
+        "sharedSandboxApprovalRef": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "sharedSandboxWritesApproved": { "const": true } },
+            "required": ["sharedSandboxWritesApproved"]
+          },
+          "then": {
+            "properties": { "sharedSandboxApprovalRef": { "minLength": 1 } }
+          }
+        }
+      ]
+    },
+    "browser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowedOrigins", "profileDirectory"],
+      "properties": {
+        "allowedOrigins": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^https://[A-Za-z0-9-]+--[A-Za-z0-9-]+\\.sandbox\\.(my\\.salesforce\\.com|lightning\\.force\\.com|my\\.site\\.com)/?$"
+          }
+        },
+        "profileDirectory": { "type": "string", "minLength": 1 }
+      }
+    },
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["salesforceRootName", "manifestPath", "promotedTestsPath"],
+      "properties": {
+        "salesforceRootName": { "const": "salesforce" },
+        "manifestPath": { "type": "string", "minLength": 1 },
+        "promotedTestsPath": { "type": "string", "minLength": 1 }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adoItemMaxAgeMinutes", "testCaseMaxAgeMinutes", "onStaleDefault"],
+      "properties": {
+        "adoItemMaxAgeMinutes": { "type": "integer", "minimum": 1 },
+        "testCaseMaxAgeMinutes": { "type": "integer", "minimum": 1 },
+        "onStaleDefault": { "enum": ["ask", "refresh", "use", "fail"] }
+      }
+    }
+  }
+}

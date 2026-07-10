@@ -25,18 +25,22 @@ output/**
 # ── OS noise ──
 .DS_Store
 
-# ── Safety net: keep Salesforce metadata & tooling OUT of the brain repo ──
-# The recommended model (SETUP.md) keeps this harness as its OWN repo, separate from the
-# SFDX project. IF an SFDX project ever colocates at this root, the rules below stop
-# metadata/tooling from leaking into the brain repo — preserving the §15 parking (brain
-# repo ≠ metadata repo). Metadata is still read at RUNTIME from the working tree by skills
-# (e.g. generate-technical-documentation reads manifest/package.xml); it simply is not
-# committed HERE. Deliberate, documented safety net — not a metadata-versioning decision.
-# Root-anchored (leading /) so a legitimately-named nested folder is never caught by accident.
-/force-app/
-/manifest/
+# ── Salesforce local tooling state ──
+# Salesforce metadata belongs in the named sibling workspace root. Do not ignore force-app or
+# manifest here: silently ignoring an accidentally combined topology can lose metadata changes.
+# scripts/preflight.py detects and rejects those folders at the brain root.
 /.sfdx/
 /.sf/
 /.localdevserver/
 node_modules/
 *.log
+
+# ── Local harness configuration and runtime state ──
+config/harness.local.json
+.playwright/
+*.local.code-workspace
+.venv/
+__pycache__/
+*.pyc
+.coverage
+htmlcov/

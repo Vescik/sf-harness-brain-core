@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "id": "ado-complete-with-missing-relation",
+      "schema": "ado-item-cache.schema.json",
+      "baseFixture": "ado-item.partial.json",
+      "patch": {
+        "completeness.status": "complete"
+      }
+    },
+    {
+      "id": "test-case-complete-with-partial-steps",
+      "schema": "test-case-cache.schema.json",
+      "baseFixture": "test-cases.partial.json",
+      "patch": {
+        "completeness.status": "complete"
+      }
+    },
+    {
+      "id": "output-success-with-partial-evidence",
+      "schema": "output-envelope.schema.json",
+      "baseFixture": "output.incomplete.json",
+      "patch": {
+        "status": "success"
+      }
+    }
+  ]
+}
