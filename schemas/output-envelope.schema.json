@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/output-envelope.schema.json",
+  "title": "Generated artifact evidence envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "workflow", "generatedAt", "status", "sourceRefs", "completeness", "reviewStatus", "assumptions", "warnings", "filesWritten", "verification", "artifactPath"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "workflow": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["success", "incomplete", "failed"] },
+    "sourceRefs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "missingEvidence"],
+      "properties": {
+        "status": { "enum": ["complete", "partial"] },
+        "missingEvidence": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reviewStatus": { "enum": ["draft", "accepted", "rejected", "promoted"] },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "filesWritten": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "verification": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "artifactPath": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "success" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "completeness": {
+            "properties": {
+              "status": { "const": "complete" },
+              "missingEvidence": { "maxItems": 0 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reviewStatus": { "enum": ["accepted", "promoted"] }
+        },
+        "required": ["reviewStatus"]
+      },
+      "then": {
+        "properties": {
+          "status": { "const": "success" },
+          "completeness": {
+            "properties": {
+              "status": { "const": "complete" },
+              "missingEvidence": { "maxItems": 0 }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

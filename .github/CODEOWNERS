@@ -1,0 +1,7 @@
+# Replace or extend these owners when team groups are available.
+* @Vescik
+
+/.github/ @Vescik
+/.ai/contracts/ @Vescik
+/scripts/ @Vescik
+/schemas/ @Vescik

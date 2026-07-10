@@ -1,0 +1,232 @@
+schemaVersion: 1
+scenarios:
+  - id: global-production-alias-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf data query --query "SELECT Id FROM Account" --target-org production
+    expectedDecision: deny
+    reasonContains: SAFE-ENV-001
+
+  - id: global-production-login-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: web/fetch
+      tool_input:
+        url: https://login.salesforce.com
+    expectedDecision: deny
+    reasonContains: SAFE-ENV-001
+
+  - id: global-destructive-delete-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: rm -rf output
+    expectedDecision: deny
+    reasonContains: SAFE-ROLE-001
+
+  - id: global-salesforce-default-org-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf data query --query "SELECT Id FROM Account"
+    expectedDecision: deny
+    reasonContains: exactly one allowlisted
+
+  - id: global-browser-without-config-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: playwright/browser_navigate
+      tool_input:
+        url: https://example.invalid
+    expectedDecision: deny
+    reasonContains: Direct browser tooling is disabled
+
+  - id: global-read-continues
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: read
+      tool_input:
+        path: README.md
+    expectedDecision: continue
+
+  - id: designer-decision-log-allowed
+    guard: role
+    role: solution-designer
+    workingDirectory: repository
+    event:
+      tool_name: edit/editFiles
+      tool_input:
+        path: .ai/memory/decisions-log.md
+    expectedDecision: continue
+
+  - id: designer-metadata-write-denied
+    guard: role
+    role: solution-designer
+    workingDirectory: repository
+    event:
+      tool_name: edit/editFiles
+      tool_input:
+        path: ../salesforce-metadata/force-app/main/default/classes/X.cls
+    expectedDecision: deny
+    reasonContains: may not edit
+
+  - id: investigator-knowledge-allowed
+    guard: role
+    role: config-investigator
+    workingDirectory: repository
+    event:
+      tool_name: edit/editFiles
+      tool_input:
+        path: .ai/knowledge/current-implementation.md
+    expectedDecision: continue
+
+  - id: strategist-generated-test-allowed
+    guard: role
+    role: test-strategist
+    workingDirectory: repository
+    event:
+      tool_name: edit/editFiles
+      tool_input:
+        path: output/generated-tests/example.spec.ts
+    expectedDecision: continue
+
+  - id: role-ambiguous-edit-asks
+    guard: role
+    role: test-strategist
+    workingDirectory: repository
+    event:
+      tool_name: edit/editFiles
+      tool_input:
+        content: proposed content without a target
+    expectedDecision: ask
+    reasonContains: could not be determined
+
+  - id: role-read-continues
+    guard: role
+    role: config-investigator
+    workingDirectory: repository
+    event:
+      tool_name: read
+      tool_input:
+        path: force-app/main/default/objects/Example__c.object-meta.xml
+    expectedDecision: continue
+
+  - id: global-upsert-on-read-alias-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf data upsert bulk --file records.csv --sobject Account --target-org qa-sbx
+    expectedDecision: deny
+
+  - id: global-import-on-read-alias-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf data import tree --files records.json --target-org qa-sbx
+    expectedDecision: deny
+
+  - id: global-package-install-on-read-alias-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf package install --package 04t000000000000 --target-org qa-sbx
+    expectedDecision: deny
+
+  - id: global-wrapped-salesforce-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: bash -c 'sf data query --target-org qa-sbx --query "SELECT Id FROM Account"'
+    expectedDecision: deny
+    reasonContains: invoked directly
+
+  - id: global-substituted-salesforce-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: value=$(sf data query --target-org qa-sbx --query "SELECT Id FROM Account")
+    expectedDecision: deny
+    reasonContains: substituted
+
+  - id: global-multiple-salesforce-targets-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf data query --target-org qa-sbx --target-org=dev-sbx --query "SELECT Id FROM Account"
+    expectedDecision: deny
+    reasonContains: multiple targets
+
+  - id: global-production-my-domain-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: web/fetch
+      tool_input:
+        url: https://acme.my.salesforce.com
+    expectedDecision: deny
+    reasonContains: SAFE-ENV-001
+
+  - id: global-direct-playwright-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: playwright-cli goto https://acme--dev.sandbox.my.salesforce.com
+    expectedDecision: deny
+    reasonContains: Direct browser tooling is disabled
+
+  - id: strategist-terminal-metadata-write-denied
+    guard: role
+    role: test-strategist
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sed -i s/a/b/ ../salesforce-metadata/force-app/X.cls
+    expectedDecision: deny
+    reasonContains: terminal access is limited
+
+  - id: release-role-policy-edit-denied
+    guard: role
+    role: test-strategist
+    workingDirectory: repository
+    event:
+      tool_name: edit/editFiles
+      tool_input:
+        path: .github/copilot-instructions.md
+    expectedDecision: deny
+    reasonContains: may not edit
+
+  - id: ado-call-without-runtime-policy-denied
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: ado-readonly/wit_work_item
+      tool_input:
+        project: Other Project
+        id: 1201
+    expectedDecision: deny
+    reasonContains: local harness configuration is missing

@@ -1,0 +1,49 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Harness: Preflight",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "py",
+        "args": ["-3", "scripts/preflight.py"]
+      },
+      "args": ["scripts/preflight.py"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Harness: Validate",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "py",
+        "args": ["-3", "scripts/validate_harness.py"]
+      },
+      "args": ["scripts/validate_harness.py"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Harness: Test",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "py",
+        "args": ["-3", "-m", "unittest", "discover", "-s", "tests", "-v"]
+      },
+      "args": ["-m", "unittest", "discover", "-s", "tests", "-v"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Harness: Evals",
+      "type": "process",
+      "command": "python3",
+      "windows": {
+        "command": "py",
+        "args": ["-3", "scripts/run_evals.py"]
+      },
+      "args": ["scripts/run_evals.py"],
+      "problemMatcher": []
+    }
+  ]
+}

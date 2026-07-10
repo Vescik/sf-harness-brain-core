@@ -1,23 +1,15 @@
 ---
-description: Fetch an Azure DevOps work item (any type) with cache-first and scope logic, then hand off to the Solution Designer. Usage — /fetch-ado-item itemId=<ID> mode=<single|hierarchy>
+name: fetch-ado-item
+description: Fetch a validated Azure DevOps work item context and begin Solution Design.
+argument-hint: "itemId=<ID> [mode=single|hierarchy] [childDetail=summary|full] [includeTestCases=true|false]"
+agent: solution-designer
 ---
 
-<!-- THIN WRAPPER (R6 / blueprint section 12): parse arguments, call the skill, hand off.
-Zero business logic lives here — it all lives in .github/skills/fetch-ado-item/SKILL.md.
-The name deliberately does not say "US"/"feature" — the item can be any type (Story, Bug,
-Task, Feature, Epic). -->
+Use the [fetch-ado-item skill](../skills/fetch-ado-item/SKILL.md).
 
-Argument parsing (blueprint section 6 caveat: text after the command is free text, not a
-parsed schema — read it per the `name=value` convention):
+Parse the invocation text as `name=value` arguments. `itemId` is required and numeric. Reject an
+unknown option or invalid enum before using a tool. If `itemId` is missing, ask once with
+`#tool:vscode/askQuestions`; never guess.
 
-- `itemId=${input:itemId}` — required. If missing, ask for it; do not guess.
-- `mode=${input:mode}` — optional (`single` or `hierarchy`). If absent, the skill infers the
-  default from the Work Item Type.
-- Optional pass-throughs if the user provides them: `childDetail=`, `includeTestCases=`.
-
-Steps:
-
-1. Invoke the **`fetch-ado-item` skill** with the parsed arguments.
-2. With the returned context, **hand off to the `solution-designer` agent** — this prompt is
-   the entry point to the SDLC pipeline (blueprint section 10), not a dead end leaving data
-   alone in chat.
+Fetch the context, disclose cache freshness/completeness, then continue the Solution Designer
+procedure. Do not merely print raw ADO content and stop.

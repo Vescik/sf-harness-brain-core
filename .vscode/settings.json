@@ -1,42 +1,26 @@
 {
-  // ─── Activation layer for the brain-core harness ────────────────────────────
-  // Pins how VS Code + GitHub Copilot discover and load the harness, so EVERY
-  // teammate loads it deterministically regardless of their personal settings or
-  // their VS Code/Copilot version defaults. Current defaults already point at
-  // .github/{instructions,prompts,agents,skills}; this file guarantees it does
-  // not depend on those defaults staying put across versions or user overrides.
-  //
-  // This is NOT the excluded .vscode/mcp.json — MCP config stays deliberately
-  // unbuilt (blueprint §15). See SETUP.md for how to confirm the harness loaded.
-
-  // ── Principles: .github/copilot-instructions.md + .github/instructions/*.instructions.md ──
-  // Auto-loads the root copilot-instructions.md into chat requests.
+  // Copilot customization activation for single-folder use. The checked-in multi-root
+  // sf-harness.code-workspace repeats these editor-wide settings because folder-scoped editor
+  // settings can be ignored in a multi-root workspace. scripts/validate_harness.py checks parity.
   "github.copilot.chat.codeGeneration.useInstructionFiles": true,
-  // Auto-loads any .instructions.md whose applyTo pattern matches (ours are "**").
   "chat.includeApplyingInstructions": true,
-  // Where to discover .instructions.md files.
+  "chat.includeReferencedInstructions": true,
   "chat.instructionsFilesLocations": { ".github/instructions": true },
-
-  // ── Prompts: .github/prompts/*.prompt.md (invoked with /name) ──
   "chat.promptFilesLocations": { ".github/prompts": true },
-
-  // ── Agents: .github/agents/*.agent.md ──
   "chat.agentFilesLocations": { ".github/agents": true },
-
-  // ── Skills: .github/skills/<name>/SKILL.md (progressive discovery) ──
+  "chat.useAgentSkills": true,
   "chat.agentSkillsLocations": { ".github/skills": true },
-  // Enable-gate for skills. Introduced opt-in in VS Code 1.108 (per its release notes);
-  // enabled by default in later stable releases. Pinned so skills work on 1.108-era versions
-  // where it was opt-in, and harmlessly redundant where already default-on — consistent with
-  // this file's pinning rationale.
-  "chat.useAgentSkills": true
+  "chat.useAgentsMdFile": true,
+  "chat.hookFilesLocations": { ".github/hooks": true },
+  "chat.useCustomAgentHooks": true,
+  "chat.useCustomizationsInParentRepositories": false,
 
-  // Version note (verified against VS Code release notes, 2026-07): agent files
-  // (`chat.agentFilesLocations`, `.agent.md`) ~v1.106; agent skills
-  // (`chat.agentSkillsLocations`, `chat.useAgentSkills`, `.github/skills`) v1.108, default-on
-  // in later stable. Binding minimum ≥ 1.108 — see SETUP.md §1. Confirm keys against the
-  // installed version (Settings UI → search each key) if anything fails to load.
-  // Open question (blueprint §6, still unverified): whether applyTo:"**" in a separate file
-  // behaves identically to inlining into copilot-instructions.md in a purely conversational
-  // request (no file open); `chat.includeApplyingInstructions` above is the lever to test it.
+  "files.exclude": {
+    "**/.DS_Store": true,
+    ".cache/**": true
+  },
+  "search.exclude": {
+    ".cache/**": true,
+    "output/**": true
+  }
 }

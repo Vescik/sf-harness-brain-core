@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "workflow": "feature-health",
+  "generatedAt": "2026-07-10T08:05:00Z",
+  "status": "incomplete",
+  "sourceRefs": ["ado:example-org/Example Project/1201"],
+  "completeness": {
+    "status": "partial",
+    "missingEvidence": ["child:1203"]
+  },
+  "reviewStatus": "draft",
+  "assumptions": [],
+  "warnings": ["Child 1203 was not fetched; a Safe verdict is prohibited."],
+  "filesWritten": [],
+  "verification": ["Schema validation only; no external system contacted."],
+  "artifactPath": null
+}

@@ -1,29 +1,31 @@
 ---
 name: update-knowledge-base
-description: Route a new finding to the correct Knowledge file (consulting the README index instead of guessing) and keep that index up to date whenever a Knowledge file is added or changes scope.
+description: Validate, deduplicate, route, and atomically record a sourced system fact in the allowlisted Knowledge domains while keeping the Knowledge index accurate. Never use for rules, guesses, or raw record dumps.
+user-invocable: false
 ---
 
-# Skill: update-knowledge-base
+# Update Knowledge base
 
-Two jobs at once, because they complete each other (blueprint section 3): without the index
-this skill has nothing to route with; without this skill nothing keeps the index current.
-Called by `investigate-object` — and any other skill writing to Knowledge — whenever the target
-file is not obvious.
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md).
 
-## Job 1 — Routing
+## Input
 
-1. **Consult `.ai/knowledge/README.md`** (the navigational index — one sentence per file) to
-   decide which domain file a given finding belongs to. Never guess, never create a duplicate
-   entry in the wrong place.
-2. If the target file is obvious from the index — write the finding there directly, using the
-   `.ai/templates/knowledge-entry.md` format (facts only — if it reads like a rule, it belongs
-   in `.github/instructions/`, not Knowledge; flag it instead of writing it here).
-3. If no existing file fits, propose where it should live (a new file only if genuinely no
-   domain covers it) and confirm with the human before creating one.
+Require a typed finding: name/API identity, factual statement, confidence, method, source
+environment/IDs, UTC verification date, investigator, sensitivity, related evidence, and optional
+existing taxonomy keywords. Reject unsupported confidence, missing source, secrets/PII, or a rule.
 
-## Job 2 — Index maintenance
+## Procedure
 
-Whenever a Knowledge file is **added** or an existing file's **scope changes**, update
-`.ai/knowledge/README.md` in the same operation — one line per file, kept accurate. This is
-what keeps navigation from silently rotting with every new Knowledge file (the exact failure
-that happened when `known-limitations.md` was added — blueprint section 3).
+1. Consult the Knowledge index and route only to an allowlisted `.ai/knowledge/*.md` domain.
+2. Search API identity, aliases, and semantic content for duplicates or conflicts. Update/relate a
+   verified entry instead of creating a second source of truth.
+3. If no domain fits, propose a new domain and receive human approval before creating it.
+4. Re-read target and index immediately before writing; stop on concurrent change.
+5. Build the entry with the Knowledge template. Keywords must already exist in the taxonomy.
+6. Apply target plus any required README index update as one reviewed operation; if either fails,
+   report partial state and do not claim success.
+
+## Return
+
+Return `RECORDED`, `DUPLICATE`, `CONFLICT — NEEDS HUMAN`, or `REJECTED`; target path; source and
+confidence; files changed; index status; and any proposed Principle/taxonomy action separately.

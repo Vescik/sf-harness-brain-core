@@ -1,4 +1,7 @@
-# Build Report — brain-core harness
+# Build Report — original brain-core build (historical)
+
+> Historical status: records the original scaffold before the operational hardening work. Current
+> repository and implementation state lives in `IMPLEMENTATION_HANDOFF.md`.
 
 Build completed 2026-07-09 against `HARNESS_BLUEPRINT.md` (binding, R1) with
 `HARNESS_DIAGRAMS.md` as companion-only. This report is a build artifact, not part of the

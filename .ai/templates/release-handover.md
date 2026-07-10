@@ -15,7 +15,9 @@ extension (Markdown PDF / vscode-pandoc) — never a script generated or run by 
 
 - Release period: `<month/year>`
 - Generated on: `<date>`
-- Source query: `<TU_WSTAW_QUERY_ID>` <!-- while empty: /release-handover cannot determine which items are in the release and cannot run -->
+- Source query: `<configured ado.releaseQueryId>`
+- Query executed at: `<UTC timestamp>`
+- Source completeness: `<complete | partial>`
 
 ## Handover description
 

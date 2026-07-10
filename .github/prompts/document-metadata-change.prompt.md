@@ -1,23 +1,16 @@
 ---
-description: Generate technical documentation for one development from its package.xml manifest. Usage — /document-metadata-change itemId=<ID>
+name: document-metadata-change
+description: Generate reviewed technical documentation for one accepted metadata change.
+argument-hint: "itemId=<ID> [manifestPath=<path>]"
+agent: development-assistant
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'vscode/askQuestions', 'ado-readonly/*', 'salesforce-readonly/*']
 ---
 
-<!-- THIN WRAPPER (R6 / blueprint section 12): parse arguments, call the skill. Zero business
-logic here — it lives in .github/skills/generate-technical-documentation/SKILL.md. -->
+Use the [generate-technical-documentation skill](../skills/generate-technical-documentation/SKILL.md).
 
-> **PRECONDITION NOTE** (blueprint sections 3 and 12 — deliberately NOT validated in code):
-> this prompt assumes the development's `manifest/package.xml` contains the complete metadata
-> for the documented development — and only that development. If the manifest is incomplete or
-> mixes more than one change, the documentation will reflect that. Ensuring a clean, one-to-one
-> manifest is the developer's responsibility before running this prompt.
+Require a numeric work item ID and an accepted design. Resolve exactly one named Salesforce
+workspace root; validate the manifest and show detected scope before generation. Ask for missing
+manual deployment steps with `#tool:vscode/askQuestions` and record an explicit `None` when the
+human confirms there are none.
 
-Argument parsing (free text after the command, `name=value` convention — blueprint section 6):
-
-- `itemId=${input:itemId}` — required (the ADO work item this development belongs to). If
-  missing, ask; do not guess.
-
-Steps:
-
-1. Invoke the **`generate-technical-documentation` skill** with `itemId`.
-2. Report where the result was saved (`output/documentation/<itemId>.md`) and that publication
-   to the ADO wiki is a manual human step.
+Save the draft under `output/documentation/`. Publication to ADO remains a human action.
