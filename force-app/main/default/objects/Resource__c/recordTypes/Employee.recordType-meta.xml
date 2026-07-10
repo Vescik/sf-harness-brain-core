@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Employee</fullName>
+    <active>true</active>
+    <description>Internal employee resource linked to a Salesforce user.</description>
+    <label>Employee</label>
+</RecordType>

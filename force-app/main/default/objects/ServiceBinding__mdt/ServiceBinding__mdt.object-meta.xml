@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Maps a logical interface/binding name to a concrete Apex implementation class. Public so subscribers can override bindings (documented extension point).</description>
+    <label>Service Binding</label>
+    <pluralLabel>Service Bindings</pluralLabel>
+    <visibility>Public</visibility>
+</CustomObject>
