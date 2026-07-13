@@ -1,4 +1,9 @@
-# Handoff for Fable — review of distribution + activation layers
+# Handoff for Fable — distribution + activation review (historical)
+
+> Historical status: preserved for provenance. It predates the private GitHub repository,
+> baseline commit, enhancement branch, runtime guards, and current implementation handoff. Its
+> metadata-ignore advice is superseded: the current repository root is the SFDX root and root
+> `force-app/` plus `manifest/` are versioned.
 
 **Reviewer:** Fable · **Author:** Opus 4.8 · **Date:** 2026-07-09
 **Scope of this review:** ONLY the two layers just implemented (findings 1 + 2). The rest of the

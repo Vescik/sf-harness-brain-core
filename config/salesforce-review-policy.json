@@ -1,0 +1,27 @@
+{
+  "$schema": "../schemas/salesforce-review-policy.schema.json",
+  "schemaVersion": 1,
+  "salesforceMcpPackage": "@salesforce/mcp@0.30.15",
+  "mcpProtocolVersion": "2025-06-18",
+  "salesforceCliMajor": 2,
+  "commandTimeoutSeconds": 30,
+  "maxVendorPayloadBytes": 1048576,
+  "profiles": {
+    "orgIdentity": {
+      "useToolingApi": false,
+      "query": "SELECT Id, IsSandbox FROM Organization LIMIT 1"
+    },
+    "installedPackages": {
+      "useToolingApi": true,
+      "query": "SELECT SubscriberPackage.NamespacePrefix, SubscriberPackage.Name, SubscriberPackageVersion.Name, SubscriberPackageVersion.MajorVersion, SubscriberPackageVersion.MinorVersion, SubscriberPackageVersion.PatchVersion, SubscriberPackageVersion.BuildNumber FROM InstalledSubscriberPackage WHERE SubscriberPackage.NamespacePrefix IN (${PACKAGE_NAMESPACES}) ORDER BY SubscriberPackage.NamespacePrefix, SubscriberPackage.Name LIMIT 500"
+    },
+    "objectEntity": {
+      "useToolingApi": true,
+      "query": "SELECT QualifiedApiName FROM EntityDefinition WHERE QualifiedApiName = '${OBJECT_API_NAME}' LIMIT 2"
+    },
+    "objectFields": {
+      "useToolingApi": true,
+      "query": "SELECT QualifiedApiName, DataType FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName = '${OBJECT_API_NAME}' ORDER BY QualifiedApiName LIMIT 501"
+    }
+  }
+}

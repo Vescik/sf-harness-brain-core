@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:knowledge-policy.schema.json",
+  "title": "Knowledge promotion and freshness policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "promotion", "negativeClaims", "claimPolicies"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modelMayCreateStatuses", "verifiedRequiresHumanReview", "safeVerdictAllowedStatuses", "committableSensitivities"],
+      "properties": {
+        "modelMayCreateStatuses": { "const": ["proposed"] },
+        "verifiedRequiresHumanReview": { "const": true },
+        "safeVerdictAllowedStatuses": { "const": ["verified"] },
+        "committableSensitivities": { "const": ["public", "internal-sanitized"] }
+      }
+    },
+    "negativeClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requireCompleteEnumeration", "requirePermissionProof", "maxReviewAgeDays"],
+      "properties": {
+        "requireCompleteEnumeration": { "const": true },
+        "requirePermissionProof": { "const": true },
+        "maxReviewAgeDays": { "type": "integer", "minimum": 1, "maximum": 7 }
+      }
+    },
+    "claimPolicies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object-existence", "object-ownership", "field-schema", "object-relation",
+        "automation-inventory", "package-installation", "package-limitation",
+        "reference-data", "runtime-behavior", "business-meaning", "business-process",
+        "integration", "glossary"
+      ],
+      "properties": {
+        "object-existence": { "$ref": "#/$defs/claimPolicy" },
+        "object-ownership": { "$ref": "#/$defs/claimPolicy" },
+        "field-schema": { "$ref": "#/$defs/claimPolicy" },
+        "object-relation": { "$ref": "#/$defs/claimPolicy" },
+        "automation-inventory": { "$ref": "#/$defs/claimPolicy" },
+        "package-installation": { "$ref": "#/$defs/claimPolicy" },
+        "package-limitation": { "$ref": "#/$defs/claimPolicy" },
+        "reference-data": { "$ref": "#/$defs/claimPolicy" },
+        "runtime-behavior": { "$ref": "#/$defs/claimPolicy" },
+        "business-meaning": { "$ref": "#/$defs/claimPolicy" },
+        "business-process": { "$ref": "#/$defs/claimPolicy" },
+        "integration": { "$ref": "#/$defs/claimPolicy" },
+        "glossary": { "$ref": "#/$defs/claimPolicy" }
+      }
+    }
+  },
+  "$defs": {
+    "sourceType": {
+      "enum": [
+        "org-describe", "org-tooling-enumeration", "org-soql-sample",
+        "metadata-repository", "installed-package-record", "vendor-documentation",
+        "vendor-support-case", "salesforce-documentation", "ado-approved-artifact",
+        "human-sme-attestation", "controlled-sandbox-test"
+      ]
+    },
+    "claimPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxReviewAgeDays", "minimumIndependentEvidence", "allowedEvidenceTypes", "invalidationTriggers"],
+      "properties": {
+        "maxReviewAgeDays": { "type": "integer", "minimum": 1, "maximum": 3650 },
+        "minimumIndependentEvidence": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "allowedEvidenceTypes": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "$ref": "#/$defs/sourceType" }
+        },
+        "invalidationTriggers": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

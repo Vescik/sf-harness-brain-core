@@ -1,13 +1,10 @@
-# Automation Map
+# Automation Map — Generated Claim Index
 
-What is actually attached to each object — our Flows, our Apex, and known entry points of the
-managed package's own automation. This is **fact, not rule**: it provides context for the rules
-in `.github/instructions/managed-package-constraints.instructions.md`, it does not restate them.
-Entry format: `.ai/templates/knowledge-entry.md`.
+Generated view of canonical automation-inventory claims. Absence claims require complete
+enumeration, sufficient permissions, and all pages fetched. Do not hand-edit.
 
-Scaling threshold (blueprint sections 3 and 8): at ~15-20 described objects, this file splits
-into `.ai/knowledge/objects/<Name>.md` together with object descriptions and field
-descriptions. Not built now.
+<!-- BEGIN GENERATED CLAIM INDEX -->
 
-<!-- No entries yet. Entries are added by investigate-object / update-knowledge-base as facts
-are established — never fabricated at build time. -->
+_No canonical claims are indexed._
+
+<!-- END GENERATED CLAIM INDEX -->

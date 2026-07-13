@@ -1,0 +1,31 @@
+schemaVersion: 3
+reviewId: KREV-EXAMPLEMANAGEDOBJECT-VERIFY-001
+reviewType: promotion
+claimId: KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001
+claimRevision: 1
+reviewedStatus: proposed
+decision: verify
+resultingStatus: verified
+reviewer:
+  type: human
+  identity: synthetic-reviewer
+reviewedAt: "2026-07-09T11:00:00Z"
+evidenceRefs: [KEVD-EXAMPLEMANAGEDOBJECT-DESCRIBE-001]
+policyVersion: 1
+scopeMatch: true
+freshness:
+  status: current
+  evaluatedAt: "2026-07-09T11:00:00Z"
+  triggeredInvalidators: []
+conflictingClaimRefs: []
+claimDigest: sha256:cbee381716700786c37e875a1e1f0a00edc076e2fb35fec7df916cfc92c89a1f
+scopeDigest: sha256:def4eb08ea02a76679ff6cce01f6d05719e0f576c2c9a7ff91c0188c3875f257
+evidenceManifest:
+  - evidenceId: KEVD-EXAMPLEMANAGEDOBJECT-DESCRIBE-001
+    recordDigest: sha256:3955215b8713fd717aa82d91d74f938bae3a1cc3db6865ef12b1c354089f9600
+auditReceipt:
+  mechanism: signed-approval-receipt
+  reference: synthetic://review-approval/KREV-EXAMPLEMANAGEDOBJECT-VERIFY-001
+  verifiedAt: "2026-07-09T10:59:00Z"
+  receiptDigest: sha256:8b29b9960d9e245e0c7e3f2ee0f7032922014595a7c4dc92f2c374d5a871a7ff
+rationale: Synthetic fixture review; evidence is scoped, complete, and current for this example.

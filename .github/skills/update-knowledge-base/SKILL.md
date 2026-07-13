@@ -1,29 +1,43 @@
 ---
 name: update-knowledge-base
-description: Route a new finding to the correct Knowledge file (consulting the README index instead of guessing) and keep that index up to date whenever a Knowledge file is added or changes scope.
+description: Govern proposed Salesforce/package claims, immutable evidence, human reviews, lifecycle transitions, reconciliation, and generated Knowledge indexes. Never promote model inference or unreviewed observations.
+user-invocable: false
 ---
 
-# Skill: update-knowledge-base
+# Govern the Knowledge base
 
-Two jobs at once, because they complete each other (blueprint section 3): without the index
-this skill has nothing to route with; without this skill nothing keeps the index current.
-Called by `investigate-object` — and any other skill writing to Knowledge — whenever the target
-file is not obvious.
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
+[Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md), and
+[source authority contract](../../../.ai/contracts/source-authority.md).
 
-## Job 1 — Routing
+## Input
 
-1. **Consult `.ai/knowledge/README.md`** (the navigational index — one sentence per file) to
-   decide which domain file a given finding belongs to. Never guess, never create a duplicate
-   entry in the wrong place.
-2. If the target file is obvious from the index — write the finding there directly, using the
-   `.ai/templates/knowledge-entry.md` format (facts only — if it reads like a rule, it belongs
-   in `.github/instructions/`, not Knowledge; flag it instead of writing it here).
-3. If no existing file fits, propose where it should live (a new file only if genuinely no
-   domain covers it) and confirm with the human before creating one.
+Require a schema-valid claim/evidence/review operation with stable IDs, normalized
+`(subject, predicate, scope)`, source authority, scope lineage, timestamps, sensitivity,
+limitations, and expected revision. Reject raw records, secrets/PII, rules disguised as facts,
+model-only evidence, mutable evidence, or unknown fields.
 
-## Job 2 — Index maintenance
+## Procedure
 
-Whenever a Knowledge file is **added** or an existing file's **scope changes**, update
-`.ai/knowledge/README.md` in the same operation — one line per file, kept accurate. This is
-what keeps navigation from silently rotting with every new Knowledge file (the exact failure
-that happened when `known-limitations.md` was added — blueprint section 3).
+1. Validate schemas and apply the claim-type evidence/freshness policy.
+2. Search canonical claims using normalized subject, predicate, scope, environment, package version,
+   repository lineage, aliases, and related claims.
+3. Evidence is immutable. Corrections create a new evidence record and retain history.
+4. Investigators/models may create `proposed` only. Prepare sanitized schema-v3 claim/evidence
+   drafts under `.cache/knowledge-proposals/`, then run the guarded `propose` command; it is the
+   only agent path that writes canonical Knowledge. `verified`, `rejected`, `contested`,
+   `superseded`, and re-verification require the lifecycle transition and human review defined by
+   policy. A human cannot make unsupported evidence true.
+5. A different value in the same normalized scope marks the claim contested; never overwrite.
+   Different environments/package versions may retain parallel claims.
+6. Re-read target revisions immediately before the atomic operation; stop on concurrency drift.
+7. Regenerate human-readable domain indexes deterministically from canonical claims. Unreviewed,
+   stale, contested, rejected, and superseded states remain visible but are never presented as
+   trusted current facts.
+8. Append claim/evidence/review references to the relevant work record and retain audit history.
+
+## Return
+
+Return `PROPOSED`, `VERIFIED`, `REJECTED`, `CONTESTED`, `STALE`, `SUPERSEDED`, `DUPLICATE`, or
+`INVALID`; IDs/revisions; transition/review; source authority; freshness; files changed; index
+status; conflicts; and recovery action. Never return `VERIFIED` without a valid human review.

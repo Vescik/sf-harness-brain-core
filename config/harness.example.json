@@ -1,0 +1,73 @@
+{
+  "$schema": "../schemas/harness-config.schema.json",
+  "schemaVersion": 1,
+  "ado": {
+    "organization": "<ADO_ORGANIZATION>",
+    "project": "<ADO_PROJECT>",
+    "releaseQueryId": "<ADO_SAVED_QUERY_ID>",
+    "allowedHttpsOrigins": [
+      "https://dev.azure.com/<ADO_ORGANIZATION>"
+    ]
+  },
+  "salesforce": {
+    "orgs": [
+      {
+        "alias": "<DEV_ALIAS>",
+        "environment": "development",
+        "allowAgentRead": true,
+        "allowAgentWrite": false,
+        "allowAgentReview": false,
+        "expectedInstanceHost": "<MY_DOMAIN>--<DEV_SANDBOX>.sandbox.my.salesforce.com",
+        "expectedOrganizationId": "<DEV_ORGANIZATION_ID>"
+      },
+      {
+        "alias": "<QA_ALIAS>",
+        "environment": "qa",
+        "allowAgentRead": true,
+        "allowAgentWrite": false,
+        "allowAgentReview": false,
+        "expectedInstanceHost": "<MY_DOMAIN>--<QA_SANDBOX>.sandbox.my.salesforce.com",
+        "expectedOrganizationId": "<QA_ORGANIZATION_ID>"
+      },
+      {
+        "alias": "<UAT_ALIAS>",
+        "environment": "uat",
+        "allowAgentRead": true,
+        "allowAgentWrite": false,
+        "allowAgentReview": false,
+        "expectedInstanceHost": "<MY_DOMAIN>--<UAT_SANDBOX>.sandbox.my.salesforce.com",
+        "expectedOrganizationId": "<UAT_ORGANIZATION_ID>"
+      }
+    ],
+    "review": {
+      "enabled": false,
+      "apiVersion": "67.0",
+      "requireDualSource": true,
+      "allowedPackageNamespaces": [],
+      "allowedObjectApiNames": [],
+      "maxObjectsPerCall": 10,
+      "maxFieldsPerObject": 500,
+      "evidenceMaxAgeMinutes": 30
+    }
+  },
+  "safety": {
+    "sharedSandboxWritesApproved": false,
+    "sharedSandboxApprovalRef": ""
+  },
+  "browser": {
+    "allowedOrigins": [
+      "https://<MY_DOMAIN>--<SANDBOX>.sandbox.my.salesforce.com"
+    ],
+    "profileDirectory": "<ABSOLUTE_LOCAL_PROFILE_PATH>"
+  },
+  "workspace": {
+    "salesforceRootName": "brain-core",
+    "manifestPath": "manifest/package.xml",
+    "promotedTestsPath": "<RELATIVE_PATH_IN_REPOSITORY_ROOT>"
+  },
+  "cache": {
+    "adoItemMaxAgeMinutes": 30,
+    "testCaseMaxAgeMinutes": 1440,
+    "onStaleDefault": "ask"
+  }
+}

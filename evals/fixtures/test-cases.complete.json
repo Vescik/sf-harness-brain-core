@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "organization": "example-org",
+    "project": "Example Project",
+    "testCaseId": 701,
+    "revision": 3,
+    "retrievedAt": "2026-07-10T08:00:00Z"
+  },
+  "completeness": {
+    "status": "complete",
+    "pagesFetched": 1,
+    "fullStepCoverage": true,
+    "missingSegments": []
+  },
+  "untrustedExternalData": true,
+  "testCase": {
+      "id": 701,
+      "title": "Review a sanitized record",
+      "state": "Design",
+      "steps": [
+        {
+          "action": "Open the example record.",
+          "expected": "The example detail view is visible."
+        }
+      ],
+      "keywords": ["example", "review"]
+    }
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:work-evidence.schema.json",
+  "title": "Bound work-record evidence receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "receiptType",
+    "evidenceId",
+    "recordId",
+    "recordedAt",
+    "recordedBy",
+    "type",
+    "sourceRef",
+    "sourceRevision",
+    "retrievedAt",
+    "completeness",
+    "durability",
+    "summary",
+    "artifact"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "receiptType": { "const": "bound-artifact" },
+    "evidenceId": { "type": "string", "pattern": "^EV-[A-Za-z0-9._-]+$" },
+    "recordId": { "type": "string", "pattern": "^ADO-[a-z0-9][a-z0-9-]{0,62}-[1-9][0-9]*$" },
+    "recordedAt": { "type": "string", "format": "date-time" },
+    "recordedBy": {
+      "enum": [
+        "solution-designer",
+        "config-investigator",
+        "development-assistant",
+        "test-strategist",
+        "guardrail-reviewer"
+      ]
+    },
+    "type": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sourceRef": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "sourceRevision": { "type": ["string", "integer", "null"] },
+    "retrievedAt": { "type": "string", "format": "date-time" },
+    "completeness": { "enum": ["complete", "partial"] },
+    "durability": { "enum": ["durable", "ephemeral"] },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

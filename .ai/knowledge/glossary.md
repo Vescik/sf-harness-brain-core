@@ -1,11 +1,10 @@
-# Glossary
+# Glossary — Generated Claim Index
 
-Business ↔ technical dictionary — what the business calls a thing vs what it is called
-technically. Facts only, never rules. Entry format: `.ai/templates/knowledge-entry.md`.
+Generated view of approved business-to-technical glossary claims. Preserve Polish business terms
+verbatim. A model suggestion is not evidence; a named SME or approved artifact is required.
 
-Language rule (build contract R7): Polish domain/business terms are preserved **verbatim** in
-this file — do not translate the business-side term when recording a pair; the surrounding
-description is written in English.
+<!-- BEGIN GENERATED CLAIM INDEX -->
 
-<!-- No entries yet. Entries are added by investigate-object / update-knowledge-base as facts
-are established — never fabricated at build time. -->
+_No canonical claims are indexed._
+
+<!-- END GENERATED CLAIM INDEX -->

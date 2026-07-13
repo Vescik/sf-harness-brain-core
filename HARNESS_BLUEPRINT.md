@@ -1,4 +1,11 @@
-# Harness Blueprint — Salesforce Managed Package Workspace (GitHub Copilot w VS Code)
+# Harness Blueprint — Salesforce Managed Package Workspace (historical design record)
+
+> Historical status: this document preserves the original rationale and functional essence. The
+> operational hardening branch reopened Git/MCP/hooks/CI topics that this blueprint parked. Current
+> runtime authority is listed in `README.md`; do not use a conflicting historical statement as an
+> execution rule. In particular, the current repository root is the only `brain-core` workspace
+> folder and the only SFDX root; any wrapper, nested-project, or separate-repository topology below
+> is historical only.
 
 ## 0. Jak czytać ten dokument
 
@@ -55,10 +62,10 @@ managed package, którego nie widać z zewnątrz. Agent musi to odkrywać i spis
 ## 2. Fakty o środowisku Salesforce (ustalone w rozmowie)
 
 - **Model danych jest hybrydowy.** Są prawdziwe custom obiekty z polami, deployowane jako
-  metadane (przykład: `Invoice__c`). Obok tego istnieje wzorzec lookup-do-tabeli-referencyjnej:
-  pole `Status__c` na Invoice to lookup do obiektu Reference Data, gdzie żyją rekordy takie jak
-  poszczególne statusy faktury. To nie jest picklist ani Custom Metadata Type — to zwykłe
-  rekordy na osobnym obiekcie, edytowalne w runtime.
+  metadane. Historyczny przykład `ExampleManagedObject__c` poniżej jest wyłącznie syntetycznym
+  wzorcem — nie opisuje realnego pakietu. Obok tego może istnieć wzorzec lookup-do-tabeli
+  referencyjnej, w którym wartość statusu jest rekordem na osobnym obiekcie edytowalnym w runtime,
+  a nie picklistą ani Custom Metadata Type. Każdy realny przypadek wymaga osobnej weryfikacji.
 - **Deploymenty metadanych się zdarzają.** To nie jest projekt czysto data-driven — realnie
   deployujemy pola, obiekty, automatyzacje, które są pod naszą kontrolą.
 - **Brak Dev Hub / scratch orgów.** Praca deweloperska dzieje się na **Full Copy Sandbox
@@ -110,9 +117,10 @@ narzucone przez vendora jest twardsze niż nasza wewnętrzna preferencja, która
 twardsza niż ogólna dobra praktyka branżowa.
 
 **Decyzja: Knowledge = fakty, Principles = reguły — rozdzielone świadomie.**
-Uzasadnienie: "Invoice ma pole Status lookup do Reference Data" to fakt (Knowledge). "Na
-Invoice nie wolno dodawać record-triggered Flow on create, bo koliduje z automatyzacją pakietu"
-to reguła (Principles, konkretnie Managed Package Constraints). Bez tego rozdzielenia te dwie
+Uzasadnienie: "syntetyczny ExampleManagedObject ma pole Status lookup do Reference Data" pokazuje
+kształt faktu (Knowledge). "Na package-owned object nie wolno dodawać record-triggered Flow bez
+zweryfikowanego extension point" pokazuje kształt reguły (Principles, konkretnie Managed Package
+Constraints). Bez tego rozdzielenia te dwie
 rzeczy mieszają się w jednym miejscu i trudno potem zaktualizować jedno bez ryzyka zepsucia
 drugiego — a mają zupełnie inny rytm zmian (fakty o obiektach zmieniają się rzadko, ograniczenia
 vendora mogą się zmienić przy każdym upgradzie pakietu).
@@ -208,9 +216,8 @@ bo dotyczy innego poziomu hierarchii ADO (Feature, nie pojedyncza Story) i inneg
 
 **Decyzja: katalog odkrytych ograniczeń managed package przenosi się z Principles do nowej
 domeny Knowledge (`known-limitations.md`).**
-Uzasadnienie: `managed-package-constraints.instructions.md` ma `applyTo: "**"` — ładuje się do
-**każdego** requestu, zawsze. To ma sens dla nielicznych, szeroko obowiązujących reguł (jak
-Invoice), ale nie skaluje się do rosnącego, granularnego katalogu ograniczeń pojedynczych
+Uzasadnienie: `managed-package-constraints.instructions.md` pierwotnie miało `applyTo: "**"` i
+ładowało się do każdego requestu. To nie skaluje się do rosnącego, granularnego katalogu ograniczeń pojedynczych
 funkcji/stron (np. konkretna zamknięta strona VF). Taki katalog to fakty o systemie — dokładnie
 ta sama natura co `automation-map.md` — więc trafia do Knowledge, na żądanie, konsultowany przez
 `investigate-object`, `check-against-principles` i `check-feature-coverage`. Principles zostaje
@@ -628,14 +635,14 @@ ogólna zasada ("szanuj odkryte ograniczenia zamkniętych powierzchni pakietu, s
 na poziomie obiektu, warte trzymania zawsze aktywnymi. Rejestr ryzyka per obiekt:
 
 ```
-### Invoice__c
-- Ryzyko: wysoki wolumen rekordow, duzo automatyzacji wewnatrz pakietu
-- Zakazane: record-triggered Flow "before/after create" (koliduje z automatyzacja pakietu)
-- Dozwolone: Flow "on update" pod warunkiem <TU_WSTAW>, custom button niezalezny od zapisu
-- Zrodlo reguly: <TU_WSTAW: dokumentacja vendora / ustalone doswiadczalnie / wsparcie vendora>
+### ExampleManagedObject__c (synthetic fixture only)
+- Ryzyko: <human-owned classification>
+- Zakazane: <version-scoped, sourced constraint>
+- Dozwolone: <verified extension point and conditions>
+- Zrodlo reguly: <vendor source / approved observation / support decision>
 ```
 
-Do uzupełnienia przez człowieka: pełna lista obiektów wysokiego ryzyka poza Invoice — patrz
+Do uzupełnienia przez człowieka: realny, package-specific rejestr komponentów i ryzyka — patrz
 sekcja 16. Ograniczenia węższe (konkretna strona, konkretna funkcja) trafiają do
 `.ai/knowledge/known-limitations.md` (sekcja 8), nie tutaj.
 
@@ -657,7 +664,7 @@ istniejącego.
 |---|---|
 | `current-implementation.md` | Feature catalog — co system robi funkcjonalnie, z grubsza jak |
 | `business-processes.md` | Proces biznesowy ↔ system, z perspektywy użytkownika biznesowego |
-| `object-relations.md` | ERD, ze szczególnym uwzględnieniem wzorca lookup-do-tabeli-referencyjnej (np. Invoice.Status → Reference Data) |
+| `object-relations.md` | ERD zweryfikowanych relacji; przykłady syntetyczne należą wyłącznie do fixtures. |
 | `object-descriptions.md` | Czym jest każdy obiekt, kto jest właścicielem (pakiet / my) |
 | `field-descriptions.md` | Co znaczy każde pole, szczególnie te bez oczywistej nazwy |
 | `automation-map.md` | Co faktycznie jest podpięte pod dany obiekt — nasze Flow, nasz Apex, znane punkty wejścia automatyzacji pakietu. Fakt, nie reguła — kontekst do `managed-package-constraints.instructions.md` |
@@ -737,7 +744,7 @@ weryfikacja konfliktu z Principles przed rozpoczęciem implementacji).
 
 ### Śledczy configu — `config-investigator.agent.md`
 **Faza**: narzędzie na żądanie, używane przez Projektanta i Dewelopera, nie osobny krok.
-**Robi**: ustala fakty o systemie — zarówno o prawdziwych obiektach z polami (Invoice), jak i o
+**Robi**: ustala fakty o systemie — zarówno o prawdziwych obiektach z polami, jak i o
 wzorcu lookup-do-tabeli-referencyjnej (Reference Data). Używa skilla `investigate-object`.
 Tylko odczyt — nigdy nie modyfikuje niczego w orgu.
 **Wyjście**: ustalenie z poziomem pewności, dopisywane do odpowiedniego pliku w `.ai/knowledge/`.
@@ -1327,9 +1334,8 @@ Nic poniżej nie jest zapomniane — to świadome decyzje o kolejności pracy.
 
 - `<TU_WSTAW_NAMESPACE_PAKIETU>` — namespace managed package.
 - Dokładne aliasy `sf` CLI dla Full Copy Sandbox (dev), QA, UAT, Production.
-- Pełna lista obiektów wysokiego ryzyka do `managed-package-constraints.instructions.md`
-  (mamy jeden potwierdzony przykład: Invoice — brak record-triggered Flow "on create").
-  Które jeszcze obiekty mają podobne ograniczenia?
+- Rzeczywisty, version-scoped rejestr ownership, ryzyka i wspieranych extension points dla
+  komponentów pakietu. Repo nie zawiera żadnego potwierdzonego przykładu package-specific.
 - Konkretne konwencje nazewnicze firmy do `organization-principles.instructions.md`.
 - Nazwa organizacji i projektu Azure DevOps do konfiguracji MCP.
 - Czy Recenzent powinien mieć dostęp zapisu do ADO (komentarz/wiki), czy tylko odczyt z

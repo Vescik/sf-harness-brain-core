@@ -1,4 +1,9 @@
-# Harness Diagrams — Architecture & Process Flows
+# Harness Diagrams — original architecture flows (historical)
+
+> Historical status: some counts and runtime layers are stale. The functional flows remain design
+> context; current authority and as-built state are in `README.md` and `IMPLEMENTATION_HANDOFF.md`.
+> Diagrams do not override the current one-root topology: `brain-core` is both repository and SFDX
+> root.
 
 This file is a diagram-only companion to `HARNESS_BLUEPRINT.md`. It contains no rationale or
 decision history — for the "why" behind any diagram here, see the corresponding section in the

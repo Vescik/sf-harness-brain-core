@@ -1,38 +1,69 @@
-# Salesforce Managed-Package Workspace — brain-core harness
+# Salesforce Managed-Package Copilot Brain-Core
 
-A GitHub Copilot "brain-core" harness for a VS Code workspace, built for SDLC work on a **closed
-Salesforce managed package**. It gives Copilot an explicit, structured brain — Principles,
-Knowledge, Memory, Orchestration, QA — so the agent stays effective despite having no access to
-the package's source.
+A private, team-versioned GitHub Copilot harness for Salesforce development around any configured
+closed managed package. It combines a minimal always-on safety/grounding kernel, five SDLC agents,
+ten public prompt commands, fourteen internal skills, governed but initially unseeded
+Knowledge/Memory/QA layers, reconciled read-only org review, durable handoffs, and repeatable
+validation. No object, namespace, package behavior, or business meaning is built in.
 
-**The binding specification is [`HARNESS_BLUEPRINT.md`](HARNESS_BLUEPRINT.md).** This README is
-a short orientation only; the blueprint is the source of truth (with
-[`HARNESS_DIAGRAMS.md`](HARNESS_DIAGRAMS.md) as a companion) and [`BUILD_REPORT.md`](BUILD_REPORT.md)
-records how the workspace was actually built and every open item.
+## Current authority
 
-## Layout
+1. [.github/copilot-instructions.md](.github/copilot-instructions.md) — always-on safety kernel.
+2. [docs/workspace-topology.md](docs/workspace-topology.md) — supported single-repository workspace.
+3. [docs/compatibility.md](docs/compatibility.md) — runtime/version contract.
+4. [.ai/contracts/execution-contract.md](.ai/contracts/execution-contract.md) — common skill
+   execution, cache, output, and failure behavior.
+5. [docs/grounding-architecture.md](docs/grounding-architecture.md) — Principles, claim/evidence,
+   repository/org reconciliation, Knowledge promotion, and handoff architecture.
+6. [docs/force-app-knowledge-architecture.md](docs/force-app-knowledge-architecture.md) — governed
+   source inventory and Knowledge-proposal pipeline.
+7. [IMPLEMENTATION_HANDOFF.md](IMPLEMENTATION_HANDOFF.md) — as-built changes and remaining roadmap.
 
-| Path | What it is | Loaded |
+`HARNESS_BLUEPRINT.md`, `BUILD_REPORT.md`, `HARNESS_DIAGRAMS.md`, and `HANDOFF_FOR_FABLE.md` retain
+the original design history. They are no longer the normative runtime specification where they
+conflict with the files above.
+
+## Architecture
+
+| Layer | Location | Purpose |
 |---|---|---|
-| `.github/copilot-instructions.md` | Thin table-of-contents + precedence order | Always |
-| `.github/instructions/` | 3 Principles files (`applyTo: "**"`) | Always |
-| `.github/agents/` | 5 SDLC agent profiles | On selection / handoff |
-| `.github/skills/` | 12 reusable skill procedures | Progressive discovery |
-| `.github/prompts/` | 7 thin `/command` wrappers | On `/name` |
-| `.ai/knowledge/` | Facts about the system (start at its `README.md`) | On demand |
-| `.ai/memory/decisions-log.md` | The team's curated decision memory | On demand |
-| `.ai/qa/` | Synced Test Case index, keywords map, UI quirks | On demand |
-| `.ai/templates/` | Output formats | On demand |
-| `.cache/` | Raw fetched data (gitignored) | — |
-| `output/` | AI-generated artifacts for human review | — |
-| `.vscode/settings.json` | Activation layer — pins Copilot file loading | At workspace open |
+| Safety and Principles | `.github/copilot-instructions.md`, `.github/instructions/` | Minimal always-on kernel; detailed role-loaded Tier 1 → 2 → 3 rules |
+| Orchestration | `.github/agents/` | Design, investigation, development, QA strategy, independent review |
+| Public commands | `.github/prompts/` | Ten deterministic slash-command entry points |
+| Internal capabilities | `.github/skills/` | Fourteen progressively loaded procedures hidden from the slash menu |
+| Knowledge and contracts | `.ai/knowledge/`, `.ai/contracts/` | Schema-governed claims, immutable evidence, human reviews, source authority |
+| Work state and QA | `.ai/change-records/`, `.ai/memory/`, `.ai/qa/` | Revisioned approvals/handoffs, durable decisions, and test inventory |
+| Salesforce project | `sfdx-project.json`, `force-app/`, `manifest/`, `tests/e2e/` | Root SFDX project, source, manifests, and Salesforce tests |
+| Runtime | `.vscode/mcp.json`, `.github/hooks/`, `scripts/` | Reconciled MCP/hidden-CLI review, guarded non-production tools, deterministic checks |
+| Local/generated data | `.cache/`, `output/` | Ignored raw cache and human-review drafts |
 
-## Getting started
+## Start here
 
-See **[`SETUP.md`](SETUP.md)** for prerequisites, how this repo is distributed and kept in sync
-across the team, and how to confirm Copilot has actually loaded the harness.
+Follow [SETUP.md](SETUP.md). Clone this repository once, then open `sf-harness.code-workspace`.
+The repository root is both the harness root and the only Salesforce DX project root. The
+workspace exposes it once as `brain-core`; `sfdx-project.json`, `force-app/`, `manifest/`, and
+`tests/e2e/` share the same branch, pull request, and commit history as the governance artifacts.
+Opening the repository root directly is also supported; MCP and tasks use the unqualified
+`${workspaceFolder}` variable so they do not depend on a display-name alias.
 
-## Deliberately not here (parked — blueprint §15)
+From the repository root, create/activate the virtual environment as described in SETUP, install
+the pinned Node runtime, then run:
 
-A configured `.vscode/mcp.json`, `.github/hooks/`, and anything tied to the deployment
-git / Salesforce DevOps Center flow. This repo versions the **brain**, not the package metadata.
+```bash
+python -m pip install -r requirements-dev.lock
+npm ci --ignore-scripts
+python scripts/validate_harness.py
+python scripts/preflight.py
+python -m unittest discover -s tests -v
+npm run prettier:verify
+npm run lint
+npm run test:unit:ci
+```
+
+The repository intentionally fails closed until `config/harness.local.json` contains real,
+non-production, human-owned environment/process values and the package/component review scope.
+Empty Knowledge produces explicit unknowns, not fabricated package facts.
+
+`manifest/package.xml` is a generic starter manifest, not an approved deployment scope. Before an
+org-facing retrieve, validation, or deployment, a human-accepted work record must narrow and bind
+the manifest to the intended components; wildcard presence is never authorization.

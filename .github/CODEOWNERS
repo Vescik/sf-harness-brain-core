@@ -1,0 +1,20 @@
+# Replace or extend these owners when team groups are available.
+* @your-org/harness-maintainers
+
+/.github/ @your-org/harness-maintainers
+/.ai/contracts/ @your-org/harness-maintainers
+/.ai/knowledge/ @your-org/harness-maintainers
+/.ai/change-records/ @your-org/harness-maintainers
+/.github/instructions/rule-registry.yaml @your-org/harness-maintainers
+/config/knowledge-policy.json @your-org/harness-maintainers
+/config/salesforce-review-policy.json @your-org/harness-maintainers
+/config/verification-policy.json @your-org/harness-maintainers
+/sfdx-project.json @your-org/harness-maintainers
+/force-app/ @your-org/harness-maintainers
+/manifest/ @your-org/harness-maintainers
+/tests/e2e/ @your-org/harness-maintainers
+/config/project-scratch-def.json @your-org/harness-maintainers
+/package.json @your-org/harness-maintainers
+/package-lock.json @your-org/harness-maintainers
+/scripts/ @your-org/harness-maintainers
+/schemas/ @your-org/harness-maintainers

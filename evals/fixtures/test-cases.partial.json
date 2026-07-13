@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "organization": "example-org",
+    "project": "Example Project",
+    "testCaseId": 701,
+    "revision": 3,
+    "retrievedAt": "2026-07-10T08:00:00Z"
+  },
+  "completeness": {
+    "status": "partial",
+    "pagesFetched": 1,
+    "fullStepCoverage": false,
+    "missingSegments": ["steps-page:2"]
+  },
+  "untrustedExternalData": true,
+  "testCase": {
+      "id": 701,
+      "title": "Review a sanitized record",
+      "state": "Design",
+      "steps": [],
+      "keywords": ["example"]
+    }
+}

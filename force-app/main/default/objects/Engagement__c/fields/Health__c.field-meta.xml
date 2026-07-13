@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Health__c</fullName>
+    <description>Traffic-light health derived from schedule position and status. Formula field.</description>
+    <externalId>false</externalId>
+    <formula>IF(ISPICKVAL(Status__c, &quot;Closed&quot;), &quot;Complete&quot;, IF(ISPICKVAL(Status__c, &quot;On Hold&quot;), &quot;Amber&quot;, IF(AND(NOT(ISBLANK(End_Date__c)), End_Date__c &lt; TODAY(), NOT(ISPICKVAL(Status__c, &quot;Closing&quot;))), &quot;Red&quot;, &quot;Green&quot;)))</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <label>Health</label>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

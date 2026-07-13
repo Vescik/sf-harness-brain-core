@@ -1,0 +1,89 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Harness: Preflight",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+        "args": ["scripts/preflight.py"]
+      },
+      "args": ["scripts/preflight.py"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Harness: Validate",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+        "args": ["scripts/validate_harness.py"]
+      },
+      "args": ["scripts/validate_harness.py"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Harness: Test",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+        "args": ["-m", "unittest", "discover", "-s", "tests", "-v"]
+      },
+      "args": ["-m", "unittest", "discover", "-s", "tests", "-v"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Harness: Evals",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+        "args": ["scripts/run_evals.py"]
+      },
+      "args": ["scripts/run_evals.py"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Salesforce: Format Check",
+      "type": "process",
+      "command": "npm",
+      "args": ["run", "prettier:verify"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Salesforce: Lint",
+      "type": "process",
+      "command": "npm",
+      "args": ["run", "lint"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Salesforce: Unit Tests",
+      "type": "process",
+      "command": "npm",
+      "args": ["run", "test:unit:ci"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Salesforce: Check",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Salesforce: Format Check",
+        "Salesforce: Lint",
+        "Salesforce: Unit Tests"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

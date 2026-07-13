@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:knowledge-claim.schema.json",
+  "title": "Canonical Knowledge claim",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "claimId", "revision", "domain", "claimType", "subject", "assertion",
+    "statement", "polarity", "status", "assurance", "scope", "evidenceRefs", "reviewRef", "observedAt",
+    "verifiedAt", "reviewBy", "sensitivity", "keywords", "limitations", "supersedes",
+    "supersededBy", "contradicts", "relatedClaims"
+  ],
+  "$defs": {
+    "claimType": {
+      "enum": [
+        "object-existence", "object-ownership", "field-schema", "object-relation",
+        "automation-inventory", "package-installation", "package-limitation",
+        "reference-data", "runtime-behavior", "business-meaning", "business-process",
+        "integration", "glossary"
+      ]
+    },
+    "claimRef": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
+    "evidenceRef": { "type": "string", "pattern": "^KEVD-[A-Z0-9][A-Z0-9-]{2,79}$" },
+    "reviewRef": { "type": "string", "pattern": "^KREV-[A-Z0-9][A-Z0-9-]{2,79}$" }
+  },
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "claimId": { "$ref": "#/$defs/claimRef" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "domain": {
+      "enum": [
+        "current-implementation", "business-processes", "object-relations",
+        "object-descriptions", "field-descriptions", "automation-map", "integration-map",
+        "glossary", "known-limitations"
+      ]
+    },
+    "claimType": { "$ref": "#/$defs/claimType" },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identity"],
+      "properties": {
+        "kind": { "enum": ["object", "field", "relation", "automation", "package", "record-type", "process", "integration", "term", "surface"] },
+        "identity": { "type": "string", "minLength": 1, "maxLength": 255 }
+      }
+    },
+    "assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["predicate", "value"],
+      "properties": {
+        "predicate": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "value": { "type": ["string", "number", "integer", "boolean", "array", "object", "null"] }
+      }
+    },
+    "statement": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "polarity": { "enum": ["positive", "negative"] },
+    "status": { "enum": ["proposed", "verified", "stale", "contested", "superseded", "rejected"] },
+    "assurance": { "enum": ["observed", "corroborated", "reported", "inferred", "unknown"] },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment", "orgKey", "packageNamespace", "packageKey", "packageVersion", "repositoryCommit"],
+      "properties": {
+        "environment": { "enum": ["development", "qa", "uat", "not-applicable"] },
+        "orgKey": { "type": ["string", "null"], "minLength": 1 },
+        "packageNamespace": { "type": ["string", "null"], "pattern": "^[A-Za-z][A-Za-z0-9_]{0,14}$" },
+        "packageKey": { "type": ["string", "null"], "minLength": 1 },
+        "packageVersion": { "type": ["string", "null"], "minLength": 1 },
+        "repositoryCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "evidenceRefs": {
+      "type": "array", "uniqueItems": true,
+      "items": { "$ref": "#/$defs/evidenceRef" }
+    },
+    "reviewRef": { "anyOf": [{ "$ref": "#/$defs/reviewRef" }, { "type": "null" }] },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "verifiedAt": { "type": ["string", "null"], "format": "date-time" },
+    "reviewBy": { "type": "string", "format": "date-time" },
+    "sensitivity": { "enum": ["public", "internal-sanitized"] },
+    "keywords": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "supersedes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/claimRef" } },
+    "supersededBy": { "anyOf": [{ "$ref": "#/$defs/claimRef" }, { "type": "null" }] },
+    "contradicts": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/claimRef" } },
+    "relatedClaims": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/claimRef" } }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "proposed" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "reviewRef": { "type": "null" },
+          "verifiedAt": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "assurance": { "enum": ["observed", "corroborated", "reported"] },
+          "evidenceRefs": { "minItems": 1 },
+          "reviewRef": { "$ref": "#/$defs/reviewRef" },
+          "verifiedAt": { "type": "string", "format": "date-time" },
+          "contradicts": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "contested" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "contradicts": { "minItems": 1 },
+          "reviewRef": { "$ref": "#/$defs/reviewRef" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "superseded" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "supersededBy": { "$ref": "#/$defs/claimRef" },
+          "reviewRef": { "$ref": "#/$defs/reviewRef" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "enum": ["stale", "rejected"] } },
+        "required": ["status"]
+      },
+      "then": { "properties": { "reviewRef": { "$ref": "#/$defs/reviewRef" } } }
+    },
+    {
+      "if": {
+        "properties": { "claimType": { "enum": ["package-installation", "package-limitation"] } },
+        "required": ["claimType"]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "packageNamespace": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,14}$" },
+              "packageVersion": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "claimType": { "const": "object-existence" } },
+        "required": ["claimType"]
+      },
+      "then": {
+        "properties": {
+          "subject": { "properties": { "kind": { "const": "object" } } },
+          "assertion": {
+            "properties": {
+              "predicate": { "const": "exists-in-accessible-schema" },
+              "value": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "claimType": { "const": "object-existence" },
+          "assertion": {
+            "properties": { "value": { "const": true } },
+            "required": ["value"]
+          }
+        },
+        "required": ["claimType", "assertion"]
+      },
+      "then": { "properties": { "polarity": { "const": "positive" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "claimType": { "const": "object-existence" },
+          "assertion": {
+            "properties": { "value": { "const": false } },
+            "required": ["value"]
+          }
+        },
+        "required": ["claimType", "assertion"]
+      },
+      "then": { "properties": { "polarity": { "const": "negative" } } }
+    },
+    {
+      "if": {
+        "properties": { "claimType": { "const": "object-ownership" } },
+        "required": ["claimType"]
+      },
+      "then": {
+        "properties": {
+          "subject": { "properties": { "kind": { "const": "object" } } },
+          "assertion": {
+            "properties": {
+              "predicate": { "const": "ownership-classification" },
+              "value": { "enum": ["package-owned", "subscriber-owned", "platform"] }
+            }
+          },
+          "polarity": { "const": "positive" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "claimType": { "const": "object-ownership" },
+          "assertion": {
+            "properties": { "value": { "const": "package-owned" } },
+            "required": ["value"]
+          }
+        },
+        "required": ["claimType", "assertion"]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "packageNamespace": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,14}$" },
+              "packageVersion": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "claimType": { "const": "object-ownership" },
+          "assertion": {
+            "properties": { "value": { "enum": ["subscriber-owned", "platform"] } },
+            "required": ["value"]
+          }
+        },
+        "required": ["claimType", "assertion"]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "packageNamespace": { "type": "null" },
+              "packageKey": { "type": "null" },
+              "packageVersion": { "type": "null" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "claimType": { "const": "package-installation" } },
+        "required": ["claimType"]
+      },
+      "then": {
+        "properties": {
+          "subject": { "properties": { "kind": { "const": "package" } } },
+          "assertion": {
+            "properties": {
+              "predicate": { "const": "is-installed" },
+              "value": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "claimType": { "const": "package-installation" },
+          "assertion": {
+            "properties": { "value": { "const": true } },
+            "required": ["value"]
+          }
+        },
+        "required": ["claimType", "assertion"]
+      },
+      "then": { "properties": { "polarity": { "const": "positive" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "claimType": { "const": "package-installation" },
+          "assertion": {
+            "properties": { "value": { "const": false } },
+            "required": ["value"]
+          }
+        },
+        "required": ["claimType", "assertion"]
+      },
+      "then": { "properties": { "polarity": { "const": "negative" } } }
+    }
+  ]
+}

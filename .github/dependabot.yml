@@ -1,0 +1,22 @@
+version: 2
+# Continuous supply-chain monitoring for the three ecosystems this harness pins.
+# Security updates are always raised; version updates are weekly and low-noise.
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # requirements-dev.lock is hash-pinned; Dependabot regenerates hashes on bump.
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

@@ -24,11 +24,8 @@ content gets an explicit "none" / explanation, it is never silently dropped.
 <!--
 List of components from the development's package.xml — type + name, each with one sentence
 on what it is for.
-R2 NOTE (logged in BUILD_REPORT.md): the blueprint's release-handover spec (section 13) refers
-to "the same 4 columns" as this table, but section 13 only enumerates three attributes for this
-section (type, name, purpose). Built with the three specified attributes plus a "Manual steps
-reference" column so the count matches the handover cross-reference — flagged, not silently
-resolved. TODO(verify): confirm the intended fourth column with the team.
+	The operational v2 contract defines the fourth column as "Manual steps reference" so the
+	technical-documentation and release-handover tables share one stable schema.
 -->
 
 | Component type | Name | Purpose (one sentence) | Manual steps reference |
@@ -58,7 +55,7 @@ Reference .github/instructions/managed-package-constraints.instructions.md and
 
 <!--
 Filled from the human's answer to the question asked at the end of the flow
-(vscode/askQuestion — TODO(verify): exact tool name, blueprint sections 6 and 16).
+	(`vscode/askQuestions`, verified against the current VS Code tool inventory).
 If the answer is "none", this section keeps an explicit "None" — it never disappears.
 -->
 

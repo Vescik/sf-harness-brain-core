@@ -1,0 +1,95 @@
+{
+  "$schema": "../schemas/knowledge-policy.schema.json",
+  "schemaVersion": 1,
+  "promotion": {
+    "modelMayCreateStatuses": ["proposed"],
+    "verifiedRequiresHumanReview": true,
+    "safeVerdictAllowedStatuses": ["verified"],
+    "committableSensitivities": ["public", "internal-sanitized"]
+  },
+  "negativeClaims": {
+    "requireCompleteEnumeration": true,
+    "requirePermissionProof": true,
+    "maxReviewAgeDays": 7
+  },
+  "claimPolicies": {
+    "object-existence": {
+      "maxReviewAgeDays": 30,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["org-describe", "metadata-repository"],
+      "invalidationTriggers": ["metadata-deployment", "sandbox-refresh", "permission-change"]
+    },
+    "object-ownership": {
+      "maxReviewAgeDays": 30,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["org-describe", "metadata-repository", "installed-package-record"],
+      "invalidationTriggers": ["package-upgrade", "metadata-deployment", "sandbox-refresh"]
+    },
+    "field-schema": {
+      "maxReviewAgeDays": 30,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["org-describe", "metadata-repository"],
+      "invalidationTriggers": ["metadata-deployment", "sandbox-refresh", "permission-change"]
+    },
+    "object-relation": {
+      "maxReviewAgeDays": 30,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["org-describe", "metadata-repository"],
+      "invalidationTriggers": ["metadata-deployment", "sandbox-refresh", "permission-change"]
+    },
+    "automation-inventory": {
+      "maxReviewAgeDays": 7,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["org-tooling-enumeration", "metadata-repository"],
+      "invalidationTriggers": ["metadata-deployment", "package-upgrade", "sandbox-refresh", "permission-change"]
+    },
+    "package-installation": {
+      "maxReviewAgeDays": 1,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["installed-package-record"],
+      "invalidationTriggers": ["package-upgrade", "package-install", "package-uninstall"]
+    },
+    "package-limitation": {
+      "maxReviewAgeDays": 180,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["vendor-documentation", "vendor-support-case", "controlled-sandbox-test"],
+      "invalidationTriggers": ["package-upgrade", "vendor-source-revision", "sandbox-refresh"]
+    },
+    "reference-data": {
+      "maxReviewAgeDays": 7,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["org-soql-sample", "ado-approved-artifact", "human-sme-attestation"],
+      "invalidationTriggers": ["record-last-modified", "sandbox-refresh", "business-owner-change"]
+    },
+    "runtime-behavior": {
+      "maxReviewAgeDays": 30,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["controlled-sandbox-test", "org-soql-sample", "vendor-documentation", "vendor-support-case"],
+      "invalidationTriggers": ["metadata-deployment", "package-upgrade", "sandbox-refresh", "scenario-change"]
+    },
+    "business-meaning": {
+      "maxReviewAgeDays": 365,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["human-sme-attestation", "ado-approved-artifact"],
+      "invalidationTriggers": ["business-owner-change", "approved-artifact-revision"]
+    },
+    "business-process": {
+      "maxReviewAgeDays": 365,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["human-sme-attestation", "ado-approved-artifact"],
+      "invalidationTriggers": ["business-owner-change", "approved-artifact-revision"]
+    },
+    "integration": {
+      "maxReviewAgeDays": 90,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["org-tooling-enumeration", "metadata-repository", "ado-approved-artifact", "human-sme-attestation"],
+      "invalidationTriggers": ["metadata-deployment", "integration-config-change", "business-owner-change"]
+    },
+    "glossary": {
+      "maxReviewAgeDays": 365,
+      "minimumIndependentEvidence": 1,
+      "allowedEvidenceTypes": ["human-sme-attestation", "ado-approved-artifact"],
+      "invalidationTriggers": ["business-owner-change", "approved-artifact-revision"]
+    }
+  }
+}

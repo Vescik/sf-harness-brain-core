@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Health_Status__c</fullName>
+    <description>Traffic-light status derived from Health Score. Formula field.</description>
+    <externalId>false</externalId>
+    <formula>IF(ISBLANK(Health_Score__c), &quot;Unknown&quot;, IF(Health_Score__c &gt;= 70, &quot;Green&quot;, IF(Health_Score__c &gt;= 40, &quot;Amber&quot;, &quot;Red&quot;)))</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <label>Health Status</label>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Text</type>
+    <unique>false</unique>
+</CustomField>

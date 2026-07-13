@@ -1,0 +1,101 @@
+{
+  "completeness": "complete",
+  "consumedAt": null,
+  "consumedBy": null,
+  "consumedRecordRevision": null,
+  "createdAt": "2026-07-10T10:00:00Z",
+  "designHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "groundingHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "claimRefs": [
+    {
+      "assertion": {
+        "predicate": "ownership-classification",
+        "value": "package-owned"
+      },
+      "claimId": "KCLM-DEMO-OWNERSHIP",
+      "claimType": "object-ownership",
+      "path": ".ai/knowledge/claims/KCLM-DEMO-OWNERSHIP.yaml",
+      "revision": 2,
+      "reviewBy": "2026-08-09T09:00:00Z",
+      "reviewRef": "KREV-DEMO-OWNERSHIP",
+      "scope": {
+        "environment": "development",
+        "orgKey": "ORG-DEMO",
+        "packageKey": "PKG-DEMO",
+        "packageNamespace": "pkg",
+        "packageVersion": "3.4.0",
+        "repositoryCommit": null
+      },
+      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "subject": {
+        "identity": "ManagedComponentA",
+        "kind": "object"
+      },
+      "verifiedAt": "2026-07-10T09:00:00Z"
+    }
+  ],
+  "evidenceRefs": [
+    {
+      "completeness": "complete",
+      "durability": "durable",
+      "evidenceId": "EV-component-inventory",
+      "path": "evidence/EV-component-inventory.json",
+      "retrievedAt": "2026-07-10T09:30:00Z",
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "sourceRef": "ADO:example-project#123@7",
+      "sourceRevision": 7,
+      "type": "component-inventory"
+    }
+  ],
+  "expectedNextState": {
+    "phase": "development",
+    "status": "in_progress"
+  },
+  "fromRole": "solution-designer",
+  "handoffId": "HO-DEMO-123-development",
+  "prohibitedActions": [
+    "Do not change the approved component scope."
+  ],
+  "reason": "The generic component design is approved for implementation.",
+  "recordHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "recordId": "ADO-example-project-123",
+  "recordRevision": 6,
+  "repositories": [],
+  "requiredActions": [
+    "Load the persisted design and verify the named workspace root."
+  ],
+  "requiredReads": [
+    {
+      "path": "design.md",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "ruleRefs": [],
+  "schemaVersion": 2,
+  "scope": {
+    "components": [
+      {
+        "name": "ManagedComponentA",
+        "ownership": "package-owned",
+        "ownershipClaimRef": "KCLM-DEMO-OWNERSHIP",
+        "packageNamespace": "pkg",
+        "packageVersion": "3.4.0",
+        "type": "CustomObject"
+      }
+    ],
+    "paths": [
+      "force-app/main/default/flows/SubscriberExtensionA.flow-meta.xml"
+    ],
+    "workspaceRoot": "brain-core"
+  },
+  "scopeHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "state": {
+    "phase": "design",
+    "status": "accepted"
+  },
+  "status": "pending",
+  "summary": "Implement only the approved subscriber-owned extension around the sourced package boundary.",
+  "toRole": "development-assistant",
+  "unresolvedQuestions": [],
+  "updatedAt": "2026-07-10T10:00:00Z"
+}

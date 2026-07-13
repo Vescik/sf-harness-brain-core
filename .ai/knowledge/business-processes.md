@@ -1,11 +1,10 @@
-# Business Processes
+# Business Processes — Generated Claim Index
 
-Business process ↔ system mapping, described from the business user's perspective — which
-process step touches which part of the system. Facts only, never rules. Entry format:
-`.ai/templates/knowledge-entry.md`.
+Generated view of canonical business-process claims. Business meaning requires a named accountable
+SME or approved artifact; technical metadata alone cannot establish it. Do not hand-edit.
 
-Also used by `suggest-test-cases` to expand technical vocabulary into business vocabulary when
-matching Test Cases to a development (HARNESS_BLUEPRINT.md section 11).
+<!-- BEGIN GENERATED CLAIM INDEX -->
 
-<!-- No entries yet. Entries are added by investigate-object / update-knowledge-base as facts
-are established — never fabricated at build time. -->
+_No canonical claims are indexed._
+
+<!-- END GENERATED CLAIM INDEX -->

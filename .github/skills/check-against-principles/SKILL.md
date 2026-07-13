@@ -1,38 +1,46 @@
 ---
 name: check-against-principles
-description: Systematically check a proposed change against the three Principles files in precedence order, plus the granular known-limitations catalog. Ends with a clear verdict.
+description: Evaluate a scoped design or implementation using the governed rule registry, fresh verified claims, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.
+user-invocable: false
 ---
 
-# Skill: check-against-principles
+# Check against Principles and evidence
 
-The core logic of the Guardrail Reviewer — but the Solution Designer may run it earlier, to
-catch a vendor-constraint conflict before anyone starts implementing, not only at the very end
-(blueprint section 11).
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
+[source authority contract](../../../.ai/contracts/source-authority.md),
+[Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md), and
+[workflow state machine](../../../.ai/contracts/workflow-state-machine.md).
+
+## Inputs
+
+Require a valid `recordId`, optional incoming `handoffId`, exact proposed/implemented scope,
+repository revisions/diff, environment proof, rule/claim/evidence references, current package
+identity when applicable, and accepted design/approval hashes. Reject unspecified or chat-only scope.
 
 ## Procedure
 
-Check the proposed change against each source **in precedence order** (see
-`.github/copilot-instructions.md`):
+1. Validate work state, handoff target/revision, approval binding, and affected-artifact list.
+2. Load the governed rule registry and check Tier 1 package constraints, Tier 2 organization policy,
+   and Tier 3 Salesforce practice in order. Apply precedence only to competing prescriptions.
+3. For every material factual premise, require a `verified`, fresh, scope-matched, uncontested claim
+   backed by the claim-type evidence policy. Proposals and model inference are not trusted facts.
+4. Compare intended customer-owned repository state with the latest complete org-review evidence.
+   Report drift instead of selecting one source.
+5. Distinguish an observed fact that violates a Principle from evidence that contests a factual
+   claim. Principles do not rewrite facts; observations do not weaken rules.
+6. Require complete environment proof, package/component ownership, version, supported extension
+   point, role compliance, verification, coverage, and manual steps where relevant.
+7. A stale/unreviewed/partial/contested claim, incomplete org review, unknown ownership, missing
+   source/version, stale approval, or unresolved blocking question makes `SAFE` impossible.
 
-1. **Managed Package Constraints**
-   (`.github/instructions/managed-package-constraints.instructions.md`) — hard vendor
-   constraints, highest precedence. **Plus**: check `.ai/knowledge/known-limitations.md` for
-   granular limitations affecting the specific objects/functions/pages this change touches —
-   the thin always-active file deliberately does not contain them.
-2. **Organization Principles**
-   (`.github/instructions/organization-principles.instructions.md`) — company standards.
-3. **Salesforce Best Practices**
-   (`.github/instructions/salesforce-best-practices.instructions.md`) — industry-general.
+## Output
 
-A conflict found at a higher tier is not softened by compliance at a lower tier.
+Return a table with: tier, rule ID, claim/evidence IDs, affected artifact, scope/freshness,
+reconciliation, finding, and required action. End with exactly one verdict:
 
-## Verdict — always one of three, stated explicitly
+- `SAFE`
+- `NEEDS FIXES`
+- `INCOMPLETE — NEEDS HUMAN`
+- `STOP — TOO RISKY`
 
-- **Safe to proceed** — no conflicts found at any tier.
-- **Needs fixes** — specific, listed conflicts that can be resolved; each cites the exact rule
-  and file it comes from.
-- **Stop — too risky** — a hard Managed Package Constraint (or known limitation) is violated
-  and no compliant variant is apparent; escalate to a human.
-
-Never end without a verdict, and never merge tiers in the report — the reader must see which
-level of the hierarchy raised each finding.
+State `recordId`, evidence completeness, repository/org drift, and that nothing was changed.

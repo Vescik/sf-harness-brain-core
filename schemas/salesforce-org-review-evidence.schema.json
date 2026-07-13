@@ -1,0 +1,749 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:salesforce-org-review-evidence.schema.json",
+  "title": "Normalized Salesforce org-review evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "generatedAt",
+    "reviewType",
+    "status",
+    "target",
+    "sources",
+    "facts",
+    "reconciliation",
+    "completeness",
+    "warnings",
+    "sha256"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "reviewType": { "enum": ["org-identity", "installed-packages", "object-contract"] },
+    "status": { "enum": ["VERIFIED", "MISMATCH", "INCOMPLETE", "BLOCKED"] },
+    "target": { "$ref": "#/$defs/target" },
+    "sources": { "$ref": "#/$defs/sources" },
+    "facts": { "type": "object" },
+    "reconciliation": { "$ref": "#/$defs/reconciliation" },
+    "completeness": { "$ref": "#/$defs/completeness" },
+    "warnings": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/warning" }
+    },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "status": { "const": "VERIFIED" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "target": { "$ref": "#/$defs/provenTarget" },
+          "sources": { "$ref": "#/$defs/completeSources" },
+          "reconciliation": { "$ref": "#/$defs/matchReconciliation" },
+          "completeness": { "$ref": "#/$defs/verifiedCompleteness" },
+          "warnings": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "MISMATCH" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "reviewType": { "enum": ["installed-packages", "object-contract"] },
+          "target": { "$ref": "#/$defs/provenTarget" },
+          "sources": { "$ref": "#/$defs/completeSources" },
+          "reconciliation": { "$ref": "#/$defs/mismatchReconciliation" },
+          "completeness": { "$ref": "#/$defs/mismatchCompleteness" },
+          "warnings": {
+            "minItems": 1,
+            "maxItems": 1,
+            "prefixItems": [{ "const": "EVIDENCE_MISMATCH" }],
+            "items": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "INCOMPLETE" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "target": { "$ref": "#/$defs/provenTarget" },
+          "sources": { "$ref": "#/$defs/incompleteSources" },
+          "facts": { "$ref": "#/$defs/emptyFacts" },
+          "reconciliation": {
+            "properties": { "status": { "enum": ["SINGLE_SOURCE", "NOT_RUN"] } }
+          },
+          "completeness": { "$ref": "#/$defs/incompleteCompleteness" },
+          "warnings": {
+            "minItems": 1,
+            "contains": { "$ref": "#/$defs/incompleteWarning" },
+            "allOf": [
+              { "not": { "contains": { "const": "EVIDENCE_MISMATCH" } } },
+              { "not": { "contains": { "$ref": "#/$defs/blockingWarning" } } }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "BLOCKED" } },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "sources": { "$ref": "#/$defs/incompleteSources" },
+          "facts": { "$ref": "#/$defs/emptyFacts" },
+          "reconciliation": {
+            "properties": { "status": { "enum": ["SINGLE_SOURCE", "NOT_RUN"] } }
+          },
+          "completeness": { "$ref": "#/$defs/incompleteCompleteness" },
+          "warnings": {
+            "minItems": 1,
+            "contains": { "$ref": "#/$defs/blockingWarning" }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "VERIFIED" },
+          "reviewType": { "const": "org-identity" }
+        },
+        "required": ["status", "reviewType"]
+      },
+      "then": {
+        "properties": {
+          "facts": { "$ref": "#/$defs/identityFacts" },
+          "reconciliation": {
+            "properties": {
+              "comparisons": {
+                "minItems": 2,
+                "maxItems": 2,
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "fact": { "const": "organization-identity" },
+                      "result": { "const": "MATCH" }
+                    }
+                  },
+                  {
+                    "properties": {
+                      "fact": { "const": "is-sandbox" },
+                      "result": { "const": "MATCH" }
+                    }
+                  }
+                ],
+                "items": false
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "VERIFIED" },
+          "reviewType": { "const": "installed-packages" }
+        },
+        "required": ["status", "reviewType"]
+      },
+      "then": {
+        "properties": {
+          "facts": { "$ref": "#/$defs/packageFacts" },
+          "reconciliation": {
+            "properties": {
+              "comparisons": { "$ref": "#/$defs/installedPackageComparison" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "VERIFIED" },
+          "reviewType": { "const": "object-contract" }
+        },
+        "required": ["status", "reviewType"]
+      },
+      "then": {
+        "properties": {
+          "facts": { "$ref": "#/$defs/objectFacts" },
+          "reconciliation": {
+            "properties": {
+              "comparisons": { "$ref": "#/$defs/objectComparison" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "MISMATCH" },
+          "reviewType": { "const": "installed-packages" }
+        },
+        "required": ["status", "reviewType"]
+      },
+      "then": {
+        "properties": {
+          "facts": { "$ref": "#/$defs/packageMismatchFacts" },
+          "reconciliation": {
+            "properties": {
+              "comparisons": { "$ref": "#/$defs/installedPackageComparison" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "MISMATCH" },
+          "reviewType": { "const": "object-contract" }
+        },
+        "required": ["status", "reviewType"]
+      },
+      "then": {
+        "properties": {
+          "facts": { "$ref": "#/$defs/objectMismatchFacts" },
+          "reconciliation": {
+            "properties": {
+              "comparisons": { "$ref": "#/$defs/objectComparison" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reconciliation": {
+            "properties": { "status": { "const": "SINGLE_SOURCE" } },
+            "required": ["status"]
+          }
+        },
+        "required": ["reconciliation"]
+      },
+      "then": {
+        "properties": {
+          "sources": { "$ref": "#/$defs/singleCompleteSource" },
+          "reconciliation": {
+            "properties": { "comparisons": { "maxItems": 0 } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "reconciliation": {
+            "properties": { "status": { "const": "NOT_RUN" } },
+            "required": ["status"]
+          }
+        },
+        "required": ["reconciliation"]
+      },
+      "then": {
+        "properties": {
+          "sources": { "$ref": "#/$defs/noCompleteSources" },
+          "reconciliation": {
+            "properties": { "comparisons": { "maxItems": 0 } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "completeness": {
+            "properties": { "truncated": { "const": true } },
+            "required": ["truncated"]
+          }
+        },
+        "required": ["completeness"]
+      },
+      "then": {
+        "properties": { "warnings": { "contains": { "const": "RESULT_TRUNCATED" } } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "warnings": { "contains": { "const": "RESULT_TRUNCATED" } } },
+        "required": ["warnings"]
+      },
+      "then": {
+        "properties": {
+          "completeness": {
+            "properties": { "truncated": { "const": true } }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "apiVersion",
+        "aliasPolicyMatched",
+        "expectedHostMatched",
+        "expectedOrgIdMatched",
+        "isSandbox"
+      ],
+      "properties": {
+        "environment": { "enum": ["development", "qa", "uat"] },
+        "apiVersion": { "type": "string", "pattern": "^[0-9]{2}\\.0$" },
+        "aliasPolicyMatched": { "const": true },
+        "expectedHostMatched": { "type": "boolean" },
+        "expectedOrgIdMatched": { "type": "boolean" },
+        "isSandbox": { "type": "boolean" }
+      }
+    },
+    "provenTarget": {
+      "allOf": [
+        { "$ref": "#/$defs/target" },
+        {
+          "properties": {
+            "aliasPolicyMatched": { "const": true },
+            "expectedHostMatched": { "const": true },
+            "expectedOrgIdMatched": { "const": true },
+            "isSandbox": { "const": true }
+          }
+        }
+      ]
+    },
+    "sourceBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "version", "complete", "retrievedAt"],
+      "properties": {
+        "kind": { "enum": ["salesforce-cli", "salesforce-mcp"] },
+        "version": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "complete": { "type": "boolean" },
+        "retrievedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "cliSource": {
+      "allOf": [
+        { "$ref": "#/$defs/sourceBase" },
+        {
+          "properties": {
+            "kind": { "const": "salesforce-cli" },
+            "version": {
+              "pattern": "^(?:@salesforce/cli/[0-9]+\\.[0-9]+\\.[0-9]+|unavailable)$"
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "complete": { "const": true } },
+            "required": ["complete"]
+          },
+          "then": {
+            "properties": {
+              "version": { "pattern": "^@salesforce/cli/[0-9]+\\.[0-9]+\\.[0-9]+$" }
+            }
+          }
+        }
+      ]
+    },
+    "mcpSource": {
+      "allOf": [
+        { "$ref": "#/$defs/sourceBase" },
+        {
+          "properties": {
+            "kind": { "const": "salesforce-mcp" },
+            "version": { "const": "0.30.15" }
+          }
+        }
+      ]
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cli", "mcp"],
+      "properties": {
+        "cli": { "$ref": "#/$defs/cliSource" },
+        "mcp": { "$ref": "#/$defs/mcpSource" }
+      }
+    },
+    "completeSources": {
+      "allOf": [
+        { "$ref": "#/$defs/sources" },
+        {
+          "properties": {
+            "cli": { "properties": { "complete": { "const": true } } },
+            "mcp": { "properties": { "complete": { "const": true } } }
+          }
+        }
+      ]
+    },
+    "incompleteSources": {
+      "allOf": [
+        { "$ref": "#/$defs/sources" },
+        {
+          "anyOf": [
+            { "properties": { "cli": { "properties": { "complete": { "const": false } } } } },
+            { "properties": { "mcp": { "properties": { "complete": { "const": false } } } } }
+          ]
+        }
+      ]
+    },
+    "singleCompleteSource": {
+      "allOf": [
+        { "$ref": "#/$defs/sources" },
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "cli": { "properties": { "complete": { "const": true } } },
+                "mcp": { "properties": { "complete": { "const": false } } }
+              }
+            },
+            {
+              "properties": {
+                "cli": { "properties": { "complete": { "const": false } } },
+                "mcp": { "properties": { "complete": { "const": true } } }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "noCompleteSources": {
+      "allOf": [
+        { "$ref": "#/$defs/sources" },
+        {
+          "properties": {
+            "cli": { "properties": { "complete": { "const": false } } },
+            "mcp": { "properties": { "complete": { "const": false } } }
+          }
+        }
+      ]
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact", "result"],
+      "properties": {
+        "fact": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,79}$" },
+        "result": { "enum": ["MATCH", "MISMATCH", "UNAVAILABLE"] }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "comparisons"],
+      "properties": {
+        "status": { "enum": ["MATCH", "MISMATCH", "SINGLE_SOURCE", "NOT_RUN"] },
+        "comparisons": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/comparison" }
+        }
+      }
+    },
+    "matchReconciliation": {
+      "allOf": [
+        { "$ref": "#/$defs/reconciliation" },
+        {
+          "properties": {
+            "status": { "const": "MATCH" },
+            "comparisons": {
+              "minItems": 1,
+              "items": {
+                "allOf": [
+                  { "$ref": "#/$defs/comparison" },
+                  { "properties": { "result": { "const": "MATCH" } } }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "mismatchReconciliation": {
+      "allOf": [
+        { "$ref": "#/$defs/reconciliation" },
+        {
+          "properties": {
+            "status": { "const": "MISMATCH" },
+            "comparisons": {
+              "minItems": 1,
+              "contains": {
+                "allOf": [
+                  { "$ref": "#/$defs/comparison" },
+                  { "properties": { "result": { "const": "MISMATCH" } } }
+                ]
+              },
+              "items": {
+                "allOf": [
+                  { "$ref": "#/$defs/comparison" },
+                  { "properties": { "result": { "enum": ["MATCH", "MISMATCH"] } } }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "installedPackageComparison": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "prefixItems": [
+        {
+          "properties": { "fact": { "const": "installed-packages" } }
+        }
+      ],
+      "items": false
+    },
+    "objectComparison": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "prefixItems": [
+        {
+          "properties": { "fact": { "const": "object-contract" } }
+        }
+      ],
+      "items": false
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["complete", "dualSource", "truncated"],
+      "properties": {
+        "complete": { "type": "boolean" },
+        "dualSource": { "type": "boolean" },
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "verifiedCompleteness": {
+      "allOf": [
+        { "$ref": "#/$defs/completeness" },
+        {
+          "properties": {
+            "complete": { "const": true },
+            "dualSource": { "const": true },
+            "truncated": { "const": false }
+          }
+        }
+      ]
+    },
+    "mismatchCompleteness": {
+      "allOf": [
+        { "$ref": "#/$defs/completeness" },
+        {
+          "properties": {
+            "complete": { "const": false },
+            "dualSource": { "const": true },
+            "truncated": { "const": false }
+          }
+        }
+      ]
+    },
+    "incompleteCompleteness": {
+      "allOf": [
+        { "$ref": "#/$defs/completeness" },
+        {
+          "properties": {
+            "complete": { "const": false },
+            "dualSource": { "const": false }
+          }
+        }
+      ]
+    },
+    "emptyFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 0
+    },
+    "identityFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identityPolicyMatched", "isSandbox"],
+      "properties": {
+        "identityPolicyMatched": { "const": true },
+        "isSandbox": { "const": true }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace", "name", "version"],
+      "properties": {
+        "namespace": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]{0,14}$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "version": { "type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+){3}$" }
+      }
+    },
+    "packageFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packages"],
+      "properties": {
+        "packages": {
+          "type": "array",
+          "maxItems": 499,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/package" }
+        }
+      }
+    },
+    "packageMismatchFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageCounts"],
+      "properties": {
+        "packageCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cli", "mcp"],
+          "properties": {
+            "cli": { "type": "integer", "minimum": 0, "maximum": 499 },
+            "mcp": { "type": "integer", "minimum": 0, "maximum": 499 }
+          }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "typeFamily"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$" },
+        "typeFamily": {
+          "type": "string",
+          "pattern": "^(?:text|number|reference|picklist|multipicklist|boolean|date|datetime|time|base64|address|location|id|other:[a-z0-9][a-z0-9()_,./:-]{0,169})$"
+        }
+      }
+    },
+    "object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectApiName", "exists", "fields"],
+      "properties": {
+        "objectApiName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$" },
+        "exists": { "type": "boolean" },
+        "fields": {
+          "type": "array",
+          "maxItems": 500,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/field" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "exists": { "const": false } },
+            "required": ["exists"]
+          },
+          "then": { "properties": { "fields": { "maxItems": 0 } } }
+        }
+      ]
+    },
+    "objectFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object"],
+      "properties": { "object": { "$ref": "#/$defs/object" } }
+    },
+    "objectMismatchFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectApiName", "observedExists", "fieldCounts"],
+      "properties": {
+        "objectApiName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$" },
+        "observedExists": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cli", "mcp"],
+          "properties": {
+            "cli": { "type": "boolean" },
+            "mcp": { "type": "boolean" }
+          }
+        },
+        "fieldCounts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cli", "mcp"],
+          "properties": {
+            "cli": { "type": "integer", "minimum": 0, "maximum": 500 },
+            "mcp": { "type": "integer", "minimum": 0, "maximum": 500 }
+          }
+        }
+      }
+    },
+    "warning": {
+      "enum": [
+        "CLI_OUTPUT_TOO_LARGE",
+        "CLI_SCHEMA_MISMATCH",
+        "CLI_TIMEOUT",
+        "CLI_UNAVAILABLE",
+        "CLI_VERSION_UNSUPPORTED",
+        "EVIDENCE_MISMATCH",
+        "IDENTITY_HOST_MISMATCH",
+        "IDENTITY_ORG_ID_MISMATCH",
+        "INTERNAL_ERROR",
+        "MCP_SCHEMA_MISMATCH",
+        "MCP_START_FAILED",
+        "MCP_TIMEOUT",
+        "MCP_TOOL_ERROR",
+        "NOT_SANDBOX",
+        "OBJECT_NOT_ALLOWLISTED",
+        "QUERY_PROFILE_DENIED",
+        "RESULT_TRUNCATED",
+        "SENSITIVE_OUTPUT_DETECTED"
+      ]
+    },
+    "incompleteWarning": {
+      "enum": [
+        "CLI_OUTPUT_TOO_LARGE",
+        "CLI_SCHEMA_MISMATCH",
+        "CLI_TIMEOUT",
+        "CLI_UNAVAILABLE",
+        "MCP_SCHEMA_MISMATCH",
+        "MCP_START_FAILED",
+        "MCP_TIMEOUT",
+        "MCP_TOOL_ERROR",
+        "RESULT_TRUNCATED"
+      ]
+    },
+    "blockingWarning": {
+      "enum": [
+        "CLI_SCHEMA_MISMATCH",
+        "CLI_VERSION_UNSUPPORTED",
+        "IDENTITY_HOST_MISMATCH",
+        "IDENTITY_ORG_ID_MISMATCH",
+        "INTERNAL_ERROR",
+        "NOT_SANDBOX",
+        "OBJECT_NOT_ALLOWLISTED",
+        "QUERY_PROFILE_DENIED",
+        "SENSITIVE_OUTPUT_DETECTED"
+      ]
+    }
+  }
+}

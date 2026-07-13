@@ -1,28 +1,30 @@
 ---
 name: tune-test-case-keywords
-description: Admin curation of the Test Case → keywords map, human-in-the-loop — the model suggests candidates from the controlled taxonomy, the human approves every change; a term outside the taxonomy requires explicit consent to extend it.
+description: Curate one Test Case keyword mapping with a named human approver, current Case evidence, controlled taxonomy, deterministic upsert, and separate approval for taxonomy growth. Use only through the admin prompt.
+user-invocable: false
 ---
 
-# Skill: tune-test-case-keywords
+# Tune Test Case keywords
 
-The actual procedure behind the **admin** prompt `/tune-test-case-keywords` (blueprint
-section 11) — a curation tool with a human confirming every change, deliberately separate from
-the developer-facing prompts. `suggest-test-cases` never requires this to have been run — it
-works uncurated from day one, just with lower match confidence.
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md).
+
+## Inputs
+
+Require positive `testCaseId`, named approver, current date, and a fresh full Test Case cache entry.
+If missing/stale, call `fetch-test-case`; 404/deleted requires an orphan decision, not curation.
 
 ## Procedure
 
-1. **Fetch the Test Case's title/description** from `.cache/test-cases/<id>.json`. (If it is
-   not cached, that suggests the suite was never synced — point the human at
-   `/sync-test-cases` rather than fetching ad hoc.)
-2. **Suggest candidate keywords from the existing `.ai/knowledge/keyword-taxonomy.md`** — the
-   same model reasoning as in `suggest-test-cases`, just in the opposite direction (text →
-   taxonomy term, not term → text).
-3. **The human confirms, corrects, or rejects.** Nothing is written without confirmation.
-4. **If the human wants a term outside the taxonomy** — ask explicitly whether to extend
-   `keyword-taxonomy.md`. **Never add a new term silently** (blueprint section 3: uncontrolled
-   vocabulary growth recreates exactly the chaos the taxonomy exists to prevent). The taxonomy
-   grows only through this explicit consent.
-5. **Write the approved keywords** to `.ai/qa/keywords-map.md` in its documented entry format
-   (Test Case ID, keywords, last-curated date, who approved). This file is human-curated and
-   survives syncs — `sync-test-cases` never overwrites it.
+1. Show the current Case title/description and existing map entry.
+2. Suggest specific existing taxonomy terms with evidence and counter-evidence. Never invent a term.
+3. Show the exact deterministic upsert diff (one entry per Test Case, sorted unique keywords).
+4. Ask the human to approve/reject/edit the map update. No approval means no write.
+5. If a requested term is absent, separately show the taxonomy definition/synonyms and ask whether
+   to extend the taxonomy. Approval of one write does not approve the other.
+6. Re-read both files before writing to detect concurrent changes. Apply approved edits atomically,
+   preserve unrelated entries, and record approver/date.
+
+## Return
+
+Return approved/rejected actions, exact files/terms changed, concurrent-change status, and any
+remaining orphan/taxonomy question.

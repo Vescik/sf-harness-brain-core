@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 3,
+  "workflow": "guardrail-review",
+  "workflowClass": "governed",
+  "generatedAt": "2026-07-10T12:10:00Z",
+  "status": "success",
+  "recordRef": {
+    "recordId": "ADO-example-project-1201",
+    "recordRevision": 12,
+    "recordHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "scopeHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "designHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "groundingHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "consumedHandoffId": "HO-EXAMPLE-REVIEW-IN",
+    "createdHandoffId": "HO-EXAMPLE-REVIEW-OUT"
+  },
+  "sourceRefs": ["record:ADO-example-project-1201@12"],
+  "ruleRefs": ["SAFE-EVID-001", "ORG-HAND-001"],
+  "claimRefs": ["KCLM-EXAMPLE-COMPONENT-OWNERSHIP"],
+  "evidenceRefs": ["EV-EXAMPLE-VERIFICATION"],
+  "knowledgeSnapshotAt": "2026-07-10T12:05:00Z",
+  "reconciliation": {
+    "status": "matched",
+    "mismatches": [],
+    "missingEvidence": []
+  },
+  "completeness": {
+    "status": "complete",
+    "missingEvidence": []
+  },
+  "reviewStatus": "accepted",
+  "assumptions": [],
+  "warnings": [],
+  "filesWritten": [],
+  "verification": ["Validated the independent review and persisted handoff hashes."],
+  "artifactPath": ".ai/change-records/ADO-example-project-1201/record.json"
+}

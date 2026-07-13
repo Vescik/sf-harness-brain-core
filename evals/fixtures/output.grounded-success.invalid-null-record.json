@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 3,
+  "workflow": "generate-technical-documentation",
+  "workflowClass": "governed",
+  "generatedAt": "2026-07-10T12:00:00Z",
+  "status": "success",
+  "recordRef": null,
+  "sourceRefs": ["ado:example-org/example-project/1201@7"],
+  "ruleRefs": ["SAFE-EVID-001"],
+  "claimRefs": ["KCLM-EXAMPLE-COMPONENT-OWNERSHIP"],
+  "evidenceRefs": ["KEVD-EXAMPLE-COMPONENT-CONTRACT"],
+  "knowledgeSnapshotAt": "2026-07-10T11:55:00Z",
+  "reconciliation": {
+    "status": "matched",
+    "mismatches": [],
+    "missingEvidence": []
+  },
+  "completeness": {
+    "status": "complete",
+    "missingEvidence": []
+  },
+  "reviewStatus": "draft",
+  "assumptions": [],
+  "warnings": [],
+  "filesWritten": ["output/documentation/1201.md"],
+  "verification": ["Schema validation."],
+  "artifactPath": "output/documentation/1201.md"
+}

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 3,
+  "workflow": "generate-technical-documentation",
+  "workflowClass": "governed",
+  "generatedAt": "2026-07-10T12:00:00Z",
+  "status": "success",
+  "recordRef": {
+    "recordId": "ADO-example-project-1201",
+    "recordRevision": 9,
+    "recordHash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "scopeHash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "designHash": "3333333333333333333333333333333333333333333333333333333333333333",
+    "groundingHash": "4444444444444444444444444444444444444444444444444444444444444444",
+    "consumedHandoffId": "HO-EXAMPLE-DOC-IN",
+    "createdHandoffId": null
+  },
+  "sourceRefs": [],
+  "ruleRefs": [],
+  "claimRefs": [],
+  "evidenceRefs": [],
+  "knowledgeSnapshotAt": null,
+  "reconciliation": {
+    "status": "matched",
+    "mismatches": [],
+    "missingEvidence": []
+  },
+  "completeness": {
+    "status": "complete",
+    "missingEvidence": []
+  },
+  "reviewStatus": "draft",
+  "assumptions": [],
+  "warnings": [],
+  "filesWritten": ["output/documentation/1201.md"],
+  "verification": [],
+  "artifactPath": "output/documentation/1201.md"
+}

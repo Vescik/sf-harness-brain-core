@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 3,
+  "workflow": "knowledge-promotion",
+  "workflowClass": "governed",
+  "generatedAt": "2026-07-10T12:20:00Z",
+  "status": "success",
+  "recordRef": {
+    "recordId": "ADO-example-project-1201",
+    "recordRevision": 14,
+    "recordHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "scopeHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "designHash": "1111111111111111111111111111111111111111111111111111111111111111",
+    "groundingHash": "2222222222222222222222222222222222222222222222222222222222222222",
+    "consumedHandoffId": "HO-EXAMPLE-KNOWLEDGE-IN",
+    "createdHandoffId": "HO-EXAMPLE-KNOWLEDGE-OUT"
+  },
+  "sourceRefs": ["human-review:KREV-EXAMPLE-COMPONENT"],
+  "ruleRefs": ["SAFE-HUMAN-001", "ORG-KNOW-001"],
+  "claimRefs": ["KCLM-EXAMPLE-COMPONENT-OWNERSHIP"],
+  "evidenceRefs": ["KEVD-EXAMPLE-COMPONENT-CONTRACT"],
+  "knowledgeSnapshotAt": "2026-07-10T12:19:00Z",
+  "reconciliation": {
+    "status": "not-required",
+    "mismatches": [],
+    "missingEvidence": []
+  },
+  "completeness": {
+    "status": "complete",
+    "missingEvidence": []
+  },
+  "reviewStatus": "promoted",
+  "assumptions": [],
+  "warnings": [],
+  "filesWritten": [".ai/knowledge/claims/KCLM-EXAMPLE-COMPONENT-OWNERSHIP.yaml"],
+  "verification": ["Validated the immutable human review and promoted claim revision."],
+  "artifactPath": ".ai/knowledge/claims/KCLM-EXAMPLE-COMPONENT-OWNERSHIP.yaml"
+}

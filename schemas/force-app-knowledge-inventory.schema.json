@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:force-app-knowledge-inventory.schema.json",
+  "title": "Sanitized force-app Knowledge inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "repositoryCommit", "sourceRoot",
+    "sourceTreeDigest", "workspaceStatus", "completeness", "coverage", "components", "genericFiles"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "force-app-knowledge-inventory" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sourceRoot": { "const": "force-app" },
+    "sourceTreeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "workspaceStatus": {
+      "type": "object", "additionalProperties": false, "required": ["clean", "changes"],
+      "properties": {
+        "clean": { "type": "boolean" },
+        "changes": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "completeness": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "filesScanned", "recognizedComponents", "genericFiles", "diagnostics"],
+      "properties": {
+        "status": { "enum": ["complete", "partial"] },
+        "filesScanned": { "type": "integer", "minimum": 0 },
+        "recognizedComponents": { "type": "integer", "minimum": 0 },
+        "genericFiles": { "type": "integer", "minimum": 0 },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["severity", "path", "message"],
+            "properties": {
+              "severity": { "const": "error" },
+              "path": { "type": "string", "minLength": 1 },
+              "message": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["id", "metadataType", "name", "path", "sha256", "facts", "references"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "metadataType": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "pattern": "^force-app/" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "line": { "type": "integer", "minimum": 1 },
+          "facts": { "type": "object" },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object", "additionalProperties": false, "required": ["kind", "target"],
+              "properties": {
+                "kind": { "type": "string", "minLength": 1 },
+                "target": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "genericFiles": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["path", "sha256", "category"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^force-app/" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "category": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

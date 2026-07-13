@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "organization": "example-org",
+    "project": "Example Project",
+    "itemId": 1201,
+    "revision": 7,
+    "retrievedAt": "2026-07-10T08:00:00Z"
+  },
+  "completeness": {
+    "status": "complete",
+    "detailLevel": "full",
+    "relationsIncluded": true,
+    "testCasesIncluded": true,
+    "attachments": "metadata",
+    "pagesFetched": 2,
+    "missingRelations": []
+  },
+  "untrustedExternalData": true,
+  "item": {
+    "id": 1201,
+    "type": "User Story",
+    "title": "Sanitized managed-component review",
+    "state": "Active",
+    "parentId": 1100,
+    "childIds": [1202, 1203],
+    "acceptanceCriteria": "Example-only acceptance criterion."
+  }
+}

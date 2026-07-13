@@ -1,0 +1,41 @@
+{
+  "folders": [
+    {
+      "name": "brain-core",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+    "chat.includeApplyingInstructions": true,
+    "chat.includeReferencedInstructions": true,
+    "chat.instructionsFilesLocations": { ".github/instructions": true },
+    "chat.promptFilesLocations": { ".github/prompts": true },
+    "chat.agentFilesLocations": { ".github/agents": true },
+    "chat.useAgentSkills": true,
+    "chat.agentSkillsLocations": { ".github/skills": true },
+    "chat.useAgentsMdFile": true,
+    "chat.hookFilesLocations": { ".github/hooks": true },
+    "chat.useCustomAgentHooks": true,
+    "chat.useCustomizationsInParentRepositories": false,
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/.sfdx": true,
+      "**/.sf": true,
+      ".cache/**": true,
+      "output/**": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "github.copilot",
+      "salesforce.salesforcedx-vscode-expanded",
+      "ms-playwright.playwright",
+      "redhat.vscode-yaml",
+      "redhat.vscode-xml",
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode",
+      "davidanson.vscode-markdownlint"
+    ]
+  }
+}

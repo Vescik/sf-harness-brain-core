@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 3,
+  "workflow": "feature-health",
+  "workflowClass": "cache-read",
+  "generatedAt": "2026-07-10T08:05:00Z",
+  "status": "incomplete",
+  "recordRef": null,
+  "sourceRefs": ["ado:example-org/Example Project/1201"],
+  "ruleRefs": ["SAFE-EVID-001"],
+  "claimRefs": [],
+  "evidenceRefs": [],
+  "knowledgeSnapshotAt": null,
+  "reconciliation": {
+    "status": "incomplete",
+    "mismatches": [],
+    "missingEvidence": ["child:1203"]
+  },
+  "completeness": {
+    "status": "partial",
+    "missingEvidence": ["child:1203"]
+  },
+  "reviewStatus": "draft",
+  "assumptions": [],
+  "warnings": ["Child 1203 was not fetched; a Safe verdict is prohibited."],
+  "filesWritten": [],
+  "verification": ["Schema validation only; no external system contacted."],
+  "artifactPath": null
+}

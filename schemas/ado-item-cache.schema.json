@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:ado-item-cache.schema.json",
+  "title": "Sanitized Azure DevOps work-item cache",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "source", "completeness", "untrustedExternalData", "item"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organization", "project", "itemId", "revision", "retrievedAt"],
+      "properties": {
+        "organization": { "type": "string", "minLength": 1 },
+        "project": { "type": "string", "minLength": 1 },
+        "itemId": { "type": "integer", "minimum": 1 },
+        "revision": { "type": "integer", "minimum": 1 },
+        "retrievedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "detailLevel", "relationsIncluded", "testCasesIncluded", "attachments", "pagesFetched", "missingRelations"],
+      "properties": {
+        "status": { "enum": ["complete", "partial"] },
+        "detailLevel": { "enum": ["summary", "full"] },
+        "relationsIncluded": { "type": "boolean" },
+        "testCasesIncluded": { "type": "boolean" },
+        "attachments": { "enum": ["none", "metadata", "content"] },
+        "pagesFetched": { "type": "integer", "minimum": 1 },
+        "missingRelations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "untrustedExternalData": { "const": true },
+    "item": {
+      "type": "object",
+      "required": ["id", "type", "title", "state"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "title": { "type": "string" },
+        "state": { "type": "string" },
+        "parentId": { "type": ["integer", "null"], "minimum": 1 },
+        "childIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 1 }
+        },
+        "acceptanceCriteria": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "completeness": {
+            "properties": { "status": { "const": "complete" } },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "completeness": {
+            "properties": { "missingRelations": { "maxItems": 0 } }
+          }
+        }
+      }
+    }
+  ]
+}

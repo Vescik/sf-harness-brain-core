@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:knowledge-evidence.schema.json",
+  "title": "Immutable sanitized Knowledge evidence receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "evidenceId", "sourceType", "sourceLocator", "independenceKey", "authorityFor",
+    "environment", "orgKey", "packageNamespace", "packageKey", "packageVersion", "repositoryCommit",
+    "observedAt", "retrievedAt", "sourceRevision", "collector",
+    "completeness", "sensitivity", "sanitization", "contentDigest", "summary"
+  ],
+  "$defs": {
+    "claimType": {
+      "enum": [
+        "object-existence", "object-ownership", "field-schema", "object-relation",
+        "automation-inventory", "package-installation", "package-limitation",
+        "reference-data", "runtime-behavior", "business-meaning", "business-process",
+        "integration", "glossary"
+      ]
+    }
+  },
+  "properties": {
+    "schemaVersion": { "const": 3 },
+    "evidenceId": { "type": "string", "pattern": "^KEVD-[A-Z0-9][A-Z0-9-]{2,79}$" },
+    "sourceType": {
+      "enum": [
+        "org-describe", "org-tooling-enumeration", "org-soql-sample",
+        "metadata-repository", "installed-package-record", "vendor-documentation",
+        "vendor-support-case", "salesforce-documentation", "ado-approved-artifact",
+        "human-sme-attestation", "controlled-sandbox-test"
+      ]
+    },
+    "sourceLocator": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "independenceKey": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "authorityFor": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": { "$ref": "#/$defs/claimType" }
+    },
+    "environment": { "enum": ["development", "qa", "uat", "not-applicable"] },
+    "orgKey": { "type": ["string", "null"], "minLength": 1 },
+    "packageNamespace": { "type": ["string", "null"], "pattern": "^[A-Za-z][A-Za-z0-9_]{0,14}$" },
+    "packageKey": { "type": ["string", "null"], "minLength": 1 },
+    "packageVersion": { "type": ["string", "null"], "minLength": 1 },
+    "repositoryCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "retrievedAt": { "type": "string", "format": "date-time" },
+    "sourceRevision": { "type": ["string", "null"], "minLength": 1 },
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "version"],
+      "properties": {
+        "kind": { "enum": ["tool", "human"] },
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "enumerationComplete", "permissionsProven", "pagesFetched", "missingSegments"],
+      "properties": {
+        "status": { "enum": ["complete", "partial"] },
+        "enumerationComplete": { "type": "boolean" },
+        "permissionsProven": { "type": "boolean" },
+        "pagesFetched": { "type": "integer", "minimum": 1 },
+        "missingSegments": {
+          "type": "array", "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "sensitivity": { "enum": ["public", "internal-sanitized"] },
+    "sanitization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rawDataCommitted", "redactions"],
+      "properties": {
+        "rawDataCommitted": { "const": false },
+        "redactions": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "contentDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "completeness": {
+            "properties": { "status": { "const": "complete" } },
+            "required": ["status"]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "completeness": {
+            "properties": { "missingSegments": { "maxItems": 0 } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "sourceType": {
+            "enum": ["org-describe", "org-tooling-enumeration", "org-soql-sample", "installed-package-record", "controlled-sandbox-test"]
+          }
+        },
+        "required": ["sourceType"]
+      },
+      "then": {
+        "properties": {
+          "environment": { "enum": ["development", "qa", "uat"] },
+          "orgKey": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "sourceType": { "const": "metadata-repository" } },
+        "required": ["sourceType"]
+      },
+      "then": {
+        "properties": {
+          "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "sourceRevision": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "sourceType": { "const": "installed-package-record" } },
+        "required": ["sourceType"]
+      },
+      "then": {
+        "properties": {
+          "packageNamespace": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,14}$" },
+          "packageVersion": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  ]
+}

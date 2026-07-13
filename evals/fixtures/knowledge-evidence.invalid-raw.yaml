@@ -1,0 +1,28 @@
+schemaVersion: 3
+evidenceId: KEVD-EXAMPLEMANAGEDOBJECT-RAW-INVALID
+sourceType: org-describe
+sourceLocator: synthetic://qa/describe/examplepkg__ExampleManagedObject__c
+independenceKey: synthetic-salesforce-org:qa:describe
+authorityFor: [object-existence]
+environment: qa
+orgKey: synthetic-qa
+packageNamespace: examplepkg
+packageKey: synthetic-example-package
+packageVersion: "1.0.0"
+repositoryCommit: null
+observedAt: "2026-07-09T10:00:00Z"
+retrievedAt: "2026-07-09T10:01:00Z"
+sourceRevision: synthetic-revision-1
+collector: {kind: tool, name: synthetic-fixture-collector, version: "1.0"}
+completeness:
+  status: complete
+  enumerationComplete: true
+  permissionsProven: true
+  pagesFetched: 1
+  missingSegments: []
+sensitivity: internal-sanitized
+sanitization:
+  rawDataCommitted: true
+  redactions: []
+contentDigest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+summary: Synthetic invalid fixture that attempts to commit raw data.

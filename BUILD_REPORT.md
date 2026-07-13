@@ -1,4 +1,9 @@
-# Build Report — brain-core harness
+# Build Report — original brain-core build (historical)
+
+> Historical status: records the original scaffold before the operational hardening work. Current
+> repository and implementation state lives in `IMPLEMENTATION_HANDOFF.md`. Historical ignore and
+> colocation discussion does not apply to the current topology: root `force-app/` and `manifest/`
+> are versioned parts of the one `brain-core` repository/SFDX root.
 
 Build completed 2026-07-09 against `HARNESS_BLUEPRINT.md` (binding, R1) with
 `HARNESS_DIAGRAMS.md` as companion-only. This report is a build artifact, not part of the
@@ -36,11 +41,10 @@ harness — it exists per contract rule R2 (record, don't silently improve).
    omits the new-quirk-suggestion branch (step 4). Step text governs; both built per text.
 4. **`.ai/qa/test-cases/README.md` is not in the section-5 tree.** Added under explicit batch-2
    instruction to document the `<suiteId>-<name>.md` naming convention. Authorized addition.
-5. **Invoice__c risk register kept verbatim in Polish** inside
-   `managed-package-constraints.instructions.md` — a deliberate R7 tension: the batch
-   instruction required the block verbatim with `<TU_WSTAW>` fields intact, and the placeholder
-   text must stay greppable against blueprint section 16. Translate the labels later if
-   preferred; content-neutral change.
+5. **Historical object example was synthetic.** The original object-specific block was a dummy
+   package example, not an organization fact. Runtime policy must remain package-agnostic and any
+   example retained in history or fixtures must use `ExampleManagedObject__c` and be labelled
+   synthetic.
 6. **Agent `tools:` values are not prescribed by the blueprint** (section 6 lists the fields,
    section 10 only implies read/write boundaries). Conservative, boundary-shaped tool sets
    supplied (Reviewer: no edit/run tools; Investigator: editFiles scoped to Knowledge writes),
@@ -91,15 +95,13 @@ breaks/degrades while empty.
 
 **High (always-active safety rules are incomplete):**
 
-2. `<TU_WSTAW_PELNA_LISTA_OBIEKTOW_WYSOKIEGO_RYZYKA>` —
-   `.github/instructions/managed-package-constraints.instructions.md` — no always-active
-   warning exists for any high-risk package object other than Invoice__c; conflicts surface
-   only after the damage or via ad-hoc discovery.
-3. `<TU_WSTAW>` (Invoice on-update Flow condition) — same file — any proposed on-update Flow
-   on Invoice__c must be escalated instead of approved, since the safe-condition is unknown.
-4. `<TU_WSTAW: dokumentacja vendora / ustalone doswiadczalnie / wsparcie vendora>` (rule
-   source) — same file — the Invoice rule cannot be re-verified after a package upgrade;
-   upgrades may silently invalidate it.
+2. Package/component ownership and risk registry —
+   `.github/instructions/rule-registry.yaml` — no package-specific mutation may be marked safe
+   until the real component, version, owner, source, and review date are registered.
+3. Supported extension-point evidence — the generic package rules require authoritative,
+   version-scoped evidence rather than a hard-coded object example.
+4. Package rule sources — vendor documentation, approved observations, or support decisions must
+   be linked to every package-specific rule and revalidated after relevant upgrades.
 
 **Medium (a phase or agent degrades):**
 

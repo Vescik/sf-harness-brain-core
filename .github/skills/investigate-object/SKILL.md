@@ -1,45 +1,51 @@
 ---
 name: investigate-object
-description: Generalized procedure for investigating an unknown system element — a real custom object with fields, or a lookup-to-reference-data pattern. Checks Knowledge first, investigates read-safely on the sandbox, and records the finding in the Knowledge layer.
+description: Collect bounded, sanitized, reconciled evidence for a scoped Salesforce component or package claim and create a proposed Knowledge claim. Use for missing, stale, contested, or drift-sensitive facts; never self-verify a claim.
+user-invocable: false
 ---
 
-# Skill: investigate-object
+# Investigate a Salesforce component claim
 
-Used by the Solution Designer and the Development Assistant **through the Config
-Investigator** — one consistent procedure instead of duplicated logic across agent files
-(blueprint sections 3 and 11).
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
+[source authority contract](../../../.ai/contracts/source-authority.md), and
+[Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md). Run
+`scripts/preflight.py --capability salesforce-review`.
 
-Covers **both** patterns of this org's hybrid data model:
+## Input
 
-- **Real object with fields** (e.g. `Invoice__c`): describe the schema, check relations, test
-  on the sandbox.
-- **Lookup-to-reference-data pattern**: the "picklist-looking" field is a lookup to runtime
-  records on a Reference Data object — inspect the reference records themselves, their meaning
-  and dependencies.
+Require `recordId`, exact claim question/type, normalized package/component subject, environment,
+criticality, minimum evidence policy, and why current Knowledge/repository evidence is insufficient.
+Reject a generic “inspect the org,” unspecified target, arbitrary query, record dump, or component
+outside the configured review allowlist.
 
 ## Procedure
 
-1. **Check whether we already know.** Read `.ai/knowledge/README.md` first (the navigational
-   index), then the relevant domain file(s). If the fact is already recorded, use it — do not
-   re-investigate.
-2. **Describe.** For a real object: describe the schema (fields, relations). For the
-   reference-data pattern: describe/query the reference records, what each means, what depends
-   on them.
-3. **Controlled sandbox test — only if the risk is acceptable.** This is a shared Full Copy
-   Sandbox: follow the shared-sandbox rules in
-   `.github/instructions/organization-principles.instructions.md`. If the risk is NOT
-   acceptable, skip to step 5.
-4. **Record the finding** using the format in `.ai/templates/knowledge-entry.md` — always with
-   a confidence level and how it was established. **Optionally add the "Keywords" field** with
-   terms from `.ai/knowledge/keyword-taxonomy.md` if the object matches an existing term; if no
-   term fits, omit the field — never invent a term, never block the write on this. If the
-   target Knowledge file is not obvious, route the finding through the `update-knowledge-base`
-   skill instead of guessing or duplicating.
-5. **If ambiguous — ask a human instead of guessing.** An unresolved question is recorded as
-   "to be verified", not silently resolved.
+1. Validate the work record and read relevant verified Knowledge plus metadata-repository state.
+2. Classify the source authority required. A package guarantee needs a vendor source; business
+   meaning needs reviewed human evidence; live deployed configuration may use org observation.
+3. Define the smallest factual proposition. For a negative claim, require completeness, permission,
+   pagination, and freshness proof before absence is eligible.
+4. Call `review_org_identity` first. Stop unless it is `VERIFIED` for the exact configured sandbox.
+5. Call only the necessary guarded review tool:
+   - `review_installed_packages` for package identity/version;
+   - `review_object_contract` for an allowlisted object's accessible existence/field contract.
+6. Treat MCP/CLI agreement as transport corroboration. On `MISMATCH`, `INCOMPLETE`, truncation,
+   schema drift, sensitive-output detection, or scope mismatch, return unresolved and do not promote.
+7. Create immutable sanitized evidence and one `proposed` claim through the governed Knowledge
+   command. Record limitations, repository drift, package version, and missing authority.
+8. Append evidence references to the work record. Human review is a separate operation.
 
-Also consult `.ai/knowledge/known-limitations.md` when the investigated element belongs to the
-managed package — a discovered limitation found there may already answer the question.
+## Prohibitions
 
-Read-only stance: this skill establishes facts. It never modifies org configuration beyond the
-controlled test in step 3, and never touches anything outside the dev sandbox.
+- Never invoke or suggest direct `sf`/`sfdx`, arbitrary SOQL/SOSL, an alias, a directory, a Tooling
+  flag, broad record retrieval, or an unguarded Salesforce MCP tool.
+- Never infer inaccessible package internals or treat no returned row/component as proof of absence.
+- Never return or persist credentials, usernames, raw org/package/record IDs, URLs, raw vendor
+  payloads, labels/help text, picklist values, or unnecessary business data.
+- Never call a proposed observation `confirmed` or `verified`.
+
+## Return
+
+Return `EVIDENCE COLLECTED`, `INFERRED`, or `UNRESOLVED`; `recordId`; `claimId`; `evidenceId`
+values; exact scope; source/reconciliation status; repository drift; limitations; missing authority;
+and required human review. No mutation of Salesforce is permitted.
