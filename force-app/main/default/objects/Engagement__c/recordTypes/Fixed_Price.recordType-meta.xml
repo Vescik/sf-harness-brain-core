@@ -1,8 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Fixed_Price</fullName>
     <active>true</active>
-    <description>Fixed-price engagement billed on milestone completion.</description>
+    <description
+  >Fixed-price engagement billed on milestone completion.</description>
     <label>Fixed Price</label>
     <picklistValues>
         <picklist>Status__c</picklist>

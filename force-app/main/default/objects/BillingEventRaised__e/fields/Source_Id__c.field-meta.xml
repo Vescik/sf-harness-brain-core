@@ -1,7 +1,8 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Source_Id__c</fullName>
-    <description>Id of the source record (e.g. milestone) that raised the event.</description>
+    <description
+  >Id of the source record (e.g. milestone) that raised the event.</description>
     <externalId>false</externalId>
     <isFilteringDisabled>false</isFilteringDisabled>
     <isNameField>false</isNameField>

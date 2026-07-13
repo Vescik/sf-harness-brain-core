@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
     <actionOverrides>
         <actionName>Accept</actionName>
@@ -143,7 +143,8 @@
     <allowInChatterGroups>false</allowInChatterGroups>
     <compactLayoutAssignment>SYSTEM</compactLayoutAssignment>
     <deploymentStatus>Deployed</deploymentStatus>
-    <description>A client invoice with a lifecycle from Draft to Paid. Standard and Credit Note record types.</description>
+    <description
+  >A client invoice with a lifecycle from Draft to Paid. Standard and Credit Note record types.</description>
     <enableActivities>true</enableActivities>
     <enableBulkApi>true</enableBulkApi>
     <enableFeeds>false</enableFeeds>
@@ -163,7 +164,7 @@
     </nameField>
     <pluralLabel>Invoices</pluralLabel>
     <recordTypeTrackHistory>false</recordTypeTrackHistory>
-    <searchLayouts></searchLayouts>
+    <searchLayouts />
     <sharingModel>Private</sharingModel>
     <visibility>Public</visibility>
 </CustomObject>

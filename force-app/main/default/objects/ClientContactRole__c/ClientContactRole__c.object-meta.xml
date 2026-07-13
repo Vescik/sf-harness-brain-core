@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
     <actionOverrides>
         <actionName>Accept</actionName>
@@ -143,7 +143,8 @@
     <allowInChatterGroups>false</allowInChatterGroups>
     <compactLayoutAssignment>SYSTEM</compactLayoutAssignment>
     <deploymentStatus>Deployed</deploymentStatus>
-    <description>Junction associating a Contact with a Client Profile in a named role. Master-detail child of Client Profile.</description>
+    <description
+  >Junction associating a Contact with a Client Profile in a named role. Master-detail child of Client Profile.</description>
     <enableActivities>false</enableActivities>
     <enableBulkApi>true</enableBulkApi>
     <enableFeeds>false</enableFeeds>
@@ -161,7 +162,7 @@
         <type>AutoNumber</type>
     </nameField>
     <pluralLabel>Client Contact Roles</pluralLabel>
-    <searchLayouts></searchLayouts>
+    <searchLayouts />
     <sharingModel>ControlledByParent</sharingModel>
     <visibility>Public</visibility>
 </CustomObject>

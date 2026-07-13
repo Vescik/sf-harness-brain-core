@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
     <actionOverrides>
         <actionName>Accept</actionName>
@@ -143,7 +143,8 @@
     <allowInChatterGroups>false</allowInChatterGroups>
     <compactLayoutAssignment>SYSTEM</compactLayoutAssignment>
     <deploymentStatus>Deployed</deploymentStatus>
-    <description>A materialized billable item awaiting invoicing. Created from BillingEventRaised__e platform events.</description>
+    <description
+  >A materialized billable item awaiting invoicing. Created from BillingEventRaised__e platform events.</description>
     <enableActivities>false</enableActivities>
     <enableBulkApi>true</enableBulkApi>
     <enableFeeds>false</enableFeeds>
@@ -161,7 +162,7 @@
         <type>AutoNumber</type>
     </nameField>
     <pluralLabel>Billing Events</pluralLabel>
-    <searchLayouts></searchLayouts>
+    <searchLayouts />
     <sharingModel>Private</sharingModel>
     <visibility>Public</visibility>
 </CustomObject>
