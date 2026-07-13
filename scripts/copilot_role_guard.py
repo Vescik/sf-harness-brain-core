@@ -17,6 +17,7 @@ from typing import Any, Iterable
 ALLOWED_PREFIXES = {
     "solution-designer": (
         ".cache/ado-items/",
+        "output/solution-design/",
     ),
     "config-investigator": (
         ".cache/knowledge-proposals/",

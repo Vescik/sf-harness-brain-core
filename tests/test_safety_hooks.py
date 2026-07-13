@@ -390,6 +390,30 @@ class RoleGuardTests(unittest.TestCase):
         self.assertEqual(hook_decision(allowed), "continue")
         self.assertEqual(hook_decision(denied), "deny")
 
+    def test_designer_can_write_solution_design_drafts(self) -> None:
+        allowed = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "edit/editFiles",
+                "tool_input": {"path": "output/solution-design/12345-design.md"},
+            },
+            "--role",
+            "solution-designer",
+        )
+        self.assertEqual(hook_decision(allowed), "continue")
+        denied = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "edit/editFiles",
+                "tool_input": {"path": "output/handover/x.md"},
+            },
+            "--role",
+            "solution-designer",
+        )
+        self.assertEqual(hook_decision(denied), "deny")
+
     def test_designer_cannot_edit_metadata(self) -> None:
         output = run_hook(
             "copilot_role_guard.py",

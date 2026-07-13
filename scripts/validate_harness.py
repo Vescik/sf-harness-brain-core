@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 5, "prompts": 10, "skills": 14, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 5, "prompts": 11, "skills": 15, "instructions": 3}
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",
@@ -337,7 +337,7 @@ def check_customizations(audit: Audit) -> None:
             public_skill_names.append(data["name"])
 
     public_commands = prompt_names + public_skill_names
-    audit.require(len(public_commands) == 10, f"expected 10 public slash commands, found {len(public_commands)}")
+    audit.require(len(public_commands) == 11, f"expected 11 public slash commands, found {len(public_commands)}")
     audit.require(len(public_commands) == len(set(public_commands)), "public slash-command names collide")
 
     for path in instruction_paths:
@@ -879,7 +879,7 @@ def main() -> int:
             print(f"- {message}")
         return 1
     print(f"PASS: harness validation ({audit.checks} checks)")
-    print("Inventory: 5 agents, 10 prompts, 14 internal skills, 3 scoped instruction files")
+    print("Inventory: 5 agents, 11 prompts, 15 internal skills, 3 scoped instruction files")
     print("Contracts: workspace, MCP, hooks, schemas, fixtures, and governance are coherent")
     return 0
 
