@@ -22,7 +22,7 @@
     "@salesforce/mcp": "0.30.15"
   },
   "devDependencies": {
-    "@emnapi/core": "1.11.1",
+    "@emnapi/core": "1.11.2",
     "@emnapi/runtime": "1.11.1",
     "@eslint/js": "^9.29.0",
     "@lwc/eslint-plugin-lwc": "^3.1.0",
