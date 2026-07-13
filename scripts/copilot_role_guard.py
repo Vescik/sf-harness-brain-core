@@ -185,12 +185,22 @@ def response(decision: str | None = None, reason: str | None = None) -> dict[str
 
 def is_edit_tool(tool_name: str) -> bool:
     lowered = tool_name.lower()
-    return any(token in lowered for token in ("edit", "createfile", "replace", "insert"))
+    # "create_file"/"apply_patch"/"write" are VS Code's snake_case editor tools; the earlier
+    # camelCase-only tokens ("createfile") missed them, letting edits bypass role path boundaries.
+    return any(
+        token in lowered
+        for token in ("edit", "createfile", "create_file", "replace", "insert", "patch", "write")
+    )
 
 
 def is_execute_tool(tool_name: str) -> bool:
     lowered = tool_name.lower()
-    return any(token in lowered for token in ("execute", "terminal", "runinterminal"))
+    # runTask/run_task and runCommands/run_commands can spawn shell; they must obey the same
+    # command allowlist as the terminal tools.
+    return any(
+        token in lowered
+        for token in ("execute", "terminal", "runinterminal", "run_in_terminal", "runtask", "run_task", "runcommands", "run_commands")
+    )
 
 
 def terminal_command(tool_input: Any) -> str:
