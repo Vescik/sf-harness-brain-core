@@ -9,6 +9,7 @@ import os
 import re
 import shlex
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -171,9 +172,34 @@ def salesforce_read_command_allowed(parts: list[str], role: str) -> bool:
     return seen_org
 
 
+# Set by main() so denial logging can name the tool/role without threading them everywhere.
+_EVENT_CONTEXT = {"tool": "", "role": ""}
+
+
+def _log_decision(decision: str, reason: str | None) -> None:
+    """Append deny/ask decisions to an ignored local log; never raises (see safety hook twin)."""
+
+    try:
+        log_dir = HARNESS_ROOT / ".cache"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "hook": "copilot_role_guard",
+            "role": _EVENT_CONTEXT["role"],
+            "tool": _EVENT_CONTEXT["tool"],
+            "decision": decision,
+            "reason": reason or "",
+        }
+        with (log_dir / "denials.log").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
+
+
 def response(decision: str | None = None, reason: str | None = None) -> dict[str, Any]:
     if decision is None:
         return {"continue": True}
+    _log_decision(decision, reason)
     output: dict[str, Any] = {
         "hookEventName": "PreToolUse",
         "permissionDecision": decision,
@@ -516,6 +542,8 @@ def main() -> int:
         return 0
 
     tool_name = str(event.get("tool_name", ""))
+    _EVENT_CONTEXT["tool"] = tool_name
+    _EVENT_CONTEXT["role"] = args.role
     root = HARNESS_ROOT
     event_root = Path(event.get("cwd") or os.getcwd()).resolve()
     if is_execute_tool(tool_name):

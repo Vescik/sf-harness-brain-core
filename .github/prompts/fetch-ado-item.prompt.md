@@ -12,5 +12,7 @@ unknown option or invalid enum before using a tool. If `itemId` is missing, ask 
 `#tool:vscode/askQuestions`; never guess.
 
 Fetch the context, disclose cache freshness/completeness, then continue the Solution Designer
-procedure. Create or validate the deterministic per-item work record and return its `recordId`.
+procedure. Fetching context is a read and does not require a work record: only when the caller
+provided `recordId` (or explicitly asks to open governed work) create or validate the deterministic
+work record and return its `recordId`; otherwise return the normalized context directly.
 Do not merely print raw ADO content and stop; ADO intent is not implementation evidence.

@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -177,9 +178,37 @@ def has_recursive_force_rm(text: str) -> bool:
     return False
 
 
+# Set by main() so denial logging can name the tool without threading it through every call.
+_EVENT_TOOL_NAME = ""
+
+
+def _log_decision(decision: str, reason: str | None) -> None:
+    """Append deny/ask decisions to an ignored local log so blocked agents are diagnosable.
+
+    VS Code shows the reason only transiently (if at all); without a durable trail the user
+    cannot tell which hook denied what. Never raises — observability must not break enforcement.
+    """
+
+    try:
+        log_dir = HARNESS_ROOT / ".cache"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "hook": "copilot_safety_hook",
+            "tool": _EVENT_TOOL_NAME,
+            "decision": decision,
+            "reason": reason or "",
+        }
+        with (log_dir / "denials.log").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
+
+
 def hook_response(decision: str | None = None, reason: str | None = None) -> dict[str, Any]:
     if decision is None:
         return {"continue": True}
+    _log_decision(decision, reason)
     output: dict[str, Any] = {
         "hookEventName": "PreToolUse",
         "permissionDecision": decision,
@@ -515,6 +544,8 @@ def main() -> int:
         return 0
 
     tool_name = str(event.get("tool_name", ""))
+    global _EVENT_TOOL_NAME
+    _EVENT_TOOL_NAME = tool_name
     lowered_name = tool_name.lower()
     # Unqualified tool token, so a bare `core_list_orgs` is classified the same as `ado-readonly/core_list_orgs`.
     bare_tool = tool_name.rsplit("/", 1)[-1].lower()

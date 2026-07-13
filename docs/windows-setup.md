@@ -152,6 +152,14 @@ longer be blocked, and the read facade should return results.
 
 ## Troubleshooting — the exact errors and their fixes
 
+**First stop for any "Blocked by Pre-Tool Use hook": read `.cache\denials.log`.** Both hooks append
+every deny/ask there as one JSON line with timestamp, which hook fired, the role, the tool, and the
+exact reason — so you no longer have to guess which guard blocked what:
+
+```powershell
+Get-Content .cache\denials.log -Tail 20
+```
+
 | Symptom | Cause | Fix |
 |---|---|---|
 | `Blocked by Pre-Tool Use hook` on ADO calls | `ADO_ORGANIZATION` env var unset or ≠ `ado.organization` | Step 4: set the env var to the exact slug, **fully restart** VS Code |
