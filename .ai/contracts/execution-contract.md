@@ -33,6 +33,12 @@ The role guard only permits the harness's own Python scripts, and only when invo
 - Run from the repository root. Only `preflight.py`, `work_record.py`, `knowledge_registry.py`,
   `force_app_knowledge.py`, `salesforce_read.py`, and `playwright_guard.py` are permitted, each with
   its allowlisted subcommands.
+- **Read-only orientation is allowed for every role**: `git status|diff|log|show|blame|rev-parse|
+  ls-files|grep`, listing/reading (`ls`, `dir`, `cat`, `type`, `head`, `tail`, `wc`, `grep`,
+  `findstr`, `find`, `where`, `which`, and the PowerShell read cmdlets). Command chaining,
+  redirection, substitution, output flags (`--output`, `find -delete/-exec`), branch creation,
+  and every mutating command remain denied — orient freely, mutate only through the guarded
+  scripts.
 
 ## Claims and Knowledge
 

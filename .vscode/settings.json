@@ -48,6 +48,14 @@
       "approve": true,
       "matchCommandLine": true
     },
+    "/^git\\s+(status|diff|log|show|blame|describe|shortlog|rev-parse|ls-files|grep)(\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^(ls|pwd|cat|head|tail|wc|grep|findstr|where|which|dir|type|Get-ChildItem|Get-Content|Get-Location|Select-String|Test-Path)(\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
     "/scripts[\\\\/]work_record\\.py\\s+approve\\b/": {
       "approve": false,
       "matchCommandLine": true

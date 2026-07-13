@@ -376,6 +376,57 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
     return False
 
 
+# Read-only orientation commands available to every role. Rationale: a default-deny terminal
+# that blocks `git status`/`ls`/`grep` doesn't make the harness safer — it paralyzes the agent
+# into thrashing (documented incidents), while the genuinely dangerous operations (sf, deploys,
+# rm, redirects, chaining) are blocked elsewhere. The metacharacter gate in allowed_role_command
+# already rejects ; & | < > ` $ and newlines, so none of these can chain, redirect, or substitute.
+SIMPLE_READ_COMMANDS = frozenset({
+    "ls", "dir", "pwd", "cat", "type", "head", "tail", "wc", "where", "which",
+    "grep", "findstr", "rg", "tree", "find",
+    # PowerShell read cmdlets (Windows default shell)
+    "get-childitem", "get-content", "get-location", "get-item", "select-string", "test-path",
+})
+GIT_READ_SUBCOMMANDS = frozenset({
+    "status", "diff", "log", "show", "blame", "describe", "shortlog",
+    "rev-parse", "ls-files", "grep", "branch", "remote",
+})
+GIT_BRANCH_LIST_FLAGS = frozenset({"-a", "--all", "-v", "-vv", "-l", "--list", "-r", "--remotes"})
+# Flags that turn a read command into a write/exec primitive.
+FIND_FORBIDDEN_TOKENS = frozenset({"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fls"})
+
+
+def read_only_orientation_command(parts: list[str]) -> bool:
+    """Return whether argv is a non-mutating orientation command safe for every role."""
+
+    executable = Path(parts[0]).name.lower().removesuffix(".exe")
+    if executable in SIMPLE_READ_COMMANDS:
+        rest = parts[1:]
+        if executable == "find" and any(
+            token in FIND_FORBIDDEN_TOKENS or token.startswith("-fprint") for token in rest
+        ):
+            return False
+        if executable == "tree" and "-o" in rest:
+            return False
+        if executable == "rg" and any(token == "--pre" or token.startswith("--pre=") for token in rest):
+            return False
+        return True
+    if executable == "git" and len(parts) >= 2:
+        subcommand = parts[1].lower()
+        if subcommand not in GIT_READ_SUBCOMMANDS:
+            return False
+        rest = parts[2:]
+        if any(token.startswith("--output") for token in rest):
+            return False
+        if subcommand == "branch":
+            # Listing only: any non-flag argument would create a branch; -d/-D would delete one.
+            return all(token in GIT_BRANCH_LIST_FLAGS for token in rest)
+        if subcommand == "remote":
+            return rest in ([], ["-v"])
+        return True
+    return False
+
+
 def allowed_role_command(command: str, root: Path, role: str) -> bool:
     if not command or re.search(r"[;&|`$<>\n\r]", command):
         return False
@@ -388,6 +439,8 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         return False
     if not parts:
         return False
+    if read_only_orientation_command(parts):
+        return True
     executable = Path(parts[0]).name.lower()
     if executable not in {"python", "python3", "py", "python.exe", "python3.exe", "py.exe"}:
         return False

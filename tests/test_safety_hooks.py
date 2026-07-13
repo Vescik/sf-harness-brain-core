@@ -390,6 +390,56 @@ class RoleGuardTests(unittest.TestCase):
         self.assertEqual(hook_decision(allowed), "continue")
         self.assertEqual(hook_decision(denied), "deny")
 
+    def test_read_only_orientation_commands_are_allowed_for_every_role(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        root = ROOT
+        allowed = (
+            "git status",
+            "git diff --stat force-app",
+            "git log --oneline -5",
+            "git ls-files force-app",
+            "git branch -a",
+            "git remote -v",
+            "ls -la force-app",
+            "cat README.md",
+            "grep -rn Account force-app",
+            "find force-app -name *.xml",
+            "Get-Content README.md",
+            "Get-ChildItem force-app",
+        )
+        for role in ("solution-designer", "config-investigator", "guardrail-reviewer"):
+            for command in allowed:
+                with self.subTest(role=role, command=command):
+                    self.assertTrue(role_guard.allowed_role_command(command, root, role))
+
+    def test_mutating_and_exec_capable_commands_remain_denied(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        root = ROOT
+        denied = (
+            "git push origin main",
+            "git commit -m x",
+            "git checkout -b new-branch",
+            "git reset --hard",
+            "git branch new-branch",       # creation, not listing
+            "git branch -D main",          # deletion
+            "git remote add origin http://x",
+            "git log --output=stolen.txt", # write-capable flag
+            "find . -delete",
+            "find . -exec rm {} +",
+            "tree -o out.txt",
+            "rg --pre sh pattern",
+            "sed -i s/a/b/ file.md",
+            "curl https://example.com",
+            "python -c import os",
+            "sf org list",
+            "cat README.md; rm -rf /",     # chaining still blocked by metachar gate
+        )
+        for command in denied:
+            with self.subTest(command=command):
+                self.assertFalse(role_guard.allowed_role_command(command, root, "solution-designer"))
+
     def test_designer_can_write_solution_design_drafts(self) -> None:
         allowed = run_hook(
             "copilot_role_guard.py",
