@@ -7,7 +7,7 @@ user-invocable: false
 # Generate release handover
 
 Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md) and run
-`scripts/preflight.py --capability release` plus `--capability ado`.
+`python scripts/preflight.py --capability release` plus `--capability ado`.
 
 ## Inputs and fail-fast gate
 

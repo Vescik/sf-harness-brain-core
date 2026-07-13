@@ -14,11 +14,8 @@ Apply the [shared execution contract](../../../.ai/contracts/execution-contract.
 
 1. Require the `config-investigator` role. Resolve `brain-core` as the only workspace and SFDX
    root; never accept another root or source path.
-2. Run the preflight with the workspace virtual-environment interpreter, using forward slashes on
-   every OS — Windows `.venv/Scripts/python.exe scripts/preflight.py --capability metadata`,
-   macOS/Linux `.venv/bin/python scripts/preflight.py --capability metadata`.
-3. Run the inventory the same way — Windows `.venv/Scripts/python.exe scripts/force_app_knowledge.py inventory`,
-   macOS/Linux `.venv/bin/python scripts/force_app_knowledge.py inventory`.
+2. Run `python scripts/preflight.py --capability metadata`.
+3. Run `python scripts/force_app_knowledge.py inventory`.
 4. Read `.cache/knowledge-proposals/force-app-inventory.json` and report:
    - repository commit and source-tree digest;
    - clean/dirty source state;

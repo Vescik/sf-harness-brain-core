@@ -7,7 +7,7 @@ user-invocable: false
 # Check Feature coverage
 
 Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md) and run
-`scripts/preflight.py --capability ado`.
+`python scripts/preflight.py --capability ado`.
 
 ## Input and source gate
 

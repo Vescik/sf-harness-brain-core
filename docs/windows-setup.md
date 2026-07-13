@@ -53,6 +53,11 @@ python -m venv .venv
 npm ci --ignore-scripts
 ```
 
+**Then select the `.venv` interpreter** (required): Command Palette → **Python: Select Interpreter**
+→ choose `.venv`. The agents run guarded scripts as `python scripts/<name>.py …`, and VS Code's
+integrated terminal only resolves `python` to the venv (with `jsonschema`/`PyYAML`) after you select
+it. Without this, commands fail with `ModuleNotFoundError: No module named 'jsonschema'`.
+
 ## Step 4 — ⭐ Fix the MCP block: set `ADO_ORGANIZATION` (this is the fix)
 
 Putting the org in `config\harness.local.json` is **necessary but not sufficient**. The ADO MCP URL

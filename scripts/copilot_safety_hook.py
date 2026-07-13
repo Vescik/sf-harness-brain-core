@@ -317,8 +317,13 @@ def is_terminal_tool(tool_name: str) -> bool:
     """Return whether a Copilot tool name represents terminal/shell execution."""
 
     lowered = tool_name.lower()
+    # Match real shell/task/command execution tokens. "terminal" covers run_in_terminal /
+    # execute/runInTerminal / get_terminal_output; runtask/runcommands are VS Code runners that can
+    # spawn shell. A bare "run" substring wrongly matched MCP tools like run_soql_query / run_tests,
+    # so it is excluded in favor of these specific tokens.
     return any(
-        token in lowered for token in ("terminal", "execute", "shell", "command", "run")
+        token in lowered
+        for token in ("terminal", "execute", "shell", "runtask", "run_task", "runcommands", "run_commands")
     )
 
 

@@ -9,7 +9,7 @@ user-invocable: false
 Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
 [source authority contract](../../../.ai/contracts/source-authority.md), and
 [Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md). Run
-`scripts/preflight.py --capability salesforce-review`.
+`python scripts/preflight.py --capability salesforce-review`.
 
 ## Input
 

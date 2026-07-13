@@ -342,8 +342,11 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
 def allowed_role_command(command: str, root: Path, role: str) -> bool:
     if not command or re.search(r"[;&|`$<>\n\r]", command):
         return False
+    # Normalize Windows path separators before POSIX shlex, which otherwise treats "\" as an
+    # escape and collapses `.venv\Scripts\python.exe` into one mangled token — silently denying
+    # every native Windows command. The guarded scripts take no backslash-bearing arguments.
     try:
-        parts = shlex.split(command)
+        parts = shlex.split(command.replace("\\", "/"))
     except ValueError:
         return False
     if not parts:

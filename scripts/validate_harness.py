@@ -658,6 +658,33 @@ def check_secret_signatures(audit: Audit) -> None:
             audit.require(pattern.search(text) is None, f"{name}: high-confidence secret signature detected")
 
 
+def check_skill_commands(audit: Audit) -> None:
+    """Guarded-command instructions in skills must be role-guard-valid and cross-OS.
+
+    The role guard (copilot_role_guard.allowed_role_command) only permits the harness scripts when
+    invoked as `python scripts/<name>.py …` with forward slashes. A bare `scripts/<name>.py` (no
+    interpreter) or a backslash path is denied — which is exactly what made agents "get lost" on the
+    first command. Fail closed here so the skill text and the guard can never drift apart again.
+    """
+
+    guarded = "preflight|work_record|knowledge_registry|force_app_knowledge|salesforce_read|playwright_guard"
+    bare = re.compile(r"`\s*scripts/(?:" + guarded + r")\.py(?:\s|`)")
+    backslash = re.compile(r"`[^`]*(?:scripts\\|\.venv\\)")
+    for skill in sorted((ROOT / ".github/skills").glob("*/SKILL.md")):
+        text = skill.read_text(encoding="utf-8")
+        for match in bare.finditer(text):
+            audit.require(
+                False,
+                f"{relative(skill)}: guarded command lacks a python interpreter prefix "
+                f"(role guard will deny it): {match.group(0)!r}",
+            )
+        for match in backslash.finditer(text):
+            audit.require(
+                False,
+                f"{relative(skill)}: guarded command uses a backslash path (POSIX shlex mangles it): {match.group(0)!r}",
+            )
+
+
 def check_python_yaml_safety(audit: Audit) -> None:
     """Enforce the safe_load-only invariant so an unsafe YAML loader cannot be introduced.
 
@@ -845,6 +872,7 @@ def main() -> int:
     check_placeholders(audit)
     check_secret_signatures(audit)
     check_python_yaml_safety(audit)
+    check_skill_commands(audit)
     if audit.errors:
         print(f"FAIL: harness validation ({len(audit.errors)} errors, {audit.checks} checks)")
         for message in audit.errors:

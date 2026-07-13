@@ -19,9 +19,7 @@ source-tree drift, parser errors, or changed `HEAD`.
 
 ## Procedure
 
-1. Run the draft with the workspace virtual-environment interpreter, using forward slashes on
-   every OS — Windows `.venv/Scripts/python.exe scripts/force_app_knowledge.py draft`,
-   macOS/Linux `.venv/bin/python scripts/force_app_knowledge.py draft`.
+1. Run `python scripts/force_app_knowledge.py draft`.
 2. Inspect `.cache/knowledge-proposals/force-app-drafts/manifest.json`. Drafts are schema-v3
    `proposed` claims and immutable sanitized evidence only; they are not canonical or verified.
 3. Preserve source boundaries:
@@ -32,7 +30,7 @@ source-tree drift, parser errors, or changed `HEAD`.
 4. Present candidate IDs, domains, statements, limitations, and reconciliation risk. Do not submit
    the whole set by default.
 5. Only when the caller explicitly selects claim IDs, run each selected manifest command through
-   `scripts/knowledge_registry.py propose`. The registry performs schema validation,
+   `python scripts/knowledge_registry.py propose`. The registry performs schema validation,
    reconciliation, immutable evidence checks, and optimistic concurrency.
 6. Never call `review`, `promote`, or edit canonical Knowledge directly. Human review and
    promotion remain separate lifecycle operations.

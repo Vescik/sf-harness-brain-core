@@ -7,7 +7,7 @@ user-invocable: false
 # Fetch ADO item
 
 Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md) and run
-`scripts/preflight.py --capability ado`.
+`python scripts/preflight.py --capability ado`.
 
 ## Inputs
 
