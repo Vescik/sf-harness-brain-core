@@ -729,19 +729,26 @@ class SafetyClassificationTests(unittest.TestCase):
                 output = run_hook("copilot_safety_hook.py", {"tool_name": name, "tool_input": tool_input})
                 self.assertEqual(hook_decision(output), "deny")
 
-    def test_unrecognized_mcp_tool_fails_closed_to_ask(self) -> None:
-        for name in ("some_server/unknown_tool", "weird_mcp_tool"):
-            with self.subTest(tool=name):
-                output = run_hook("copilot_safety_hook.py", {"tool_name": name, "tool_input": {}})
-                self.assertEqual(hook_decision(output), "ask")
+    def test_unknown_prefixed_server_tool_fails_closed_to_ask(self) -> None:
+        # Only a tool from an UNKNOWN server (has a "/") is fail-closed; bare names are not.
+        output = run_hook("copilot_safety_hook.py", {"tool_name": "some_server/unknown_tool", "tool_input": {}})
+        self.assertEqual(hook_decision(output), "ask")
 
-    def test_builtin_tools_still_pass(self) -> None:
+    def test_builtin_tools_including_snake_case_pass(self) -> None:
+        # VS Code built-ins are snake_case; they must not be caught by the MCP fail-closed.
         for name, tool_input in (
             ("read", {"path": "x"}),
             ("search", {"query": "foo"}),
             ("edit/editFiles", {"path": "force-app/x.cls"}),
             ("web/fetch", {"url": "https://example.com"}),
             ("vscode/askQuestions", {}),
+            ("list_dir", {"path": "force-app"}),
+            ("read_file", {"path": "README.md"}),
+            ("grep_search", {"query": "Account"}),
+            ("file_search", {"query": "*.cls"}),
+            ("semantic_search", {"query": "approval"}),
+            ("get_errors", {}),
+            ("some_unknown_bare_tool", {}),
         ):
             with self.subTest(tool=name):
                 output = run_hook("copilot_safety_hook.py", {"tool_name": name, "tool_input": tool_input})

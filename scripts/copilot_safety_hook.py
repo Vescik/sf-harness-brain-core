@@ -104,14 +104,23 @@ SALESFORCE_DEV_TOOL_TOKENS = frozenset({
     "get_username", "deploy", "retrieve",
 })
 # Built-in editor/agent tools that are safe to pass through (edits are governed by the role guard;
-# terminal/sf/browser are handled by the dedicated checks below).
+# terminal/sf/browser are handled by the dedicated checks below). VS Code's built-ins are
+# snake_case (list_dir, read_file, grep_search, …), so this set uses their real names.
 BUILTIN_TOOL_NAMES = frozenset({
+    # camel/slash and short forms
     "read", "search", "codebase", "usages", "edit", "editfiles", "createfile",
     "new", "insert", "replace", "applypatch", "runinterminal", "runcommands",
     "terminal", "execute", "fetch", "fetchwebpage", "opensimplebrowser",
     "askquestion", "askquestions", "agent", "think", "todos", "problems",
     "changes", "testfailure", "findtestfiles", "runtests", "extensions",
     "githubrepo", "vscodeapi",
+    # real VS Code snake_case tool names
+    "read_file", "list_dir", "file_search", "grep_search", "semantic_search",
+    "run_in_terminal", "get_terminal_output", "create_file", "create_directory",
+    "insert_edit_into_file", "replace_string_in_file", "apply_patch", "get_errors",
+    "list_code_usages", "test_search", "run_tests", "get_changed_files", "run_task",
+    "get_task_output", "fetch_webpage", "open_simple_browser", "run_vscode_command",
+    "get_search_view_results", "test_failure", "get_project_setup_info",
 })
 SALESFORCE_OBJECT_API_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}$")
 WORK_RECORD_SCRIPT = re.compile(
@@ -650,7 +659,10 @@ def main() -> int:
         or bare_tool in BUILTIN_TOOL_NAMES
         or lowered_name in BUILTIN_TOOL_NAMES
     )
-    mcp_shaped = "/" in tool_name or "_" in bare_tool
+    # Only a server-PREFIXED tool from an unknown server is fail-closed. Bare tool names are left
+    # to the explicit token guards above (enumeration deny, ADO/SF classification) — matching bare
+    # names by shape ("_") wrongly caught VS Code's snake_case built-ins (list_dir, read_file, …).
+    mcp_shaped = "/" in tool_name
     if tool_name and not recognized and mcp_shaped:
         print(
             json.dumps(
