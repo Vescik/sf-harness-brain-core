@@ -17,7 +17,7 @@ hooks:
   PreToolUse:
     - type: command
       command: python3 scripts/copilot_role_guard.py --role test-strategist
-      windows: py -3 scripts/copilot_role_guard.py --role test-strategist
+      windows: python scripts/copilot_role_guard.py --role test-strategist
       timeout: 5
 ---
 

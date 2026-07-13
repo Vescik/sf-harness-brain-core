@@ -4,7 +4,7 @@
       {
         "type": "command",
         "command": "python3 scripts/copilot_safety_hook.py",
-        "windows": "py -3 scripts/copilot_safety_hook.py",
+        "windows": "python scripts/copilot_safety_hook.py",
         "timeout": 10
       }
     ]

@@ -118,7 +118,8 @@ npm run lint
 npm run test:unit:ci
 ```
 
-Use the equivalent `py -3` command on Windows when a virtual environment is not active. The same
+Use `python` on Windows (the python.org installer puts `python` on PATH; this repo does not rely on
+the `py` launcher or `python3`). The same
 commands are available through `Terminal: Run Task` as Harness: Validate, Harness: Test, Harness:
 Evals, and Harness: Preflight.
 

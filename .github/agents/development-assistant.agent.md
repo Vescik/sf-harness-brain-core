@@ -18,7 +18,7 @@ hooks:
   PreToolUse:
     - type: command
       command: python3 scripts/copilot_role_guard.py --role development-assistant
-      windows: py -3 scripts/copilot_role_guard.py --role development-assistant
+      windows: python scripts/copilot_role_guard.py --role development-assistant
       timeout: 5
 ---
 

@@ -98,10 +98,9 @@ if (mode === "development") {
   }
 }
 
-const python = process.platform === "win32" ? "py" : "python3";
-const verificationArgs = process.platform === "win32"
-  ? ["-3", resolve(SCRIPT_DIR, "verify_salesforce_org.py"), "--org", org]
-  : [resolve(SCRIPT_DIR, "verify_salesforce_org.py"), "--org", org];
+// Windows installs expose `python` (python.org installer); non-Windows uses `python3`.
+const python = process.platform === "win32" ? "python" : "python3";
+const verificationArgs = [resolve(SCRIPT_DIR, "verify_salesforce_org.py"), "--org", org];
 const verification = spawnSync(python, verificationArgs, {
   cwd: REPO_ROOT,
   encoding: "utf8",

@@ -8,7 +8,7 @@ hooks:
   PreToolUse:
     - type: command
       command: python3 scripts/copilot_role_guard.py --role config-investigator
-      windows: py -3 scripts/copilot_role_guard.py --role config-investigator
+      windows: python scripts/copilot_role_guard.py --role config-investigator
       timeout: 5
 ---
 

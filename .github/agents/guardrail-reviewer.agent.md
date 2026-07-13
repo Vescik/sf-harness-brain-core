@@ -17,7 +17,7 @@ hooks:
   PreToolUse:
     - type: command
       command: python3 scripts/copilot_role_guard.py --role guardrail-reviewer
-      windows: py -3 scripts/copilot_role_guard.py --role guardrail-reviewer
+      windows: python scripts/copilot_role_guard.py --role guardrail-reviewer
       timeout: 5
 ---
 

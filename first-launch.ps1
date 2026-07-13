@@ -56,11 +56,12 @@ function Test-Tool {
 
 # ---------------------------------------------------------------------------
 Write-Step 'Checking prerequisites'
-$py = 'py'
-$pyIsLauncher = $true
-if (-not (Get-Command 'py' -ErrorAction SilentlyContinue)) {
-    if (Get-Command 'python' -ErrorAction SilentlyContinue) { $py = 'python'; $pyIsLauncher = $false }
-    else { Fail 'Python launcher not found. Install Python 3.11+ from python.org (includes the py launcher).' }
+# Prefer `python` (what this workspace uses on Windows); fall back to the `py` launcher.
+$py = 'python'
+$pyIsLauncher = $false
+if (-not (Get-Command 'python' -ErrorAction SilentlyContinue)) {
+    if (Get-Command 'py' -ErrorAction SilentlyContinue) { $py = 'py'; $pyIsLauncher = $true }
+    else { Fail 'Python not found. Install Python 3.11+ from python.org and ensure `python` is on PATH.' }
 }
 $checks = [ordered]@{
     'git'    = (Test-Tool 'git'  @('--version'))
