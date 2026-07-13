@@ -146,6 +146,7 @@ def check_required_files(audit: Audit) -> None:
         "scripts/work_record.py",
         "scripts/knowledge_registry.py",
         "scripts/force_app_knowledge.py",
+        "scripts/salesforce_read.py",
         ".ai/contracts/execution-contract.md",
         ".ai/contracts/tool-capabilities.md",
         ".ai/contracts/knowledge-lifecycle.md",
@@ -391,6 +392,46 @@ def check_settings_and_mcp(audit: Audit) -> None:
         if key in settings and key in workspace_settings:
             audit.require(settings[key] == workspace_settings[key], f"workspace setting differs from folder setting: {key}")
     audit.require(settings.get("chat.useCustomizationsInParentRepositories") is False, "parent repository customizations must be disabled")
+
+    # Terminal auto-approval must not weaken the safety model.
+    for blanket in ("chat.tools.global.autoApprove", "chat.tools.autoApprove"):
+        audit.require(settings.get(blanket) is not True, f"blanket tool auto-approval is forbidden: {blanket}")
+        audit.require(workspace_settings.get(blanket) is not True, f"blanket tool auto-approval is forbidden in workspace: {blanket}")
+    auto = settings.get("chat.tools.terminal.autoApprove")
+    if auto is not None:
+        audit.require(
+            workspace_settings.get("chat.tools.terminal.autoApprove") == auto,
+            "terminal auto-approve list differs between folder and workspace settings",
+        )
+        audit.require(isinstance(auto, dict), "chat.tools.terminal.autoApprove must be an object")
+        if isinstance(auto, dict):
+            for denied in ("sf", "sfdx", "rm", "del"):
+                audit.require(auto.get(denied) is False, f"terminal auto-approve must deny '{denied}'")
+            # Functionally evaluate the map against a canonical `work_record approve` command
+            # (VS Code semantics: deny wins). Substring checks are fooled by the negative
+            # lookahead `(?!approve...)` inside the allow patterns, so compile and match instead.
+            approve_cmds = (
+                "python scripts/work_record.py approve --record-id CR-1",
+                "py -3 scripts\\work_record.py approve --record-id CR-1",
+            )
+            allow_hits = False
+            deny_hits = False
+            for key, value in auto.items():
+                if not (key.startswith("/") and key.endswith("/") and len(key) > 2):
+                    continue  # literal subcommand key cannot match a full script command line
+                try:
+                    pattern = re.compile(key[1:-1])
+                except re.error as exc:
+                    audit.require(False, f"terminal auto-approve regex is invalid: {key} ({exc})")
+                    continue
+                if not any(pattern.search(cmd) for cmd in approve_cmds):
+                    continue
+                if value is True or (isinstance(value, dict) and value.get("approve") is True):
+                    allow_hits = True
+                if value is False or (isinstance(value, dict) and value.get("approve") is False):
+                    deny_hits = True
+            audit.require(deny_hits, "terminal auto-approve must explicitly deny work_record.py approve (SAFE-HUMAN-001)")
+            audit.require(not (allow_hits and not deny_hits), "terminal auto-approve must not auto-approve work_record.py approve (SAFE-HUMAN-001)")
     workspace_folders = workspace.get("folders", []) if isinstance(workspace, dict) else []
     folders = {
         (item.get("name"), item.get("path"))

@@ -682,6 +682,40 @@ class SafetyClassificationTests(unittest.TestCase):
                     safety.salesforce_review_tool_error(config, tool, tool_input)
                 )
 
+    def test_wildcard_object_allowlist_permits_any_valid_object_but_not_malformed(self) -> None:
+        config = {
+            "salesforce": {
+                "orgs": [{"allowAgentRead": True, "allowAgentReview": True}],
+                "review": {
+                    "enabled": True,
+                    "requireDualSource": True,
+                    "allowedObjectApiNames": ["*"],
+                },
+            }
+        }
+        # any well-formed object is allowed under "*"
+        self.assertIsNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/review_object_contract",
+                {"objectApiName": "AnyCustom__c"},
+            )
+        )
+        # a malformed object name is still rejected even with "*"
+        self.assertIsNotNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/review_object_contract",
+                {"objectApiName": "bad name!"},
+            )
+        )
+        # "*" does not open raw query / org enumeration
+        self.assertIsNotNone(
+            safety.salesforce_review_tool_error(
+                config, "salesforce-readonly/run_soql_query", {"query": "SELECT Id FROM Account"}
+            )
+        )
+
     def test_work_record_commands_are_role_bound_and_approval_is_never_allowed(self) -> None:
         from scripts import copilot_role_guard as role_guard
 

@@ -9,6 +9,8 @@ upgrade.
 | Reconciled Salesforce org identity | `salesforce-readonly/review_org_identity` | investigator, design, review |
 | Reconciled installed package inventory | `salesforce-readonly/review_installed_packages` | investigator, design, review |
 | Reconciled allowlisted object contract | `salesforce-readonly/review_object_contract` | investigator, design, review, QA |
+| Guarded structured record read (allowlisted objects, bounded rows, no free-form SOQL) | `scripts/salesforce_read.py records` guarded terminal command | investigator, review |
+| Guarded metadata retrieve (allowlisted types → ignored cache dir) | `scripts/salesforce_read.py retrieve` guarded terminal command | investigator, review |
 | Salesforce non-production metadata/test operations | `salesforce-development/*` guarded DX MCP | development only |
 | Browser exploration/test generation | pinned `playwright-cli` through guarded terminal execution | Test Strategist only |
 | Interactive human confirmation | `vscode/askQuestions` | prompts and approval gates |
@@ -38,6 +40,19 @@ receipts, removes credentials/identity details/raw records, and returns `VERIFIE
 Raw `list_all_orgs`, arbitrary `run_soql_query`, aliases, directories, Tooling flags, CLI commands,
 and vendor payloads are not exposed to an agent. MCP/CLI agreement is transport corroboration from
 the same org, not independent truth.
+
+For record-level reads and metadata retrieval, the investigator and reviewer roles use the guarded
+`scripts/salesforce_read.py` wrapper rather than raw CLI. It never accepts a free-form SOQL string:
+the caller supplies an allowlisted object, a validated field list, a bounded row limit (≤200), and
+an optional simple `ORDER BY`; the wrapper constructs the `SELECT`, proves the target is a live
+non-production sandbox, and there is no `WHERE`/subquery surface, so cross-object or arbitrary reads
+are impossible. `retrieve` pulls only allowlisted metadata types into an ignored cache directory and
+never writes to the org or tracked source. Object access is bounded by `review.allowedObjectApiNames`,
+which governs both schema reviews and record reads. Setting it to `["*"]` opts into every object
+(the object name is still API-name validated, so injection is impossible, but any object becomes
+readable). On a full-copy sandbox that means record reads can reach copied production data across
+all objects — prefer an explicit list when the org holds sensitive data, or restrict which roles
+hold record-read access (currently investigator and reviewer only).
 
 Development mode registers only approved metadata, testing, and code-analysis capabilities for one
 locally authorized, allowlisted development sandbox. All reads use the facade. Development starts

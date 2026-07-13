@@ -89,6 +89,19 @@ approved workstation-management mechanism. Do not substitute an independent orga
 
 ## 4. Install validation dependencies
 
+**Windows quick start:** instead of the manual steps below, run the guided onboarding script from
+the repository root, which checks prerequisites, installs the pinned dependencies, creates
+`config\harness.local.json`, collects your ADO settings, walks you through authorizing each
+sandbox (auto-filling its host and org id, refusing anything that is not a real sandbox), and runs
+the verification gates:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\first-launch.ps1
+```
+
+It is a human-run helper only (not an agent tool). Re-run it any time to add a sandbox or update
+ADO settings. To do the same steps by hand:
+
 ```bash
 python3 -m venv .venv
 # macOS/Linux: source .venv/bin/activate
@@ -121,6 +134,27 @@ Evals, and Harness: Preflight.
 6. Run one harmless ADO read, then the three bounded Salesforce review calls against the configured
    synthetic/pilot component. Confirm no raw CLI/query/alias or sensitive payload appears in Chat.
 7. Run a negative canary: a request to deploy/query production must be denied.
+
+### Reducing approval clicks (auto-approval)
+
+The workspace pre-approves its own guarded scripts so agents run them without a confirmation
+click, via `chat.tools.terminal.autoApprove` in `.vscode/settings.json`:
+
+- Auto-approved: `preflight.py`, `work_record.py` (except `approve`), `knowledge_registry.py`
+  (except `promote`/`review`), `force_app_knowledge.py`, `playwright_guard.py`, and
+  `salesforce_read.py` (guarded read-only records/metadata; see §6). The regexes are anchored and
+  reject shell metacharacters, so chained or redirected commands never auto-run.
+- Never auto-approved: `work_record.py approve` (human-only, SAFE-HUMAN-001) and raw
+  `sf`/`sfdx`/`rm`/`del` (explicitly denied — a deny always wins). Auto-approval only skips the
+  click; the role guard and safety hook still enforce the real boundaries.
+- **Do not** enable `chat.tools.global.autoApprove` / `/yolo` — that blanket-approves everything,
+  including destructive actions, and defeats the model.
+
+**MCP read-only tools** cannot be pre-approved from a committed setting (VS Code has no per-tool
+`mcp.json` field yet — it is an open feature request). To stop the per-call prompt, approve them
+once interactively: run **Chat: Manage Tool Approval**, expand `salesforce-readonly` and
+`ado-readonly`, and trust all tools from those two servers at **workspace** scope. Do **not** trust
+`salesforce-development` (write access). This choice persists per workspace.
 
 ## 6. External runtimes
 

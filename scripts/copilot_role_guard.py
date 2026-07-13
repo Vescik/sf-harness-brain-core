@@ -129,6 +129,47 @@ PATH_KEYS = {
     "paths",
 }
 
+# Guarded read-only Salesforce access (structured SOQL + metadata retrieve). Restricted to the
+# read/verify roles (least privilege): record data can be sensitive on a full-copy sandbox, so the
+# designer/developer/tester roles rely on the schema facade and delegate record reads to the
+# investigator. The script itself enforces the object allowlist, field/limit bounds, and the live
+# sandbox proof. No mutation surface.
+SALESFORCE_READ_ROLES = {
+    "config-investigator",
+    "guardrail-reviewer",
+}
+SALESFORCE_READ_FLAGS = {
+    "records": {"--org", "--object", "--fields", "--limit", "--order-by"},
+    "retrieve": {"--org", "--metadata"},
+}
+
+
+def salesforce_read_command_allowed(parts: list[str], role: str) -> bool:
+    if role not in SALESFORCE_READ_ROLES or not parts:
+        return False
+    if "--root" in parts or any(part.startswith("--root=") for part in parts):
+        return False
+    allowed = SALESFORCE_READ_FLAGS.get(parts[0])
+    if allowed is None:
+        return False
+    rest = parts[1:]
+    seen_org = False
+    index = 0
+    while index < len(rest):
+        token = rest[index]
+        if token.startswith("--") and "=" in token:
+            flag = token.split("=", 1)[0]
+            if flag not in allowed:
+                return False
+            seen_org = seen_org or flag == "--org"
+            index += 1
+            continue
+        if token not in allowed or index + 1 >= len(rest) or rest[index + 1].startswith("--"):
+            return False
+        seen_org = seen_org or token == "--org"
+        index += 2
+    return seen_org
+
 
 def response(decision: str | None = None, reason: str | None = None) -> dict[str, Any]:
     if decision is None:
@@ -324,6 +365,7 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     work_record = (root / "scripts/work_record.py").resolve()
     knowledge_registry = (root / "scripts/knowledge_registry.py").resolve()
     force_app_knowledge = (root / "scripts/force_app_knowledge.py").resolve()
+    salesforce_read = (root / "scripts/salesforce_read.py").resolve()
     remainder = parts[index + 1 :]
     if script == preflight:
         return (
@@ -337,6 +379,8 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         return knowledge_registry_command_allowed(remainder, role, root)
     if script == force_app_knowledge:
         return force_app_knowledge_command_allowed(remainder, role)
+    if script == salesforce_read:
+        return salesforce_read_command_allowed(remainder, role)
     return role == "test-strategist" and script == browser_guard and bool(remainder)
 
 

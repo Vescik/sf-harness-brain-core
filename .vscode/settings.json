@@ -14,6 +14,54 @@
   "chat.useCustomAgentHooks": true,
   "chat.useCustomizationsInParentRepositories": false,
 
+  // Pre-approve the workspace's own guarded scripts so agents run them without a click.
+  // matchCommandLine regexes are anchored and forbid shell metacharacters (; & | > < ` $),
+  // so chained/redirected commands never auto-run. The human-only `work_record.py approve`
+  // and the knowledge promote/review commands are excluded and explicitly denied; raw sf/sfdx
+  // and destructive commands stay denied (false always wins). This only skips the approval
+  // click — the role guard and safety hook still enforce the actual boundaries.
+  // MCP read-only tools cannot be pre-approved from settings (VS Code has no per-tool key yet);
+  // trust the `salesforce-readonly` and `ado-readonly` servers once via "Chat: Manage Tool
+  // Approval" (workspace scope). See SETUP.md.
+  "chat.tools.terminal.autoApprove": {
+    "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]preflight\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]work_record\\.py\\s+(?!approve\\b)[^\\n\\r;&|<>`$()]*$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]knowledge_registry\\.py\\s+(?!(?:promote|review)\\b)[^\\n\\r;&|<>`$()]*$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]force_app_knowledge\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]playwright_guard\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]salesforce_read\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+    "/scripts[\\\\/]work_record\\.py\\s+approve\\b/": {
+      "approve": false,
+      "matchCommandLine": true
+    },
+    "sf": false,
+    "sfdx": false,
+    "rm": false,
+    "del": false,
+    "rmdir": false,
+    "kill": false,
+    "curl": false,
+    "wget": false
+  },
+
   "files.exclude": {
     "**/.DS_Store": true,
     ".cache/**": true

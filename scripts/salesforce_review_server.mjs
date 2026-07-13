@@ -126,7 +126,7 @@ function loadRuntime(alias) {
   if (!Array.isArray(review.allowedObjectApiNames) || review.allowedObjectApiNames.length === 0) {
     throw new ReviewError("CONFIG_INVALID");
   }
-  if (review.allowedObjectApiNames.some((name) => !OBJECT_API_NAME.test(name))) {
+  if (review.allowedObjectApiNames.some((name) => name !== "*" && !OBJECT_API_NAME.test(name))) {
     throw new ReviewError("CONFIG_INVALID");
   }
   if (
@@ -883,7 +883,9 @@ async function reviewPackages(runtime) {
 
 async function reviewObject(runtime, input) {
   const objectApiName = input?.objectApiName;
-  if (!OBJECT_API_NAME.test(String(objectApiName ?? "")) || !runtime.allowedObjects.has(objectApiName)) {
+  // "*" in the allowlist opts into all objects; the name is still validated by OBJECT_API_NAME.
+  const objectAllowed = runtime.allowedObjects.has("*") || runtime.allowedObjects.has(objectApiName);
+  if (!OBJECT_API_NAME.test(String(objectApiName ?? "")) || !objectAllowed) {
     return makeEnvelope({
       runtime,
       reviewType: "object-contract",

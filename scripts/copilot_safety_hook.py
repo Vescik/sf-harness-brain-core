@@ -241,7 +241,10 @@ def salesforce_review_tool_error(
     object_name = tool_input.get("objectApiName")
     if not isinstance(object_name, str) or not SALESFORCE_OBJECT_API_NAME.fullmatch(object_name):
         return "objectApiName is malformed"
-    if object_name not in review.get("allowedObjectApiNames", []):
+    allowlist = review.get("allowedObjectApiNames", [])
+    # "*" opts into all objects; the name is still regex-validated above, so this only widens
+    # which objects are readable, never how they are named.
+    if "*" not in allowlist and object_name not in allowlist:
         return "objectApiName is outside the configured review allowlist"
     return None
 

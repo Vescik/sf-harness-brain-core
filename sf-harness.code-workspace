@@ -18,6 +18,44 @@
     "chat.hookFilesLocations": { ".github/hooks": true },
     "chat.useCustomAgentHooks": true,
     "chat.useCustomizationsInParentRepositories": false,
+    "chat.tools.terminal.autoApprove": {
+      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]preflight\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+        "approve": true,
+        "matchCommandLine": true
+      },
+      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]work_record\\.py\\s+(?!approve\\b)[^\\n\\r;&|<>`$()]*$/": {
+        "approve": true,
+        "matchCommandLine": true
+      },
+      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]knowledge_registry\\.py\\s+(?!(?:promote|review)\\b)[^\\n\\r;&|<>`$()]*$/": {
+        "approve": true,
+        "matchCommandLine": true
+      },
+      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]force_app_knowledge\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+        "approve": true,
+        "matchCommandLine": true
+      },
+      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]playwright_guard\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+        "approve": true,
+        "matchCommandLine": true
+      },
+      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]salesforce_read\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
+        "approve": true,
+        "matchCommandLine": true
+      },
+      "/scripts[\\\\/]work_record\\.py\\s+approve\\b/": {
+        "approve": false,
+        "matchCommandLine": true
+      },
+      "sf": false,
+      "sfdx": false,
+      "rm": false,
+      "del": false,
+      "rmdir": false,
+      "kill": false,
+      "curl": false,
+      "wget": false
+    },
     "search.exclude": {
       "**/node_modules": true,
       "**/.sfdx": true,
@@ -29,6 +67,8 @@
   "extensions": {
     "recommendations": [
       "github.copilot",
+      "github.copilot-chat",
+      "ms-python.python",
       "salesforce.salesforcedx-vscode-expanded",
       "ms-playwright.playwright",
       "redhat.vscode-yaml",
