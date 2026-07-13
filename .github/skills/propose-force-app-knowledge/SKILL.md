@@ -19,7 +19,9 @@ source-tree drift, parser errors, or changed `HEAD`.
 
 ## Procedure
 
-1. Run `.venv/bin/python scripts/force_app_knowledge.py draft`.
+1. Run the draft with the workspace virtual-environment interpreter, using forward slashes on
+   every OS — Windows `.venv/Scripts/python.exe scripts/force_app_knowledge.py draft`,
+   macOS/Linux `.venv/bin/python scripts/force_app_knowledge.py draft`.
 2. Inspect `.cache/knowledge-proposals/force-app-drafts/manifest.json`. Drafts are schema-v3
    `proposed` claims and immutable sanitized evidence only; they are not canonical or verified.
 3. Preserve source boundaries:
