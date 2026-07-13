@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@emnapi/core": "1.11.1",
-    "@emnapi/runtime": "1.11.1",
+    "@emnapi/runtime": "1.11.2",
     "@eslint/js": "^9.29.0",
     "@lwc/eslint-plugin-lwc": "^3.1.0",
     "@prettier/plugin-xml": "^3.4.1",
