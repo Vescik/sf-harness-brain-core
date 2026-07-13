@@ -716,6 +716,37 @@ class SafetyClassificationTests(unittest.TestCase):
             )
         )
 
+    def test_bare_mcp_tool_names_are_gated_not_bypassed(self) -> None:
+        # VS Code sometimes passes bare tool names (no server prefix); the guard must still fire.
+        for name, tool_input in (
+            ("core_list_orgs", {}),
+            ("core_list_projects", {}),
+            ("list_all_orgs", {}),
+            ("run_soql_query", {"query": "SELECT Id FROM Account"}),
+            ("deploy_metadata", {"sourceDir": "/etc"}),
+        ):
+            with self.subTest(tool=name):
+                output = run_hook("copilot_safety_hook.py", {"tool_name": name, "tool_input": tool_input})
+                self.assertEqual(hook_decision(output), "deny")
+
+    def test_unrecognized_mcp_tool_fails_closed_to_ask(self) -> None:
+        for name in ("some_server/unknown_tool", "weird_mcp_tool"):
+            with self.subTest(tool=name):
+                output = run_hook("copilot_safety_hook.py", {"tool_name": name, "tool_input": {}})
+                self.assertEqual(hook_decision(output), "ask")
+
+    def test_builtin_tools_still_pass(self) -> None:
+        for name, tool_input in (
+            ("read", {"path": "x"}),
+            ("search", {"query": "foo"}),
+            ("edit/editFiles", {"path": "force-app/x.cls"}),
+            ("web/fetch", {"url": "https://example.com"}),
+            ("vscode/askQuestions", {}),
+        ):
+            with self.subTest(tool=name):
+                output = run_hook("copilot_safety_hook.py", {"tool_name": name, "tool_input": tool_input})
+                self.assertEqual(hook_decision(output), "continue")
+
     def test_work_record_commands_are_role_bound_and_approval_is_never_allowed(self) -> None:
         from scripts import copilot_role_guard as role_guard
 

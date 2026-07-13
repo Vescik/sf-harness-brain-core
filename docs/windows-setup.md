@@ -157,12 +157,13 @@ longer be blocked, and the read facade should return results.
 | `webidl.util.markAsUncloneable is not a function` | Node < 22 | Install Node 22+ (Step 1) |
 | ADO call still runs without being scoped / lists all orgs | Known hook-matching gap (see below) | Track the hardening fix; interim, do not rely on the hook to block bare-named MCP tools |
 
-## Known limitations (not yet fixed)
+## Known limitations
 
-- **Hook tool-name matching gap:** the safety hook recognizes MCP tools by their server prefix
-  (`ado-readonly/…`). VS Code sometimes passes the **bare** tool name (e.g. `core_list_orgs`), which
-  the hook does not gate — so some read/enumeration tools can run un-scoped. A hardening fix
-  (match by tool-name tokens / fail-closed on unknown MCP tools) is pending.
+- **Hook tool-name matching — FIXED.** The safety hook now classifies MCP tools by their bare tool
+  token as well as the server prefix, hard-denies org/project enumeration (`core_list_orgs`,
+  `core_list_projects`, `list_all_orgs`), and fails closed (asks) on any unrecognized MCP-shaped
+  tool. Bare `core_list_orgs`/`run_soql_query`/`deploy_metadata` are no longer bypassable.
 - **ADO toolset/tool names:** the live server exposes `core_*` / `search_workitem`; the declared
-  `X-MCP-Toolsets: wit,wiki,testplan` allowlist and the documented `wit_*` tool names are being
-  reconciled with the real server.
+  `X-MCP-Toolsets: wit,wiki,testplan` allowlist is not obviously honored by the hosted endpoint.
+  The org-scope + enumeration guards above are the effective control; the documented `wit_*` names
+  are being reconciled with the real server.

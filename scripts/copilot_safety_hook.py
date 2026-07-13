@@ -88,6 +88,31 @@ SALESFORCE_REVIEW_TOOLS = {
     "review_installed_packages",
     "review_object_contract",
 }
+
+# MCP tool classification. VS Code may hand the hook either a "server/tool" name or a BARE "tool"
+# name (observed live: `core_list_orgs`). Server-prefix matching alone therefore leaks — classify by
+# the unqualified tool token too, and fail-closed on unrecognized MCP-shaped tools.
+ADO_TOOL_PREFIXES = (
+    "core_", "wit_", "wiki", "testplan", "build_", "repo_", "release_",
+    "pipelines_", "search_", "advsec_", "work_item",
+)
+ENUMERATION_TOOLS = frozenset({"list_all_orgs", "core_list_orgs", "core_list_projects"})
+SALESFORCE_DEV_TOOL_TOKENS = frozenset({
+    "run_soql_query", "list_all_orgs", "deploy_metadata", "retrieve_metadata",
+    "run_apex_test", "run_apex_tests", "run_agent_test", "resume_tool_operation",
+    "create_scratch_org", "delete_org", "assign_permission_set", "run_code_analyzer",
+    "get_username", "deploy", "retrieve",
+})
+# Built-in editor/agent tools that are safe to pass through (edits are governed by the role guard;
+# terminal/sf/browser are handled by the dedicated checks below).
+BUILTIN_TOOL_NAMES = frozenset({
+    "read", "search", "codebase", "usages", "edit", "editfiles", "createfile",
+    "new", "insert", "replace", "applypatch", "runinterminal", "runcommands",
+    "terminal", "execute", "fetch", "fetchwebpage", "opensimplebrowser",
+    "askquestion", "askquestions", "agent", "think", "todos", "problems",
+    "changes", "testfailure", "findtestfiles", "runtests", "extensions",
+    "githubrepo", "vscodeapi",
+})
 SALESFORCE_OBJECT_API_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}$")
 WORK_RECORD_SCRIPT = re.compile(
     r"(?:^|[\s\"';&|()])(?:[A-Za-z]:)?/?(?:[^\s\"';&|()]+/)*"
@@ -477,6 +502,11 @@ def main() -> int:
 
     tool_name = str(event.get("tool_name", ""))
     lowered_name = tool_name.lower()
+    # Unqualified tool token, so a bare `core_list_orgs` is classified the same as `ado-readonly/core_list_orgs`.
+    bare_tool = tool_name.rsplit("/", 1)[-1].lower()
+    is_ado = "ado-readonly" in lowered_name or bare_tool.startswith(ADO_TOOL_PREFIXES)
+    is_sf_review = "salesforce-readonly" in lowered_name or bare_tool in SALESFORCE_REVIEW_TOOLS
+    is_sf_dev = "salesforce-development" in lowered_name or bare_tool in SALESFORCE_DEV_TOOL_TOKENS
     tool_input = event.get("tool_input", {})
     text = flatten(tool_input)
     root = HARNESS_ROOT
@@ -504,7 +534,10 @@ def main() -> int:
             return 0
 
     config = load_config(root)
-    if "ado-readonly" in lowered_name:
+    if bare_tool in ENUMERATION_TOOLS:
+        print(json.dumps(hook_response("deny", "Org/project enumeration is disabled; the harness is bound to one org.")))
+        return 0
+    if is_ado:
         if config is None:
             print(json.dumps(hook_response("deny", "ADO read blocked: local harness configuration is missing.")))
             return 0
@@ -512,7 +545,7 @@ def main() -> int:
         if scope_error:
             print(json.dumps(hook_response("deny", f"ADO read blocked: {scope_error}.")))
             return 0
-    if "salesforce-readonly" in lowered_name:
+    if is_sf_review:
         scope_error = salesforce_review_tool_error(config, tool_name, tool_input)
         if scope_error:
             print(
@@ -532,8 +565,8 @@ def main() -> int:
         ):
             print(json.dumps(hook_response("deny", "Non-sandbox Salesforce URL blocked by SAFE-ENV-001.")))
             return 0
-    if "salesforce-development" in lowered_name:
-        if any(token in lowered_name for token in ("run_soql_query", "list_all_orgs")):
+    if is_sf_dev:
+        if any(token in bare_tool for token in ("run_soql_query", "list_all_orgs")):
             print(
                 json.dumps(
                     hook_response(
@@ -606,6 +639,29 @@ def main() -> int:
         }:
             print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation before a state-changing browser action.")))
             return 0
+
+    # Fail-closed backstop: an MCP-shaped tool the hook did not positively classify (a new server
+    # tool, or a bare name the guards above did not recognize) must not silently auto-run.
+    recognized = (
+        is_ado
+        or is_sf_review
+        or is_sf_dev
+        or is_terminal_tool(tool_name)
+        or bare_tool in BUILTIN_TOOL_NAMES
+        or lowered_name in BUILTIN_TOOL_NAMES
+    )
+    mcp_shaped = "/" in tool_name or "_" in bare_tool
+    if tool_name and not recognized and mcp_shaped:
+        print(
+            json.dumps(
+                hook_response(
+                    "ask",
+                    f"Unrecognized tool '{tool_name}' is not an allowlisted capability; "
+                    "confirm before running (SAFE-TOOL-001 fail-closed).",
+                )
+            )
+        )
+        return 0
 
     print(json.dumps(hook_response()))
     return 0
