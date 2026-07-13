@@ -2,8 +2,9 @@
 
 ## 1. Prerequisites
 
-- VS Code 1.112+ on macOS/Linux; certify current stable for team rollout. Windows pilot support is
-  read-only for external Salesforce/browser workflows because MCP sandboxing is unavailable.
+- VS Code 1.112+; certify current stable for team rollout. Windows is the primary platform. The
+  configured MCP surface is read-only by construction on every platform (no write-mode Salesforce
+  MCP server exists); guarded browser workflows remain macOS/Linux-only.
 - Consolidated GitHub Copilot extension and the recommendations in `.vscode/extensions.json`.
 - Git, Python 3.11+, Node.js 22+ (the pinned `@salesforce/mcp` requires ≥22.19), Salesforce CLI, and `@playwright/cli@0.1.17` when
   browser generation is used.
@@ -19,16 +20,16 @@ the certified enforcement boundary.
 See [docs/compatibility.md](docs/compatibility.md) for the tested contract.
 
 > **Runtime enforcement depends on your VS Code build.** The custom-agent/tool hooks
-> (`.github/hooks/`, `chat.hookFilesLocations`, `chat.useCustomAgentHooks`) and the `.vscode/mcp.json`
-> `sandbox`/`sandboxEnabled` filesystem and network confinement are recent/preview Copilot surfaces.
-> Where a build does not implement them, they are silently ignored and the guard scripts never run —
-> reducing the harness to prompt-level guidance. Before relying on this workspace for governed work,
-> verify in your exact VS Code version that (a) each `chat.*` customization key resolves in the
-> Settings UI (no "Unknown Configuration Setting"), (b) the `PreToolUse` hooks actually fire, and
-> (c) the MCP sandbox is honored. If any is unsupported, treat the corresponding controls as
-> advisory and enforce equivalents inside the MCP wrapper scripts. The `scripts/*_guard.py` and
+> (`.github/hooks/`, `chat.hookFilesLocations`, `chat.useCustomAgentHooks`) are recent/preview
+> Copilot surfaces. Where a build does not implement them, they are silently ignored and the guard
+> scripts never run — reducing the harness to prompt-level guidance. Before relying on this
+> workspace for governed work, verify in your exact VS Code version that (a) each `chat.*`
+> customization key resolves in the Settings UI (no "Unknown Configuration Setting") and (b) the
+> `PreToolUse` hooks actually fire. If unsupported, treat the corresponding controls as advisory
+> and enforce equivalents inside the MCP wrapper scripts. The `scripts/*_guard.py` and
 > `scripts/copilot_safety_hook.py` logic is unit-tested and correct in isolation; what is
-> build-dependent is whether VS Code invokes it.
+> build-dependent is whether VS Code invokes it. The residual risk is bounded by construction:
+> the configured MCP servers are read-only, and org mutation is not an agent capability at all.
 
 ## 2. Clone and workspace layout
 
@@ -57,14 +58,17 @@ From the repository root, copy `config/harness.example.json` to ignored
 to the repository/SFDX root. Do not add production aliases/origins. For each review-enabled
 alias, record the exact expected sandbox hostname and organization ID, explicitly allow agent
 review, configure the package namespaces and component API-name allowlist, and keep the review API
-version/current evidence window deliberate. Only a development alias
-may set `allowAgentWrite: true`. The example deliberately disables all writes. Enable a
-development alias only after setting `safety.sharedSandboxWritesApproved: true` and recording the
-human decision/work-item in `sharedSandboxApprovalRef`.
+version/current evidence window deliberate. Keep every `allowAgentWrite` set to `false`: since the
+2026-07-14 decision the harness configures no write-mode Salesforce MCP server, agents never
+deploy, and org changes ship through the human-run release process. The only raw Salesforce CLI
+an agent may request is `sf project retrieve start` against a configured alias, and the safety
+hook stops each invocation for human confirmation.
 
 The checked-in `manifest/package.xml` is only a generic starter. Narrow it to the exact components
 in the accepted work record before retrieve, validation, or deployment; a wildcard does not grant
-scope and must not be used as a substitute for claim-backed ownership or human approval.
+scope and must not be used as a substitute for claim-backed ownership or human approval. This is
+enforced: `preflight --capability salesforce-write` fails while the configured manifest still
+contains any `<members>*</members>` entry.
 
 The file holds identifiers, allowlists, and paths, not secrets. ADO uses OAuth through VS Code; Salesforce uses
 existing CLI authorization; Playwright uses a human-created persistent profile outside Git.
@@ -89,18 +93,21 @@ approved workstation-management mechanism. Do not substitute an independent orga
 
 ## 4. Install validation dependencies
 
-**Windows quick start:** instead of the manual steps below, run the guided onboarding script from
-the repository root, which checks prerequisites, installs the pinned dependencies, creates
-`config\harness.local.json`, collects your ADO settings, walks you through authorizing each
-sandbox (auto-filling its host and org id, refusing anything that is not a real sandbox), and runs
-the verification gates:
+**Guided quick start (all platforms):** instead of the manual steps below, run the onboarding
+script from the repository root, which checks prerequisites, installs the pinned dependencies,
+creates `config/harness.local.json`, collects your ADO settings, walks you through authorizing
+each sandbox (auto-filling its host and org id, refusing anything that is not a real sandbox),
+and runs the verification gates:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\first-launch.ps1
+```bash
+python scripts/first_launch.py
 ```
 
-It is a human-run helper only (not an agent tool). Re-run it any time to add a sandbox or update
-ADO settings. To do the same steps by hand:
+It is plain Python (no PowerShell execution policy involved), works on Windows, macOS, and Linux,
+and is a human-run helper only (not an agent tool). Re-run it any time to add a sandbox or update
+ADO settings. New to all of this? Follow the zero-assumptions walkthrough in
+[docs/setup-zero-to-first-prompt.md](docs/setup-zero-to-first-prompt.md) instead. To do the same
+steps by hand:
 
 ```bash
 python3 -m venv .venv
@@ -128,9 +135,9 @@ Evals, and Harness: Preflight.
 1. Trust the cloned repository only after reviewing it; the single named workspace folder
    `brain-core` resolves to its root.
 2. Open **Chat: Open Customizations** / Chat Diagnostics.
-3. Confirm exactly five agents, ten public prompts, fourteen internal skills, three Principle
-   files, the safety hook, and three MCP servers without diagnostics.
-4. Confirm `/` shows the ten prompts once each and their argument hints.
+3. Confirm exactly five agents, eleven public prompts, fifteen internal skills, three Principle
+   files, the safety hook, and two read-only MCP servers without diagnostics.
+4. Confirm `/` shows the eleven prompts once each and their argument hints.
 5. Verify Solution Designer and Development Assistant handoff buttons use `send: false`.
 6. Run one harmless ADO read, then the three bounded Salesforce review calls against the configured
    synthetic/pilot component. Confirm no raw CLI/query/alias or sensitive payload appears in Chat.
@@ -154,8 +161,8 @@ click, via `chat.tools.terminal.autoApprove` in `.vscode/settings.json`:
 **MCP read-only tools** cannot be pre-approved from a committed setting (VS Code has no per-tool
 `mcp.json` field yet — it is an open feature request). To stop the per-call prompt, approve them
 once interactively: run **Chat: Manage Tool Approval**, expand `salesforce-readonly` and
-`ado-readonly`, and trust all tools from those two servers at **workspace** scope. Do **not** trust
-`salesforce-development` (write access). This choice persists per workspace.
+`ado-readonly`, and trust all tools from those two servers at **workspace** scope. This choice
+persists per workspace. (These are the only configured MCP servers; no write-mode server exists.)
 
 ## 6. External runtimes
 
@@ -168,9 +175,12 @@ once interactively: run **Chat: Manage Tool Approval**, expand `salesforce-reado
 - The model never receives direct `sf`/`sfdx`, arbitrary SOQL, an alias, directory, Tooling flag,
   `list_all_orgs`, or raw vendor output. MCP/CLI agreement is transport corroboration from the same
   org, not independent package/business authority.
-- Salesforce development starts separately through `scripts/start_salesforce_mcp.mjs`, which
-  rejects aliases not allowlisted by local configuration and exposes writes only for the approved
-  development alias. Its reads use the review facade.
+- Record-level and metadata reads for design/development context run through the guarded
+  `python scripts/salesforce_read.py records|retrieve` command (auto-approved; allowlisted
+  object, bounded fields/rows, retrieve into an ignored cache). There is no write-mode Salesforce
+  MCP server: agents never deploy, and the only raw Salesforce CLI they may request is
+  `sf project retrieve start --target-org <configured-alias>`, which the safety hook stops for
+  per-invocation human confirmation.
 - Browser workflows use `scripts/playwright_guard.py`, not direct CLI or an MCP server. The wrapper
   exposes a narrow non-credential command set, uses the configured profile, checks current/all-tab
   origins around every action, and closes the session on drift. State-changing UI actions still

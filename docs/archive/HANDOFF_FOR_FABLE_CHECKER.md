@@ -1,5 +1,11 @@
 # Handoff for Fable — Audit Fix Verification
 
+> Historical status (archived 2026-07-14): this handoff described a working tree whose changes
+> have since been committed and pushed. Its "nothing was committed", untracked
+> force-app-knowledge, and test/check counts no longer describe the repository; use the current
+> CI run and `IMPLEMENTATION_HANDOFF.md` instead. The deferred items D1–D3 (live VS Code
+> hook/sandbox/tool verification) remain genuinely open pilot gates.
+
 **Branch:** `agent/hallucination-grounding-upgrade`
 **Date applied:** 2026-07-13
 **Context:** A three-part workspace audit (Copilot mapping, harness/orchestration gaps, reusability)

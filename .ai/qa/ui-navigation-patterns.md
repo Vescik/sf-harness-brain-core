@@ -2,7 +2,7 @@
 
 UI quirks discovered during test automation by the `generate-playwright-test` skill — recorded
 so the same quirk is never re-discovered from scratch, and so different generated tests handle
-it consistently (HARNESS_BLUEPRINT.md sections 3 and 13). Same mechanism as the rest of
+it consistently (docs/archive/HARNESS_BLUEPRINT.md sections 3 and 13). Same mechanism as the rest of
 Knowledge: once discovered, written down, not re-derived.
 
 Live navigation via Playwright still happens on every generation (it gives verified,

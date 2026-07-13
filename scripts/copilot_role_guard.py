@@ -131,13 +131,16 @@ PATH_KEYS = {
     "paths",
 }
 
-# Guarded read-only Salesforce access (structured SOQL + metadata retrieve). Restricted to the
-# read/verify roles (least privilege): record data can be sensitive on a full-copy sandbox, so the
-# designer/developer/tester roles rely on the schema facade and delegate record reads to the
-# investigator. The script itself enforces the object allowlist, field/limit bounds, and the live
-# sandbox proof. No mutation surface.
+# Guarded read-only Salesforce access (structured SOQL + metadata retrieve). Available to the
+# design/build/verify roles so an agent can ground its context in the connected org (principles →
+# knowledge → org reality) without delegating every record read. The script itself enforces the
+# object allowlist, field/limit bounds, and the live sandbox proof. No mutation surface.
+# (Widened from investigator/reviewer-only by the 2026-07-14 owner decision on the read-only
+# MCP/CLI model — see .ai/memory/decisions-log.md.)
 SALESFORCE_READ_ROLES = {
+    "solution-designer",
     "config-investigator",
+    "development-assistant",
     "guardrail-reviewer",
 }
 SALESFORCE_READ_FLAGS = {
@@ -442,6 +445,15 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     if read_only_orientation_command(parts):
         return True
     executable = Path(parts[0]).name.lower()
+    if (
+        role == "development-assistant"
+        and executable.removesuffix(".exe").removesuffix(".cmd") == "sf"
+        and [part.lower() for part in parts[1:4]] == ["project", "retrieve", "start"]
+    ):
+        # Read-direction org → repository retrieve. The global safety hook still requires exactly
+        # one allowlisted --target-org and per-invocation human confirmation (SAFE-HUMAN-001);
+        # deploys and all other raw Salesforce CLI subcommands remain denied.
+        return True
     if executable not in {"python", "python3", "py", "python.exe", "python3.exe", "py.exe"}:
         return False
     index = 1

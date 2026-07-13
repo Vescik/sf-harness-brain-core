@@ -116,6 +116,61 @@ class GlobalSafetyHookTests(unittest.TestCase):
             )
             self.assertEqual(hook_decision(output), "deny")
 
+    def _hook_decision_in_repo(self, root: Path, command: str) -> str:
+        event = {
+            "tool_name": "execute/runInTerminal",
+            "tool_input": {"command": command},
+        }
+        stdout = StringIO()
+        with (
+            patch.object(safety, "HARNESS_ROOT", root),
+            patch("sys.stdin", StringIO(json.dumps(event))),
+            patch("sys.stdout", stdout),
+        ):
+            self.assertEqual(safety.main(), 0)
+        return hook_decision(json.loads(stdout.getvalue()))
+
+    def test_project_retrieve_with_allowlisted_target_requires_confirmation(self) -> None:
+        # 2026-07-14 decision: retrieve is the only raw CLI surface agents may request, and it
+        # always stops for human approval (SAFE-HUMAN-001).
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            write_local_config(root)
+            for alias in ("dev-sbx", "qa-sbx"):
+                with self.subTest(alias=alias):
+                    decision = self._hook_decision_in_repo(
+                        root,
+                        f"sf project retrieve start --manifest manifest/package.xml --target-org {alias}",
+                    )
+                    self.assertEqual(decision, "ask")
+
+    def test_project_retrieve_outside_the_allowlist_is_denied(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            write_local_config(root)
+            for command in (
+                "sf project retrieve start --target-org unknown-org",
+                "sf project retrieve start --target-org my-prod",
+                "sf project retrieve start",  # no target: default org is forbidden
+                "sf project retrieve start --target-org dev-sbx --target-org qa-sbx",
+            ):
+                with self.subTest(command=command):
+                    self.assertEqual(self._hook_decision_in_repo(root, command), "deny")
+
+    def test_project_retrieve_without_local_config_is_denied(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            output = run_hook(
+                "copilot_safety_hook.py",
+                {
+                    "cwd": name,
+                    "tool_name": "execute/runInTerminal",
+                    "tool_input": {
+                        "command": "sf project retrieve start --target-org dev-sbx"
+                    },
+                },
+            )
+            self.assertEqual(hook_decision(output), "deny")
+
     def test_wrapped_salesforce_command_is_denied(self) -> None:
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
@@ -439,6 +494,31 @@ class RoleGuardTests(unittest.TestCase):
         for command in denied:
             with self.subTest(command=command):
                 self.assertFalse(role_guard.allowed_role_command(command, root, "solution-designer"))
+
+    def test_development_assistant_may_request_project_retrieve(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        command = "sf project retrieve start --manifest manifest/package.xml --target-org dev-sbx"
+        self.assertTrue(role_guard.allowed_role_command(command, ROOT, "development-assistant"))
+        for role in ("solution-designer", "config-investigator", "test-strategist", "guardrail-reviewer"):
+            with self.subTest(role=role):
+                self.assertFalse(role_guard.allowed_role_command(command, ROOT, role))
+        for command in (
+            "sf project deploy start --target-org dev-sbx",
+            "sf project retrieve start --target-org dev-sbx > dump.txt",
+            "sf org list",
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(role_guard.allowed_role_command(command, ROOT, "development-assistant"))
+
+    def test_designer_and_developer_may_use_guarded_salesforce_read(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        command = "python scripts/salesforce_read.py records --org dev-sbx --object ExampleManagedObject__c --fields Id,Name"
+        for role in ("solution-designer", "config-investigator", "development-assistant", "guardrail-reviewer"):
+            with self.subTest(role=role):
+                self.assertTrue(role_guard.allowed_role_command(command, ROOT, role))
+        self.assertFalse(role_guard.allowed_role_command(command, ROOT, "test-strategist"))
 
     def test_designer_can_write_solution_design_drafts(self) -> None:
         allowed = run_hook(

@@ -16,7 +16,7 @@
 # and does not resolve which subfolders are committed. Until that is decided, ignore the
 # generated CONTENT but keep the folder structure (same pattern as .cache/). Without this,
 # the SETUP.md §4 sync ritual (git add -A) would silently commit every generated artifact.
-# Revisit per §13 — see BUILD_REPORT.md flag 24.
+# Revisit per §13 — see docs/archive/BUILD_REPORT.md flag 24.
 output/**
 !output/**/
 !output/**/.gitkeep

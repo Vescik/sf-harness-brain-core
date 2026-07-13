@@ -8,7 +8,7 @@ Last verified against vendor documentation: 2026-07-10
 
 | Component | Supported baseline | Notes |
 |---|---|---|
-| VS Code | 1.112+ on macOS/Linux; certify current stable before rollout | 1.112 is the minimum because MCP sandboxing is part of the safety model. Windows is read-only for Salesforce/browser pilot workflows. |
+| VS Code | 1.112+; certify current stable before rollout | Windows is the primary platform. The configured MCP surface is read-only on every platform; guarded browser workflows remain macOS/Linux-only. |
 | GitHub Copilot | Consolidated `GitHub.copilot` extension bundled/supported by the chosen VS Code release | The old separate Copilot Chat prerequisite is not used. |
 | Python | 3.11+ | Runs preflight, validation, safety hooks, and tests using the standard library plus the dev requirement below. |
 | PyYAML | `>=6,<7`; CI uses the lock file | Frontmatter and evaluation validation. |
@@ -34,14 +34,17 @@ Static validation in CI proves file shape and policy invariants. It does not pro
 installed VS Code build exposes every tool. Before a developer pilot, open **Chat: Open
 Customizations** and **Chat Diagnostics** on each supported platform and record:
 
-- exactly five agents, seven public prompts, twelve internal skills, and three Principle files;
+- exactly five agents, eleven public prompts, fifteen internal skills, and three Principle files;
 - no unresolved tool, handoff, frontmatter, hook, or MCP diagnostic;
 - one successful harmless read call through each configured external server.
 
-MCP sandboxing is unavailable on Windows. The wrapper therefore refuses Salesforce development
-mode and guarded browser execution there; Windows pilot use is limited to repository work and
-read-only external investigation. macOS/Linux still use runtime hooks and path checks in addition
-to sandboxing.
+Since the 2026-07-14 decision the harness configures no write-mode Salesforce MCP server and no
+OS-level MCP sandbox keys (the fleet runs Windows, where VS Code cannot sandbox MCP): both
+configured servers are read-only by construction, org mutation is not an agent capability, and
+the guarded wrapper, review facade, safety hook, and role guards are the enforcement layers.
+Agents may request `sf project retrieve start` against a configured alias; the safety hook stops
+each invocation for human confirmation. Deploys ship through the human-run release process
+outside Copilot. Guarded browser execution remains macOS/Linux-only.
 
 The certified external-work surface is limited to the five repository custom agents in a dedicated
 pilot environment with no production authorization or browser session. Built-in/default Agent and
@@ -62,3 +65,8 @@ out of the resolved set automatically. Supply-chain monitoring runs continuously
 `.github/dependabot.yml` (pip, npm, github-actions) plus a `npm audit --audit-level=critical` CI
 gate; lower-severity npm advisories in the pinned `@salesforce/mcp` transitive tree are tracked by
 Dependabot rather than hard-failing CI.
+
+The current 24 non-critical npm findings were investigated on 2026-07-13 and are a recorded,
+accepted risk: all are transitive to vendor-pinned Salesforce tooling, no stable upgrade resolves
+them, and an in-range update was tested and rejected because it worsened the posture. See the
+2026-07-13 entry in `.ai/memory/decisions-log.md` before attempting another upgrade.

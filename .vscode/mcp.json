@@ -4,11 +4,6 @@
       "id": "sf_read_org",
       "type": "promptString",
       "description": "Allowlisted non-production Salesforce alias for read-only investigation"
-    },
-    {
-      "id": "sf_dev_org",
-      "type": "promptString",
-      "description": "Allowlisted non-production Salesforce alias with agent write permission"
     }
   ],
   "servers": {
@@ -30,58 +25,6 @@
         "review",
         "--org",
         "${input:sf_read_org}"
-      ],
-      "sandboxEnabled": true
-    },
-    "salesforce-development": {
-      "type": "stdio",
-      "command": "node",
-      "cwd": "${workspaceFolder}",
-      "args": [
-        "scripts/start_salesforce_mcp.mjs",
-        "--mode",
-        "development",
-        "--org",
-        "${input:sf_dev_org}"
-      ],
-      "sandboxEnabled": true
-    }
-  },
-  "sandbox": {
-    "filesystem": {
-      "allowWrite": [
-        "${workspaceFolder}/force-app",
-        "${workspaceFolder}/manifest",
-        "${workspaceFolder}/tests/e2e"
-      ],
-      "denyWrite": [
-        "${workspaceFolder}/.ai",
-        "${workspaceFolder}/.github",
-        "${workspaceFolder}/.vscode",
-        "${workspaceFolder}/config",
-        "${workspaceFolder}/schemas",
-        "${workspaceFolder}/scripts",
-        "${workspaceFolder}/sfdx-project.json",
-        "${workspaceFolder}/package.json",
-        "${workspaceFolder}/package-lock.json"
-      ],
-      "denyRead": [
-        "${workspaceFolder}/.git",
-        "${workspaceFolder}/.ai",
-        "${workspaceFolder}/.github",
-        "${workspaceFolder}/.cache",
-        "${workspaceFolder}/output",
-        "${workspaceFolder}/.env"
-      ]
-    },
-    "network": {
-      "allowedDomains": [
-        "mcp.dev.azure.com",
-        "test.salesforce.com",
-        "*.scratch.my.salesforce.com",
-        "*.sandbox.my.salesforce.com",
-        "*.sandbox.lightning.force.com",
-        "*.sandbox.my.site.com"
       ]
     }
   }

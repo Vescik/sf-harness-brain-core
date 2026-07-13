@@ -99,12 +99,14 @@ class PreflightValidationTests(unittest.TestCase):
             )
         )
 
-    def test_mcp_network_allows_scratch_but_not_developer_edition_domains(self) -> None:
+    def test_mcp_is_read_only_by_construction(self) -> None:
+        # 2026-07-14 decision: no write-mode MCP server and no OS sandbox keys (Windows fleet);
+        # the wrapper, review facade, and safety hook are the enforcement layers.
         mcp = json.loads((ROOT / ".vscode/mcp.json").read_text(encoding="utf-8"))
-        domains = set(mcp["sandbox"]["network"]["allowedDomains"])
-        self.assertIn("*.scratch.my.salesforce.com", domains)
-        self.assertNotIn("*.develop.my.salesforce.com", domains)
-        self.assertNotIn("*.salesforce.com", domains)
+        self.assertEqual(set(mcp["servers"]), {"ado-readonly", "salesforce-readonly"})
+        self.assertNotIn("sandbox", mcp)
+        readonly_args = mcp["servers"]["salesforce-readonly"]["args"]
+        self.assertEqual(readonly_args[readonly_args.index("--mode") + 1], "review")
 
     def test_safe_non_production_config_passes(self) -> None:
         self.assertEqual(preflight.validate_config(safe_config()), [])
@@ -196,6 +198,51 @@ class PreflightValidationTests(unittest.TestCase):
     def test_non_https_origin_is_rejected(self) -> None:
         failures = preflight.validate_origins(["http://example.invalid"], "Browser")
         self.assertTrue(any("must be HTTPS" in item for item in failures))
+
+    def test_wildcard_manifest_blocks_salesforce_write(self) -> None:
+        manifest = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Package xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "  <types><members>*</members><name>CustomObject</name></types>\n"
+            "  <types><members>ExampleClass</members><name>ApexClass</name></types>\n"
+            "  <version>67.0</version>\n"
+            "</Package>\n"
+        )
+        with TemporaryDirectory() as name:
+            root = Path(name)
+            (root / "manifest").mkdir()
+            (root / "manifest" / "package.xml").write_text(manifest, encoding="utf-8")
+            with patch.object(preflight, "metadata_root", return_value=root):
+                failures = preflight.manifest_wildcard_failures(safe_config())
+        self.assertEqual(len(failures), 1)
+        self.assertIn("wildcard", failures[0])
+        self.assertIn("CustomObject", failures[0])
+        self.assertNotIn("ApexClass", failures[0])
+
+    def test_narrowed_manifest_passes_wildcard_gate(self) -> None:
+        manifest = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Package xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "  <types><members>ExampleManagedObject__c</members><name>CustomObject</name></types>\n"
+            "  <version>67.0</version>\n"
+            "</Package>\n"
+        )
+        with TemporaryDirectory() as name:
+            root = Path(name)
+            (root / "manifest").mkdir()
+            (root / "manifest" / "package.xml").write_text(manifest, encoding="utf-8")
+            with patch.object(preflight, "metadata_root", return_value=root):
+                self.assertEqual(preflight.manifest_wildcard_failures(safe_config()), [])
+
+    def test_malformed_manifest_fails_wildcard_gate(self) -> None:
+        with TemporaryDirectory() as name:
+            root = Path(name)
+            (root / "manifest").mkdir()
+            (root / "manifest" / "package.xml").write_text("<Package>", encoding="utf-8")
+            with patch.object(preflight, "metadata_root", return_value=root):
+                failures = preflight.manifest_wildcard_failures(safe_config())
+        self.assertEqual(len(failures), 1)
+        self.assertIn("not valid XML", failures[0])
 
     def test_workspace_path_traversal_is_rejected(self) -> None:
         with TemporaryDirectory() as name:

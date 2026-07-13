@@ -36,7 +36,6 @@ ALLOWED_TOOLS = {
     "salesforce-readonly/review_org_identity",
     "salesforce-readonly/review_installed_packages",
     "salesforce-readonly/review_object_contract",
-    "salesforce-development/*",
 }
 LEGACY_TOOLS = {"readFile", "editFiles", "runInTerminal", "fetch", "codebase", "githubRepo"}
 REQUIRED_SETTINGS = (
@@ -450,18 +449,26 @@ def check_settings_and_mcp(audit: Audit) -> None:
 
     mcp = load_json(ROOT / ".vscode/mcp.json", audit)
     servers = mcp.get("servers", {}) if isinstance(mcp, dict) else {}
-    audit.require(set(servers) == {"ado-readonly", "salesforce-readonly", "salesforce-development"}, "MCP server set is unexpected")
+    audit.require(set(servers) == {"ado-readonly", "salesforce-readonly"}, "MCP server set is unexpected")
     ado = servers.get("ado-readonly", {})
     audit.require(ado.get("headers", {}).get("X-MCP-Readonly") == "true", "ADO MCP must be read-only")
     audit.require(ado.get("headers", {}).get("X-MCP-Toolsets") == "wit,wiki,testplan", "ADO MCP toolsets must be bounded")
     audit.require("${env:ADO_ORGANIZATION}" in ado.get("url", ""), "ADO MCP organization must come from the preflight-checked environment")
     audit.require(not any(item.get("id") == "ado_org" for item in mcp.get("inputs", [])), "independent ADO organization prompt is forbidden")
-    for name in ("salesforce-readonly", "salesforce-development"):
+    for name in ("salesforce-readonly",):
         server = servers.get(name, {})
         audit.require(server.get("command") == "node", f"{name}: wrapper must run with node")
         audit.require(server.get("cwd") == "${workspaceFolder}", f"{name}: wrapper must start in the direct-folder-safe root SFDX workspace")
         audit.require("scripts/start_salesforce_mcp.mjs" in server.get("args", []), f"{name}: guarded wrapper is required")
-        audit.require(server.get("sandboxEnabled") is True, f"{name}: sandboxEnabled must be true")
+        args = server.get("args", [])
+        audit.require(
+            "--mode" in args and args[args.index("--mode") + 1] == "review",
+            f"{name}: MCP never mutates the org — only review mode may be configured",
+        )
+    audit.require(
+        "salesforce-development" not in servers,
+        "MCP is read-only by the 2026-07-14 decision; the development/write server must not return",
+    )
     serialized = json.dumps(mcp).lower()
     audit.require(
         "${workspacefolder:" not in serialized,
@@ -469,42 +476,11 @@ def check_settings_and_mcp(audit: Audit) -> None:
     )
     for forbidden in ("@latest", "allow_all_orgs", "default_target_org", "login.salesforce.com"):
         audit.require(forbidden not in serialized, f"MCP config contains forbidden token {forbidden!r}")
-    filesystem_sandbox = mcp.get("sandbox", {}).get("filesystem", {})
-    allow_write = filesystem_sandbox.get("allowWrite", [])
-    audit.require(
-        allow_write
-        == [
-            "${workspaceFolder}/force-app",
-            "${workspaceFolder}/manifest",
-            "${workspaceFolder}/tests/e2e",
-        ],
-        "MCP write sandbox must contain only root Salesforce source, manifest, and E2E paths",
-    )
-    deny_write = set(filesystem_sandbox.get("denyWrite", []))
-    required_denied = {
-        "${workspaceFolder}/.ai",
-        "${workspaceFolder}/.github",
-        "${workspaceFolder}/.vscode",
-        "${workspaceFolder}/config",
-        "${workspaceFolder}/schemas",
-        "${workspaceFolder}/scripts",
-        "${workspaceFolder}/sfdx-project.json",
-        "${workspaceFolder}/package.json",
-        "${workspaceFolder}/package-lock.json",
-    }
-    audit.require(required_denied.issubset(deny_write), "MCP sandbox must explicitly deny writes to harness authority and project configuration")
-    deny_read = set(filesystem_sandbox.get("denyRead", []))
-    required_read_denied = {
-        "${workspaceFolder}/.git",
-        "${workspaceFolder}/.ai",
-        "${workspaceFolder}/.github",
-        "${workspaceFolder}/.cache",
-        "${workspaceFolder}/output",
-        "${workspaceFolder}/.env",
-    }
-    audit.require(required_read_denied.issubset(deny_read), "MCP sandbox must deny reads of repository governance, generated state, Git internals, and local env files")
-    allowed_domains = set(mcp.get("sandbox", {}).get("network", {}).get("allowedDomains", []))
-    audit.require("registry.npmjs.org" not in allowed_domains, "MCP runtime must not have package-registry egress")
+    # OS-level MCP sandbox keys were removed with the write server (2026-07-14): the fleet is
+    # Windows (where VS Code cannot sandbox MCP) and the remaining servers are read-only by
+    # construction — the wrapper, review facade, and safety hook are the enforcement layers.
+    audit.require("sandbox" not in mcp, "the MCP sandbox block was retired with the write server; do not reintroduce it without a recorded decision")
+    audit.require("sandboxEnabled" not in json.dumps(mcp), "sandboxEnabled was retired with the write server")
 
     tasks_document = load_json(ROOT / ".vscode/tasks.json", audit)
     audit.require(
@@ -533,12 +509,6 @@ def check_settings_and_mcp(audit: Audit) -> None:
             task.get("options", {}).get("cwd") == "${workspaceFolder}",
             f"{label} must execute in the root SFDX workspace folder",
         )
-    domains = set(mcp.get("sandbox", {}).get("network", {}).get("allowedDomains", []))
-    audit.require("*.salesforce.com" not in domains and "*.force.com" not in domains, "broad production-capable Salesforce domains are forbidden")
-    audit.require("*.sandbox.my.salesforce.com" in domains, "sandbox Salesforce API domain is required")
-    audit.require("*.scratch.my.salesforce.com" in domains, "scratch-org Salesforce API domain is required")
-    audit.require("*.develop.my.salesforce.com" not in domains, "Developer Edition and dev-hub Salesforce domains are forbidden")
-
     hooks = load_json(ROOT / ".github/hooks/safety.json", audit)
     pre = hooks.get("hooks", {}).get("PreToolUse", []) if isinstance(hooks, dict) else []
     audit.require(len(pre) == 1, "exactly one global PreToolUse hook is required")
@@ -583,8 +553,9 @@ def check_settings_and_mcp(audit: Audit) -> None:
     )
 
     compatibility = (ROOT / "docs/compatibility.md").read_text(encoding="utf-8")
-    audit.require("1.112" in compatibility, "compatibility baseline must include VS Code 1.112 MCP sandbox support")
-    audit.require("Windows is read-only" in compatibility, "Windows external-write limitation must be explicit")
+    audit.require("1.112" in compatibility, "compatibility baseline must state the minimum VS Code version")
+    audit.require("read-only by construction" in compatibility, "the read-only MCP model must be explicit")
+    audit.require("human confirmation" in compatibility, "the human-approved CLI retrieve boundary must be explicit")
     agents_contract = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     audit.require("Built-in/default Agent mode" in agents_contract, "supported custom-agent boundary must be explicit")
     security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")

@@ -3,7 +3,7 @@
 <!--
 Used by skill: generate-release-handover (invoked via /release-handover, monthly).
 Output location: output/handover/<month>.md
-Source: HARNESS_BLUEPRINT.md section 13.
+Source: docs/archive/HARNESS_BLUEPRINT.md section 13.
 Declarative-output rule (blueprint sections 3 and 11): the skill ends its work on this
 markdown file. DOCX/PDF export is a separate, manual, human-triggered step via a VS Code
 extension (Markdown PDF / vscode-pandoc) — never a script generated or run by the agent.

@@ -19,6 +19,18 @@ If sensitive data or a secret is committed, stop agent workflows, revoke/rotate 
 source, restrict repository access if needed, and preserve an audit trail. Removing a Git commit is
 not sufficient containment by itself.
 
+## Dependency vulnerability posture
+
+The pinned Node dependency tree carries 24 known non-critical advisories, all transitive to
+vendor-pinned Salesforce tooling. They were investigated on 2026-07-13, are not resolvable on
+stable release channels, and are formally accepted with mitigations (install with
+`--ignore-scripts`, local-workstation-only execution, Dependabot monitoring, CI failing on
+`critical`). See the 2026-07-13 entry in `.ai/memory/decisions-log.md` for evidence and
+re-evaluation triggers. Do not run `npm audit fix --force` or adopt prerelease packages to clear
+the count; both were evaluated and rejected.
+
+## Pilot threat model
+
 The controlled-pilot threat model requires a dedicated OS account, VM, or container whose agent
 process can access only approved sandbox CLI authorizations and a sandbox-only browser profile.
 Built-in/default Agent mode and arbitrary terminal workflows are not supported for external work;

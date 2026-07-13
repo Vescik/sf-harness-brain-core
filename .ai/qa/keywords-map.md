@@ -4,7 +4,7 @@ Human-curated map of Test Case ID → keywords, maintained by the `tune-test-cas
 skill (admin prompt `/tune-test-case-keywords`), with a human approving every change. Kept
 **separate** from the auto-synced `test-cases/*.md` files on purpose: those are machine-written
 and overwritten on every `/sync-test-cases`; this file is curated and must survive syncs
-(HARNESS_BLUEPRINT.md sections 3 and 13).
+(docs/archive/HARNESS_BLUEPRINT.md sections 3 and 13).
 
 Rules:
 

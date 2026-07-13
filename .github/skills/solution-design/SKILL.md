@@ -40,7 +40,10 @@ Goal: assemble every fact the design will stand on, with sources, before proposi
      object's actual fields.
    - Repository metadata: read the relevant `force-app/` sources (or the current inventory) for
      intended state; note source/org drift as `CONTESTED`.
-   - Delegate record-level or missing/contested facts to Config Investigator; never guess.
+   - Record-level context (example data shapes, picklist usage, volumes): read directly through
+     the guarded `python scripts/salesforce_read.py records --org <alias> --object <ApiName>
+     --fields <list>` command — allowlisted object, bounded fields/rows, live sandbox proof.
+   - Delegate deep or contested investigation to Config Investigator; never guess.
 7. Produce the **Grounding Summary**: facts table (fact, source type, evidence ref, freshness),
    component ownership classification (package-owned / subscriber-owned / platform / unknown),
    explicit gaps and contested items. Unknown ownership or a missing material fact is a blocking

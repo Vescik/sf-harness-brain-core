@@ -1,8 +1,9 @@
 # Windows Setup & MCP Fix — Step by Step
 
 This is the practical runbook for running the brain-core harness on **Windows** in VS Code + GitHub
-Copilot. Windows is **review-only**: the read-only Salesforce facade and ADO reads work; Salesforce
-development/write mode does **not** run on Windows (by design — see step 6).
+Copilot. The MCP surface is **read-only on every platform**: the read-only Salesforce facade and
+ADO reads work in full; agents never deploy. The only raw Salesforce CLI an agent may request is
+`sf project retrieve start`, which always stops for your approval.
 
 > The single most common failure ("Blocked by Pre-Tool Use hook" / "Organization name is required")
 > is **not** a config-file problem — it's a missing **`ADO_ORGANIZATION` environment variable**.
@@ -39,10 +40,11 @@ have reviewed it.
 
 From the repo root, run the onboarding script (it checks prerequisites, installs the pinned
 dependencies, creates `config\harness.local.json`, collects ADO settings, and walks sandbox
-authorization):
+authorization). It is plain Python — no PowerShell execution policy is involved, so it also works
+in organizations where `.ps1` scripts are blocked:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\first-launch.ps1
+python scripts\first_launch.py
 ```
 
 Manual equivalent, if you prefer:
@@ -100,8 +102,9 @@ it here on Windows. Set at minimum:
 - `salesforce.review.allowedObjectApiNames` — objects the agent may read; `["*"]` = all objects
   (keep tighter if the org holds sensitive data)
 
-`first-launch.ps1` fills the ADO and sandbox values for you interactively; edit the file directly
-only if you skip the script.
+`python scripts\first_launch.py` fills the ADO and sandbox values for you interactively; edit the
+file directly only if you skip the script. For a fully manual, zero-assumptions walkthrough see
+[setup-zero-to-first-prompt.md](setup-zero-to-first-prompt.md).
 
 ## Step 6 — Authorize a sandbox (review-only)
 
@@ -116,18 +119,16 @@ sf org display --target-org mpsa_dev_sbx --json
 #   copy instanceUrl host -> expectedInstanceHost, id -> expectedOrganizationId in the config
 ```
 
-> **Development/write mode is disabled on Windows** (MCP sandboxing is unavailable). The
-> `salesforce-development` server will always fail to start on Windows with
-> `Salesforce MCP startup blocked: development mode is disabled on Windows` and
-> `Process exited with code 2`. **That error is expected** — do not try to start that server. Use
-> `salesforce-readonly` only.
+> **There is no development/write MCP server** (removed 2026-07-14 — it produced the expected but
+> confusing `exit code 2` startup error on Windows). Agents never mutate the org: reads go through
+> `salesforce-readonly` and the guarded `salesforce_read.py`; metadata comes into the project only
+> via human-approved `sf project retrieve start`; deploys are a human-run release step.
 
 ## Step 7 — Start the MCP servers
 
 When VS Code prompts *"The MCP servers … may have new tools … Start them now?"*, start
-**`salesforce-readonly`** and **`ado-readonly`**. Do **not** start `salesforce-development` on
-Windows (it will error — see step 6). When prompted for the `sf_read_org` input, enter your
-authorized sandbox alias (e.g. `mpsa_dev_sbx`).
+**`salesforce-readonly`** and **`ado-readonly`** (the only configured servers). When prompted for
+the `sf_read_org` input, enter your authorized sandbox alias (e.g. `mpsa_dev_sbx`).
 
 ## Step 8 — Pre-approve tools (fewer clicks)
 
@@ -135,7 +136,7 @@ authorized sandbox alias (e.g. `mpsa_dev_sbx`).
   no action needed.
 - **MCP read tools** cannot be pre-approved from a committed setting. Run **`Chat: Manage Tool
   Approval`** (Command Palette), expand `salesforce-readonly` and `ado-readonly`, and trust all
-  their tools at **workspace** scope. Do **not** trust `salesforce-development`.
+  their tools at **workspace** scope.
 
 ## Step 9 — Verify
 
@@ -165,7 +166,7 @@ Get-Content .cache\denials.log -Tail 20
 | `Blocked by Pre-Tool Use hook` on ADO calls | `ADO_ORGANIZATION` env var unset or ≠ `ado.organization` | Step 4: set the env var to the exact slug, **fully restart** VS Code |
 | `Organization name is required. Provide it as a parameter…` | ADO MCP URL is org-less because the env var is unset | Step 4 |
 | `preflight --capability ado` fails: "ADO_ORGANIZATION must exactly match…" | env var missing or mismatched | Step 4 (exact match, no trailing spaces) |
-| `Salesforce MCP startup blocked: development mode is disabled on Windows` / `exit code 2` | **Expected** — dev/write mode is not supported on Windows | Don't start `salesforce-development`; use `salesforce-readonly` |
+| `Salesforce MCP startup blocked: development mode is disabled on Windows` / `exit code 2` | Stale MCP config — the `salesforce-development` server was removed 2026-07-14 | Pull the latest `main` and reload VS Code; only `salesforce-readonly` and `ado-readonly` should be listed |
 | `MCP startup blocked: … Organization.IsSandbox … proof failed` | target org isn't a real sandbox, or config still has `<PLACEHOLDER>` values | Step 5/6: authorize a real sandbox, fill host/orgId |
 | `webidl.util.markAsUncloneable is not a function` | Node < 22 | Install Node 22+ (Step 1) |
 | ADO call still runs without being scoped / lists all orgs | Known hook-matching gap (see below) | Track the hardening fix; interim, do not rely on the hook to block bare-named MCP tools |

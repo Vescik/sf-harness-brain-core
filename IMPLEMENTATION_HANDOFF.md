@@ -5,6 +5,62 @@
 > `tests/e2e/` are authoritative. Earlier two-folder or nested-`salesforce/` descriptions in this
 > iteration history are superseded.
 
+## Iteration 6 — Read-only MCP model; human-approved CLI retrieve (2026-07-14)
+
+### Changes
+
+- Removed the `salesforce-development` MCP server, its `sf_dev_org` input, and the OS-level
+  `sandbox`/`sandboxEnabled` keys from `.vscode/mcp.json` (owner decision — see the 2026-07-14
+  decisions-log entry). The configured MCP surface is read-only by construction; the recurring
+  Windows `exit code 2` startup error is gone.
+- Widened the guarded `scripts/salesforce_read.py` read flow (structured records + cached
+  metadata retrieve) to Solution Designer and Development Assistant, and wired the
+  principles → knowledge → org-context sequence into the designer/developer agent bodies and the
+  solution-design skill.
+- Carved out `sf project retrieve start --target-org <configured-alias>` as the only raw
+  Salesforce CLI agents may request: the global safety hook validates the alias against local
+  configuration and answers `ask` (SAFE-HUMAN-001) so every retrieve needs human confirmation;
+  the role guard permits the command for Development Assistant only. Deploys and all other raw
+  CLI remain denied.
+- Updated validator contracts (two read-only servers; a write server or sandbox keys reappearing
+  now fails validation), tests (183), and safety evaluations (30).
+
+### Validation — 2026-07-14
+
+- Harness validation: PASS. Python unit suite: PASS — 183 tests. Safety evaluations: PASS — 30.
+
+## Iteration 5 — Windows-first onboarding and shareability hardening (2026-07-14)
+
+### Changes
+
+- Replaced `first-launch.ps1` with cross-platform `scripts/first_launch.py` (same guided flow:
+  prerequisite checks, pinned installs, config creation, ADO collection, sandbox authorization
+  with host/`IsSandbox` proof, verification gates). Plain Python avoids PowerShell
+  execution-policy blocks on managed Windows machines; a fresh `.venv` now requires
+  Python 3.11+.
+- Added `docs/setup-zero-to-first-prompt.md`: a zero-assumptions manual walkthrough (Windows
+  primary, macOS/Linux inline) from tool installation to the first Copilot prompt, including the
+  `ADO_ORGANIZATION` env var, interpreter selection, and the review-only Windows scope.
+- Archived the historical design documents (`HARNESS_BLUEPRINT.md` — Polish, `BUILD_REPORT.md`,
+  `HARNESS_DIAGRAMS.md`, both `HANDOFF_FOR_FABLE*.md`) into `docs/archive/` with an index and
+  status banners; root-level docs are now the only operating surface.
+- Fixed documentation count drift: five agents, eleven public prompts, fifteen internal skills
+  everywhere (README, SETUP §5, compatibility contract).
+- Enforced the manifest rule: `preflight --capability salesforce-write` now fails while the
+  configured manifest contains any wildcard `<members>*</members>` entry (3 new unit tests).
+- Investigated and recorded the npm-audit posture: all 24 findings are transitive to
+  vendor-pinned Salesforce tooling; `@salesforce/mcp@0.30.15` is the latest stable, the
+  `sfdx-lwc-jest` fix is prerelease-only, and a full in-range update was tested and rejected
+  (worsened to 37 findings / 9 high). Risk acceptance recorded in `.ai/memory/decisions-log.md`,
+  `SECURITY.md`, and `docs/compatibility.md`.
+
+### Validation — 2026-07-14
+
+- Harness validation: PASS — 2,416 checks.
+- Python unit suite: PASS — 178 tests.
+- Deterministic safety evaluations: PASS — 28 scenarios.
+- Prettier, ESLint, and LWC unit gates: PASS (LWC still `--passWithNoTests`).
+
 ## Current flat-root validation — 2026-07-10
 
 - Harness validation: PASS — 1,536 checks.

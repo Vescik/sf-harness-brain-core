@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from xml.etree import ElementTree
 from urllib.parse import urlparse
 
 from jsonschema import Draft202012Validator
@@ -233,10 +234,51 @@ def validate_metadata(config: dict) -> list[str]:
     return failures
 
 
+def manifest_wildcard_failures(config: dict) -> list[str]:
+    """Reject an org-facing manifest that still contains wildcard members.
+
+    A wildcard is never deployment authorization (README): before any org-facing
+    retrieve/validate/deploy the manifest must be narrowed to the exact components bound by an
+    accepted work record.
+    """
+    root = metadata_root()
+    try:
+        manifest = contained_workspace_path(
+            root, config["workspace"]["manifestPath"], "workspace.manifestPath"
+        )
+    except (KeyError, ValueError):
+        return []  # validate_metadata already reports the shape problem
+    if not manifest.is_file():
+        return []
+    try:
+        tree = ElementTree.parse(manifest)
+    except ElementTree.ParseError as exc:
+        return [f"configured manifest is not valid XML: {exc}"]
+    namespace = {"sf": "http://soap.sforce.com/2006/04/metadata"}
+    wildcard_types = sorted(
+        {
+            (types.findtext("sf:name", default="?", namespaces=namespace) or "?")
+            for types in tree.getroot().findall("sf:types", namespace)
+            for member in types.findall("sf:members", namespace)
+            if (member.text or "").strip() == "*"
+        }
+    )
+    if wildcard_types:
+        return [
+            "manifest still contains wildcard <members>*</members> for: "
+            + ", ".join(wildcard_types)
+            + " — narrow it to the exact components of the accepted work record before any"
+            " org-facing operation (a wildcard is never authorization)"
+        ]
+    return []
+
+
 def validate_capability(config: dict, capability: str) -> list[str]:
     failures: list[str] = []
     if capability in {"metadata", "salesforce-write", "playwright"}:
         failures.extend(validate_metadata(config))
+    if capability == "salesforce-write":
+        failures.extend(manifest_wildcard_failures(config))
     if capability in {"ado", "release"}:
         configured_org = str(config.get("ado", {}).get("organization", ""))
         runtime_org = os.environ.get("ADO_ORGANIZATION", "")

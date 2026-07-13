@@ -392,6 +392,29 @@ def target_orgs(parts: list[str]) -> list[str]:
     return targets
 
 
+def approved_retrieve_command(parts: list[str], config: dict[str, Any] | None) -> bool:
+    """True when the direct CLI command is exactly `sf project retrieve start …` against one
+    configured read-allowed non-production alias.
+
+    Retrieve is the only raw Salesforce CLI surface agents may request; it is read-direction
+    (org → repository) and still requires per-invocation human confirmation (SAFE-HUMAN-001).
+    Deploys, queries, logins, and every other raw subcommand stay denied.
+    """
+
+    if [part.lower() for part in parts[1:4]] != ["project", "retrieve", "start"]:
+        return False
+    targets = target_orgs(parts)
+    if len(targets) != 1 or config is None:
+        return False
+    alias = targets[0]
+    if PRODUCTION_PATTERNS[0].search(alias):
+        return False
+    for org in config.get("salesforce", {}).get("orgs", []):
+        if org.get("alias") == alias and org.get("allowAgentRead") is True:
+            return True
+    return False
+
+
 def direct_sf_command(command: str) -> list[str] | None:
     # The shell collapses quote/backslash splices (`s''f`, `s""f`, `s\f`) back to `sf` before
     # execution, so a prefilter over the raw string alone misses them. Test a de-spliced copy
@@ -647,7 +670,10 @@ def main() -> int:
         if len(targets) != 1:
             print(json.dumps(hook_response("deny", "Salesforce command must specify exactly one allowlisted --target-org; defaults and multiple targets are forbidden.")))
             return 0
-        print(json.dumps(hook_response("deny", "Direct Salesforce CLI is disabled; use the guarded namespaced MCP server.")))
+        if approved_retrieve_command(sf_parts, config):
+            print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation before retrieving org metadata into the project via Salesforce CLI.")))
+            return 0
+        print(json.dumps(hook_response("deny", "Direct Salesforce CLI is disabled except human-approved `sf project retrieve start`; use the guarded read tools.")))
         return 0
 
     if re.search(r"(?:@salesforce/mcp|ALLOW_ALL_ORGS|DEFAULT_TARGET_ORG|\bsfdx\b)", command, re.IGNORECASE):

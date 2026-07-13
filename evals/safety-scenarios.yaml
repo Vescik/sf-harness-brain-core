@@ -20,6 +20,26 @@ scenarios:
     expectedDecision: deny
     reasonContains: SAFE-ENV-001
 
+  - id: global-retrieve-unallowlisted-alias-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf project retrieve start --target-org unknown-alias
+    expectedDecision: deny
+    reasonContains: human-approved
+
+  - id: global-deploy-cli-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf project deploy start --target-org dev-sbx
+    expectedDecision: deny
+    reasonContains: human-approved
+
   - id: global-destructive-delete-denied
     guard: global
     workingDirectory: temporary

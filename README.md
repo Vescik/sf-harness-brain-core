@@ -2,7 +2,7 @@
 
 A private, team-versioned GitHub Copilot harness for Salesforce development around any configured
 closed managed package. It combines a minimal always-on safety/grounding kernel, five SDLC agents,
-ten public prompt commands, fourteen internal skills, governed but initially unseeded
+eleven public prompt commands, fifteen internal skills, governed but initially unseeded
 Knowledge/Memory/QA layers, reconciled read-only org review, durable handoffs, and repeatable
 validation. No object, namespace, package behavior, or business meaning is built in.
 
@@ -19,9 +19,10 @@ validation. No object, namespace, package behavior, or business meaning is built
    source inventory and Knowledge-proposal pipeline.
 7. [IMPLEMENTATION_HANDOFF.md](IMPLEMENTATION_HANDOFF.md) — as-built changes and remaining roadmap.
 
-`HARNESS_BLUEPRINT.md`, `BUILD_REPORT.md`, `HARNESS_DIAGRAMS.md`, and `HANDOFF_FOR_FABLE.md` retain
-the original design history. They are no longer the normative runtime specification where they
-conflict with the files above.
+The original design history (`HARNESS_BLUEPRINT.md`, `BUILD_REPORT.md`, `HARNESS_DIAGRAMS.md`,
+and both `HANDOFF_FOR_FABLE*.md` reviews) lives in [docs/archive/](docs/archive/README.md). It is
+historical input only and is not the normative runtime specification where it conflicts with the
+files above.
 
 ## Architecture
 
@@ -29,8 +30,8 @@ conflict with the files above.
 |---|---|---|
 | Safety and Principles | `.github/copilot-instructions.md`, `.github/instructions/` | Minimal always-on kernel; detailed role-loaded Tier 1 → 2 → 3 rules |
 | Orchestration | `.github/agents/` | Design, investigation, development, QA strategy, independent review |
-| Public commands | `.github/prompts/` | Ten deterministic slash-command entry points |
-| Internal capabilities | `.github/skills/` | Fourteen progressively loaded procedures hidden from the slash menu |
+| Public commands | `.github/prompts/` | Eleven deterministic slash-command entry points |
+| Internal capabilities | `.github/skills/` | Fifteen progressively loaded procedures hidden from the slash menu |
 | Knowledge and contracts | `.ai/knowledge/`, `.ai/contracts/` | Schema-governed claims, immutable evidence, human reviews, source authority |
 | Work state and QA | `.ai/change-records/`, `.ai/memory/`, `.ai/qa/` | Revisioned approvals/handoffs, durable decisions, and test inventory |
 | Salesforce project | `sfdx-project.json`, `force-app/`, `manifest/`, `tests/e2e/` | Root SFDX project, source, manifests, and Salesforce tests |
@@ -39,7 +40,10 @@ conflict with the files above.
 
 ## Start here
 
-Follow [SETUP.md](SETUP.md). Clone this repository once, then open `sf-harness.code-workspace`.
+Follow [SETUP.md](SETUP.md) — or, if you are setting up a machine from scratch, the
+zero-assumptions walkthrough in
+[docs/setup-zero-to-first-prompt.md](docs/setup-zero-to-first-prompt.md). Clone this repository
+once, then open `sf-harness.code-workspace`.
 The repository root is both the harness root and the only Salesforce DX project root. The
 workspace exposes it once as `brain-core`; `sfdx-project.json`, `force-app/`, `manifest/`, and
 `tests/e2e/` share the same branch, pull request, and commit history as the governance artifacts.
