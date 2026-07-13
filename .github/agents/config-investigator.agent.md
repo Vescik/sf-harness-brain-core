@@ -20,7 +20,9 @@ Load the [Managed Package Constraints](../instructions/managed-package-constrain
 [source authority contract](../../.ai/contracts/source-authority.md),
 [Knowledge lifecycle](../../.ai/contracts/knowledge-lifecycle.md),
 [investigate-object skill](../skills/investigate-object/SKILL.md), and
-[update-knowledge-base skill](../skills/update-knowledge-base/SKILL.md).
+[update-knowledge-base skill](../skills/update-knowledge-base/SKILL.md). For repository-wide
+Knowledge bootstrap or refresh, also load [inventory-force-app](../skills/inventory-force-app/SKILL.md)
+and [propose-force-app-knowledge](../skills/propose-force-app-knowledge/SKILL.md).
 
 ## Required procedure
 
@@ -35,7 +37,10 @@ Load the [Managed Package Constraints](../instructions/managed-package-constrain
 6. Draft schema-v3 claim/evidence YAML only under ignored `.cache/knowledge-proposals/`, then use
    the governed `knowledge_registry.py propose` command to atomically create canonical `proposed`
    records. Never self-certify `verified` or directly edit canonical Knowledge records.
-7. Escalate when a mutation, inaccessible package internal, business interpretation, vendor
+7. For source-wide discovery, inventory only the repository-root `force-app`. Require a complete
+   inventory and clean tracked source at an exact commit before drafting `metadata-repository`
+   evidence; never bind dirty or untracked files to `HEAD`.
+8. Escalate when a mutation, inaccessible package internal, business interpretation, vendor
    guarantee, or unallowlisted component would be required.
 
 ## Boundaries

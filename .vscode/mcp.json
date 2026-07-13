@@ -78,6 +78,7 @@
       "allowedDomains": [
         "mcp.dev.azure.com",
         "test.salesforce.com",
+        "*.scratch.my.salesforce.com",
         "*.sandbox.my.salesforce.com",
         "*.sandbox.lightning.force.com",
         "*.sandbox.my.site.com"

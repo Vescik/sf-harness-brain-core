@@ -2,6 +2,7 @@
   "name": "sf-harness-brain-core",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "description": "Single-root Salesforce DX project and governed GitHub Copilot harness.",
   "scripts": {
     "lint": "eslint --no-error-on-unmatched-pattern \"force-app/main/default/{aura,lwc}/**/*.js\"",

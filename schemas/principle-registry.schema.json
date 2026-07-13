@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/principle-registry.schema.json",
+  "$id": "urn:sf-harness-brain-core:principle-registry.schema.json",
   "title": "Principle rule provenance registry",
   "type": "object",
   "additionalProperties": false,

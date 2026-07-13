@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/work-evidence.schema.json",
+  "$id": "urn:sf-harness-brain-core:work-evidence.schema.json",
   "title": "Bound work-record evidence receipt",
   "type": "object",
   "additionalProperties": false,

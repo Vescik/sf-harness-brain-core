@@ -17,6 +17,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 ROOT = Path(__file__).resolve().parents[1]
 ORG_ID = "00D000000000001AAA"
 HOST = "example--dev.sandbox.my.salesforce.com"
+SCRATCH_HOST = "mpsadev.scratch.my.salesforce.com"
 
 
 FAKE_CLI = r"""
@@ -27,7 +28,7 @@ if (args[0] === "version") {
 } else if (args[0] === "org" && args[1] === "display") {
   out({status: 0, result: {
     id: "00D000000000001AAA",
-    instanceUrl: "https://example--dev.sandbox.my.salesforce.com",
+    instanceUrl: "https://" + (process.env.SF_FAKE_INSTANCE_HOST || "example--dev.sandbox.my.salesforce.com"),
     accessToken: "Bearer SHOULD_NEVER_ESCAPE",
     clientId: "sensitive-client",
     username: "person@example.invalid",
@@ -162,6 +163,7 @@ class ReviewFacade:
         *,
         mismatch: bool = False,
         expected_host: str = HOST,
+        cli_host: str = HOST,
         mcp_error: bool = False,
         cli_package_error: bool = False,
     ):
@@ -189,6 +191,7 @@ class ReviewFacade:
             "SF_HARNESS_MCP_ARGS_JSON": json.dumps([str(mcp_path)]),
             "SF_FAKE_MCP_MARKER": str(marker_path),
             "SF_FAKE_MISMATCH": "1" if mismatch else "0",
+            "SF_FAKE_INSTANCE_HOST": cli_host,
             "SF_FAKE_MCP_ERROR": "1" if mcp_error else "0",
             "SF_FAKE_CLI_PACKAGE_ERROR": "1" if cli_package_error else "0",
         }
@@ -359,6 +362,39 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
             facade = ReviewFacade(
                 Path(name),
                 expected_host="other--dev.sandbox.my.salesforce.com",
+            )
+            try:
+                evidence = facade.call("review_org_identity")
+                self.assertEqual(evidence["status"], "BLOCKED")
+                self.assertIn("IDENTITY_HOST_MISMATCH", evidence["warnings"])
+                self.assertFalse(facade.marker_path.exists())
+                self.assert_valid_evidence(evidence)
+            finally:
+                facade.close()
+
+    def test_scratch_org_identity_is_verified_by_both_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(
+                Path(name),
+                expected_host=SCRATCH_HOST,
+                cli_host=SCRATCH_HOST,
+            )
+            try:
+                evidence = facade.call("review_org_identity")
+                self.assertEqual(evidence["status"], "VERIFIED")
+                self.assertTrue(evidence["target"]["expectedHostMatched"])
+                self.assertTrue(evidence["target"]["expectedOrgIdMatched"])
+                self.assertTrue(evidence["target"]["isSandbox"])
+                self.assert_valid_evidence(evidence)
+            finally:
+                facade.close()
+
+    def test_scratch_org_instance_url_with_path_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(
+                Path(name),
+                expected_host=SCRATCH_HOST,
+                cli_host=f"{SCRATCH_HOST}/unexpected",
             )
             try:
                 evidence = facade.call("review_org_identity")
@@ -587,6 +623,46 @@ class SalesforceReviewConfigContractTests(unittest.TestCase):
             )
             self.assertEqual(completed.returncode, 2)
             self.assertIn("REVIEW_DISABLED", completed.stderr)
+            self.assertFalse(marker_path.exists())
+
+    def test_server_refuses_developer_edition_or_dev_hub_host(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            directory = Path(name)
+            config_path = directory / "harness.local.json"
+            policy_path = directory / "salesforce-review-policy.json"
+            marker_path = directory / "mcp-started.txt"
+            config_path.write_text(
+                json.dumps(local_config("acme.develop.my.salesforce.com")),
+                encoding="utf-8",
+            )
+            policy_path.write_text(
+                (ROOT / "config" / "salesforce-review-policy.json").read_text(
+                    encoding="utf-8"
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [
+                    "node",
+                    str(ROOT / "scripts" / "salesforce_review_server.mjs"),
+                    "--org",
+                    "dev-sbx",
+                ],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "SF_HARNESS_TEST_MODE": "1",
+                    "SF_HARNESS_CONFIG_PATH": str(config_path),
+                    "SF_HARNESS_REVIEW_POLICY_PATH": str(policy_path),
+                    "SF_FAKE_MCP_MARKER": str(marker_path),
+                },
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn("CONFIG_INVALID", completed.stderr)
             self.assertFalse(marker_path.exists())
 
 

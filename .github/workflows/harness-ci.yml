@@ -33,10 +33,23 @@ jobs:
           cache-dependency-path: requirements-dev.lock
 
       - name: Install validation dependencies
-        run: python -m pip install --disable-pip-version-check -r requirements-dev.lock
+        # --require-hashes verifies every downloaded artifact against the pinned sha256 set,
+        # defeating index-substitution / version-hijack (matters most for the rpds-py binary wheel).
+        run: python -m pip install --disable-pip-version-check --require-hashes -r requirements-dev.lock
+
+      - name: Set up Node
+        uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4.0.2
+        with:
+          node-version-file: .nvmrc
 
       - name: Install pinned Salesforce review runtime
         run: npm ci --ignore-scripts
+
+      - name: Audit npm dependency tree
+        # Hard-fail only on CRITICAL advisories in the production tree. The @salesforce/mcp
+        # transitive tree currently carries lower-severity advisories that are not fixable from
+        # here (pinned upstream); Dependabot surfaces and proposes fixes for those separately.
+        run: npm audit --omit=dev --audit-level=critical
 
       - name: Compile Python controls
         run: python -m compileall -q scripts tests
@@ -62,4 +75,17 @@ jobs:
           npm run test:unit:ci
 
       - name: Confirm local and generated state is ignored
-        run: git check-ignore config/harness.local.json .cache/ado-items/example.json output/handover/example.md .env force-app/main/default/lwc/jsconfig.json deploy-options.json
+        shell: bash
+        run: |
+          # git check-ignore exits 0 if ANY argument is ignored, so check each path individually
+          # to catch a single path that stops being ignored.
+          for path in \
+            config/harness.local.json \
+            config/harness.json \
+            .cache/ado-items/example.json \
+            output/handover/example.md \
+            .env \
+            force-app/main/default/lwc/jsconfig.json \
+            deploy-options.json; do
+            git check-ignore -q "$path" || { echo "NOT IGNORED: $path"; exit 1; }
+          done

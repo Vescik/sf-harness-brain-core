@@ -19,7 +19,12 @@ from typing import Any, Iterable, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
 import yaml
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator
+
+try:
+    from schema_format import FORMAT_CHECKER
+except ModuleNotFoundError:  # imported as scripts.work_record by unit tests
+    from scripts.schema_format import FORMAT_CHECKER
 
 
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
@@ -245,7 +250,7 @@ def contained_path(root: Path, relative: str, *, must_exist: bool = True) -> Pat
 def validate_schema(value: dict[str, Any], schema_path: Path, label: str) -> None:
     schema = load_json(schema_path)
     errors = sorted(
-        Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(value),
+        Draft202012Validator(schema, format_checker=FORMAT_CHECKER).iter_errors(value),
         key=lambda error: list(error.absolute_path),
     )
     if not errors:
@@ -2375,9 +2380,27 @@ def command_append_review(args: argparse.Namespace) -> dict[str, Any]:
     return persist_record(root, record)
 
 
+def _assert_not_agent_context() -> None:
+    """In-process SAFE-HUMAN-001 backstop: refuse approval when ``SF_HARNESS_AGENT_CONTEXT`` is set.
+
+    The role guard denies `approve` to every custom agent and the global safety hook blocks it
+    from the default Copilot terminal; both are string matchers a renamed invocation could evade.
+    This check adds a matcher-independent layer, but it is ONLY active once the agent runner
+    exports ``SF_HARNESS_AGENT_CONTEXT``. Until a runner is wired to set it (see
+    HANDOFF_FOR_FABLE_CHECKER.md), this provides no runtime protection on its own.
+    """
+
+    if os.environ.get("SF_HARNESS_AGENT_CONTEXT", "").strip():
+        raise WorkRecordError(
+            "SAFE-HUMAN-001: work-record approval cannot run inside an agent context; "
+            "a named human must run it directly in an unmanaged terminal."
+        )
+
+
 def command_approve(args: argparse.Namespace) -> dict[str, Any]:
     """Human-only command; role guards must deny this subcommand to every agent."""
 
+    _assert_not_agent_context()
     root = data_root(args.root)
     record = load_record(root, args.record_id, check_design=False)
     check_expected(record, args.expected_revision, args.expected_record_hash)

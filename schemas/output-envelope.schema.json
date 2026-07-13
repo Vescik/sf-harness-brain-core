@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/output-envelope.schema.json",
+  "$id": "urn:sf-harness-brain-core:output-envelope.schema.json",
   "title": "Generated artifact evidence envelope",
   "type": "object",
   "additionalProperties": false,

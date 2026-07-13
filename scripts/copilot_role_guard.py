@@ -40,7 +40,7 @@ METADATA_ROOT = HARNESS_ROOT
 METADATA_EDIT_PREFIXES = ("force-app/", "manifest/", "tests/e2e/")
 PREFLIGHT_CAPABILITIES = {
     "solution-designer": {"base", "ado", "salesforce-review"},
-    "config-investigator": {"base", "salesforce-review"},
+    "config-investigator": {"base", "metadata", "salesforce-review"},
     "development-assistant": {
         "base",
         "ado",
@@ -281,6 +281,23 @@ def knowledge_registry_command_allowed(
     return all(proposal_draft_path_allowed(value, root) for value in draft_paths)
 
 
+def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
+    if role != "config-investigator" or not parts:
+        return False
+    if parts == ["inventory"]:
+        return True
+    if parts == ["draft"]:
+        return True
+    if len(parts) == 3 and parts[0] == "draft" and parts[1] == "--observed-at":
+        return bool(
+            re.fullmatch(
+                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
+                parts[2],
+            )
+        )
+    return False
+
+
 def allowed_role_command(command: str, root: Path, role: str) -> bool:
     if not command or re.search(r"[;&|`$<>\n\r]", command):
         return False
@@ -306,6 +323,7 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     browser_guard = (root / "scripts/playwright_guard.py").resolve()
     work_record = (root / "scripts/work_record.py").resolve()
     knowledge_registry = (root / "scripts/knowledge_registry.py").resolve()
+    force_app_knowledge = (root / "scripts/force_app_knowledge.py").resolve()
     remainder = parts[index + 1 :]
     if script == preflight:
         return (
@@ -317,6 +335,8 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         return work_record_command_allowed(remainder, role)
     if script == knowledge_registry:
         return knowledge_registry_command_allowed(remainder, role, root)
+    if script == force_app_knowledge:
+        return force_app_knowledge_command_allowed(remainder, role)
     return role == "test-strategist" and script == browser_guard and bool(remainder)
 
 

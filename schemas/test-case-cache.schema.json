@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/test-case-cache.schema.json",
+  "$id": "urn:sf-harness-brain-core:test-case-cache.schema.json",
   "title": "Sanitized Azure DevOps test-case cache",
   "type": "object",
   "additionalProperties": false,

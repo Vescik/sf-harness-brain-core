@@ -821,5 +821,18 @@ class WorkRecordTests(unittest.TestCase):
             self.assertEqual(errors, [], f"{name}: {[error.message for error in errors]}")
 
 
+class ApprovalContextGuardTests(unittest.TestCase):
+    def test_agent_context_marker_blocks_approval(self) -> None:
+        with patch.dict("os.environ", {"SF_HARNESS_AGENT_CONTEXT": "1"}, clear=False):
+            with self.assertRaises(work_record.WorkRecordError) as caught:
+                work_record._assert_not_agent_context()
+        self.assertIn("SAFE-HUMAN-001", str(caught.exception))
+
+    def test_absent_marker_allows_human_run(self) -> None:
+        env = {key: value for key, value in dict(work_record.os.environ).items() if key != "SF_HARNESS_AGENT_CONTEXT"}
+        with patch.dict("os.environ", env, clear=True):
+            work_record._assert_not_agent_context()
+
+
 if __name__ == "__main__":
     unittest.main()

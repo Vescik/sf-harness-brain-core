@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/verification-receipt.schema.json",
+  "$id": "urn:sf-harness-brain-core:verification-receipt.schema.json",
   "title": "Deterministic verification execution receipt",
   "type": "object",
   "additionalProperties": false,

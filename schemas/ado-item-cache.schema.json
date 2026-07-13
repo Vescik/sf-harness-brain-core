@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/ado-item-cache.schema.json",
+  "$id": "urn:sf-harness-brain-core:ado-item-cache.schema.json",
   "title": "Sanitized Azure DevOps work-item cache",
   "type": "object",
   "additionalProperties": false,

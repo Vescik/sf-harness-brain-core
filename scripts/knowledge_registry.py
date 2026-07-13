@@ -15,7 +15,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator
+
+try:
+    from schema_format import FORMAT_CHECKER
+except ModuleNotFoundError:  # imported as scripts.knowledge_registry by unit tests
+    from scripts.schema_format import FORMAT_CHECKER
 
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
@@ -202,7 +207,7 @@ class KnowledgeRegistry:
 
     def validate_data(self, data: dict[str, Any], schema_name: str, label: str) -> None:
         validator = Draft202012Validator(
-            self.schema(schema_name), format_checker=FormatChecker()
+            self.schema(schema_name), format_checker=FORMAT_CHECKER
         )
         errors = sorted(validator.iter_errors(data), key=lambda item: list(item.path))
         if errors:
@@ -215,7 +220,7 @@ class KnowledgeRegistry:
         scope_schema = copy.deepcopy(claim_schema["properties"]["scope"])
         scope_schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
         errors = sorted(
-            Draft202012Validator(scope_schema, format_checker=FormatChecker()).iter_errors(
+            Draft202012Validator(scope_schema, format_checker=FORMAT_CHECKER).iter_errors(
                 scope
             ),
             key=lambda item: list(item.path),

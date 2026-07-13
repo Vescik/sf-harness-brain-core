@@ -282,4 +282,7 @@ scenarios:
         project: Other Project
         id: 1201
     expectedDecision: deny
-    reasonContains: local harness configuration is missing
+    # Both branches of the ADO guard (missing local config, or org/project mismatch when a
+    # local config is present) share this prefix, so the assertion holds whether or not the
+    # developer has a config/harness.local.json checked out.
+    reasonContains: "ADO read blocked"

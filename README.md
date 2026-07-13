@@ -2,7 +2,7 @@
 
 A private, team-versioned GitHub Copilot harness for Salesforce development around any configured
 closed managed package. It combines a minimal always-on safety/grounding kernel, five SDLC agents,
-seven public prompt commands, twelve internal skills, governed but initially unseeded
+ten public prompt commands, fourteen internal skills, governed but initially unseeded
 Knowledge/Memory/QA layers, reconciled read-only org review, durable handoffs, and repeatable
 validation. No object, namespace, package behavior, or business meaning is built in.
 
@@ -15,7 +15,9 @@ validation. No object, namespace, package behavior, or business meaning is built
    execution, cache, output, and failure behavior.
 5. [docs/grounding-architecture.md](docs/grounding-architecture.md) — Principles, claim/evidence,
    repository/org reconciliation, Knowledge promotion, and handoff architecture.
-6. [IMPLEMENTATION_HANDOFF.md](IMPLEMENTATION_HANDOFF.md) — as-built changes and remaining roadmap.
+6. [docs/force-app-knowledge-architecture.md](docs/force-app-knowledge-architecture.md) — governed
+   source inventory and Knowledge-proposal pipeline.
+7. [IMPLEMENTATION_HANDOFF.md](IMPLEMENTATION_HANDOFF.md) — as-built changes and remaining roadmap.
 
 `HARNESS_BLUEPRINT.md`, `BUILD_REPORT.md`, `HARNESS_DIAGRAMS.md`, and `HANDOFF_FOR_FABLE.md` retain
 the original design history. They are no longer the normative runtime specification where they
@@ -27,8 +29,8 @@ conflict with the files above.
 |---|---|---|
 | Safety and Principles | `.github/copilot-instructions.md`, `.github/instructions/` | Minimal always-on kernel; detailed role-loaded Tier 1 → 2 → 3 rules |
 | Orchestration | `.github/agents/` | Design, investigation, development, QA strategy, independent review |
-| Public commands | `.github/prompts/` | Seven deterministic slash-command entry points |
-| Internal capabilities | `.github/skills/` | Twelve progressively loaded procedures hidden from the slash menu |
+| Public commands | `.github/prompts/` | Ten deterministic slash-command entry points |
+| Internal capabilities | `.github/skills/` | Fourteen progressively loaded procedures hidden from the slash menu |
 | Knowledge and contracts | `.ai/knowledge/`, `.ai/contracts/` | Schema-governed claims, immutable evidence, human reviews, source authority |
 | Work state and QA | `.ai/change-records/`, `.ai/memory/`, `.ai/qa/` | Revisioned approvals/handoffs, durable decisions, and test inventory |
 | Salesforce project | `sfdx-project.json`, `force-app/`, `manifest/`, `tests/e2e/` | Root SFDX project, source, manifests, and Salesforce tests |

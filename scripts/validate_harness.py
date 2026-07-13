@@ -13,11 +13,16 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import yaml
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator
+
+try:
+    from schema_format import FORMAT_CHECKER
+except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
+    from scripts.schema_format import FORMAT_CHECKER
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 5, "prompts": 7, "skills": 12, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 5, "prompts": 10, "skills": 14, "instructions": 3}
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",
@@ -140,6 +145,7 @@ def check_required_files(audit: Audit) -> None:
         "scripts/salesforce_review_server.mjs",
         "scripts/work_record.py",
         "scripts/knowledge_registry.py",
+        "scripts/force_app_knowledge.py",
         ".ai/contracts/execution-contract.md",
         ".ai/contracts/tool-capabilities.md",
         ".ai/contracts/knowledge-lifecycle.md",
@@ -148,6 +154,8 @@ def check_required_files(audit: Audit) -> None:
         "schemas/knowledge-claim.schema.json",
         "schemas/knowledge-evidence.schema.json",
         "schemas/knowledge-review.schema.json",
+        "schemas/force-app-knowledge-inventory.schema.json",
+        "schemas/force-app-knowledge-draft-manifest.schema.json",
         "schemas/change-record.schema.json",
         "schemas/handoff-envelope.schema.json",
         "schemas/salesforce-org-review-evidence.schema.json",
@@ -328,7 +336,7 @@ def check_customizations(audit: Audit) -> None:
             public_skill_names.append(data["name"])
 
     public_commands = prompt_names + public_skill_names
-    audit.require(len(public_commands) == 7, f"expected 7 public slash commands, found {len(public_commands)}")
+    audit.require(len(public_commands) == 10, f"expected 10 public slash commands, found {len(public_commands)}")
     audit.require(len(public_commands) == len(set(public_commands)), "public slash-command names collide")
 
     for path in instruction_paths:
@@ -487,6 +495,8 @@ def check_settings_and_mcp(audit: Audit) -> None:
     domains = set(mcp.get("sandbox", {}).get("network", {}).get("allowedDomains", []))
     audit.require("*.salesforce.com" not in domains and "*.force.com" not in domains, "broad production-capable Salesforce domains are forbidden")
     audit.require("*.sandbox.my.salesforce.com" in domains, "sandbox Salesforce API domain is required")
+    audit.require("*.scratch.my.salesforce.com" in domains, "scratch-org Salesforce API domain is required")
+    audit.require("*.develop.my.salesforce.com" not in domains, "Developer Edition and dev-hub Salesforce domains are forbidden")
 
     hooks = load_json(ROOT / ".github/hooks/safety.json", audit)
     pre = hooks.get("hooks", {}).get("PreToolUse", []) if isinstance(hooks, dict) else []
@@ -607,6 +617,28 @@ def check_secret_signatures(audit: Audit) -> None:
             audit.require(pattern.search(text) is None, f"{name}: high-confidence secret signature detected")
 
 
+def check_python_yaml_safety(audit: Audit) -> None:
+    """Enforce the safe_load-only invariant so an unsafe YAML loader cannot be introduced.
+
+    PyYAML's arbitrary-code-execution class is only reachable through the unsafe loader family
+    (full/unsafe/plain load) or an explicit non-safe loader argument. All parsing in this repo
+    uses the safe loader/dumper; this gate keeps it that way in CI.
+    """
+
+    forbidden = re.compile(r"\byaml\.(?:unsafe_load|full_load|load)\s*\(|\bLoader\s*=")
+    for directory in ("scripts", "tests"):
+        for path in sorted((ROOT / directory).rglob("*.py")):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                continue
+            match = forbidden.search(text)
+            audit.require(
+                match is None,
+                f"{relative(path)}: unsafe YAML loader is forbidden (use yaml.safe_load); found {match.group(0) if match else ''!r}",
+            )
+
+
 def check_schemas_and_evals(audit: Audit) -> None:
     mappings = {
         "ado-item-cache.schema.json": ("ado-item.complete.json", "ado-item.partial.json"),
@@ -621,7 +653,7 @@ def check_schemas_and_evals(audit: Audit) -> None:
         except Exception as exc:  # jsonschema exposes several schema-error subclasses
             audit.require(False, f"{relative(schema_path)}: invalid JSON Schema: {exc}")
             continue
-        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        validator = Draft202012Validator(schema, format_checker=FORMAT_CHECKER)
         for fixture_name in fixture_names:
             fixture_path = ROOT / "evals/fixtures" / fixture_name
             fixture = load_json(fixture_path, audit)
@@ -678,7 +710,7 @@ def check_grounding_contracts(audit: Audit) -> None:
     registry = load_yaml(registry_path, audit)
     registry_schema = load_json(ROOT / "schemas/principle-registry.schema.json", audit)
     errors = sorted(
-        Draft202012Validator(registry_schema, format_checker=FormatChecker()).iter_errors(registry),
+        Draft202012Validator(registry_schema, format_checker=FORMAT_CHECKER).iter_errors(registry),
         key=lambda item: list(item.path),
     )
     audit.require(not errors, f"{relative(registry_path)}: schema failure: {errors[0].message if errors else ''}")
@@ -694,7 +726,7 @@ def check_grounding_contracts(audit: Audit) -> None:
         data = load_json(ROOT / data_name, audit)
         schema = load_json(ROOT / "schemas" / schema_name, audit)
         errors = sorted(
-            Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(data),
+            Draft202012Validator(schema, format_checker=FORMAT_CHECKER).iter_errors(data),
             key=lambda item: list(item.path),
         )
         audit.require(not errors, f"{data_name}: schema failure: {errors[0].message if errors else ''}")
@@ -706,6 +738,8 @@ def check_grounding_contracts(audit: Audit) -> None:
         "change-record.schema.json",
         "handoff-envelope.schema.json",
         "salesforce-org-review-evidence.schema.json",
+        "force-app-knowledge-inventory.schema.json",
+        "force-app-knowledge-draft-manifest.schema.json",
     ):
         schema = load_json(ROOT / "schemas" / schema_name, audit)
         try:
@@ -769,13 +803,14 @@ def main() -> int:
     check_grounding_contracts(audit)
     check_placeholders(audit)
     check_secret_signatures(audit)
+    check_python_yaml_safety(audit)
     if audit.errors:
         print(f"FAIL: harness validation ({len(audit.errors)} errors, {audit.checks} checks)")
         for message in audit.errors:
             print(f"- {message}")
         return 1
     print(f"PASS: harness validation ({audit.checks} checks)")
-    print("Inventory: 5 agents, 7 prompts, 12 internal skills, 3 scoped instruction files")
+    print("Inventory: 5 agents, 10 prompts, 14 internal skills, 3 scoped instruction files")
     print("Contracts: workspace, MCP, hooks, schemas, fixtures, and governance are coherent")
     return 0
 

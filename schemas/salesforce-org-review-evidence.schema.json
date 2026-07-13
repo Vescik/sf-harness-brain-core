@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/salesforce-org-review-evidence.schema.json",
+  "$id": "urn:sf-harness-brain-core:salesforce-org-review-evidence.schema.json",
   "title": "Normalized Salesforce org-review evidence",
   "type": "object",
   "additionalProperties": false,

@@ -132,6 +132,74 @@ class GlobalSafetyHookTests(unittest.TestCase):
             )
             self.assertEqual(hook_decision(output), "deny")
 
+    def test_recursive_force_rm_is_denied_regardless_of_flag_order(self) -> None:
+        for command in (
+            "rm -rf output",
+            "rm -fr output",
+            "rm -f -r output",
+            "rm --recursive --force output",
+            "rm -r-f output",
+            "/bin/rm -Rf output",
+            'rm "-rf" output',  # quote splice: shell strips quotes -> rm -rf
+            "r''m -rf output",  # quote splice in the command name
+        ):
+            with self.subTest(command=command):
+                output = run_hook(
+                    "copilot_safety_hook.py",
+                    {
+                        "tool_name": "execute/runInTerminal",
+                        "tool_input": {"command": command},
+                    },
+                )
+                self.assertEqual(hook_decision(output), "deny")
+
+    def test_benign_rm_and_chained_flags_are_not_over_blocked(self) -> None:
+        # Non-recursive rm, and a force flag that belongs to a *different* command segment,
+        # must not trip the destructive gate.
+        for command in ("rm -i stale.lock", "rm -f a.log && grep -r TODO src", "rm -r data"):
+            with self.subTest(command=command):
+                output = run_hook(
+                    "copilot_safety_hook.py",
+                    {
+                        "tool_name": "execute/runInTerminal",
+                        "tool_input": {"command": command},
+                    },
+                )
+                self.assertEqual(hook_decision(output), "continue")
+
+    def test_quote_and_backslash_spliced_salesforce_command_is_denied(self) -> None:
+        for command in (
+            "s''f project deploy start --target-org dev-sbx",
+            's""f org delete --target-org dev-sbx',
+            "s\\f org delete --target-org dev-sbx",  # backslash splice -> sf
+        ):
+            with self.subTest(command=command):
+                output = run_hook(
+                    "copilot_safety_hook.py",
+                    {
+                        "tool_name": "execute/runInTerminal",
+                        "tool_input": {"command": command},
+                    },
+                )
+                self.assertEqual(hook_decision(output), "deny")
+
+    def test_work_record_approval_module_form_is_denied(self) -> None:
+        for command in (
+            "python3 -m scripts.work_record approve --record-id CR-1",
+            "PYTHONPATH=scripts python3 -m work_record approve --record-id CR-1",
+            "python3 -mwork_record approve --record-id CR-1",  # no space after -m
+            "python3 -m 'work_record' approve --record-id CR-1",  # quoted module name
+        ):
+            with self.subTest(command=command):
+                output = run_hook(
+                    "copilot_safety_hook.py",
+                    {
+                        "tool_name": "execute/runInTerminal",
+                        "tool_input": {"command": command},
+                    },
+                )
+                self.assertEqual(hook_decision(output), "deny")
+
     def test_development_mcp_without_approval_is_denied(self) -> None:
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
@@ -259,6 +327,31 @@ class RoleGuardTests(unittest.TestCase):
         )
         self.assertEqual(hook_decision(allowed), "continue")
         self.assertEqual(hook_decision(denied), "deny")
+
+    def test_investigator_force_app_knowledge_commands_are_narrowly_allowlisted(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                ["inventory"], "config-investigator"
+            )
+        )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                ["draft", "--observed-at", "2026-07-10T12:00:00Z"],
+                "config-investigator",
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["inventory", "--root", "/tmp/other"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["draft"], "development-assistant"
+            )
+        )
 
     def test_designer_cannot_edit_decision_log_directly(self) -> None:
         output = run_hook(
@@ -716,13 +809,47 @@ class SafetyClassificationTests(unittest.TestCase):
                 "https://acme--dev.sandbox.my.salesforce.com"
             )
         )
+        self.assertTrue(
+            safety.is_salesforce_sandbox_origin(
+                "https://mpsadev.scratch.my.salesforce.com"
+            )
+        )
         self.assertFalse(
             safety.is_salesforce_sandbox_origin("https://acme.my.salesforce.com")
         )
         self.assertFalse(
             safety.is_salesforce_sandbox_origin(
+                "https://acme.develop.my.salesforce.com"
+            )
+        )
+        self.assertFalse(
+            safety.is_salesforce_sandbox_origin(
                 "https://acme--dev.sandbox.my.salesforce.com/unexpected-path"
             )
+        )
+        self.assertFalse(
+            safety.is_salesforce_sandbox_origin(
+                "https://mpsadev.scratch.my.salesforce.com:443"
+            )
+        )
+        self.assertFalse(
+            safety.is_salesforce_sandbox_origin(
+                "https://mpsadev.scratch.my.salesforce.com//"
+            )
+        )
+
+    def test_allowed_origins_include_configured_scratch_but_not_developer_edition(self) -> None:
+        config = {
+            "browser": {
+                "allowedOrigins": [
+                    "https://mpsadev.scratch.my.salesforce.com",
+                    "https://acme.develop.my.salesforce.com",
+                ]
+            }
+        }
+        self.assertEqual(
+            safety.allowed_origins(config),
+            {"https://mpsadev.scratch.my.salesforce.com"},
         )
 
     def test_multiple_target_orgs_are_detected(self) -> None:

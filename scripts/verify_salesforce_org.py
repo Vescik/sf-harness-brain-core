@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove through Salesforce itself that an authorized alias resolves to a sandbox org."""
+"""Prove that an authorized alias resolves to an allowlisted non-production Salesforce org."""
 
 from __future__ import annotations
 
@@ -20,7 +20,17 @@ SANDBOX_HOST = re.compile(
     r"^[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\.my\.salesforce\.com$",
     re.IGNORECASE,
 )
+SCRATCH_HOST = re.compile(
+    r"^[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com$",
+    re.IGNORECASE,
+)
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config" / "harness.local.json"
+
+
+def is_allowed_non_production_host(host: str) -> bool:
+    """Accept only a canonical Salesforce sandbox or scratch-org API hostname."""
+
+    return bool(SANDBOX_HOST.fullmatch(host) or SCRATCH_HOST.fullmatch(host))
 
 
 def parse_sandbox_instance(payload: str) -> bool:
@@ -44,7 +54,7 @@ def parse_org_display(payload: str) -> tuple[str, str] | None:
         and parsed.path in ("", "/")
         and not parsed.query
         and not parsed.fragment
-        and bool(SANDBOX_HOST.fullmatch(parsed.hostname or ""))
+        and is_allowed_non_production_host(parsed.hostname or "")
         and bool(ORG_ID.fullmatch(org_id))
     )
     return ((parsed.hostname or "").lower(), org_id) if valid else None
@@ -87,6 +97,12 @@ def verify_is_sandbox(
         r"(^|[^a-z])(prod|production)([^a-z]|$)", alias, re.IGNORECASE
     ):
         return False, "alias is invalid or production-like"
+    normalized_expected_host = str(expected_host or "").lower()
+    if not is_allowed_non_production_host(normalized_expected_host):
+        return False, "configured sandbox or scratch host is missing or invalid"
+    normalized_expected_org_id = str(expected_org_id or "")
+    if not ORG_ID.fullmatch(normalized_expected_org_id):
+        return False, "configured organization ID is missing or invalid"
     executable = shutil.which("sf")
     if executable is None:
         return False, "Salesforce CLI is unavailable"
@@ -107,11 +123,11 @@ def verify_is_sandbox(
         )
         identity = parse_org_display(local.stdout) if len(local.stdout) <= 1_000_000 else None
         if local.returncode != 0 or identity is None:
-            return False, "locally authorized instance URL is not a recognized sandbox host"
+            return False, "locally authorized instance URL is not a recognized sandbox or scratch host"
         host, local_org_id = identity
-        if expected_host is not None and host != expected_host.lower():
-            return False, "locally authorized sandbox host does not match local policy"
-        if expected_org_id is not None and local_org_id != expected_org_id:
+        if host != normalized_expected_host:
+            return False, "locally authorized non-production host does not match local policy"
+        if local_org_id != normalized_expected_org_id:
             return False, "locally authorized organization does not match local policy"
         completed = runner(
             [
@@ -136,7 +152,7 @@ def verify_is_sandbox(
     query_identity = parse_org_query(completed.stdout) if len(completed.stdout) <= 1_000_000 else None
     if query_identity is None or query_identity[0] is not True:
         return False, "Organization.IsSandbox was false, missing, or malformed"
-    if expected_org_id is not None and query_identity[1] != expected_org_id:
+    if query_identity[1] != normalized_expected_org_id:
         return False, "live Organization identity does not match local policy"
     return True, "Organization.IsSandbox=true"
 
@@ -158,7 +174,7 @@ def configured_identity(alias: str) -> tuple[str, str] | None:
         return None
     host = str(entry.get("expectedInstanceHost", "")).lower()
     org_id = str(entry.get("expectedOrganizationId", ""))
-    if not SANDBOX_HOST.fullmatch(host) or not ORG_ID.fullmatch(org_id):
+    if not is_allowed_non_production_host(host) or not ORG_ID.fullmatch(org_id):
         return None
     return host, org_id
 

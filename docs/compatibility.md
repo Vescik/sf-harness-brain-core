@@ -53,3 +53,12 @@ Do not use `latest` for runtime dependencies in the shared workspace. `requireme
 declares supported ranges; `requirements-dev.lock` pins CI's resolved set. Upgrade one component
 at a time, run static tests plus the behavioral evaluation suite, update the lock and this file,
 and retain the previous pinned version until the pilot evidence is accepted.
+
+The lock is **hash-pinned**: CI and SETUP install with `pip install --require-hashes`, which
+verifies every downloaded artifact's sha256 (regenerate the `--hash` lines from the PyPI JSON API
+as noted in `requirements-dev.txt` when bumping a pin). `typing_extensions` appears in the lock
+only as a transitive of `referencing` under `python_version < '3.13'`; on Python 3.13+ it drops
+out of the resolved set automatically. Supply-chain monitoring runs continuously via
+`.github/dependabot.yml` (pip, npm, github-actions) plus a `npm audit --audit-level=critical` CI
+gate; lower-severity npm advisories in the pinned `@salesforce/mcp` transitive tree are tracked by
+Dependabot rather than hard-failing CI.

@@ -13,6 +13,9 @@ from jsonschema import Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ORG_ID = "00D000000000001AAA"
+SANDBOX_HOST = "acme--dev.sandbox.my.salesforce.com"
+SCRATCH_HOST = "mpsadev.scratch.my.salesforce.com"
 
 
 class SalesforceProofTests(unittest.TestCase):
@@ -33,7 +36,12 @@ class SalesforceProofTests(unittest.TestCase):
             )
         )
         with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
-            ok, _ = verifier.verify_is_sandbox("dev-sbx", runner=runner)
+            ok, _ = verifier.verify_is_sandbox(
+                "dev-sbx",
+                expected_host=SANDBOX_HOST,
+                expected_org_id=ORG_ID,
+                runner=runner,
+            )
         self.assertFalse(ok)
         self.assertEqual(runner.call_count, 1)
 
@@ -70,7 +78,12 @@ class SalesforceProofTests(unittest.TestCase):
             ]
         )
         with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
-            ok, _ = verifier.verify_is_sandbox("dev-sbx", runner=runner)
+            ok, _ = verifier.verify_is_sandbox(
+                "dev-sbx",
+                expected_host=SANDBOX_HOST,
+                expected_org_id=ORG_ID,
+                runner=runner,
+            )
         self.assertFalse(ok)
 
     def test_true_is_sandbox_passes(self) -> None:
@@ -106,9 +119,160 @@ class SalesforceProofTests(unittest.TestCase):
             ]
         )
         with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
-            ok, reason = verifier.verify_is_sandbox("dev-sbx", runner=runner)
+            ok, reason = verifier.verify_is_sandbox(
+                "dev-sbx",
+                expected_host=SANDBOX_HOST,
+                expected_org_id=ORG_ID,
+                runner=runner,
+            )
         self.assertTrue(ok)
         self.assertEqual(reason, "Organization.IsSandbox=true")
+
+    def test_scratch_org_with_exact_identity_and_is_sandbox_passes(self) -> None:
+        runner = Mock(
+            side_effect=[
+                SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "status": 0,
+                            "result": {
+                                "instanceUrl": f"https://{SCRATCH_HOST}",
+                                "id": ORG_ID,
+                            },
+                        }
+                    ),
+                    stderr="",
+                ),
+                SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "status": 0,
+                            "result": {
+                                "records": [{"Id": ORG_ID, "IsSandbox": True}]
+                            },
+                        }
+                    ),
+                    stderr="",
+                ),
+            ]
+        )
+        with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
+            ok, reason = verifier.verify_is_sandbox(
+                "mpsa-dev",
+                expected_host=SCRATCH_HOST,
+                expected_org_id=ORG_ID,
+                runner=runner,
+            )
+        self.assertTrue(ok)
+        self.assertEqual(reason, "Organization.IsSandbox=true")
+
+    def test_scratch_org_still_requires_is_sandbox_true(self) -> None:
+        runner = Mock(
+            side_effect=[
+                SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "status": 0,
+                            "result": {
+                                "instanceUrl": f"https://{SCRATCH_HOST}",
+                                "id": ORG_ID,
+                            },
+                        }
+                    ),
+                    stderr="",
+                ),
+                SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "status": 0,
+                            "result": {
+                                "records": [{"Id": ORG_ID, "IsSandbox": False}]
+                            },
+                        }
+                    ),
+                    stderr="",
+                ),
+            ]
+        )
+        with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
+            ok, _ = verifier.verify_is_sandbox(
+                "mpsa-dev",
+                expected_host=SCRATCH_HOST,
+                expected_org_id=ORG_ID,
+                runner=runner,
+            )
+        self.assertFalse(ok)
+
+    def test_developer_edition_host_is_rejected_before_org_query(self) -> None:
+        runner = Mock(
+            return_value=SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "status": 0,
+                        "result": {
+                            "instanceUrl": "https://acme.develop.my.salesforce.com",
+                            "id": ORG_ID,
+                        },
+                    }
+                ),
+                stderr="",
+            )
+        )
+        with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
+            ok, _ = verifier.verify_is_sandbox(
+                "dev-hub",
+                expected_host=SCRATCH_HOST,
+                expected_org_id=ORG_ID,
+                runner=runner,
+            )
+        self.assertFalse(ok)
+        self.assertEqual(runner.call_count, 1)
+
+    def test_live_org_id_must_match_configured_identity(self) -> None:
+        runner = Mock(
+            side_effect=[
+                SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "status": 0,
+                            "result": {
+                                "instanceUrl": f"https://{SCRATCH_HOST}",
+                                "id": ORG_ID,
+                            },
+                        }
+                    ),
+                    stderr="",
+                ),
+                SimpleNamespace(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "status": 0,
+                            "result": {
+                                "records": [
+                                    {"Id": "00D000000000002AAA", "IsSandbox": True}
+                                ]
+                            },
+                        }
+                    ),
+                    stderr="",
+                ),
+            ]
+        )
+        with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
+            ok, _ = verifier.verify_is_sandbox(
+                "mpsa-dev",
+                expected_host=SCRATCH_HOST,
+                expected_org_id=ORG_ID,
+                runner=runner,
+            )
+        self.assertFalse(ok)
 
 
 class PlaywrightRequestTests(unittest.TestCase):

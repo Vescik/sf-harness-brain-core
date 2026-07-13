@@ -12,8 +12,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+# Recursive+force `rm` is handled by has_recursive_force_rm() (tokenized, any flag order,
+# quote/backslash-splice resistant) rather than a regex, to avoid catastrophic backtracking
+# on large inputs and to scope flag detection to each command segment.
 DESTRUCTIVE_PATTERNS = (
-    re.compile(r"(^|\s)rm\s+-[^\n]*r[^\n]*f", re.IGNORECASE),
     re.compile(r"\bgit\s+reset\s+--hard\b", re.IGNORECASE),
     re.compile(r"\bgit\s+clean\s+-[^\n]*f", re.IGNORECASE),
     re.compile(r"\bsf\s+org\s+delete\b", re.IGNORECASE),
@@ -41,6 +43,10 @@ SENSITIVE_TOOL_TOKENS = (
 SANDBOX_HOST = re.compile(
     r"^[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\."
     r"(?:my\.salesforce\.com|lightning\.force\.com|my\.site\.com)$",
+    re.IGNORECASE,
+)
+SCRATCH_HOST = re.compile(
+    r"^[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com$",
     re.IGNORECASE,
 )
 
@@ -89,9 +95,52 @@ WORK_RECORD_SCRIPT = re.compile(
     re.IGNORECASE,
 )
 WORK_RECORD_MODULE = re.compile(
-    r"(?:^|[\s\"';&|()])-m\s+scripts\.work_record(?=$|[\s\"';&|()])",
+    r"(?:^|[\s\"';&|()])-m\s*(?:scripts\.)?work_record(?=$|[\s\"';&|()])",
     re.IGNORECASE,
 )
+SF_TOKEN = re.compile(r"\bsf(?:\.cmd|\.exe)?\b", re.IGNORECASE)
+COMMAND_SEPARATORS = re.compile(r"[;&|\n\r]")
+
+
+def dequote(command: str) -> str:
+    """Collapse shell quote and backslash splices the way the shell does before exec.
+
+    `s''f`, `s""f`, and `s\\f` all execute as `sf`; stripping these characters lets the
+    static prefilters see the real token instead of the obfuscated spelling.
+    """
+
+    return command.replace("'", "").replace('"', "").replace("\\", "")
+
+
+def has_recursive_force_rm(text: str) -> bool:
+    """Detect `rm` with both a recursive and a force flag in any order.
+
+    Tokenized per command segment (split on shell separators) so a force flag belonging to a
+    later command cannot combine with an earlier `rm -r`. De-quoted first so `r''m`/`r\\m`
+    splices are caught. Linear in input length — no regex backtracking on the hook hot path.
+    """
+
+    for segment in COMMAND_SEPARATORS.split(dequote(text)):
+        tokens = segment.split()
+        rm_seen = False
+        recursive = False
+        force = False
+        for token in tokens:
+            base = token.rsplit("/", 1)[-1]
+            if base == "rm":
+                rm_seen = True
+                continue
+            if not rm_seen or not token.startswith("-"):
+                continue
+            if token.startswith("--"):
+                recursive = recursive or token == "--recursive"
+                force = force or token == "--force"
+            else:
+                recursive = recursive or "r" in token[1:].lower()
+                force = force or "f" in token[1:].lower()
+        if rm_seen and recursive and force:
+            return True
+    return False
 
 
 def hook_response(decision: str | None = None, reason: str | None = None) -> dict[str, Any]:
@@ -124,7 +173,7 @@ def load_config(root: Path) -> dict[str, Any] | None:
 
 def is_salesforce_sandbox_origin(origin: str) -> bool:
     try:
-        parsed = urlparse(origin.rstrip("/"))
+        parsed = urlparse(origin)
         port = parsed.port
     except ValueError:
         return False
@@ -134,7 +183,10 @@ def is_salesforce_sandbox_origin(origin: str) -> bool:
         and parsed.password is None
         and port is None
         and bool(parsed.hostname)
-        and bool(SANDBOX_HOST.fullmatch(parsed.hostname or ""))
+        and bool(
+            SANDBOX_HOST.fullmatch(parsed.hostname or "")
+            or SCRATCH_HOST.fullmatch(parsed.hostname or "")
+        )
         and parsed.path in ("", "/")
         and not parsed.query
         and not parsed.fragment
@@ -236,7 +288,10 @@ def is_terminal_tool(tool_name: str) -> bool:
 def is_work_record_approval_command(command: str) -> bool:
     """Detect human-only work-record approval, including wrapped and Windows forms."""
 
+    # Fold line continuations, normalize Windows path separators, then drop quotes so
+    # `-m 'work_record'` and `python3 -m"work_record"` splices cannot hide the module name.
     normalized = re.sub(r"\\\r?\n", " ", command).replace("\\", "/")
+    normalized = normalized.replace("'", "").replace('"', "")
     matches = list(WORK_RECORD_SCRIPT.finditer(normalized)) + list(
         WORK_RECORD_MODULE.finditer(normalized)
     )
@@ -267,7 +322,10 @@ def target_orgs(parts: list[str]) -> list[str]:
 
 
 def direct_sf_command(command: str) -> list[str] | None:
-    if not re.search(r"\bsf(?:\.cmd|\.exe)?\b", command, re.IGNORECASE):
+    # The shell collapses quote/backslash splices (`s''f`, `s""f`, `s\f`) back to `sf` before
+    # execution, so a prefilter over the raw string alone misses them. Test a de-spliced copy
+    # too; the metacharacter gate below still runs against the original command.
+    if not SF_TOKEN.search(command) and not SF_TOKEN.search(dequote(command)):
         return None
     if re.search(r"[;&|`$<>\n\r]", command):
         raise ValueError("compound, redirected, or substituted Salesforce commands are forbidden")
@@ -433,7 +491,7 @@ def main() -> int:
         )
         return 0
 
-    if any(pattern.search(text) for pattern in DESTRUCTIVE_PATTERNS):
+    if has_recursive_force_rm(text) or any(pattern.search(text) for pattern in DESTRUCTIVE_PATTERNS):
         print(json.dumps(hook_response("deny", "Destructive operation blocked by SAFE-ROLE-001.")))
         return 0
 

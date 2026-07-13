@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/knowledge-review.schema.json",
+  "$id": "urn:sf-harness-brain-core:knowledge-review.schema.json",
   "title": "Immutable human Knowledge review",
   "type": "object",
   "additionalProperties": false,

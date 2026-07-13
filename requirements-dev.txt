@@ -1,2 +1,9 @@
+# Direct validation dependencies. The lower bounds are security floors — do not relax them:
+#   PyYAML>=6    excludes the <5.4 arbitrary-code-execution CVE lines (we only use safe_load anyway).
+#   jsonschema>=4 excludes 2.x/3.x behavioural quirks; 4.x has no known CVE.
+# The pinned, hash-locked closed set lives in requirements-dev.lock and is what CI/SETUP install.
+# Regenerate the lock's hashes from the PyPI JSON API (no extra tooling): for each pinned
+# name==version, collect every artifact's digests.sha256 from
+# https://pypi.org/pypi/<name>/<version>/json and emit `--hash=sha256:` lines.
 jsonschema>=4,<5
 PyYAML>=6,<7

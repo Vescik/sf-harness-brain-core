@@ -4,7 +4,7 @@
  * Narrow Salesforce org-review MCP facade.
  *
  * The model never receives a command string, SOQL string, org alias, working directory, or raw
- * vendor response. This server binds one allowlisted sandbox alias at startup, collects the same
+ * vendor response. This server binds one allowlisted sandbox or scratch-org alias at startup, collects the same
  * bounded facts through a private Salesforce CLI process and a pinned Salesforce MCP child, and
  * returns only normalized reconciliation evidence.
  */
@@ -28,7 +28,7 @@ const SALESFORCE_MCP_BIN = resolve(REPO_ROOT, "node_modules", "@salesforce", "mc
 const OBJECT_API_NAME = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
 const ALIAS = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const ORG_ID = /^00D[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?$/;
-const SANDBOX_HOST = /^[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\.my\.salesforce\.com$/i;
+const NON_PRODUCTION_HOST = /^(?:[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\.my\.salesforce\.com|[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com)$/i;
 const MAX_OUTER_MESSAGE_BYTES = 1_048_576;
 
 const EXPECTED_QUERIES = Object.freeze({
@@ -41,8 +41,8 @@ const EXPECTED_QUERIES = Object.freeze({
 const TOOL_DEFINITIONS = Object.freeze([
   {
     name: "review_org_identity",
-    title: "Review configured Salesforce sandbox identity",
-    description: "Reconcile the configured sandbox identity through bounded Salesforce CLI and MCP reads.",
+    title: "Review configured non-production Salesforce identity",
+    description: "Reconcile the configured sandbox or scratch-org identity through bounded Salesforce CLI and MCP reads.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
@@ -113,7 +113,7 @@ function loadRuntime(alias) {
   if (!["development", "qa", "uat"].includes(entry.environment)) {
     throw new ReviewError("CONFIG_INVALID");
   }
-  if (!SANDBOX_HOST.test(String(entry.expectedInstanceHost ?? ""))) {
+  if (!NON_PRODUCTION_HOST.test(String(entry.expectedInstanceHost ?? ""))) {
     throw new ReviewError("CONFIG_INVALID");
   }
   if (!ORG_ID.test(String(entry.expectedOrganizationId ?? ""))) {
@@ -375,6 +375,11 @@ async function collectCliIdentity(runtime) {
   if (
     instance.protocol !== "https:" ||
     instance.port ||
+    instance.username ||
+    instance.password ||
+    instance.pathname !== "/" ||
+    instance.search ||
+    instance.hash ||
     instance.hostname.toLowerCase() !== runtime.entry.expectedInstanceHost.toLowerCase()
   ) {
     throw new ReviewError("IDENTITY_HOST_MISMATCH");

@@ -6,6 +6,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from jsonschema import Draft202012Validator
+
 from scripts import preflight
 
 
@@ -97,8 +99,38 @@ class PreflightValidationTests(unittest.TestCase):
             )
         )
 
+    def test_mcp_network_allows_scratch_but_not_developer_edition_domains(self) -> None:
+        mcp = json.loads((ROOT / ".vscode/mcp.json").read_text(encoding="utf-8"))
+        domains = set(mcp["sandbox"]["network"]["allowedDomains"])
+        self.assertIn("*.scratch.my.salesforce.com", domains)
+        self.assertNotIn("*.develop.my.salesforce.com", domains)
+        self.assertNotIn("*.salesforce.com", domains)
+
     def test_safe_non_production_config_passes(self) -> None:
         self.assertEqual(preflight.validate_config(safe_config()), [])
+
+    def test_scratch_org_host_and_browser_origin_are_accepted(self) -> None:
+        config = safe_config()
+        scratch_host = "mpsadev.scratch.my.salesforce.com"
+        config["salesforce"]["orgs"][0]["expectedInstanceHost"] = scratch_host
+        config["browser"]["allowedOrigins"] = [f"https://{scratch_host}"]
+        self.assertEqual(preflight.validate_config(config), [])
+        schema = json.loads(
+            (ROOT / "schemas/harness-config.schema.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(list(Draft202012Validator(schema).iter_errors(config)), [])
+
+    def test_developer_edition_host_is_rejected_by_logic_and_schema(self) -> None:
+        config = safe_config()
+        develop_host = "acme.develop.my.salesforce.com"
+        config["salesforce"]["orgs"][0]["expectedInstanceHost"] = develop_host
+        config["browser"]["allowedOrigins"] = [f"https://{develop_host}"]
+        failures = preflight.validate_config(config)
+        self.assertTrue(any("sandbox or scratch" in item for item in failures))
+        schema = json.loads(
+            (ROOT / "schemas/harness-config.schema.json").read_text(encoding="utf-8")
+        )
+        self.assertNotEqual(list(Draft202012Validator(schema).iter_errors(config)), [])
 
     def test_production_alias_is_rejected(self) -> None:
         config = safe_config()
@@ -147,7 +179,19 @@ class PreflightValidationTests(unittest.TestCase):
         failures = preflight.validate_origins(
             ["https://acme.my.salesforce.com"], "Browser"
         )
-        self.assertTrue(any("explicit Salesforce sandbox host" in item for item in failures))
+        self.assertTrue(any("explicit Salesforce sandbox or scratch host" in item for item in failures))
+
+    def test_scratch_browser_origin_is_accepted_but_develop_origin_is_rejected(self) -> None:
+        self.assertEqual(
+            preflight.validate_origins(
+                ["https://mpsadev.scratch.my.salesforce.com"], "Browser"
+            ),
+            [],
+        )
+        failures = preflight.validate_origins(
+            ["https://acme.develop.my.salesforce.com"], "Browser"
+        )
+        self.assertTrue(any("sandbox or scratch host" in item for item in failures))
 
     def test_non_https_origin_is_rejected(self) -> None:
         failures = preflight.validate_origins(["http://example.invalid"], "Browser")

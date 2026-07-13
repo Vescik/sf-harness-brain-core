@@ -17,15 +17,15 @@
 
 ## Status
 
-- Repository: `https://github.com/Vescik/sf-harness-brain-core`
+- Repository: `<your-fork-url>`
 - Visibility: private
 - Baseline branch: `main`
 - Prior enhancement branch: `agent/enhance-copilot-harness`
 - Active grounding/topology branch: `agent/hallucination-grounding-upgrade`
 - Baseline commit: `66649b6` (`Baseline brain-core harness`)
-- Working copy: `/Users/dmachowski/Desktop/sf-harness-brain-core`
-- Protected source: `/Users/dmachowski/Desktop/sf_harness` — never edited by this implementation
-- Prior enhancement draft pull request: `https://github.com/Vescik/sf-harness-brain-core/pull/1`
+- Working copy: `<workspace-root>` (the cloned repository root)
+- Protected source: a separate legacy workspace outside this repository — never edited by this implementation
+- Prior enhancement draft pull request: `<your-fork-url>/pull/1`
 - Publication state: verify the active branch and CI live in Git/GitHub; this handoff does not use
   a stale prose assertion as repository authority.
 - Overall state: grounding and flat-root implementation is locally green for a controlled pilot;
@@ -54,7 +54,7 @@ This file is updated after every iteration with changes, evidence, remaining ris
 
 ### Changes
 
-- Created the private GitHub repository `Vescik/sf-harness-brain-core`.
+- Created the private GitHub repository at `<your-fork-url>`.
 - Cloned it to an isolated directory, outside the original workspace.
 - Copied the current harness content without its `.git` directory or `.DS_Store` files.
 - Created and pushed an immutable baseline commit on `main`.
@@ -68,7 +68,7 @@ repository protects future internal Salesforce, ADO, QA, and decision data.
 
 ### Verification
 
-- GitHub authentication confirmed for account `Vescik`.
+- GitHub authentication confirmed for the repository owner account.
 - Remote repository created successfully.
 - Baseline push to `origin/main` succeeded.
 - Enhancement branch exists locally and is based on commit `66649b6`.
@@ -312,7 +312,7 @@ the latest local/CI run for the current one-root topology and record its exact c
   `Upgrade to GitHub Pro or make this repository public to enable this feature` (HTTP 403).
 - The private repository remains the correct choice for future Salesforce/ADO/QA Knowledge. Do
   not make it public to obtain free protection; upgrade/move the repository instead.
-- The original `/Users/dmachowski/Desktop/sf_harness` workspace was not edited; all implementation,
+- The original legacy workspace (outside this repository) was not edited; all implementation,
   validation, commits, and publication occurred in the isolated clone.
 
 ## Human-owned inputs that must not be invented
@@ -327,6 +327,19 @@ the latest local/CI run for the current one-root topology and record its exact c
 
 Until supplied, the enhanced harness will fail closed or clearly degrade the affected workflows;
 it will not guess these values.
+
+## force-app Knowledge extension (2026-07-10)
+
+Added a governed repository-root `force-app` inventory and Knowledge proposal workflow. The
+extension adds two hidden skills, three public prompts routed to `config-investigator`, a bounded
+`scripts/force_app_knowledge.py` runtime, inventory/draft-manifest schemas, role-guard coverage,
+tests, and `docs/force-app-knowledge-architecture.md`. Current customization totals are five
+agents, ten public prompts, and fourteen internal skills.
+
+The live run remains fail-closed: metadata preflight reports placeholder local configuration and
+the current `force-app` contains untracked source. No source file was falsely bound to the current
+commit and no canonical Knowledge claim was created. Unit fixtures prove clean committed source
+can generate schema-v3 sanitized drafts and that changed/dirty source is rejected.
 
 ## Pilot exit criteria
 

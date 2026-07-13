@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/knowledge-policy.schema.json",
+  "$id": "urn:sf-harness-brain-core:knowledge-policy.schema.json",
   "title": "Knowledge promotion and freshness policy",
   "type": "object",
   "additionalProperties": false,

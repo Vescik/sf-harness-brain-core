@@ -13,13 +13,15 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
-from jsonschema import Draft202012Validator, FormatChecker
+from jsonschema import Draft202012Validator
 
 try:
     from copilot_safety_hook import is_salesforce_sandbox_origin
+    from schema_format import FORMAT_CHECKER
     from verify_salesforce_org import verify_is_sandbox
 except ModuleNotFoundError:  # imported as scripts.preflight by unit tests
     from scripts.copilot_safety_hook import is_salesforce_sandbox_origin
+    from scripts.schema_format import FORMAT_CHECKER
     from scripts.verify_salesforce_org import verify_is_sandbox
 
 
@@ -55,7 +57,7 @@ def load_config() -> dict:
         raise ValueError("config/harness.local.json still contains <PLACEHOLDER> values")
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     errors = sorted(
-        Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(config),
+        Draft202012Validator(schema, format_checker=FORMAT_CHECKER).iter_errors(config),
         key=lambda item: list(item.path),
     )
     if errors:
@@ -76,7 +78,9 @@ def validate_origins(values: list[str], label: str) -> list[str]:
         if value.rstrip("/") == "https://login.salesforce.com":
             failures.append("Salesforce production login origin is forbidden")
         if label == "Browser" and not is_salesforce_sandbox_origin(value):
-            failures.append(f"Browser origin must be an explicit Salesforce sandbox host: {value}")
+            failures.append(
+                f"Browser origin must be an explicit Salesforce sandbox or scratch host: {value}"
+            )
         if label == "ADO":
             parts = [part for part in parsed.path.split("/") if part]
             if parsed.hostname != "dev.azure.com" or len(parts) != 1:
@@ -108,7 +112,9 @@ def validate_config(config: dict) -> list[str]:
         expected_host = str(org.get("expectedInstanceHost", "")).lower()
         expected_org_id = str(org.get("expectedOrganizationId", ""))
         if not is_salesforce_sandbox_origin(f"https://{expected_host}"):
-            failures.append(f"Configured Salesforce identity host is not an explicit sandbox: {alias}")
+            failures.append(
+                f"Configured Salesforce identity host is not an explicit sandbox or scratch org: {alias}"
+            )
         if org.get("allowAgentReview") is True:
             if expected_host in review_hosts:
                 failures.append("Salesforce review identity hosts must be unique")

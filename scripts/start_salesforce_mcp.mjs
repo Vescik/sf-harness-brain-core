@@ -47,6 +47,12 @@ if (!org || /(^|[^a-z])(prod|production)([^a-z]|$)/i.test(org)) {
 }
 
 let config;
+if (!existsSync(CONFIG_PATH)) {
+  fail(
+    "config/harness.local.json is missing; create the ignored local policy from " +
+      "config/harness.example.json before starting Salesforce MCP",
+  );
+}
 try {
   config = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
 } catch (error) {

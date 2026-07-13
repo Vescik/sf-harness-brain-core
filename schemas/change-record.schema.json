@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/change-record.schema.json",
+  "$id": "urn:sf-harness-brain-core:change-record.schema.json",
   "title": "Governed change work record",
   "type": "object",
   "additionalProperties": false,

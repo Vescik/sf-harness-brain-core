@@ -41,6 +41,9 @@ logs/
 
 # ── Local harness configuration and runtime state ──
 config/harness.local.json
+# Safety net: only harness.example.json (tracked) and harness.local.json (ignored) are real.
+# A stray config/harness.json invites name-confusion and could leak org values if committed.
+config/harness.json
 .env
 .playwright/
 *.local.code-workspace

@@ -18,10 +18,22 @@ the certified enforcement boundary.
 
 See [docs/compatibility.md](docs/compatibility.md) for the tested contract.
 
+> **Runtime enforcement depends on your VS Code build.** The custom-agent/tool hooks
+> (`.github/hooks/`, `chat.hookFilesLocations`, `chat.useCustomAgentHooks`) and the `.vscode/mcp.json`
+> `sandbox`/`sandboxEnabled` filesystem and network confinement are recent/preview Copilot surfaces.
+> Where a build does not implement them, they are silently ignored and the guard scripts never run —
+> reducing the harness to prompt-level guidance. Before relying on this workspace for governed work,
+> verify in your exact VS Code version that (a) each `chat.*` customization key resolves in the
+> Settings UI (no "Unknown Configuration Setting"), (b) the `PreToolUse` hooks actually fire, and
+> (c) the MCP sandbox is honored. If any is unsupported, treat the corresponding controls as
+> advisory and enforce equivalents inside the MCP wrapper scripts. The `scripts/*_guard.py` and
+> `scripts/copilot_safety_hook.py` logic is unit-tested and correct in isolation; what is
+> build-dependent is whether VS Code invokes it.
+
 ## 2. Clone and workspace layout
 
 ```bash
-git clone https://github.com/Vescik/sf-harness-brain-core.git
+git clone <your-fork-url> sf-harness-brain-core
 code sf-harness-brain-core/sf-harness.code-workspace
 ```
 
@@ -81,7 +93,7 @@ approved workstation-management mechanism. Do not substitute an independent orga
 python3 -m venv .venv
 # macOS/Linux: source .venv/bin/activate
 # Windows PowerShell: .venv\Scripts\Activate.ps1
-python -m pip install -r requirements-dev.lock
+python -m pip install --require-hashes -r requirements-dev.lock
 npm ci --ignore-scripts
 npm install --global @playwright/cli@0.1.17
 python scripts/validate_harness.py
@@ -102,9 +114,9 @@ Evals, and Harness: Preflight.
 1. Trust the cloned repository only after reviewing it; the single named workspace folder
    `brain-core` resolves to its root.
 2. Open **Chat: Open Customizations** / Chat Diagnostics.
-3. Confirm exactly five agents, seven public prompts, twelve internal skills, three Principle
+3. Confirm exactly five agents, ten public prompts, fourteen internal skills, three Principle
    files, the safety hook, and three MCP servers without diagnostics.
-4. Confirm `/` shows the seven prompts once each and their argument hints.
+4. Confirm `/` shows the ten prompts once each and their argument hints.
 5. Verify Solution Designer and Development Assistant handoff buttons use `send: false`.
 6. Run one harmless ADO read, then the three bounded Salesforce review calls against the configured
    synthetic/pilot component. Confirm no raw CLI/query/alias or sensitive payload appears in Chat.

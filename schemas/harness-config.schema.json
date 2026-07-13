@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Vescik/sf-harness-brain-core/schemas/harness-config.schema.json",
+  "$id": "urn:sf-harness-brain-core:harness-config.schema.json",
   "title": "Brain-core local configuration",
   "type": "object",
   "additionalProperties": false,
@@ -55,7 +55,7 @@
               "allowAgentReview": { "type": "boolean" },
               "expectedInstanceHost": {
                 "type": "string",
-                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*--[A-Za-z0-9][A-Za-z0-9-]*\\.sandbox\\.my\\.salesforce\\.com$"
+                "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9-]*--[A-Za-z0-9][A-Za-z0-9-]*\\.sandbox\\.my\\.salesforce\\.com|[A-Za-z0-9][A-Za-z0-9-]*\\.scratch\\.my\\.salesforce\\.com)$"
               },
               "expectedOrganizationId": {
                 "type": "string",
@@ -168,7 +168,7 @@
           "uniqueItems": true,
           "items": {
             "type": "string",
-            "pattern": "^https://[A-Za-z0-9-]+--[A-Za-z0-9-]+\\.sandbox\\.(my\\.salesforce\\.com|lightning\\.force\\.com|my\\.site\\.com)/?$"
+            "pattern": "^https://(?:[A-Za-z0-9-]+--[A-Za-z0-9-]+\\.sandbox\\.(?:my\\.salesforce\\.com|lightning\\.force\\.com|my\\.site\\.com)|[A-Za-z0-9][A-Za-z0-9-]*\\.scratch\\.my\\.salesforce\\.com)/?$"
           }
         },
         "profileDirectory": { "type": "string", "minLength": 1 }
