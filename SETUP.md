@@ -5,7 +5,7 @@
 - VS Code 1.112+ on macOS/Linux; certify current stable for team rollout. Windows pilot support is
   read-only for external Salesforce/browser workflows because MCP sandboxing is unavailable.
 - Consolidated GitHub Copilot extension and the recommendations in `.vscode/extensions.json`.
-- Git, Python 3.11+, Node.js 20+, Salesforce CLI, and `@playwright/cli@0.1.17` when
+- Git, Python 3.11+, Node.js 22+ (the pinned `@salesforce/mcp` requires ≥22.19), Salesforce CLI, and `@playwright/cli@0.1.17` when
   browser generation is used.
 - Local Salesforce CLI authorization for approved non-production aliases. Authenticate manually;
   never give credentials or session material to an agent.

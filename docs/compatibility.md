@@ -13,7 +13,7 @@ Last verified against vendor documentation: 2026-07-10
 | Python | 3.11+ | Runs preflight, validation, safety hooks, and tests using the standard library plus the dev requirement below. |
 | PyYAML | `>=6,<7`; CI uses the lock file | Frontmatter and evaluation validation. |
 | jsonschema | `>=4,<5`; CI uses the lock file | Draft 2020-12 configuration/cache/output validation. |
-| Node.js | 20+ | Required by Azure DevOps local MCP fallback, Salesforce DX MCP, and Playwright CLI. |
+| Node.js | 22+ (`.nvmrc` pins 24) | The pinned `@salesforce/mcp` requires Node ≥22.19; CI installs the `.nvmrc` version. |
 | Azure DevOps MCP | Remote server preferred; local server is the fallback | Remote is preview but supports server-side read-only and toolset filtering. |
 | Salesforce DX MCP | `@salesforce/mcp@0.30.15` | Pinned to the version verified on 2026-07-10; update deliberately. |
 | Playwright CLI | `@playwright/cli@0.1.17` | Use executable `playwright-cli` only through `scripts/playwright_guard.py`. |

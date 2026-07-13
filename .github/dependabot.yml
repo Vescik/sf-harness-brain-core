@@ -1,22 +1,38 @@
 version: 2
-# Continuous supply-chain monitoring for the three ecosystems this harness pins.
-# Security updates are always raised; version updates are weekly and low-noise.
+# Low-noise supply-chain monitoring aligned with the harness's deliberate pinning:
+# - pip: security updates only. requirements-dev.lock is hand-maintained with --require-hashes,
+#   so routine range bumps (which Dependabot cannot re-hash) are disabled to avoid broken PRs.
+# - npm / github-actions: group minor+patch into a single weekly PR and ignore major bumps
+#   (majors are breaking for the lint/build toolchain and pinned actions; take them deliberately).
+# Security updates are always raised regardless of these version-update limits.
 updates:
   - package-ecosystem: pip
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
-    # requirements-dev.lock is hash-pinned; Dependabot regenerates hashes on bump.
+    open-pull-requests-limit: 0
 
   - package-ecosystem: npm
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]

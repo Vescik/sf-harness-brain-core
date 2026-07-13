@@ -16,7 +16,7 @@
     "prettier:verify": "prettier --check --no-error-on-unmatched-pattern \"force-app/**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}\" \"manifest/**/*.xml\" \"sfdx-project.json\" \"config/project-scratch-def.json\""
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@salesforce/mcp": "0.30.15"
