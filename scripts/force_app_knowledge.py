@@ -383,6 +383,21 @@ class ForceAppKnowledge:
 
     GENERIC_META = re.compile(r"^(?P<name>.+)\.(?P<token>[A-Za-z0-9_]+)-meta\.xml$")
 
+    # Suffix tokens whose naive capitalization is not the Metadata API type name (validated by a
+    # simulated all-types corpus, 2026-07-14): `X.md-meta.xml` is CustomMetadata, not "Md", etc.
+    GENERIC_TOKEN_TYPES = {
+        "md": "CustomMetadata",
+        "app": "CustomApplication",
+        "tab": "CustomTab",
+        "page": "ApexPage",
+        "component": "ApexComponent",
+        "email": "EmailTemplate",
+        "resource": "StaticResource",
+        "permissionset": "PermissionSet",
+        "labels": "CustomLabels",
+        "site": "CustomSite",
+    }
+
     def parse_generic_meta(self, path: Path) -> dict[str, Any]:
         """Fallback for every source-format metadata file without a dedicated parser.
 
@@ -395,7 +410,9 @@ class ForceAppKnowledge:
         if match is None:
             raise ValueError(f"not a source-format metadata file: {path.name}")
         token = match.group("token")
-        metadata_type = token[0].upper() + token[1:]
+        metadata_type = self.GENERIC_TOKEN_TYPES.get(
+            token.lower(), token[0].upper() + token[1:]
+        )
         root = self.parse_xml(path)
         return self.component(
             metadata_type,
@@ -472,9 +489,20 @@ class ForceAppKnowledge:
         for path in sorted(self.source_root.rglob("*-meta.xml")):
             if path in handled:
                 continue
+            # Companion-meta rule: `X.cls-meta.xml` describes `X.cls`. When the sibling content
+            # file was already parsed (Apex, bundles), the meta is bookkeeping — skip it instead
+            # of minting a duplicate "Cls:X" component. When the sibling exists but has no
+            # dedicated parser (static resources, pages, email templates), the meta IS the
+            # component and the sibling is its content.
+            sibling = path.with_name(path.name.removesuffix("-meta.xml"))
+            if sibling != path and sibling.is_file() and sibling in handled:
+                handled.add(path)
+                continue
             try:
                 components.append(self.parse_generic_meta(path))
                 handled.add(path)
+                if sibling != path and sibling.is_file():
+                    handled.add(sibling)
             except (ET.ParseError, OSError, ValueError) as exc:
                 diagnostics.append(
                     {"severity": "error", "path": self.relative(path), "message": str(exc)}

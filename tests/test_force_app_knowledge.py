@@ -168,7 +168,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         permission_set = next(
             claim
             for claim in claims
-            if claim["subject"]["identity"] == "Permissionset:Engagement_Manager"
+            if claim["subject"]["identity"] == "PermissionSet:Engagement_Manager"
         )
         self.assertEqual("component-inventory", permission_set["domain"])
         for bundle in manifest["bundles"]:
@@ -177,6 +177,47 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             self.assertIn("scripts/knowledge_registry.py propose", bundle["command"])
             evidence = (self.root / bundle["evidenceFile"]).read_text(encoding="utf-8")
             self.assertNotIn("never-export-this-secret", evidence)
+
+    def test_companion_meta_files_do_not_mint_duplicate_components(self) -> None:
+        # X.cls-meta.xml describes X.cls (already parsed as ApexClass) — no "Cls:X" duplicate.
+        # X.resource-meta.xml IS the component when the content file has no dedicated parser.
+        write(
+            self.root / "force-app/main/default/classes/EngagementService.cls",
+            "public with sharing class EngagementService {}\n",
+        )
+        write(
+            self.root / "force-app/main/default/classes/EngagementService.cls-meta.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata"><apiVersion>67.0</apiVersion><status>Active</status></ApexClass>
+""",
+        )
+        write(
+            self.root / "force-app/main/default/staticresources/Assets.resource-meta.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata"><cacheControl>Public</cacheControl><contentType>application/zip</contentType></StaticResource>
+""",
+        )
+        write(self.root / "force-app/main/default/staticresources/Assets.resource", "PKfake")
+        write(
+            self.root
+            / "force-app/main/default/customMetadata/KC_Setting.Default_Limits.md-meta.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata"><label>Default Limits</label><protected>false</protected></CustomMetadata>
+""",
+        )
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "companions"], cwd=self.root, check=True)
+        inventory = self.builder.inventory()
+        ids = [component["id"] for component in inventory["components"]]
+        self.assertIn("ApexClass:EngagementService", ids)
+        self.assertNotIn("Cls:EngagementService", ids)
+        self.assertIn("StaticResource:Assets", ids)
+        self.assertIn("CustomMetadata:KC_Setting.Default_Limits", ids)
+        self.assertNotIn("Md:KC_Setting.Default_Limits", ids)
+        generic_paths = {item["path"] for item in inventory["genericFiles"]}
+        self.assertNotIn(
+            "force-app/main/default/staticresources/Assets.resource", generic_paths
+        )
 
     def test_metadata_type_filter_drafts_one_type_per_batch(self) -> None:
         self.builder.inventory()
