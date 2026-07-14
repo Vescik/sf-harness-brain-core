@@ -21,6 +21,11 @@
   "dependencies": {
     "@salesforce/mcp": "0.30.15"
   },
+  "overrides": {
+    "@babel/core": "^7.29.6",
+    "protobufjs": "^7.6.3",
+    "postcss": "^8.5.10"
+  },
   "devDependencies": {
     "@emnapi/core": "1.11.1",
     "@emnapi/runtime": "1.11.1",
