@@ -543,16 +543,16 @@ def check_settings_and_mcp(audit: Audit) -> None:
     role_guard = (ROOT / "scripts/copilot_role_guard.py").read_text(encoding="utf-8")
     audit.require(role_guard.count('".cache/ado-items/"') >= 3, "ADO cache must be writable by its three consuming roles")
     audit.require('".cache/test-cases/"' in role_guard, "Test Strategist must be able to write Test Case cache")
-    development_capabilities = re.search(
-        r'"development-assistant":\s*\{(.*?)\}', role_guard, re.DOTALL
+    preflight_capabilities = re.search(
+        r"PREFLIGHT_CAPABILITIES = frozenset\(\s*\{(.*?)\}", role_guard, re.DOTALL
     )
     audit.require(
-        development_capabilities is not None
+        preflight_capabilities is not None
         and all(
-            f'"{capability}"' in development_capabilities.group(1)
-            for capability in ("ado", "metadata")
+            f'"{capability}"' in preflight_capabilities.group(1)
+            for capability in ("ado", "metadata", "salesforce-review")
         ),
-        "Development Assistant must allow both documentation preflight capabilities",
+        "preflight capabilities must stay universally runnable diagnostics",
     )
 
     compatibility = (ROOT / "docs/compatibility.md").read_text(encoding="utf-8")

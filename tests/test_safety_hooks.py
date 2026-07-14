@@ -489,6 +489,52 @@ class RoleGuardTests(unittest.TestCase):
         self.assertEqual(hook_decision(allowed), "continue")
         self.assertEqual(hook_decision(denied), "deny")
 
+    def test_every_skill_instructed_command_passes_the_role_guard(self) -> None:
+        # Regression for the live "agents flail through 5-8 denied commands" incident
+        # (2026-07-14): every terminal command our own skills/agents instruct the model to run
+        # must pass the role guard for the roles that run those skills.
+        from scripts import copilot_role_guard as role_guard
+
+        all_roles = (
+            "solution-designer",
+            "config-investigator",
+            "development-assistant",
+            "test-strategist",
+            "guardrail-reviewer",
+        )
+        matrix: tuple[tuple[str, tuple[str, ...]], ...] = (
+            ("python scripts/preflight.py", all_roles),
+            ("python scripts/preflight.py --capability ado", all_roles),
+            ("python scripts/preflight.py --capability salesforce-review", all_roles),
+            ("python scripts/validate_harness.py", all_roles),
+            ("python scripts/run_evals.py", all_roles),
+            ("python scripts/knowledge_registry.py validate", all_roles),
+            ("python scripts/knowledge_registry.py render-indexes --check", all_roles),
+            (
+                "python scripts/knowledge_registry.py query --claim-type component-description",
+                all_roles,
+            ),
+            (
+                "python scripts/knowledge_registry.py reconcile --claim-file .cache/knowledge-proposals/drafts/KCLM-X.yaml",
+                ("config-investigator",),
+            ),
+            ("python scripts/force_app_knowledge.py inventory", ("config-investigator",)),
+            (
+                "python scripts/force_app_knowledge.py draft --metadata-type Flow",
+                ("config-investigator",),
+            ),
+            ("python --version", all_roles),
+            ("node --version", all_roles),
+            (
+                r".venv\Scripts\python.exe scripts\preflight.py --capability metadata",
+                ("config-investigator",),
+            ),
+        )
+        for command, roles in matrix:
+            for role in roles:
+                with self.subTest(role=role, command=command):
+                    self.assertTrue(role_guard.allowed_role_command(command, ROOT, role))
+
     def test_read_only_orientation_commands_are_allowed_for_every_role(self) -> None:
         from scripts import copilot_role_guard as role_guard
 
@@ -1106,13 +1152,31 @@ class SafetyClassificationTests(unittest.TestCase):
                 "config-investigator",
             )
         )
-        for command in ("review", "promote", "reconcile", "render-indexes"):
+        for command in ("review", "promote"):
             with self.subTest(command=command):
                 self.assertFalse(
                     role_guard.knowledge_registry_command_allowed(
                         [command], "config-investigator"
                     )
                 )
+        # Read-only self-verification is allowed (2026-07-14 usability fix); reconcile inputs
+        # stay confined to the ignored proposal workspace.
+        self.assertTrue(
+            role_guard.knowledge_registry_command_allowed(
+                ["render-indexes", "--check"], "config-investigator"
+            )
+        )
+        self.assertTrue(
+            role_guard.knowledge_registry_command_allowed(
+                ["reconcile", "--claim-file", ".cache/knowledge-proposals/drafts/KCLM-X.yaml"],
+                "config-investigator",
+            )
+        )
+        self.assertFalse(
+            role_guard.knowledge_registry_command_allowed(
+                ["reconcile", "--claim-file", "output/claim.yaml"], "config-investigator"
+            )
+        )
 
     def test_ado_scope_requires_matching_org_and_project(self) -> None:
         config = {

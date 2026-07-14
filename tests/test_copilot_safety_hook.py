@@ -104,10 +104,10 @@ class AgentCommandSurfaceTests(unittest.TestCase):
         implemented = self.subcommands(knowledge_registry.build_parser())
         agent_allowed = set().union(*role_guard.KNOWLEDGE_REGISTRY_COMMANDS.values())
         self.assertEqual(agent_allowed - implemented, set())
-        self.assertEqual(
-            implemented - agent_allowed,
-            {"review", "promote", "reconcile", "render-indexes"},
-        )
+        # Only the file-based human review/promotion mechanisms stay agent-forbidden; the
+        # read-only reconcile/render-indexes checks are legitimate agent self-verification
+        # (2026-07-14 usability fix — denying them caused live flailing).
+        self.assertEqual(implemented - agent_allowed, {"review", "promote"})
         self.assertTrue(
             role_guard.knowledge_registry_command_allowed(
                 ["query", "--domain", "object-model"], "solution-designer"

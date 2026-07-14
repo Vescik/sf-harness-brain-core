@@ -290,7 +290,7 @@ scenarios:
       tool_input:
         command: sed -i s/a/b/ force-app/X.cls
     expectedDecision: deny
-    reasonContains: terminal access is limited
+    reasonContains: outside the terminal allowlist
 
   - id: release-role-policy-edit-denied
     guard: role

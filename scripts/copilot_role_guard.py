@@ -40,19 +40,22 @@ ALLOWED_PREFIXES = {
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
 METADATA_ROOT = HARNESS_ROOT
 METADATA_EDIT_PREFIXES = ("force-app/", "manifest/", "tests/e2e/")
-PREFLIGHT_CAPABILITIES = {
-    "solution-designer": {"base", "ado", "salesforce-review"},
-    "config-investigator": {"base", "metadata", "salesforce-review"},
-    "development-assistant": {
+# Preflight is a read-only, fail-closed diagnostic; restricting which CAPABILITY a role may
+# even ASK about only produced live agent flailing (denied 5-8 commands in a row before giving
+# up — 2026-07-14 usability fix). Every role may run every preflight check, including the bare
+# no-argument form; the mutating boundaries stay where they belong (hook + write guards).
+PREFLIGHT_CAPABILITIES = frozenset(
+    {
         "base",
         "ado",
+        "release",
         "metadata",
-        "salesforce-review",
+        "salesforce-read",
         "salesforce-write",
-    },
-    "test-strategist": {"base", "ado", "playwright", "release", "salesforce-review"},
-    "guardrail-reviewer": {"base", "salesforce-review"},
-}
+        "salesforce-review",
+        "playwright",
+    }
+)
 
 WORK_RECORD_COMMANDS = {
     "solution-designer": {
@@ -118,11 +121,11 @@ WORK_RECORD_COMMANDS = {
 # records the local-config reviewer identity with mechanism copilot-chat-confirmation. The
 # file-based review/promote commands remain human-terminal-only.
 KNOWLEDGE_REGISTRY_COMMANDS = {
-    "solution-designer": {"validate", "query"},
-    "config-investigator": {"validate", "query", "propose", "approve-claim"},
-    "development-assistant": {"validate", "query"},
-    "test-strategist": {"validate", "query"},
-    "guardrail-reviewer": {"validate", "query"},
+    "solution-designer": {"validate", "query", "render-indexes", "reconcile"},
+    "config-investigator": {"validate", "query", "render-indexes", "reconcile", "propose", "approve-claim"},
+    "development-assistant": {"validate", "query", "render-indexes", "reconcile"},
+    "test-strategist": {"validate", "query", "render-indexes", "reconcile"},
+    "guardrail-reviewer": {"validate", "query", "render-indexes", "reconcile"},
 }
 
 PATH_KEYS = {
@@ -304,6 +307,16 @@ def knowledge_registry_command_allowed(
         return False
     if command == "validate":
         return len(parts) == 1
+    if command == "render-indexes":
+        return parts[1:] in ([], ["--check"])
+    if command == "reconcile":
+        # Read-only classification of a DRAFT claim against the registry; input stays in the
+        # ignored proposal workspace like propose inputs.
+        if len(parts) == 3 and parts[1] == "--claim-file":
+            return proposal_draft_path_allowed(parts[2], root)
+        if len(parts) == 2 and parts[1].startswith("--claim-file="):
+            return proposal_draft_path_allowed(parts[1].split("=", 1)[1], root)
+        return False
     if command == "query":
         allowed_flags = {
             "--claim-id",
@@ -453,6 +466,8 @@ GIT_READ_SUBCOMMANDS = frozenset({
     "status", "diff", "log", "show", "blame", "describe", "shortlog",
     "rev-parse", "ls-files", "grep", "branch", "remote",
 })
+# Tool version checks are pure orientation; denying them only makes agents flail.
+VERSION_CHECK_EXECUTABLES = frozenset({"python", "python3", "py", "node", "npm", "git"})
 GIT_BRANCH_LIST_FLAGS = frozenset({"-a", "--all", "-v", "-vv", "-l", "--list", "-r", "--remotes"})
 # Flags that turn a read command into a write/exec primitive.
 FIND_FORBIDDEN_TOKENS = frozenset({"-delete", "-exec", "-execdir", "-ok", "-okdir", "-fls"})
@@ -462,6 +477,8 @@ def read_only_orientation_command(parts: list[str]) -> bool:
     """Return whether argv is a non-mutating orientation command safe for every role."""
 
     executable = Path(parts[0]).name.lower().removesuffix(".exe")
+    if executable in VERSION_CHECK_EXECUTABLES and parts[1:] == ["--version"]:
+        return True
     if executable in SIMPLE_READ_COMMANDS:
         rest = parts[1:]
         if executable == "find" and any(
@@ -530,12 +547,20 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     knowledge_registry = (root / "scripts/knowledge_registry.py").resolve()
     force_app_knowledge = (root / "scripts/force_app_knowledge.py").resolve()
     salesforce_read = (root / "scripts/salesforce_read.py").resolve()
+    validate_harness = (root / "scripts/validate_harness.py").resolve()
+    run_evals = (root / "scripts/run_evals.py").resolve()
     remainder = parts[index + 1 :]
+    # Read-only self-verification available to every role: agents legitimately check their own
+    # work (2026-07-14 usability fix — these were denied and caused live flailing).
+    if script in (validate_harness, run_evals):
+        return not remainder
     if script == preflight:
+        if not remainder:
+            return True
         return (
             len(remainder) == 2
             and remainder[0] == "--capability"
-            and remainder[1] in PREFLIGHT_CAPABILITIES.get(role, set())
+            and remainder[1] in PREFLIGHT_CAPABILITIES
         )
     if script == work_record:
         return work_record_command_allowed(remainder, role)
@@ -688,7 +713,14 @@ def main() -> int:
                 json.dumps(
                     response(
                         "deny",
-                        f"{args.role} terminal access is limited to its allowlisted preflight/guarded runner commands.",
+                        f"{args.role}: this exact command is outside the terminal allowlist. "
+                        "Allowed families: guarded harness scripts (scripts/preflight.py, "
+                        "validate_harness.py, run_evals.py, work_record.py, "
+                        "knowledge_registry.py, force_app_knowledge.py, salesforce_read.py), "
+                        "read-only git (status/diff/log/show/ls-files), file reads "
+                        "(ls/cat/grep/type/Get-Content), and tool --version checks — all plain, "
+                        "single commands with no ; & | < > ` $ chaining. Do not retry variants "
+                        "of a denied command; use one of these instead.",
                     )
                 )
             )
