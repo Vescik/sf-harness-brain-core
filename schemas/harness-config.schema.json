@@ -249,6 +249,22 @@
         },
         "sharedSandboxApprovalRef": {
           "type": "string"
+        },
+        "browserSessionApproval": {
+          "description": "One human confirmation covers further state-changing browser actions in the same guarded session on the same origin (receipt-bounded, TTL). Default off.",
+          "type": "boolean"
+        },
+        "autoApproveRetrieveWithReceipt": {
+          "description": "Skip the per-invocation confirmation for `sf project retrieve start` against a read-allowed sandbox while a fresh metadata preflight PASS receipt exists and force-app is clean. Default off.",
+          "type": "boolean"
+        },
+        "allowScopedEnumeration": {
+          "description": "Expose the review_configured_orgs facade (and `salesforce_read.py orgs`) listing ONLY the orgs configured in this file. Foreign enumeration tools stay denied. Default off.",
+          "type": "boolean"
+        },
+        "batchDevToolApproval": {
+          "description": "Allow one human approval of a schema-validated dev-tool batch plan to cover its exact hash-pinned entries (single-use, TTL) instead of per-invocation asks. Default off.",
+          "type": "boolean"
         }
       },
       "allOf": [

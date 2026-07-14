@@ -8,12 +8,17 @@
   ],
   "servers": {
     "ado-readonly": {
-      "type": "http",
-      "url": "https://mcp.dev.azure.com/${env:ADO_ORGANIZATION}",
-      "headers": {
-        "X-MCP-Toolsets": "wit,wiki,testplan",
-        "X-MCP-Readonly": "true"
-      }
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@azure-devops/mcp@2.8.1",
+        "${env:ADO_ORGANIZATION}",
+        "-d",
+        "work-items",
+        "wiki",
+        "test-plans"
+      ]
     },
     "salesforce-readonly": {
       "type": "stdio",

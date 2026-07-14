@@ -2,6 +2,8 @@
 
 This is the only substantive always-on repository instruction. Detailed Principles, Knowledge,
 skills, and workflow contracts are loaded explicitly by the supported custom agent for the task.
+Orient in the generated repository atlas `.ai/repo-map.md` (layout, role loads, skill/contract
+catalogs, resume pointers) before exploring the tree.
 
 ## Non-negotiable rules
 

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:dev-tool-batch.schema.json",
+  "title": "Salesforce dev-tool batch plan",
+  "description": "Agent-authored plan of sandbox dev-tool operations awaiting one human approval. A named human approves it via scripts/approve_dev_tool_batch.py (human-terminal-only), producing a hash-pinned single-use receipt the safety hook honors instead of per-invocation asks.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "orgAlias", "purpose", "entries"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "dev-tool-batch-plan" },
+    "orgAlias": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "purpose": { "type": "string", "minLength": 10, "maxLength": 500 },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tool", "arguments"],
+        "properties": {
+          "tool": {
+            "description": "Bare dev-tool name exactly as the hook classifies it. Deploy/retrieve stay sandbox-scoped by the hook's own path checks; nothing here can widen them.",
+            "enum": [
+              "deploy_metadata", "retrieve_metadata", "run_apex_test", "run_apex_tests",
+              "run_agent_test", "run_code_analyzer", "assign_permission_set", "resume_tool_operation"
+            ]
+          },
+          "arguments": {
+            "description": "Exact tool arguments; the hook allows only a byte-identical call (canonical-JSON digest match).",
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

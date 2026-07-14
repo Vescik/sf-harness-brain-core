@@ -171,15 +171,20 @@ click, via `chat.tools.terminal.autoApprove` in `.vscode/settings.json`:
 `mcp.json` field yet — it is an open feature request). To stop the per-call prompt, approve them
 once interactively: run **Chat: Manage Tool Approval**, expand `salesforce-readonly` and
 `ado-readonly`, and trust all tools from those two servers at **workspace** scope. This choice
-persists per workspace. (These are the only configured MCP servers; no write-mode server exists.)
+persists per workspace. (These are the only configured MCP servers. The local ADO server has no
+server-side read-only mode — read-only remains harness policy enforced by the hooks, an accepted
+owner decision of 2026-07-14.)
 
 ## 6. External runtimes
 
-- `ado-readonly` uses the Azure-hosted remote MCP with `wit,wiki,testplan` toolsets and
-  `X-MCP-Readonly: true`.
+- `ado-readonly` runs the local stdio `@azure-devops/mcp` server, version-pinned in
+  `.vscode/mcp.json` and domain-bounded to `work-items`, `wiki`, and `test-plans` (the hosted
+  endpoint did not honor its toolset header, so the local `-d` args replace it). It authenticates
+  with your own Azure CLI login — run `az login` once; agents never handle the credentials.
 - `salesforce-readonly` starts through `scripts/salesforce_review_server.mjs`. It binds one exact
-  review-enabled sandbox and exposes only identity, configured-package, and allowlisted-object
-  review. Internally it reconciles fixed Salesforce MCP and private CLI receipts, redacts raw
+  review-enabled sandbox and exposes only identity, configured-package, allowlisted-object review,
+  and (when `safety.allowScopedEnumeration` is enabled) a configured-orgs listing built purely
+  from local configuration. Internally it reconciles fixed Salesforce MCP and private CLI receipts, redacts raw
   identity/record payloads, and returns `VERIFIED`, `MISMATCH`, `INCOMPLETE`, or `BLOCKED`.
 - The model never receives direct `sf`/`sfdx`, arbitrary SOQL, an alias, directory, Tooling flag,
   `list_all_orgs`, or raw vendor output. MCP/CLI agreement is transport corroboration from the same

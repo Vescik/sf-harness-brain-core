@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "repo-map-seed",
+  "directories": [
+    { "path": ".ai", "purpose": "Governed agent state: contracts, knowledge, work records, memory, QA" },
+    { "path": ".ai/contracts", "purpose": "Normative execution/knowledge/workflow/tooling contracts, loaded per role" },
+    { "path": ".ai/knowledge", "purpose": "Canonical claims/evidence/reviews + generated indexes (claims-index.json)" },
+    { "path": ".ai/change-records", "purpose": "Durable work records; record.json is authoritative state" },
+    { "path": ".ai/memory", "purpose": "Human-curated decisions-log.md" },
+    { "path": ".ai/qa", "purpose": "QA keyword map and cached test cases" },
+    { "path": ".ai/templates", "purpose": "Document templates" },
+    { "path": ".cache", "purpose": "Ignored transient caches, drafts, worklists, receipts" },
+    { "path": ".github", "purpose": "Copilot surface: kernel, agents, prompts, skills, hooks, CI" },
+    { "path": ".github/agents", "purpose": "Five role agents with tools, handoffs, role-guard hooks" },
+    { "path": ".github/instructions", "purpose": "Tiered principles + rule-registry.yaml" },
+    { "path": ".github/prompts", "purpose": "Public slash commands, each linking its skill" },
+    { "path": ".github/skills", "purpose": "Internal skill procedures (SKILL.md per folder)" },
+    { "path": ".vscode", "purpose": "Workspace settings and MCP server definitions" },
+    { "path": "config", "purpose": "Harness config (harness.local.json), policies, this seed" },
+    { "path": "docs", "purpose": "Human-facing setup, architecture, compatibility docs" },
+    { "path": "evals", "purpose": "Safety scenarios, agent scenarios, schema fixtures" },
+    { "path": "force-app", "purpose": "The only SFDX source root" },
+    { "path": "manifest", "purpose": "package.xml starter manifest" },
+    { "path": "output", "purpose": "Reviewed deliverables: docs, designs, tests, handover" },
+    { "path": "schemas", "purpose": "JSON Schemas for every governed artifact" },
+    { "path": "scripts", "purpose": "Guarded scripts: safety hook, role guard, registries, wrappers" },
+    { "path": "tests", "purpose": "Harness unit tests + tests/e2e Playwright" }
+  ],
+  "resumeHere": [
+    "Resume work from the persisted record: `python scripts/work_record.py` with explicit recordId/handoffId — chat is never workflow truth.",
+    "Batch knowledge progress: `python scripts/force_app_knowledge.py inventory` then `worklist --metadata-type <Type>` (derived, cannot drift).",
+    "Decisions: `.ai/memory/decisions-log.md`; QA keywords: `.ai/qa/`.",
+    "Search Knowledge first: `python scripts/knowledge_registry.py query` or `.ai/knowledge/claims-index.json`.",
+    "Deep tree: `docs/workspace-topology.md`; setup: `docs/setup-zero-to-first-prompt.md`."
+  ]
+}

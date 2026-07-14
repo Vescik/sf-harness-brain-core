@@ -229,6 +229,35 @@ def validate_metadata_specs(specs: list[str]) -> list[str]:
     return validated
 
 
+def run_orgs(args: argparse.Namespace, runner: Callable[..., Any]) -> int:
+    """Scoped enumeration: list ONLY the configured org aliases and their agent permissions.
+
+    Requires safety.allowScopedEnumeration. Built purely from local configuration — the agent can
+    never observe orgs the developer is authenticated to but has not configured, and no org ids or
+    instance hosts are printed.
+    """
+
+    try:
+        config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
+        raise ReadError("config/harness.local.json is missing or invalid") from exc
+    if config.get("safety", {}).get("allowScopedEnumeration") is not True:
+        raise ReadError("scoped org enumeration is disabled (safety.allowScopedEnumeration)")
+    orgs = [
+        {
+            "alias": entry.get("alias"),
+            "environment": entry.get("environment"),
+            "allowAgentRead": entry.get("allowAgentRead") is True,
+            "allowAgentReview": entry.get("allowAgentReview") is True,
+            "allowAgentWrite": entry.get("allowAgentWrite") is True,
+        }
+        for entry in config.get("salesforce", {}).get("orgs", [])
+        if isinstance(entry, dict) and isinstance(entry.get("alias"), str)
+    ]
+    print(json.dumps({"orgCount": len(orgs), "orgs": orgs}, indent=2))
+    return 0
+
+
 def run_retrieve(args: argparse.Namespace, runner: Callable[..., Any]) -> int:
     entry, review = load_review_context(args.org)
     specs = validate_metadata_specs(args.metadata or [])
@@ -277,6 +306,9 @@ def build_parser() -> argparse.ArgumentParser:
     retrieve.add_argument("--org", required=True)
     retrieve.add_argument("--metadata", action="append")
     retrieve.set_defaults(func=run_retrieve)
+
+    orgs = sub.add_parser("orgs", help="list only the configured org aliases (scoped enumeration)")
+    orgs.set_defaults(func=run_orgs)
     return parser
 
 

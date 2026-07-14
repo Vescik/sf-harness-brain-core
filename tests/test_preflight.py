@@ -100,13 +100,23 @@ class PreflightValidationTests(unittest.TestCase):
         )
 
     def test_mcp_is_read_only_by_construction(self) -> None:
-        # 2026-07-14 decision: no write-mode MCP server and no OS sandbox keys (Windows fleet);
-        # the wrapper, review facade, and safety hook are the enforcement layers.
+        # 2026-07-14 decision: no write-mode Salesforce MCP server and no OS sandbox keys
+        # (Windows fleet); the wrapper, review facade, and safety hook are the enforcement
+        # layers. ADO runs the local stdio server (pinned, domain-bounded) — it has no
+        # server-side read-only mode, so ADO read-only is harness policy, not construction
+        # (owner decision 2026-07-14).
         mcp = json.loads((ROOT / ".vscode/mcp.json").read_text(encoding="utf-8"))
         self.assertEqual(set(mcp["servers"]), {"ado-readonly", "salesforce-readonly"})
         self.assertNotIn("sandbox", mcp)
         readonly_args = mcp["servers"]["salesforce-readonly"]["args"]
         self.assertEqual(readonly_args[readonly_args.index("--mode") + 1], "review")
+        ado = mcp["servers"]["ado-readonly"]
+        self.assertEqual("stdio", ado["type"])
+        self.assertIn("@azure-devops/mcp@2.8.1", ado["args"])
+        self.assertEqual(
+            ["work-items", "wiki", "test-plans"],
+            ado["args"][ado["args"].index("-d") + 1 :],
+        )
 
     def test_safe_non_production_config_passes(self) -> None:
         self.assertEqual(preflight.validate_config(safe_config()), [])

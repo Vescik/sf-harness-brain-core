@@ -305,6 +305,7 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
                     [
                         "review_org_identity",
                         "review_installed_packages",
+                        "review_configured_orgs",
                         "review_object_contract",
                     ],
                 )

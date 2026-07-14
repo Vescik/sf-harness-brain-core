@@ -3,12 +3,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import shlex
+import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -88,7 +90,156 @@ SALESFORCE_REVIEW_TOOLS = {
     "review_org_identity",
     "review_installed_packages",
     "review_object_contract",
+    "review_configured_orgs",
 }
+
+# Receipt-bounded efficiency toggles (config safety.*, default off). A receipt only ever REPLACES
+# a confirmation the human already gave through a governed executor; it never unlocks an operation
+# class that is denied outright (production, destructive, org writes, self-approval).
+RECEIPTS_DIR = HARNESS_ROOT / ".cache" / "receipts"
+STATE_CHANGING_BROWSER = frozenset(
+    {"click", "dblclick", "fill", "type", "select", "check", "uncheck", "press"}
+)
+BROWSER_SESSION_TTL_MINUTES = 120
+RETRIEVE_RECEIPT_MAX_AGE_MINUTES = 60
+DEVTOOL_BATCH_TTL_MINUTES = 60
+# Batch-plan approval is human-terminal-only, exactly like work_record approve.
+DEVTOOL_BATCH_APPROVE_SCRIPT = re.compile(
+    r"(?:^|[\s\"';&|()])(?:[A-Za-z]:)?/?(?:[^\s\"';&|()]+/)*"
+    r"approve_dev_tool_batch\.py(?=$|[\s\"';&|()])",
+    re.IGNORECASE,
+)
+
+
+def safety_toggle(config: dict[str, Any] | None, name: str) -> bool:
+    if not isinstance(config, dict):
+        return False
+    return config.get("safety", {}).get(name) is True
+
+
+def load_json_receipt(path: Path) -> dict[str, Any] | None:
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
+def receipt_is_fresh(receipt: dict[str, Any], ttl_minutes: int, key: str) -> bool:
+    try:
+        issued = datetime.fromisoformat(str(receipt[key]))
+    except (KeyError, TypeError, ValueError):
+        return False
+    if issued.tzinfo is None:
+        return False
+    age = datetime.now(timezone.utc) - issued
+    return timedelta() <= age <= timedelta(minutes=ttl_minutes)
+
+
+def playwright_session_name(command: str) -> str:
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return "sf-harness"
+    for index, part in enumerate(parts):
+        if part == "--session" and index + 1 < len(parts):
+            return parts[index + 1]
+        if part.startswith("--session="):
+            return part.split("=", 1)[1]
+    return "sf-harness"
+
+
+def browser_session_approved(config: dict[str, Any], command: str, allowed: set[str]) -> bool:
+    """A fresh same-session receipt written by playwright_guard after a human-confirmed
+    state-changing action stands in for further per-click confirmations on that origin."""
+
+    if not safety_toggle(config, "browserSessionApproval"):
+        return False
+    session = playwright_session_name(command)
+    receipt = load_json_receipt(RECEIPTS_DIR / f"browser-session-{session}.json")
+    if receipt is None or receipt.get("session") != session:
+        return False
+    if not receipt_is_fresh(receipt, BROWSER_SESSION_TTL_MINUTES, "issuedAt"):
+        return False
+    return receipt.get("origin") in allowed
+
+
+def force_app_is_clean() -> bool:
+    completed = subprocess.run(
+        ["git", "status", "--porcelain", "--", "force-app"],
+        cwd=HARNESS_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.returncode == 0 and not completed.stdout.strip()
+
+
+def retrieve_auto_approved(config: dict[str, Any] | None) -> bool:
+    """Retrieve is read-direction; with the toggle on it flows without a per-invocation ask
+    when the human recently proved this exact configuration (fresh metadata preflight PASS
+    receipt) and a retrieve cannot clobber uncommitted work (clean force-app tree)."""
+
+    if not safety_toggle(config, "autoApproveRetrieveWithReceipt"):
+        return False
+    try:
+        from preflight import load_fresh_receipt
+    except ModuleNotFoundError:
+        try:
+            from scripts.preflight import load_fresh_receipt
+        except ModuleNotFoundError:
+            return False
+    receipt = load_fresh_receipt("metadata", RETRIEVE_RECEIPT_MAX_AGE_MINUTES)
+    return receipt is not None and force_app_is_clean()
+
+
+def devtool_entry_digest(bare_tool: str, tool_input: Any) -> str:
+    payload = json.dumps(
+        {"tool": bare_tool, "arguments": tool_input},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def consume_devtool_batch_entry(
+    config: dict[str, Any] | None, bare_tool: str, tool_input: Any
+) -> bool:
+    """Allow a dev-tool call only when it exactly matches an unused entry of a fresh,
+    human-approved batch receipt; the entry is single-use and burned on match."""
+
+    if not safety_toggle(config, "batchDevToolApproval"):
+        return False
+    digest = devtool_entry_digest(bare_tool, tool_input)
+    for path in sorted(RECEIPTS_DIR.glob("devtool-batch-*.json")):
+        receipt = load_json_receipt(path)
+        if receipt is None or receipt.get("kind") != "dev-tool-batch-receipt":
+            continue
+        ttl = receipt.get("ttlMinutes")
+        if not isinstance(ttl, int) or not receipt_is_fresh(
+            receipt, min(ttl, DEVTOOL_BATCH_TTL_MINUTES), "approvedAt"
+        ):
+            continue
+        entries = receipt.get("entries")
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if (
+                isinstance(entry, dict)
+                and entry.get("digest") == digest
+                and entry.get("used") is False
+            ):
+                entry["used"] = True
+                try:
+                    path.write_text(
+                        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
+                        encoding="utf-8",
+                    )
+                except OSError:
+                    return False
+                return True
+    return False
 
 # MCP tool classification. VS Code may hand the hook either a "server/tool" name or a BARE "tool"
 # name (observed live: `core_list_orgs`). Server-prefix matching alone therefore leaks — classify by
@@ -300,7 +451,11 @@ def salesforce_review_tool_error(
     if not isinstance(tool_input, dict):
         return "Salesforce review input must be an object"
     keys = set(tool_input)
-    if matched in {"review_org_identity", "review_installed_packages"}:
+    if matched == "review_configured_orgs" and not safety_toggle(
+        config, "allowScopedEnumeration"
+    ):
+        return "scoped org enumeration is disabled (safety.allowScopedEnumeration)"
+    if matched in {"review_org_identity", "review_installed_packages", "review_configured_orgs"}:
         if keys:
             return "this Salesforce review tool accepts no model-controlled arguments"
         return None
@@ -602,6 +757,20 @@ def main() -> int:
         )
         return 0
 
+    if is_terminal_tool(tool_name) and DEVTOOL_BATCH_APPROVE_SCRIPT.search(
+        dequote(re.sub(r"\\\r?\n", " ", command).replace("\\", "/"))
+    ):
+        print(
+            json.dumps(
+                hook_response(
+                    "deny",
+                    "SAFE-HUMAN-001: Copilot cannot approve a dev-tool batch plan; "
+                    "a named human must run approve_dev_tool_batch.py directly outside Copilot.",
+                )
+            )
+        )
+        return 0
+
     if is_terminal_tool(tool_name) and re.search(
         r"knowledge_registry\.py", dequote(command).replace("\\", "/")
     ) and re.search(r"(?:^|\s)approve-claim(?:\s|$)", dequote(command)):
@@ -682,6 +851,9 @@ def main() -> int:
             print(json.dumps(hook_response("deny", "Salesforce development path is outside root force-app/manifest/tests/e2e source.")))
             return 0
         if development_tool_requires_confirmation(lowered_name):
+            if consume_devtool_batch_entry(config, bare_tool, tool_input):
+                print(json.dumps(hook_response()))
+                return 0
             print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation for this approved non-production mutation.")))
             return 0
     try:
@@ -695,6 +867,9 @@ def main() -> int:
             print(json.dumps(hook_response("deny", "Salesforce command must specify exactly one allowlisted --target-org; defaults and multiple targets are forbidden.")))
             return 0
         if approved_retrieve_command(sf_parts, config):
+            if retrieve_auto_approved(config):
+                print(json.dumps(hook_response()))
+                return 0
             print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation before retrieving org metadata into the project via Salesforce CLI.")))
             return 0
         print(json.dumps(hook_response("deny", "Direct Salesforce CLI is disabled except human-approved `sf project retrieve start`; use the guarded read tools.")))
@@ -722,16 +897,10 @@ def main() -> int:
             if origin not in allowed:
                 print(json.dumps(hook_response("deny", f"Browser origin '{origin}' is not allowlisted.")))
                 return 0
-        if browser_subcommand in {
-            "click",
-            "dblclick",
-            "fill",
-            "type",
-            "select",
-            "check",
-            "uncheck",
-            "press",
-        }:
+        if browser_subcommand in STATE_CHANGING_BROWSER:
+            if browser_session_approved(config, command, allowed):
+                print(json.dumps(hook_response()))
+                return 0
             print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation before a state-changing browser action.")))
             return 0
 

@@ -5,10 +5,11 @@ upgrade.
 
 | Logical capability | Configured implementation | Consumers |
 |---|---|---|
-| ADO work-item/query/wiki/test-plan reads | `ado-readonly/*` remote MCP, server-side read-only | intake, feature health, QA sync, handover |
+| ADO work-item/query/wiki/test-plan reads | `ado-readonly/*` local stdio MCP (`@azure-devops/mcp`, version-pinned, domains bounded to work-items/wiki/test-plans) | intake, feature health, QA sync, handover |
 | Reconciled Salesforce org identity | `salesforce-readonly/review_org_identity` | investigator, design, review |
 | Reconciled installed package inventory | `salesforce-readonly/review_installed_packages` | investigator, design, review |
 | Reconciled allowlisted object contract | `salesforce-readonly/review_object_contract` | investigator, design, review, QA |
+| Scoped enumeration of configured org aliases (requires `safety.allowScopedEnumeration`) | `salesforce-readonly/review_configured_orgs` or `scripts/salesforce_read.py orgs` | investigator |
 | Guarded structured record read (allowlisted objects, bounded rows, no free-form SOQL) | `scripts/salesforce_read.py records` guarded terminal command | investigator, review |
 | Guarded metadata retrieve (allowlisted types → ignored cache dir) | `scripts/salesforce_read.py retrieve` guarded terminal command | investigator, review |
 | Salesforce non-production metadata/test operations | `salesforce-development/*` guarded DX MCP | development only |
@@ -16,7 +17,7 @@ upgrade.
 | Interactive human confirmation | `vscode/askQuestions` | prompts and approval gates |
 | Subagent delegation | `agent` plus explicit `agents` allowlist | Designer, Developer |
 
-## Azure DevOps remote actions used
+## Azure DevOps actions used
 
 - `wit_work_item`: get, get_batch, list_comments, list_revisions
 - `wit_query`: get, get_results
@@ -27,12 +28,17 @@ upgrade.
 Exact dispatcher input schemas come from the running server and must be captured in sanitized
 fixtures. The server organization comes only from `ADO_ORGANIZATION`, which must equal local
 configuration; the global hook rejects calls without the configured project or with a mismatched
-project/ADO URL. No ADO write tool is enabled in this version.
+project/ADO URL. The local stdio server has no server-side read-only mode, and its domains do
+include write-capable tools; agents are policy-bound to the read actions listed above (owner
+decision 2026-07-14 — no hook denylist on ADO writes yet; revisit if governed ADO writes become
+desirable).
 
 ## Salesforce tools used
 
 The model-facing read server is a narrow local facade bound to one configured, exact non-production
-alias. It exposes only the three review tools above. Internally it executes fixed, checked-in query
+alias. It exposes only the review tools above (configured-orgs enumeration is additionally gated
+by `safety.allowScopedEnumeration` and reflects local configuration only — never unconfigured
+orgs, ids, or hosts). Internally it executes fixed, checked-in query
 profiles through the pinned Salesforce MCP and a private Salesforce CLI allowlist, normalizes both
 receipts, removes credentials/identity details/raw records, and returns `VERIFIED`, `MISMATCH`,
 `INCOMPLETE`, or `BLOCKED`.

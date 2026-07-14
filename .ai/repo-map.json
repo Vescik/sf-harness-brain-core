@@ -1,0 +1,521 @@
+{
+  "agents": [
+    {
+      "description": "Read-only evidence collector for allowlisted Salesforce components and package surfaces; creates sanitized observations and proposed claims without self-verifying them.",
+      "handoffs": [],
+      "loads": {
+        "contracts": [
+          "knowledge-lifecycle",
+          "source-authority"
+        ],
+        "instructions": [
+          "managed-package-constraints"
+        ],
+        "skills": [
+          "inventory-force-app",
+          "investigate-object",
+          "propose-force-app-knowledge",
+          "update-knowledge-base"
+        ]
+      },
+      "name": "config-investigator",
+      "path": ".github/agents/config-investigator.agent.md"
+    },
+    {
+      "description": "Implement a human-accepted Salesforce design in the repository-root SFDX project, verify it, and hand it to independent guardrail review.",
+      "handoffs": [
+        "guardrail-reviewer",
+        "solution-designer"
+      ],
+      "loads": {
+        "contracts": [
+          "execution-contract",
+          "workflow-state-machine"
+        ],
+        "instructions": [
+          "managed-package-constraints",
+          "organization-principles",
+          "salesforce-best-practices"
+        ],
+        "skills": []
+      },
+      "name": "development-assistant",
+      "path": ".github/agents/development-assistant.agent.md"
+    },
+    {
+      "description": "Independently review a design or implementation against package, organization, Salesforce, evidence-completeness, and role-boundary rules; never implement fixes.",
+      "handoffs": [
+        "development-assistant",
+        "solution-designer"
+      ],
+      "loads": {
+        "contracts": [
+          "source-authority",
+          "workflow-state-machine"
+        ],
+        "instructions": [
+          "managed-package-constraints",
+          "organization-principles",
+          "salesforce-best-practices"
+        ],
+        "skills": [
+          "check-against-principles"
+        ]
+      },
+      "name": "guardrail-reviewer",
+      "path": ".github/agents/guardrail-reviewer.agent.md"
+    },
+    {
+      "description": "Design the change before implementation, establish affected components and evidence, resolve managed-package constraints, and persist a human-reviewable design record.",
+      "handoffs": [
+        "development-assistant",
+        "guardrail-reviewer"
+      ],
+      "loads": {
+        "contracts": [
+          "source-authority",
+          "workflow-state-machine"
+        ],
+        "instructions": [
+          "managed-package-constraints",
+          "organization-principles",
+          "salesforce-best-practices"
+        ],
+        "skills": [
+          "check-against-principles",
+          "solution-design"
+        ]
+      },
+      "name": "solution-designer",
+      "path": ".github/agents/solution-designer.agent.md"
+    },
+    {
+      "description": "Assess QA inventory freshness and coverage sufficiency, select the appropriate QA skills, and produce a sourced coverage decision or reviewed test draft.",
+      "handoffs": [
+        "development-assistant",
+        "guardrail-reviewer"
+      ],
+      "loads": {
+        "contracts": [
+          "execution-contract",
+          "workflow-state-machine"
+        ],
+        "instructions": [
+          "organization-principles"
+        ],
+        "skills": []
+      },
+      "name": "test-strategist",
+      "path": ".github/agents/test-strategist.agent.md"
+    }
+  ],
+  "contracts": [
+    {
+      "name": "execution-contract",
+      "path": ".ai/contracts/execution-contract.md",
+      "summary": "Every skill must apply this contract in addition to its task-specific procedure.",
+      "title": "Shared Skill Execution Contract"
+    },
+    {
+      "name": "knowledge-lifecycle",
+      "path": ".ai/contracts/knowledge-lifecycle.md",
+      "summary": "This contract defines how an observation becomes reusable Knowledge. The model may propose a claim, but it is never itself an evidence source and may never promote a claim to `verified`.",
+      "title": "Knowledge Claim Lifecycle"
+    },
+    {
+      "name": "source-authority",
+      "path": ".ai/contracts/source-authority.md",
+      "summary": "Source authority depends on the claim being made. There is no universal ranking, and multiple records derived from the same underlying source are not independent corroboration.",
+      "title": "Knowledge Source Authority"
+    },
+    {
+      "name": "tool-capabilities",
+      "path": ".ai/contracts/tool-capabilities.md",
+      "summary": "Exact dispatcher input schemas come from the running server and must be captured in sanitized fixtures. The server organization comes only from `ADO_ORGANIZATION`, which must equal local configuration; the global hook rejects calls without the configured project or with a mismatched project/ADO URL. The local stdio server has no server-side read-only mode, and its domains do include write-capable tools; agents are policy-bound to the read actions listed above (owner decision 2026-07-14 — no hook denylist on ADO writes yet; revisit if governed ADO writes become desirable).",
+      "title": "Tool Capability Map"
+    },
+    {
+      "name": "workflow-state-machine",
+      "path": ".ai/contracts/workflow-state-machine.md",
+      "summary": "This contract defines durable workflow state for governed Salesforce work. Chat history, handoff button text, ignored cache, and generated output are navigation aids only. The authoritative state is the validated `.ai/change-records/<record-id>/record.json` file and its referenced handoff envelopes.",
+      "title": "Governed Work-Record State Machine"
+    }
+  ],
+  "directories": [
+    {
+      "path": ".ai",
+      "purpose": "Governed agent state: contracts, knowledge, work records, memory, QA"
+    },
+    {
+      "path": ".ai/contracts",
+      "purpose": "Normative execution/knowledge/workflow/tooling contracts, loaded per role"
+    },
+    {
+      "path": ".ai/knowledge",
+      "purpose": "Canonical claims/evidence/reviews + generated indexes (claims-index.json)"
+    },
+    {
+      "path": ".ai/change-records",
+      "purpose": "Durable work records; record.json is authoritative state"
+    },
+    {
+      "path": ".ai/memory",
+      "purpose": "Human-curated decisions-log.md"
+    },
+    {
+      "path": ".ai/qa",
+      "purpose": "QA keyword map and cached test cases"
+    },
+    {
+      "path": ".ai/templates",
+      "purpose": "Document templates"
+    },
+    {
+      "path": ".cache",
+      "purpose": "Ignored transient caches, drafts, worklists, receipts"
+    },
+    {
+      "path": ".github",
+      "purpose": "Copilot surface: kernel, agents, prompts, skills, hooks, CI"
+    },
+    {
+      "path": ".github/agents",
+      "purpose": "Five role agents with tools, handoffs, role-guard hooks"
+    },
+    {
+      "path": ".github/instructions",
+      "purpose": "Tiered principles + rule-registry.yaml"
+    },
+    {
+      "path": ".github/prompts",
+      "purpose": "Public slash commands, each linking its skill"
+    },
+    {
+      "path": ".github/skills",
+      "purpose": "Internal skill procedures (SKILL.md per folder)"
+    },
+    {
+      "path": ".vscode",
+      "purpose": "Workspace settings and MCP server definitions"
+    },
+    {
+      "path": "config",
+      "purpose": "Harness config (harness.local.json), policies, this seed"
+    },
+    {
+      "path": "docs",
+      "purpose": "Human-facing setup, architecture, compatibility docs"
+    },
+    {
+      "path": "evals",
+      "purpose": "Safety scenarios, agent scenarios, schema fixtures"
+    },
+    {
+      "path": "force-app",
+      "purpose": "The only SFDX source root"
+    },
+    {
+      "path": "manifest",
+      "purpose": "package.xml starter manifest"
+    },
+    {
+      "path": "output",
+      "purpose": "Reviewed deliverables: docs, designs, tests, handover"
+    },
+    {
+      "path": "schemas",
+      "purpose": "JSON Schemas for every governed artifact"
+    },
+    {
+      "path": "scripts",
+      "purpose": "Guarded scripts: safety hook, role guard, registries, wrappers"
+    },
+    {
+      "path": "tests",
+      "purpose": "Harness unit tests + tests/e2e Playwright"
+    }
+  ],
+  "instructions": [
+    {
+      "description": "Generic managed-package and closed-surface constraints. Load when a governed workflow touches a package-owned or ownership-unknown component.",
+      "name": "managed-package-constraints",
+      "path": ".github/instructions/managed-package-constraints.instructions.md"
+    },
+    {
+      "description": "Company policy, review, naming, decision, Knowledge-promotion, handoff, and shared-sandbox rules. Load explicitly for governed design, implementation, and review.",
+      "name": "organization-principles",
+      "path": ".github/instructions/organization-principles.instructions.md"
+    },
+    {
+      "description": "General Salesforce engineering and evidence practices for Apex, Flow, security, limits, testing, metadata, and source/org reconciliation. Load explicitly after Tier 1 and Tier 2.",
+      "name": "salesforce-best-practices",
+      "path": ".github/instructions/salesforce-best-practices.instructions.md"
+    }
+  ],
+  "kind": "repo-map",
+  "prompts": [
+    {
+      "agent": "config-investigator",
+      "argumentHint": "type=<MetadataType> [chunk=<N, default 10>] [recordId=<ID>]",
+      "description": "Convert one whole metadata type (e.g. all Flows) into governed Knowledge in a five-phase batch — discover, plan, verify the plan, execute in chunks, verify the result.",
+      "name": "batch-knowledge",
+      "path": ".github/prompts/batch-knowledge.prompt.md"
+    },
+    {
+      "agent": "guardrail-reviewer",
+      "argumentHint": "recordId=<ID> [scope=design|implementation]",
+      "description": "Ad-hoc read-only review of a persisted design or implementation against every applicable Principle tier and its evidence.",
+      "name": "check-against-principles",
+      "path": ".github/prompts/check-against-principles.prompt.md"
+    },
+    {
+      "agent": "development-assistant",
+      "argumentHint": "recordId=<ID> itemId=<ID> [manifestPath=<path>]",
+      "description": "Generate reviewed technical documentation for one accepted metadata change.",
+      "name": "document-metadata-change",
+      "path": ".github/prompts/document-metadata-change.prompt.md"
+    },
+    {
+      "agent": "test-strategist",
+      "argumentHint": "itemId=<Feature ID> [recordId=<ID>]",
+      "description": "Run the Feature/BRD-to-Story coverage gate before Solution Design.",
+      "name": "feature-health",
+      "path": ".github/prompts/feature-health.prompt.md"
+    },
+    {
+      "agent": "solution-designer",
+      "argumentHint": "itemId=<ID> [recordId=<ID>] [mode=single|hierarchy] [childDetail=summary|full] [includeTestCases=true|false]",
+      "description": "Fetch a validated Azure DevOps work item context and begin Solution Design.",
+      "name": "fetch-ado-item",
+      "path": ".github/prompts/fetch-ado-item.prompt.md"
+    },
+    {
+      "agent": "test-strategist",
+      "argumentHint": "recordId=<ID> (testCaseId=<ID> | steps=<quoted steps>)",
+      "description": "Generate and live-verify a Playwright draft from an ADO Test Case or tester-provided steps.",
+      "name": "generate-playwright-test",
+      "path": ".github/prompts/generate-playwright-test.prompt.md"
+    },
+    {
+      "agent": "config-investigator",
+      "argumentHint": "[recordId=<ID>]",
+      "description": "Inventory the root force-app as sanitized Knowledge evidence candidates without creating claims.",
+      "name": "inventory-force-app",
+      "path": ".github/prompts/inventory-force-app.prompt.md"
+    },
+    {
+      "agent": "config-investigator",
+      "argumentHint": "objectApiName=<API name> [recordId=<ID>]",
+      "description": "Collect bounded, sanitized, reconciled evidence for one Salesforce object or component and draft a proposed Knowledge claim.",
+      "name": "investigate-object",
+      "path": ".github/prompts/investigate-object.prompt.md"
+    },
+    {
+      "agent": "config-investigator",
+      "argumentHint": "[recordId=<ID>] [claimIds=<ID,ID,...>]",
+      "description": "Draft governed force-app Knowledge candidates and optionally submit an explicitly selected subset as proposed claims.",
+      "name": "propose-force-app-knowledge",
+      "path": ".github/prompts/propose-force-app-knowledge.prompt.md"
+    },
+    {
+      "agent": "config-investigator",
+      "argumentHint": "[recordId=<ID>] [claimIds=<ID,ID,...>]",
+      "description": "Run the governed force-app inventory and claim-draft stages, with optional explicit proposal submission.",
+      "name": "refresh-force-app-knowledge",
+      "path": ".github/prompts/refresh-force-app-knowledge.prompt.md"
+    },
+    {
+      "agent": "test-strategist",
+      "argumentHint": "period=YYYY-MM",
+      "description": "Build a current monthly release handover from the configured saved ADO query and linked evidence.",
+      "name": "release-handover",
+      "path": ".github/prompts/release-handover.prompt.md"
+    },
+    {
+      "agent": "config-investigator",
+      "argumentHint": "keyword=<term> | text=<fragment> | subject=<identity> [domain=<domain>]",
+      "description": "Search governed Knowledge by subject, keyword, or text; effective verified facts are reported separately from non-effective records.",
+      "name": "search-knowledge",
+      "path": ".github/prompts/search-knowledge.prompt.md"
+    },
+    {
+      "agent": "solution-designer",
+      "argumentHint": "itemId=<ADO ID> [recordId=<ID>] [objects=<ApiName,ApiName>] | or a written requirement",
+      "description": "Run the five-phase Solution Design workflow (discover, plan, verify, execute, verify) grounded in Principles, verified Knowledge, and live Salesforce evidence.",
+      "name": "solution-design",
+      "path": ".github/prompts/solution-design.prompt.md"
+    },
+    {
+      "agent": "test-strategist",
+      "argumentHint": "itemId=<ADO ID> [recordId=<ID>]",
+      "description": "Rank existing synced Test Cases relevant to one structured change using taxonomy evidence and bounded reasoning.",
+      "name": "suggest-test-cases",
+      "path": ".github/prompts/suggest-test-cases.prompt.md"
+    },
+    {
+      "agent": "test-strategist",
+      "argumentHint": "link=<ADO Test Plans URL> | suiteId=<ID> [planId=<ID>] | planId=<ID>",
+      "description": "Synchronize one validated Azure Test Plan or Suite into the committed QA index.",
+      "name": "sync-test-cases",
+      "path": ".github/prompts/sync-test-cases.prompt.md"
+    },
+    {
+      "agent": "test-strategist",
+      "argumentHint": "testCaseId=<ID> approver=<name>",
+      "description": "Human-led admin curation of Test Case keywords using the controlled taxonomy.",
+      "name": "tune-test-case-keywords",
+      "path": ".github/prompts/tune-test-case-keywords.prompt.md"
+    }
+  ],
+  "resumeHere": [
+    "Resume work from the persisted record: `python scripts/work_record.py` with explicit recordId/handoffId — chat is never workflow truth.",
+    "Batch knowledge progress: `python scripts/force_app_knowledge.py inventory` then `worklist --metadata-type <Type>` (derived, cannot drift).",
+    "Decisions: `.ai/memory/decisions-log.md`; QA keywords: `.ai/qa/`.",
+    "Search Knowledge first: `python scripts/knowledge_registry.py query` or `.ai/knowledge/claims-index.json`.",
+    "Deep tree: `docs/workspace-topology.md`; setup: `docs/setup-zero-to-first-prompt.md`."
+  ],
+  "schemaVersion": 1,
+  "skills": [
+    {
+      "description": "Five-phase batch conversion of one metadata type into governed Knowledge - discover the component set and existing claims, plan chunked work, verify the plan with the human, execute draft/describe/propose/chat-approve per chunk, and verify the resulting Knowledge. One metadata type per batch.",
+      "name": "batch-knowledge",
+      "path": ".github/skills/batch-knowledge/SKILL.md"
+    },
+    {
+      "description": "Evaluate a scoped design or implementation using the governed rule registry, fresh verified claims, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.",
+      "name": "check-against-principles",
+      "path": ".github/skills/check-against-principles/SKILL.md"
+    },
+    {
+      "description": "Compare a current Azure DevOps Feature and selected BRD requirements with full child Story claims, producing a traceable coverage matrix, gaps, orphans, ambiguity, and package warnings before design.",
+      "name": "check-feature-coverage",
+      "path": ".github/skills/check-feature-coverage/SKILL.md"
+    },
+    {
+      "description": "Curate the Knowledge keyword taxonomy from aggregated candidateKeywords - run the deterministic keyword report, present ranked candidate terms with their claims, and add only terms the human explicitly confirms. Taxonomy growth is never silent; verified claims are never rewritten.",
+      "name": "curate-knowledge-keywords",
+      "path": ".github/skills/curate-knowledge-keywords/SKILL.md"
+    },
+    {
+      "description": "Fetch and normalize one Azure DevOps work item or a one-level hierarchy with cache completeness, optional Test Case relations, and provenance. Use as internal context for design, documentation, coverage, and handover workflows.",
+      "name": "fetch-ado-item",
+      "path": ".github/skills/fetch-ado-item/SKILL.md"
+    },
+    {
+      "description": "Fetch and normalize one Azure Test Plans Test Case with steps and expected results, versioned cache completeness, provenance, and deleted/forbidden handling. Use only as an internal QA dependency.",
+      "name": "fetch-test-case",
+      "path": ".github/skills/fetch-test-case/SKILL.md"
+    },
+    {
+      "description": "Explore a guarded Salesforce sandbox and generate a reviewable Playwright test draft from one ADO Test Case or tester-provided steps using a human-authenticated persistent profile. Never execute unreviewed generated code.",
+      "name": "generate-playwright-test",
+      "path": ".github/skills/generate-playwright-test/SKILL.md"
+    },
+    {
+      "description": "Compose a current, sourced monthly release-handover draft from the configured saved ADO query, per-item work evidence, linked technical wiki documentation, and formal Test Case relations without inventing missing scope or content.",
+      "name": "generate-release-handover",
+      "path": ".github/skills/generate-release-handover/SKILL.md"
+    },
+    {
+      "description": "Generate a sourced technical-documentation draft for one accepted Salesforce metadata change by validating the repository-root SFDX project, manifest, source components, ADO context, Knowledge, tests, and human manual steps.",
+      "name": "generate-technical-documentation",
+      "path": ".github/skills/generate-technical-documentation/SKILL.md"
+    },
+    {
+      "description": "Inventory the repository-root Salesforce force-app into a sanitized, evidence-linked JSON artifact. Use before creating or refreshing Knowledge claims from objects, fields, relations, Apex, Flows, Lightning components, or integration metadata.",
+      "name": "inventory-force-app",
+      "path": ".github/skills/inventory-force-app/SKILL.md"
+    },
+    {
+      "description": "Collect bounded, sanitized, reconciled evidence for a scoped Salesforce component or package claim and create a proposed Knowledge claim. Use for missing, stale, contested, or drift-sensitive facts; never self-verify a claim.",
+      "name": "investigate-object",
+      "path": ".github/skills/investigate-object/SKILL.md"
+    },
+    {
+      "description": "Draft schema-v3 Knowledge claims and immutable metadata-repository evidence from a complete, clean force-app inventory, submit an explicitly selected subset as proposed claims, and optionally request chat-approved promotion. Use after inventory-force-app.",
+      "name": "propose-force-app-knowledge",
+      "path": ".github/skills/propose-force-app-knowledge/SKILL.md"
+    },
+    {
+      "description": "Read-only search over the governed Knowledge registry - by subject, approved or candidate keyword, and statement/description text - reporting effective facts separately from non-effective records. Never proposes, promotes, or edits Knowledge.",
+      "name": "search-knowledge",
+      "path": ".github/skills/search-knowledge/SKILL.md"
+    },
+    {
+      "description": "Five-phase Solution Design workflow (discover, plan, verify the plan, execute the design package, verify the outcome) grounded in Principles, verified Knowledge, and live Salesforce evidence. Produces a human-reviewable design with per-decision rule traceability and an implementation/verification plan for Development.",
+      "name": "solution-design",
+      "path": ".github/skills/solution-design/SKILL.md"
+    },
+    {
+      "description": "Rank existing synced Test Cases for a structured change using curated taxonomy evidence, artifact identity, business context, negative evidence, and bounded model reasoning; suggestions are never formal coverage.",
+      "name": "suggest-test-cases",
+      "path": ".github/skills/suggest-test-cases/SKILL.md"
+    },
+    {
+      "description": "Synchronize an allowlisted Azure Test Plan or Suite into deterministic committed QA indexes, with pagination, partial-run reporting, and global orphan candidates. Use internally from the public sync prompt or Test Strategist.",
+      "name": "sync-test-cases",
+      "path": ".github/skills/sync-test-cases/SKILL.md"
+    },
+    {
+      "description": "Curate one Test Case keyword mapping with a named human approver, current Case evidence, controlled taxonomy, deterministic upsert, and separate approval for taxonomy growth. Use only through the admin prompt.",
+      "name": "tune-test-case-keywords",
+      "path": ".github/skills/tune-test-case-keywords/SKILL.md"
+    },
+    {
+      "description": "Govern proposed Salesforce/package claims, immutable evidence, human reviews, lifecycle transitions, reconciliation, and generated Knowledge indexes. Never promote model inference or unreviewed observations.",
+      "name": "update-knowledge-base",
+      "path": ".github/skills/update-knowledge-base/SKILL.md"
+    }
+  ],
+  "sourceDigests": {
+    ".ai/contracts/execution-contract.md": "sha256:c5c9a549c94dfc4d7240cd4534db51c24375e3f756d11d6c4c074e6663d3f6b5",
+    ".ai/contracts/knowledge-lifecycle.md": "sha256:9d9d50f11ef7c6b73bce759d2b0674d2fa750c97f1936e52babcc4e22bd1df40",
+    ".ai/contracts/source-authority.md": "sha256:8d2a124483cc8fe283b0bc41aed47c26ea303a2758cbd5ee2664b69b3949de25",
+    ".ai/contracts/tool-capabilities.md": "sha256:659133710ec9df9df87f60c7fc0336bb9b3401825aca9423ba0905e15d626661",
+    ".ai/contracts/workflow-state-machine.md": "sha256:b2b4e313741bec172732b18977beaccfb741379b55ff4f2b422383485b0e2334",
+    ".github/agents/config-investigator.agent.md": "sha256:3654f6f150ef567a76676f899e5ef527c66dd65ce436a562ea4706b402dd31a3",
+    ".github/agents/development-assistant.agent.md": "sha256:cb488b93df31c2711c41a26522cd6d7664802b26c234b5a3cb7dbaf8deea1550",
+    ".github/agents/guardrail-reviewer.agent.md": "sha256:f5255898f451589e7894be68f146814b013be253ebe5a145c6e444c83f14d8c6",
+    ".github/agents/solution-designer.agent.md": "sha256:6f4b5c24d9eff635b924c75ecca621117fd936902e455ebb35f49962938810db",
+    ".github/agents/test-strategist.agent.md": "sha256:7a5371abe469946889cc55a1055f8aebc70147380b109448edf0aaacd29c2c51",
+    ".github/instructions/managed-package-constraints.instructions.md": "sha256:cccd7e181cc44c99514a1be64f9d57194c5e66fb464a1cd3da138411da1ed5c9",
+    ".github/instructions/organization-principles.instructions.md": "sha256:23712c8784dc60a2adf6c535cb4054af1bacb0018bd7d56c1ff52e482284193f",
+    ".github/instructions/salesforce-best-practices.instructions.md": "sha256:8d286666f9736a2c84a4681d9c1c65c029e47473524494e54dad64ba5993a6ee",
+    ".github/prompts/batch-knowledge.prompt.md": "sha256:b744b614968a26b22a59c3c9e368db0cd15f1253021bf7e3ef8b94f8c8cc3d7c",
+    ".github/prompts/check-against-principles.prompt.md": "sha256:4dc93199dd92924bb294a38fa7db096e9a2f3e912889d944ca4da86cb325328f",
+    ".github/prompts/document-metadata-change.prompt.md": "sha256:33feb2ed7d04a09a4de114a732cae85b2f3eaa41ce44ffeedd38b47676e158c8",
+    ".github/prompts/feature-health.prompt.md": "sha256:28647ddc5360e88de2db6f75dd4673dcf66237c5a4469ce0956f4d1a8635ea0b",
+    ".github/prompts/fetch-ado-item.prompt.md": "sha256:4ebe4c347c5b21d3dea9959d387b0b2bb69a0f20e571f15c3e4f1334d175b1bd",
+    ".github/prompts/generate-playwright-test.prompt.md": "sha256:555c92e0aa73438a2e570c90b17fa15c6a1b56dc065770cd8f33bb75008ac337",
+    ".github/prompts/inventory-force-app.prompt.md": "sha256:fbe782d0d3473eb32dbdc5b23fca697978a4128d3073c4b9fe485347a5ce8634",
+    ".github/prompts/investigate-object.prompt.md": "sha256:3d7e3b24c44b627f95d095f5998b92e0e34d4acf6d807f5ac49185342c9bf36d",
+    ".github/prompts/propose-force-app-knowledge.prompt.md": "sha256:f836be0cd76303a32c24dbbb6ec4bc26c8191cce9af874f0b1c17427c77c13ea",
+    ".github/prompts/refresh-force-app-knowledge.prompt.md": "sha256:9e51fd204d6b33a25baad30cc53ee6df39db942090f2b2e6c9ef7b5245152abc",
+    ".github/prompts/release-handover.prompt.md": "sha256:fb1e1475798109b891f8bc3c56aaad086bb75984dca8110241f5510cc75a5ec5",
+    ".github/prompts/search-knowledge.prompt.md": "sha256:418475cb8043b97581df4dece1c065ee59f823f5e288d3c80c34bade1d5f6b6c",
+    ".github/prompts/solution-design.prompt.md": "sha256:d248113874576e6e250021df24c46cbb5993018d09782f097db365118a01ad95",
+    ".github/prompts/suggest-test-cases.prompt.md": "sha256:b5b52efbeb4aa84aa5138d4aa7a8536177c5d24a681232c514b4e4ef185711c1",
+    ".github/prompts/sync-test-cases.prompt.md": "sha256:123ac9b75b72602c4fb0e4e5d5cb86aae648b7570feab5c0848fb9d0b3ac3860",
+    ".github/prompts/tune-test-case-keywords.prompt.md": "sha256:d11c3e84e713b5ff69ea4e6b9d019d1ce0a6ad04a4ddf774fbdf2e48cf4de32e",
+    ".github/skills/batch-knowledge/SKILL.md": "sha256:836928ee8d465005b814830755762aba4286b6d6712b45ca37fa7242aca9971c",
+    ".github/skills/check-against-principles/SKILL.md": "sha256:871c456825ddf6adbb35f601c1cb33db3adb85805cac901540f893e64d7d799f",
+    ".github/skills/check-feature-coverage/SKILL.md": "sha256:8788d588ee99c9f917044ca2b1affcd719f9ae280b097f41095d38ce18292d07",
+    ".github/skills/curate-knowledge-keywords/SKILL.md": "sha256:59638d318738e874a727441d6637068e404e80cbc564eac6bbf92666ea646220",
+    ".github/skills/fetch-ado-item/SKILL.md": "sha256:02ad5d68ff86e39c27e6acd29058b617483c0b7d07cd69b007acbae2e88104c8",
+    ".github/skills/fetch-test-case/SKILL.md": "sha256:56fc8adf313c98b5588890dd03eda7489673ee497c2b69efe5ccc1e4bdf2539e",
+    ".github/skills/generate-playwright-test/SKILL.md": "sha256:603561c5ef314c5065b85331c8165cd8ebd79f6ed5d403c99139e5168d6d0806",
+    ".github/skills/generate-release-handover/SKILL.md": "sha256:e18496ca9166cee56002efbf671b56d8ee24f20ca50232af9462c8a5b1f2c7eb",
+    ".github/skills/generate-technical-documentation/SKILL.md": "sha256:b62241106780913e2879b5002f93b6c97d562811d94fc770945a420e0abaefe2",
+    ".github/skills/inventory-force-app/SKILL.md": "sha256:1f01b6b1aff5c27b538a5807f556f6b1efb6346af14769f623dc7392edb1c02f",
+    ".github/skills/investigate-object/SKILL.md": "sha256:f881e19602f29636469459bbf33150475a883da7aa4e23e4c2073baac12a67cd",
+    ".github/skills/propose-force-app-knowledge/SKILL.md": "sha256:8e1e6c0eb3e997311c9c207f25e510eb3e14f809755c2feb8d5b11ad30a6de2d",
+    ".github/skills/search-knowledge/SKILL.md": "sha256:47fbb13d65338da43765ef7c5bb6127ca168586fee2989d3f2f31731529e0d75",
+    ".github/skills/solution-design/SKILL.md": "sha256:93f1129cdff7abe6a7107ef049bead38382a6522d9ac11b649491fe8ccb4e5eb",
+    ".github/skills/suggest-test-cases/SKILL.md": "sha256:77b772cb0f548be33c83490e45e5a5c74779051b78f7852d484f4f45df5ed7a0",
+    ".github/skills/sync-test-cases/SKILL.md": "sha256:86b1af1a8415d07f548e7160a565933be7dfede396e55341345fe76ffccfe529",
+    ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
+    ".github/skills/update-knowledge-base/SKILL.md": "sha256:b4b5e956df79e2ad2c3a0f2e03401d18fdfce8dfce988a6a235d611021a80b40",
+    "config/repo-map-seed.json": "sha256:e05458eb3feebb6e237b982efe5993e7b50f11ae12dfd948bd4792976e8add89"
+  },
+  "wordCount": 798
+}

@@ -62,13 +62,16 @@ it. Without this, commands fail with `ModuleNotFoundError: No module named 'json
 
 ## Step 4 — ⭐ Fix the MCP block: set `ADO_ORGANIZATION` (this is the fix)
 
-Putting the org in `config\harness.local.json` is **necessary but not sufficient**. The ADO MCP URL
-is built from `https://mcp.dev.azure.com/${env:ADO_ORGANIZATION}` (an **environment variable**), and
-the safety hook independently checks that the env var **exactly equals** `ado.organization` in your
-config. If the env var is missing:
+Putting the org in `config\harness.local.json` is **necessary but not sufficient**. The local ADO
+MCP server receives its organization from `${env:ADO_ORGANIZATION}` (an **environment variable**
+in the server args), and the safety hook independently checks that the env var **exactly equals**
+`ado.organization` in your config. If the env var is missing:
 
-- the URL has no org → **"Organization name is required"**, and
+- the server gets no org argument → it fails to start, and
 - the hook sees runtime-org `""` ≠ policy-org → **"Blocked by Pre-Tool Use hook"**.
+
+The server also needs your own Azure sign-in once: `az login` (Azure CLI). Agents never see or
+handle those credentials.
 
 Set it to the **exact same org slug** as `ado.organization` in your config (the short slug, e.g.
 `contoso` — not the full URL):
@@ -177,7 +180,8 @@ Get-Content .cache\denials.log -Tail 20
   token as well as the server prefix, hard-denies org/project enumeration (`core_list_orgs`,
   `core_list_projects`, `list_all_orgs`), and fails closed (asks) on any unrecognized MCP-shaped
   tool. Bare `core_list_orgs`/`run_soql_query`/`deploy_metadata` are no longer bypassable.
-- **ADO toolset/tool names:** the live server exposes `core_*` / `search_workitem`; the declared
-  `X-MCP-Toolsets: wit,wiki,testplan` allowlist is not obviously honored by the hosted endpoint.
-  The org-scope + enumeration guards above are the effective control; the documented `wit_*` names
-  are being reconciled with the real server.
+- **ADO toolset bounding — FIXED by the stdio switch.** The hosted endpoint did not honor the
+  `X-MCP-Toolsets` header, so the harness now runs the local `@azure-devops/mcp` (version-pinned)
+  whose `-d work-items wiki test-plans` domain args are actually honored. The local server has no
+  server-side read-only mode; read-only remains harness policy (hooks + role guard) — an accepted
+  owner decision (2026-07-14). Org-scope + enumeration guards stay the effective control.

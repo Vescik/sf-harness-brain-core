@@ -57,6 +57,8 @@ raw vendor payloads. The `salesforce-readonly` facade exposes only:
 - `review_org_identity`
 - `review_installed_packages`
 - `review_object_contract`
+- `review_configured_orgs` (only when `safety.allowScopedEnumeration` is enabled; lists the
+  locally configured aliases and permissions only — never unconfigured orgs, ids, or hosts)
 
 The facade binds one configured allowlisted sandbox, runs fixed evidence profiles through the pinned
 Salesforce MCP and a private CLI allowlist, sanitizes both receipts, and reconciles them. Results are

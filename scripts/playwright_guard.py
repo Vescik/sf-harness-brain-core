@@ -9,14 +9,27 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 try:
-    from copilot_safety_hook import allowed_origins
+    from copilot_safety_hook import (
+        RECEIPTS_DIR,
+        STATE_CHANGING_BROWSER,
+        allowed_origins,
+        load_json_receipt,
+        safety_toggle,
+    )
     from preflight import load_config
 except ModuleNotFoundError:  # imported as scripts.playwright_guard by unit tests
-    from scripts.copilot_safety_hook import allowed_origins
+    from scripts.copilot_safety_hook import (
+        RECEIPTS_DIR,
+        STATE_CHANGING_BROWSER,
+        allowed_origins,
+        load_json_receipt,
+        safety_toggle,
+    )
     from scripts.preflight import load_config
 
 
@@ -116,11 +129,52 @@ def collect_http_values(value: Any) -> list[str]:
     return found
 
 
+def session_receipt_path(session: str) -> Path:
+    return RECEIPTS_DIR / f"browser-session-{session}.json"
+
+
+def drop_session_receipt(session: str) -> None:
+    try:
+        session_receipt_path(session).unlink()
+    except OSError:
+        pass
+
+
+def write_session_receipt(session: str, origin_value: str) -> None:
+    """Record the human-confirmed state-changing action so the safety hook can honor the
+    session-scoped approval (safety.browserSessionApproval) instead of re-asking per click.
+
+    Written only by this guard AFTER an action actually executed — an action only executes once
+    the safety hook's ask was confirmed (or a valid receipt already covered it), so the receipt
+    always chains back to a real human confirmation on this origin.
+    """
+
+    try:
+        RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+        session_receipt_path(session).write_text(
+            json.dumps(
+                {
+                    "kind": "browser-session-approval",
+                    "session": session,
+                    "origin": origin_value,
+                    "issuedAt": datetime.now(timezone.utc).isoformat(),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
 def close_session(executable: str, session: str) -> None:
     try:
         run_cli(executable, session, ["close"])
     except (OSError, subprocess.SubprocessError):
         pass
+    drop_session_receipt(session)
 
 
 def verify_session_origins(executable: str, session: str, allowed: set[str]) -> tuple[bool, str]:
@@ -176,11 +230,22 @@ def main() -> int:
     if version.returncode != 0 or not version_matches(version.stdout):
         return fail(f"playwright-cli must be pinned to {PINNED_VERSION}")
     profile = Path(config["browser"]["profileDirectory"]).expanduser().resolve()
+    session_approval = safety_toggle(config, "browserSessionApproval")
     if args.command not in {"open", "close"}:
-        ok, reason = verify_session_origins(executable, args.session, allowed)
+        ok, origin_or_reason = verify_session_origins(executable, args.session, allowed)
         if not ok:
             close_session(executable, args.session)
-            return fail(f"pre-action origin check failed: {reason}")
+            return fail(f"pre-action origin check failed: {origin_or_reason}")
+        if session_approval and args.command in STATE_CHANGING_BROWSER:
+            # A session approval covers exactly one origin. If the browser moved to another
+            # (still allowlisted) origin, burn the receipt so the next action re-asks there.
+            receipt = load_json_receipt(session_receipt_path(args.session))
+            if receipt is not None and receipt.get("origin") != origin_or_reason:
+                drop_session_receipt(args.session)
+                return fail(
+                    f"session approval covered origin '{receipt.get('origin')}' but the browser "
+                    f"is on '{origin_or_reason}'; run the action again to confirm on this origin"
+                )
     command_args = [args.command, *args.arguments]
     if args.command == "open":
         command_args.extend(["--headed", "--persistent", "--profile", str(profile)])
@@ -189,10 +254,12 @@ def main() -> int:
         close_session(executable, args.session)
         return fail("Playwright CLI command failed; session closed")
     if args.command != "close":
-        ok, reason = verify_session_origins(executable, args.session, allowed)
+        ok, origin_or_reason = verify_session_origins(executable, args.session, allowed)
         if not ok:
             close_session(executable, args.session)
-            return fail(f"post-action origin check failed: {reason}; session closed")
+            return fail(f"post-action origin check failed: {origin_or_reason}; session closed")
+        if session_approval and args.command in STATE_CHANGING_BROWSER:
+            write_session_receipt(args.session, origin_or_reason)
     if completed.stdout:
         print(completed.stdout.rstrip())
     print(f"PASS: guarded Playwright {args.command} on an allowlisted origin")

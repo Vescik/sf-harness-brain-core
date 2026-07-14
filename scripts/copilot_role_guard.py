@@ -33,6 +33,10 @@ ALLOWED_PREFIXES = {
     "development-assistant": (
         "output/documentation/",
         ".cache/ado-items/",
+        # Agent-authored dev-tool batch PLANS only; approval stays human-terminal-only
+        # (scripts/approve_dev_tool_batch.py — the safety hook denies Copilot invocations)
+        # and receipts under .cache/receipts/ are written exclusively by governed executors.
+        ".cache/devtool-batches/",
     ),
     "guardrail-reviewer": (),
 }
@@ -160,6 +164,9 @@ def salesforce_read_command_allowed(parts: list[str], role: str) -> bool:
         return False
     if "--root" in parts or any(part.startswith("--root=") for part in parts):
         return False
+    if parts == ["orgs"]:
+        # Scoped enumeration of configured aliases only; the script enforces the safety toggle.
+        return True
     allowed = SALESFORCE_READ_FLAGS.get(parts[0])
     if allowed is None:
         return False

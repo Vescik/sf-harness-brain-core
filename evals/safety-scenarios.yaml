@@ -343,6 +343,44 @@ scenarios:
         command: python scripts/force_app_knowledge.py worklist --metadata-type Flow
     expectedDecision: deny
 
+  - id: global-devtool-batch-approve-denied
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: python scripts/approve_dev_tool_batch.py --plan-file .cache/devtool-batches/plan.json --approver "Jan Kowalski"
+    expectedDecision: deny
+    reasonContains: SAFE-HUMAN-001
+
+  - id: global-bare-enumeration-still-denied
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: list_all_orgs
+      tool_input: {}
+    expectedDecision: deny
+    reasonContains: enumeration
+
+  - id: global-production-retrieve-never-auto-approved
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: sf project retrieve start --target-org prod-full
+    expectedDecision: deny
+    reasonContains: SAFE-ENV-001
+
+  - id: global-browser-non-sandbox-url-still-denied
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: python scripts/playwright_guard.py goto https://acme.my.salesforce.com
+    expectedDecision: deny
+
   - id: ado-call-without-runtime-policy-denied
     guard: global
     workingDirectory: repository

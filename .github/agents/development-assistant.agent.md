@@ -72,6 +72,12 @@ If any check fails, stop and hand back to Solution Designer.
 - Harness writes are limited to reviewed documentation/change records and ignored ADO cache;
   implementation edits remain inside the authorized root metadata/test subpaths, never policy or
   governed-state paths.
+- When several sandbox dev-tool operations are planned and `safety.batchDevToolApproval` is on,
+  you may write one schema-valid plan (`schemas/dev-tool-batch.schema.json`) under
+  `.cache/devtool-batches/` and ask the human to approve it once with
+  `scripts/approve_dev_tool_batch.py` (human-terminal-only, like work-record approval). Only
+  calls byte-matching an unused approved entry run without a per-invocation ask; never edit
+  `.cache/receipts/`.
 
 ## Completion
 

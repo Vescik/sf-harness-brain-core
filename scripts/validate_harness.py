@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 5, "prompts": 12, "skills": 17, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 5, "prompts": 16, "skills": 18, "instructions": 3}
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",
@@ -36,6 +36,7 @@ ALLOWED_TOOLS = {
     "salesforce-readonly/review_org_identity",
     "salesforce-readonly/review_installed_packages",
     "salesforce-readonly/review_object_contract",
+    "salesforce-readonly/review_configured_orgs",
 }
 LEGACY_TOOLS = {"readFile", "editFiles", "runInTerminal", "fetch", "codebase", "githubRepo"}
 REQUIRED_SETTINGS = (
@@ -146,6 +147,12 @@ def check_required_files(audit: Audit) -> None:
         "scripts/knowledge_registry.py",
         "scripts/force_app_knowledge.py",
         "scripts/salesforce_read.py",
+        "scripts/render_repo_map.py",
+        "config/repo-map-seed.json",
+        ".ai/repo-map.md",
+        ".ai/repo-map.json",
+        "scripts/approve_dev_tool_batch.py",
+        "schemas/dev-tool-batch.schema.json",
         ".ai/contracts/execution-contract.md",
         ".ai/contracts/tool-capabilities.md",
         ".ai/contracts/knowledge-lifecycle.md",
@@ -456,9 +463,26 @@ def check_settings_and_mcp(audit: Audit) -> None:
     servers = mcp.get("servers", {}) if isinstance(mcp, dict) else {}
     audit.require(set(servers) == {"ado-readonly", "salesforce-readonly"}, "MCP server set is unexpected")
     ado = servers.get("ado-readonly", {})
-    audit.require(ado.get("headers", {}).get("X-MCP-Readonly") == "true", "ADO MCP must be read-only")
-    audit.require(ado.get("headers", {}).get("X-MCP-Toolsets") == "wit,wiki,testplan", "ADO MCP toolsets must be bounded")
-    audit.require("${env:ADO_ORGANIZATION}" in ado.get("url", ""), "ADO MCP organization must come from the preflight-checked environment")
+    # Local stdio @azure-devops/mcp (owner decision 2026-07-14): the hosted endpoint did not
+    # honor the X-MCP-Toolsets header, so the local server with actually-honored -d domain args
+    # replaces it. Read-only is policy (hook + role guard), no longer server-enforced; the
+    # package version is pinned so the exposed tool surface cannot drift silently.
+    audit.require(ado.get("type") == "stdio", "ADO MCP must be the local stdio server")
+    audit.require(ado.get("command") == "npx", "ADO MCP must launch through npx")
+    audit.require(
+        ado.get("args")
+        == [
+            "-y",
+            "@azure-devops/mcp@2.8.1",
+            "${env:ADO_ORGANIZATION}",
+            "-d",
+            "work-items",
+            "wiki",
+            "test-plans",
+        ],
+        "ADO MCP args must pin the package version, take the organization from the "
+        "preflight-checked environment, and bound the domains to work-items/wiki/test-plans",
+    )
     audit.require(not any(item.get("id") == "ado_org" for item in mcp.get("inputs", [])), "independent ADO organization prompt is forbidden")
     for name in ("salesforce-readonly",):
         server = servers.get(name, {})
@@ -786,6 +810,7 @@ def check_grounding_contracts(audit: Audit) -> None:
         "force-app-knowledge-draft-manifest.schema.json",
         "force-app-knowledge-worklist.schema.json",
         "knowledge-claims-index.schema.json",
+        "dev-tool-batch.schema.json",
     ):
         schema = load_json(ROOT / "schemas" / schema_name, audit)
         try:
@@ -828,6 +853,41 @@ def check_grounding_contracts(audit: Audit) -> None:
     audit.require("npm ci --ignore-scripts" in workflow, "CI must install the pinned Salesforce review runtime without lifecycle scripts")
 
 
+def check_repo_map(audit: Audit) -> None:
+    """The generated repository atlas must exist, match its sources, and stay in budget."""
+
+    completed = subprocess.run(
+        [sys.executable, "scripts/render_repo_map.py", "render", "--check"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    audit.require(
+        completed.returncode == 0,
+        f"repo map drift/render failure: {completed.stderr.strip() or completed.stdout.strip()}",
+    )
+    repo_map = load_json(ROOT / ".ai/repo-map.json", audit)
+    audit.require(
+        isinstance(repo_map.get("wordCount"), int) and repo_map["wordCount"] <= 800,
+        "repo-map.md exceeds its 800-word budget",
+    )
+    digests = repo_map.get("sourceDigests", {})
+    expected_sources = (
+        sorted((ROOT / ".github/agents").glob("*.agent.md"))
+        + sorted((ROOT / ".github/skills").glob("*/SKILL.md"))
+        + sorted((ROOT / ".github/prompts").glob("*.prompt.md"))
+        + sorted((ROOT / ".github/instructions").glob("*.instructions.md"))
+        + sorted((ROOT / ".ai/contracts").glob("*.md"))
+    )
+    for path in expected_sources:
+        audit.require(
+            path.relative_to(ROOT).as_posix() in digests,
+            f"repo map does not cover {relative(path)}",
+        )
+
+
 def check_placeholders(audit: Audit) -> None:
     found: set[str] = set()
     for base in (ROOT / ".github", ROOT / ".ai/contracts"):
@@ -847,6 +907,7 @@ def main() -> int:
     check_ci(audit)
     check_schemas_and_evals(audit)
     check_grounding_contracts(audit)
+    check_repo_map(audit)
     check_placeholders(audit)
     check_secret_signatures(audit)
     check_python_yaml_safety(audit)

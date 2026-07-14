@@ -52,7 +52,11 @@
   },
   "safety": {
     "sharedSandboxWritesApproved": false,
-    "sharedSandboxApprovalRef": ""
+    "sharedSandboxApprovalRef": "",
+    "browserSessionApproval": false,
+    "autoApproveRetrieveWithReceipt": false,
+    "allowScopedEnumeration": false,
+    "batchDevToolApproval": false
   },
   "workspace": {
     "salesforceRootName": "brain-core",

@@ -54,6 +54,13 @@ const TOOL_DEFINITIONS = Object.freeze([
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   {
+    name: "review_configured_orgs",
+    title: "List the locally configured Salesforce orgs (scoped enumeration)",
+    description: "Enumerate ONLY the org aliases configured in config/harness.local.json with their agent permissions. Requires safety.allowScopedEnumeration; never reveals org ids, hosts, or unconfigured orgs.",
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  },
+  {
     name: "review_object_contract",
     title: "Review one allowlisted Salesforce object contract",
     description: "Reconcile object existence and normalized field API-name/type facts for one configured object.",
@@ -970,7 +977,42 @@ async function callReviewTool(runtime, name, input) {
   }
   if (name === "review_org_identity") return reviewIdentity(runtime);
   if (name === "review_installed_packages") return reviewPackages(runtime);
+  if (name === "review_configured_orgs") return reviewConfiguredOrgs(runtime);
   return reviewObject(runtime, input);
+}
+
+function reviewConfiguredOrgs(runtime) {
+  // Wrapper-side scoped enumeration: the response is built purely from the local config, so the
+  // agent can never observe orgs the developer is authenticated to but has not configured. No org
+  // ids or instance hosts are included (the sensitive-material gate would redact them anyway).
+  const config = readJson(CONFIG_PATH, "CONFIG_MISSING");
+  if (config?.safety?.allowScopedEnumeration !== true) {
+    return makeEnvelope({
+      runtime,
+      reviewType: "configured-orgs",
+      status: "BLOCKED",
+      facts: {},
+      warnings: ["SCOPED_ENUMERATION_DISABLED"],
+    });
+  }
+  const orgs = (config?.salesforce?.orgs ?? [])
+    .filter((entry) => entry && typeof entry.alias === "string")
+    .map((entry) => ({
+      alias: entry.alias,
+      environment: entry.environment ?? null,
+      allowAgentRead: entry.allowAgentRead === true,
+      allowAgentReview: entry.allowAgentReview === true,
+      allowAgentWrite: entry.allowAgentWrite === true,
+    }));
+  return makeEnvelope({
+    runtime,
+    reviewType: "configured-orgs",
+    status: "VERIFIED",
+    facts: { orgCount: orgs.length, orgs },
+    reconciliation: { status: "NOT_RUN", comparisons: [] },
+    completeness: { complete: true, dualSource: false, truncated: false },
+    warnings: [],
+  });
 }
 
 function writeMessage(message) {
