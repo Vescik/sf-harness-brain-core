@@ -171,6 +171,50 @@ class GlobalSafetyHookTests(unittest.TestCase):
             )
             self.assertEqual(hook_decision(output), "deny")
 
+    def test_repository_paths_containing_sf_token_are_not_salesforce_commands(self) -> None:
+        # Regression (Windows pilot, 2026-07-14): the repo directory name `sf-harness-brain-core`
+        # matched \bsf\b, so read/list tools passing file paths — and terminal commands citing the
+        # full repository path — were denied as "wrapped Salesforce commands".
+        win_meta = (
+            r"c:\dev\sf-harness-brain-core\force-app\main\default\approvalProcesses"
+            r"\KimbleOne__CreditNote__c.KC_CreditNoteApproval_v2.approvalProcess-meta.xml"
+        )
+        events = (
+            {"tool_name": "read_file", "tool_input": {"filePath": win_meta}},
+            {"tool_name": "list_dir", "tool_input": {"path": r"c:\dev\sf-harness-brain-core\force-app"}},
+            {
+                "tool_name": "run_in_terminal",
+                "tool_input": {
+                    "command": "python c:/dev/sf-harness-brain-core/scripts/preflight.py --capability metadata"
+                },
+            },
+            {
+                "tool_name": "run_in_terminal",
+                "tool_input": {"command": "grep -rn sf-harness-brain-core README.md"},
+            },
+        )
+        for event in events:
+            with self.subTest(tool=event["tool_name"], input=event["tool_input"]):
+                output = run_hook("copilot_safety_hook.py", event)
+                self.assertEqual(hook_decision(output), "continue")
+
+    def test_real_sf_invocations_are_still_classified(self) -> None:
+        for command in (
+            "sf org list",
+            "sf.exe data query --query x --target-org dev-sbx",
+            "/usr/local/bin/sf project deploy start --target-org dev-sbx",
+            "./sf org display --target-org dev-sbx",
+        ):
+            with self.subTest(command=command):
+                output = run_hook(
+                    "copilot_safety_hook.py",
+                    {
+                        "tool_name": "execute/runInTerminal",
+                        "tool_input": {"command": command},
+                    },
+                )
+                self.assertEqual(hook_decision(output), "deny")
+
     def test_wrapped_salesforce_command_is_denied(self) -> None:
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)

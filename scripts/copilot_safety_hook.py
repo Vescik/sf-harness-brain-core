@@ -133,7 +133,12 @@ WORK_RECORD_MODULE = re.compile(
     r"(?:^|[\s\"';&|()])-m\s*(?:scripts\.)?work_record(?=$|[\s\"';&|()])",
     re.IGNORECASE,
 )
-SF_TOKEN = re.compile(r"\bsf(?:\.cmd|\.exe)?\b", re.IGNORECASE)
+# A standalone `sf` invocation token. `\b` alone treats hyphens/dots as word boundaries, so the
+# workspace's own path (`sf-harness-brain-core`) or a file like `sf.py` matched and every command
+# or path mentioning the repository directory was denied as a "wrapped Salesforce command"
+# (observed live on the Windows pilot). Exclude word/`.`/`-` neighbours on both sides while still
+# matching `sf`, `sf.cmd`, `sf.exe`, `./sf`, `/usr/local/bin/sf`, and de-spliced `s''f`.
+SF_TOKEN = re.compile(r"(?<![\w.-])sf(?:\.cmd|\.exe)?(?![\w.-])", re.IGNORECASE)
 COMMAND_SEPARATORS = re.compile(r"[;&|\n\r]")
 
 
@@ -578,7 +583,12 @@ def main() -> int:
     tool_input = event.get("tool_input", {})
     text = flatten(tool_input)
     root = HARNESS_ROOT
-    command = terminal_command(tool_input)
+    # Shell-command semantics apply only to terminal-shaped tools. For read/list/search tools the
+    # flatten() fallback returned file PATHS here, and any path inside this repository contains an
+    # `sf` token via the directory name — so plain read_file calls were denied as wrapped
+    # Salesforce commands (observed live on the Windows pilot). Non-command surfaces are still
+    # covered by the `text` checks (destructive/production patterns) and tool classification.
+    command = terminal_command(tool_input) if is_terminal_tool(tool_name) else ""
 
     if is_terminal_tool(tool_name) and is_work_record_approval_command(command):
         print(
