@@ -1,0 +1,6 @@
+# Deterministic checkouts on every platform. The repo atlas (.ai/repo-map.json) embeds sha256
+# digests of source-file BYTES, and Windows runners default to core.autocrlf=true — without this
+# file every text file checks out with CRLF there, all digests drift, and validation fails on
+# windows-latest while passing everywhere else. LF in the working tree is correct for this
+# workspace on Windows too (VS Code, Prettier, and the guarded scripts all expect it).
+* text=auto eol=lf
