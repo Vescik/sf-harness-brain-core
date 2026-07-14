@@ -74,6 +74,11 @@ completeness, limitations, and a digest of the sanitized observation.
   integration candidates.
 - Approval processes: object, label, active flag, step count, entry-criteria presence; automation
   inventory candidates.
+- AI description layer: behavior-bearing components (Flow, Apex, triggers, approval processes,
+  LWC/Aura) additionally draft a `component-description` claim whose description the agent writes
+  from the actual source before proposing (the registry rejects unfilled `<AGENT_...>`
+  sentinels). These claims are `assurance: inferred` and become `verified` only through the human
+  chat approval; they answer "what does this component do", which structural facts alone cannot.
 - LWC/Aura: exposure, targets and source-declared references; generic `component-inventory`
   candidates (repository presence alone does not establish runtime behavior).
 - Every other source-format metadata file (layouts, permission sets, custom metadata, labels,

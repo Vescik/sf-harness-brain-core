@@ -348,6 +348,116 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         self.assertEqual("rejected", claim["status"])
         self.assertEqual(result["reviewId"], claim["reviewRef"])
 
+    def test_filled_description_claim_flows_to_verified_inferred(self) -> None:
+        commit = "a" * 40
+        evidence = {
+            "schemaVersion": 3,
+            "evidenceId": "KEVD-DESC-FLOW-001",
+            "sourceType": "metadata-repository",
+            "sourceLocator": f"git://{commit}/force-app/main/default/flows/Example.flow-meta.xml",
+            "independenceKey": f"metadata-repository:{commit}",
+            "authorityFor": ["component-description"],
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageKey": None,
+            "packageVersion": None,
+            "repositoryCommit": commit,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "retrievedAt": "2026-07-10T11:00:00Z",
+            "sourceRevision": f"sha256:{'b' * 64}",
+            "collector": {"kind": "tool", "name": "force_app_knowledge.py", "version": "2"},
+            "completeness": {
+                "status": "complete",
+                "enumerationComplete": False,
+                "permissionsProven": False,
+                "pagesFetched": 1,
+                "missingSegments": [],
+            },
+            "sensitivity": "internal-sanitized",
+            "sanitization": {"rawDataCommitted": False, "redactions": []},
+            "contentDigest": f"sha256:{'c' * 64}",
+            "summary": "Sanitized source observation of Flow:Example.",
+        }
+        claim = {
+            "schemaVersion": 3,
+            "claimId": "KCLM-DESC-FLOW-001",
+            "revision": 1,
+            "domain": "automation-map",
+            "claimType": "component-description",
+            "subject": {"kind": "component", "identity": "Flow:Example"},
+            "assertion": {
+                "predicate": "describes-source-declared-behavior",
+                "value": {
+                    "metadataType": "Flow",
+                    "description": (
+                        "Record-triggered flow on Engagement__c that runs after save when Status__c "
+                        "changes to Approved, updates the related Account rating, and sends a "
+                        "notification to the record owner."
+                    ),
+                },
+            },
+            "statement": "Model-inferred, human-reviewed description of what Flow:Example does according to its source.",
+            "polarity": "positive",
+            "status": "proposed",
+            "assurance": "inferred",
+            "scope": {
+                "environment": "not-applicable",
+                "orgKey": None,
+                "packageNamespace": None,
+                "packageKey": None,
+                "packageVersion": None,
+                "repositoryCommit": commit,
+            },
+            "evidenceRefs": ["KEVD-DESC-FLOW-001"],
+            "reviewRef": None,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "verifiedAt": None,
+            "reviewBy": "2027-01-06T11:00:00Z",
+            "sensitivity": "internal-sanitized",
+            "keywords": [],
+            "limitations": ["The description interprets source only."],
+            "supersedes": [],
+            "supersededBy": None,
+            "contradicts": [],
+            "relatedClaims": [],
+        }
+        (self.root / "inputs/desc-claim.yaml").write_text(
+            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
+        )
+        (self.root / "inputs/desc-evidence.yaml").write_text(
+            yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8"
+        )
+        proposed = self.registry.propose(
+            self.root / "inputs/desc-claim.yaml",
+            [self.root / "inputs/desc-evidence.yaml"],
+            expected_revision=0,
+        )
+        self.assertEqual("proposed", proposed["status"])
+        self.write_chat_reviewer()
+        result = self.registry.approve_claim("KCLM-DESC-FLOW-001", 1)
+        self.assertEqual("verified", result["status"])
+        promoted = load_yaml(self.root / ".ai/knowledge/claims/KCLM-DESC-FLOW-001.yaml")
+        self.assertEqual("verified", promoted["status"])
+        self.assertEqual("inferred", promoted["assurance"])
+        rendered = (self.root / ".ai/knowledge/automation-map.md").read_text(encoding="utf-8")
+        self.assertIn("KCLM-DESC-FLOW-001", rendered)
+
+    def test_propose_rejects_unfilled_description_sentinel(self) -> None:
+        claim = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        claim["statement"] = (
+            "Sentinel test claim <AGENT_WRITES_WHAT_THIS_COMPONENT_DOES_BASED_ON_ITS_SOURCE>."
+        )
+        (self.root / "inputs/sentinel-claim.yaml").write_text(
+            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
+        )
+        with self.assertRaisesRegex(ContractError, "placeholder is unfilled"):
+            self.registry.propose(
+                self.root / "inputs/sentinel-claim.yaml",
+                [self.root / "inputs/knowledge-evidence.complete.yaml"],
+                expected_revision=0,
+            )
+
     def test_approve_claim_requires_a_named_human_reviewer(self) -> None:
         self.propose()
         with self.assertRaisesRegex(ContractError, "chat reviewer identity"):

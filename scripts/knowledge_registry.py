@@ -701,6 +701,11 @@ class KnowledgeRegistry:
         self.validate_temporal_claim(claim)
         if claim["status"] != "proposed":
             raise ContractError("propose accepts only status: proposed")
+        if "<AGENT_" in canonical(claim):
+            raise ContractError(
+                "draft placeholder is unfilled: read the component source and replace the "
+                "<AGENT_...> sentinel with a real description before proposing"
+            )
         if parse_time(claim["reviewBy"], "claim reviewBy") <= self.at_time():
             raise ContractError("proposed claim is already expired at current time")
 

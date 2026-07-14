@@ -53,6 +53,25 @@ are not durable.
 - Approved by: workspace owner directive, 2026-07-14.
 - Related: `.ai/contracts/knowledge-lifecycle.md`, `docs/force-app-knowledge-architecture.md`.
 
+## 2026-07-14 - AI description layer: agents author what components do
+
+- Context: purely mechanical claims ("X exists at commit Y, 2 steps") carry no understanding —
+  the owner asked whether the agent should participate in knowledge creation because structural
+  facts alone make the knowledge base useless for questions like "what does this flow do".
+- Finding / decision: behavior-bearing components (Flow, Apex, triggers, approval processes,
+  LWC/Aura) draft an additional `component-description` claim whose description is an
+  `<AGENT_...>` sentinel. The agent reads the actual source and writes 2–6 sentences (purpose,
+  trigger, key actions, what it reads/changes) strictly from source; the registry rejects
+  unfilled sentinels at propose time. These claims carry `assurance: inferred` (a schema
+  carve-out allows verified+inferred only for this claim type) and become `verified` solely
+  through the human chat approval — SAFE-CLAIM-001 is preserved: the model proposes, the human
+  verifies.
+- Impact: knowledge answers "what does this component do", not just "does it exist"; the human
+  reviews exactly the sentence the model inferred before it becomes trusted; descriptions expire
+  after 180 days (shorter than structural claims) because they drift with code.
+- Approved by: workspace owner directive, 2026-07-14.
+- Related: `docs/force-app-knowledge-architecture.md`, the 2026-07-14 chat-approval entry above.
+
 ## 2026-07-14 - MCP is read-only; org mutation is not an agent capability
 
 - Context: the fleet runs Windows, where VS Code cannot sandbox MCP processes, so the

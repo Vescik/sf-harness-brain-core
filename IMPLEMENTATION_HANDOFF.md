@@ -25,9 +25,16 @@
   human-terminal-only. SAFE-HUMAN-001, the knowledge lifecycle contract, the investigator agent,
   the propose skill, and SETUP §7 describe the new loop.
 
+- AI description layer (same owner directive): behavior-bearing components additionally draft
+  `component-description` claims with an `<AGENT_...>` sentinel the agent must replace with a
+  source-grounded description of what the component does; the registry rejects unfilled
+  sentinels, the claims carry `assurance: inferred` (schema carve-out allows verified+inferred
+  for this claim type only), expire after 180 days, and become verified only through the human
+  chat approval.
+
 ### Validation — 2026-07-14
 
-- Harness validation: PASS — 2,414 checks. Unit suite: PASS — 190 tests. Safety evaluations:
+- Harness validation: PASS — 2,414 checks. Unit suite: PASS — 192 tests. Safety evaluations:
   PASS — 31 scenarios.
 
 ## Iteration 6 — Read-only MCP model; human-approved CLI retrieve (2026-07-14)

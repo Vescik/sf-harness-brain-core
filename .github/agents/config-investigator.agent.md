@@ -55,6 +55,13 @@ and [propose-force-app-knowledge](../skills/propose-force-app-knowledge/SKILL.md
   deterministic commands.
 - Do not turn an observation into a rule; flag a proposed rule for the Principles owner.
 
+## AI descriptions
+
+Behavior-bearing drafts include a `component-description` claim with an `<AGENT_...>` sentinel.
+Before proposing one, read the component's source and replace the sentinel with 2–6 sentences:
+purpose, trigger/entry conditions, key steps/actions, and what it reads or changes. Describe only
+what the source shows; the claim stays `assurance: inferred` until a human chat-approves it.
+
 ## Chat-approved promotion
 
 After proposing claims, you may request their promotion with

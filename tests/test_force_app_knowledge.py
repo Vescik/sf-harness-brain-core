@@ -127,10 +127,11 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         manifest = self.builder.draft(
             datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc)
         )
-        # 8 claims: object, field, relation, trigger automation, approval-process automation,
-        # named-credential integration, plus generic component-inventory for the LWC bundle and
-        # the permission set — full coverage means no recognized component drafts nothing.
-        self.assertEqual(8, manifest["claimCount"])
+        # 11 claims: object, field, relation, trigger automation, approval-process automation,
+        # named-credential integration, generic component-inventory for the LWC bundle and the
+        # permission set, plus three AI description stubs (trigger, approval process, LWC) —
+        # full coverage means no recognized component drafts nothing.
+        self.assertEqual(11, manifest["claimCount"])
         claims = [
             yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
             for bundle in manifest["bundles"]
@@ -144,9 +145,15 @@ class ForceAppKnowledgeTests(unittest.TestCase):
                 "automation-inventory",
                 "integration",
                 "component-inventory",
+                "component-description",
             },
             {claim["claimType"] for claim in claims},
         )
+        descriptions = [c for c in claims if c["claimType"] == "component-description"]
+        self.assertEqual(3, len(descriptions))
+        for claim in descriptions:
+            self.assertEqual("inferred", claim["assurance"])
+            self.assertIn("<AGENT_", claim["assertion"]["value"]["description"])
         self.assertNotIn("runtime-behavior", {claim["claimType"] for claim in claims})
         approval = next(
             claim

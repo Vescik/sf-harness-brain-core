@@ -39,6 +39,16 @@
       "maxReviewAgeDays": 365,
       "minimumIndependentEvidence": 1
     },
+    "component-description": {
+      "allowedEvidenceTypes": [
+        "metadata-repository"
+      ],
+      "invalidationTriggers": [
+        "metadata-deployment"
+      ],
+      "maxReviewAgeDays": 180,
+      "minimumIndependentEvidence": 1
+    },
     "component-inventory": {
       "allowedEvidenceTypes": [
         "metadata-repository"

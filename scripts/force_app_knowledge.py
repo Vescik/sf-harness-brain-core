@@ -546,6 +546,10 @@ class ForceAppKnowledge:
             location = ".".join(str(part) for part in errors[0].path) or "<root>"
             raise KnowledgeBuildError(f"{label} schema failure at {location}: {errors[0].message}")
 
+    DESCRIPTION_SENTINEL = (
+        "<AGENT_WRITES_WHAT_THIS_COMPONENT_DOES_BASED_ON_ITS_SOURCE_BEFORE_PROPOSING>"
+    )
+
     def candidate_claims(self, component: dict[str, Any]) -> list[dict[str, Any]]:
         metadata_type = component["metadataType"]
         facts = component["facts"]
@@ -628,6 +632,40 @@ class ForceAppKnowledge:
                     },
                     "statement": f"{component['name']} is a source-defined {metadata_type} component at the repository commit.",
                     "limitations": [common_limit, "Business meaning, runtime behavior, and org deployment state are not established."],
+                }
+            )
+        # AI description layer (owner decision 2026-07-14): behavior-bearing components also get a
+        # description stub. The agent must read the component source and replace the sentinel with
+        # what the component actually does before proposing; the registry rejects unfilled
+        # sentinels and the description claim stays assurance=inferred until a human chat-approves.
+        if metadata_type in {
+            "Flow",
+            "ApexClass",
+            "ApexTrigger",
+            "ApprovalProcess",
+            "LightningComponentBundle",
+            "AuraDefinitionBundle",
+        }:
+            candidates.append(
+                {
+                    "domain": "automation-map"
+                    if metadata_type in {"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess"}
+                    else "component-inventory",
+                    "claimType": "component-description",
+                    "subject": {"kind": "component", "identity": component["id"]},
+                    "assertion": {
+                        "predicate": "describes-source-declared-behavior",
+                        "value": {
+                            "metadataType": metadata_type,
+                            "description": self.DESCRIPTION_SENTINEL,
+                        },
+                    },
+                    "assurance": "inferred",
+                    "statement": f"Model-inferred, human-reviewed description of what {component['name']} does according to its source at the repository commit.",
+                    "limitations": [
+                        common_limit,
+                        "The description interprets source only; business intent and runtime behavior in the org are not established.",
+                    ],
                 }
             )
         return candidates
@@ -729,7 +767,7 @@ class ForceAppKnowledge:
                     "statement": candidate["statement"],
                     "polarity": "positive",
                     "status": "proposed",
-                    "assurance": "observed",
+                    "assurance": candidate.get("assurance", "observed"),
                     "scope": {
                         "environment": "not-applicable",
                         "orgKey": None,

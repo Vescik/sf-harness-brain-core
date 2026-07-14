@@ -16,7 +16,7 @@
         "object-existence", "object-ownership", "field-schema", "object-relation",
         "automation-inventory", "package-installation", "package-limitation",
         "reference-data", "runtime-behavior", "business-meaning", "business-process",
-        "integration", "glossary", "component-inventory"
+        "integration", "glossary", "component-inventory", "component-description"
       ]
     },
     "claimRef": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
@@ -100,11 +100,41 @@
       "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
       "then": {
         "properties": {
-          "assurance": { "enum": ["observed", "corroborated", "reported"] },
           "evidenceRefs": { "minItems": 1 },
           "reviewRef": { "$ref": "#/$defs/reviewRef" },
           "verifiedAt": { "type": "string", "format": "date-time" },
           "contradicts": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "status": { "const": "verified" } },
+        "required": ["status"],
+        "not": {
+          "properties": { "claimType": { "const": "component-description" } },
+          "required": ["claimType"]
+        }
+      },
+      "then": { "properties": { "assurance": { "enum": ["observed", "corroborated", "reported"] } } }
+    },
+    {
+      "if": {
+        "properties": { "claimType": { "const": "component-description" } },
+        "required": ["claimType"]
+      },
+      "then": {
+        "properties": {
+          "assurance": { "enum": ["inferred", "reported"] },
+          "assertion": {
+            "properties": {
+              "value": {
+                "type": "object",
+                "required": ["description"],
+                "properties": { "description": { "type": "string", "minLength": 40, "maxLength": 4000 } }
+              }
+            }
+          }
         }
       }
     },

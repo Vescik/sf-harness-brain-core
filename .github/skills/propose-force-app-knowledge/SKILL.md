@@ -29,12 +29,20 @@ source-tree drift, parser errors, or changed `HEAD`.
    - coverage is total: approval processes draft automation claims, and every other metadata
      type (layouts, permission sets, custom metadata, bundles, …) drafts a generic
      `component-inventory` claim — the draft never silently produces nothing for a source file.
-4. Present candidate IDs, domains, statements, limitations, and reconciliation risk. Do not submit
+4. **Write the AI descriptions.** Every behavior-bearing draft (Flow, Apex, trigger, approval
+   process, LWC/Aura) includes a `component-description` claim whose description is an
+   `<AGENT_...>` sentinel. For each one you intend to propose: read the component's actual source
+   file, then replace the sentinel with 2–6 sentences covering purpose, trigger/entry conditions,
+   the key steps or actions, and what the component reads or changes. Describe only what the
+   source shows — never business intent, org runtime behavior, or anything you cannot point to in
+   the file. These claims stay `assurance: inferred` and the registry rejects any unfilled
+   sentinel at propose time.
+5. Present candidate IDs, domains, statements, limitations, and reconciliation risk. Do not submit
    the whole set by default.
-5. Only when the caller explicitly selects claim IDs, run each selected manifest command through
+6. Only when the caller explicitly selects claim IDs, run each selected manifest command through
    `python scripts/knowledge_registry.py propose`. The registry performs schema validation,
    reconciliation, immutable evidence checks, and optimistic concurrency.
-6. After proposing, offer chat-approved promotion: for each claim the caller wants verified, run
+7. After proposing, offer chat-approved promotion: for each claim the caller wants verified, run
    `python scripts/knowledge_registry.py approve-claim --claim-id <id> --expected-revision <n>`
    (add `--decision reject` to reject). The safety hook stops every invocation for the human's
    confirmation click, and the registry records the local-config `knowledge.chatReviewer` as the
