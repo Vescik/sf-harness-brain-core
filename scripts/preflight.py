@@ -408,6 +408,10 @@ def _receipt_context_digest(capability: str) -> str:
 
 
 def load_fresh_receipt(capability: str, max_age_minutes: int) -> dict | None:
+    # 0 disables reuse outright; comparing age > 0 raced Windows' coarse clock (a receipt
+    # written and read in the same tick has age exactly 0 and slipped through).
+    if max_age_minutes <= 0:
+        return None
     path = RECEIPT_DIR / f"{capability}.json"
     try:
         receipt = json.loads(path.read_text(encoding="utf-8"))
