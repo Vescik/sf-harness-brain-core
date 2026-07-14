@@ -25,6 +25,7 @@ must not be hand-edited with factual entries.
 | [glossary.md](glossary.md) | Approved business-to-technical terms. |
 | [known-limitations.md](known-limitations.md) | Version-scoped package limitation claims. |
 | [component-inventory.md](component-inventory.md) | Generic source-component claims for every other metadata type (layouts, permission sets, custom metadata, bundles, …). |
+| [claims-index.json](claims-index.json) | Machine-readable index of every canonical claim (status, keywords, description excerpt) for search and duplicate lookup; only rows with `effective: true` are established facts. Validated by `schemas/knowledge-claims-index.schema.json`. |
 | [keyword-taxonomy.md](keyword-taxonomy.md) | Separately curated vocabulary; terms are not factual evidence. |
 
 ## Retrieval rule

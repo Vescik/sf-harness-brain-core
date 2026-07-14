@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 5, "prompts": 12, "skills": 16, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 5, "prompts": 12, "skills": 17, "instructions": 3}
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",
@@ -156,6 +156,8 @@ def check_required_files(audit: Audit) -> None:
         "schemas/knowledge-review.schema.json",
         "schemas/force-app-knowledge-inventory.schema.json",
         "schemas/force-app-knowledge-draft-manifest.schema.json",
+        "schemas/force-app-knowledge-worklist.schema.json",
+        "schemas/knowledge-claims-index.schema.json",
         "schemas/change-record.schema.json",
         "schemas/handoff-envelope.schema.json",
         "schemas/salesforce-org-review-evidence.schema.json",
@@ -782,6 +784,8 @@ def check_grounding_contracts(audit: Audit) -> None:
         "salesforce-org-review-evidence.schema.json",
         "force-app-knowledge-inventory.schema.json",
         "force-app-knowledge-draft-manifest.schema.json",
+        "force-app-knowledge-worklist.schema.json",
+        "knowledge-claims-index.schema.json",
     ):
         schema = load_json(ROOT / "schemas" / schema_name, audit)
         try:

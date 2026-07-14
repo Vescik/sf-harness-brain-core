@@ -22,11 +22,15 @@ verification returns to the phase that produced the defect.
    report the exact diagnostics instead of proceeding.
 2. From the inventory `coverage` map, confirm the requested type exists and note its component
    count. If it is absent, list the available types and stop.
-3. Query existing Knowledge for the type to avoid rework:
-   `python scripts/knowledge_registry.py query --subject-kind <kind> --claim-type <type>` for the
-   applicable claim types (structural + `component-description`). Classify each component:
-   `new` (no claims), `refresh` (claims stale/expired/superseded by source changes), or
-   `current` (verified and fresh — skip by default).
+3. Derive the batch worklist from ground truth:
+   `python scripts/force_app_knowledge.py worklist --metadata-type <Type> --write`. It joins the
+   inventory, current drafts, and canonical claims into one status per component — `pending`,
+   `drafted`, `proposed`, `verified-current` (skip by default), `stale-refresh` (source changed
+   after verification), or `blocked` (rejected/contested/superseded claims; report, never
+   overwrite). The written file under `.cache/knowledge-proposals/` is a derived view for the
+   human — the registry stays the source of truth, so rerunning the command can never disagree
+   with reality. Use `python scripts/knowledge_registry.py query` only for drill-downs the
+   worklist does not answer.
 4. Confirm `knowledge.chatReviewer` is configured; without it promotion cannot complete and the
    batch should not start.
 
@@ -56,14 +60,27 @@ Produce a batch plan the human can read in one screen:
    the whole type; work through them chunk by chunk.
 2. For every behavior-bearing draft in the chunk: read the component's actual source and replace
    the `<AGENT_...>` description sentinel per the propose skill's rules (2–6 sentences, source
-   facts only).
+   facts only), and fill `candidateKeywords` with 0–5 source-grounded business-process/feature
+   terms per the same rules (advisory only; `keywords` stays taxonomy-approved terms).
 3. Propose the chunk's claims with the manifest `propose` commands (the registry re-validates,
    reconciles, and rejects unfilled sentinels).
 4. Request promotion for the chunk in ONE command so the human confirms once per chunk:
    `python scripts/knowledge_registry.py approve-claim --claim-spec <id>:<rev> --claim-spec ...`
    (max 25 specs). Rejected or failed items stay proposed — record them and continue with the
    next chunk unless a stop rule fired.
-5. After each chunk, report progress: chunk n/N, claims proposed/verified/failed.
+5. After each chunk, re-run
+   `python scripts/force_app_knowledge.py worklist --metadata-type <Type> --write` and report
+   progress from its counts: chunk n/N, components pending/proposed/verified-current, plus any
+   claims that failed their propose or approval step.
+
+### Resume rule
+
+An interrupted batch (crash, closed session, stop rule) needs no saved progress state. On
+restart: rerun `inventory`, then `worklist --metadata-type <Type>`. Components already
+`verified-current` are done — skip them; `proposed` components only need their approval step;
+continue executing from the first `pending` or `drafted` component. Never reconstruct progress
+from chat history or a hand-maintained checklist — the derived worklist is recomputed from the
+registry and cannot drift.
 
 ## Phase 5 — VERIFY
 

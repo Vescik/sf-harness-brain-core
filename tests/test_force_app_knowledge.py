@@ -97,6 +97,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             "knowledge-evidence.schema.json",
             "force-app-knowledge-inventory.schema.json",
             "force-app-knowledge-draft-manifest.schema.json",
+            "force-app-knowledge-worklist.schema.json",
         ):
             shutil.copy2(ROOT / "schemas" / name, self.root / "schemas" / name)
         (self.root / "config").mkdir()
@@ -239,6 +240,90 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             self.builder.draft(
                 datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc), "NoSuchType"
             )
+
+    def test_drafts_include_empty_candidate_keywords(self) -> None:
+        self.builder.inventory()
+        manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
+        claims = [
+            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
+            for bundle in manifest["bundles"]
+            if "claimFile" in bundle
+        ]
+        for claim in claims:
+            self.assertEqual([], claim["keywords"])
+            self.assertEqual([], claim["candidateKeywords"])
+
+    def test_worklist_derives_component_status_from_ground_truth(self) -> None:
+        self.builder.inventory()
+        # Fresh registry, no drafts: everything is pending.
+        result = self.builder.worklist()
+        self.assertEqual({"pending"}, set(result["counts"]))
+        self.assertTrue(all(item["status"] == "pending" for item in result["items"]))
+        self.assertTrue(
+            all(state["state"] == "missing" for item in result["items"] for state in item["claims"])
+        )
+
+        # Current drafts flip components to drafted.
+        manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
+        result = self.builder.worklist()
+        self.assertEqual({"drafted"}, set(result["counts"]))
+
+        # Walk one single-claim component (the permission set) through the claim lifecycle.
+        bundle = next(
+            item
+            for item in manifest["bundles"]
+            if "claimFile" in item
+            and yaml.safe_load((self.root / item["claimFile"]).read_text(encoding="utf-8"))[
+                "subject"
+            ]["identity"]
+            == "PermissionSet:Engagement_Manager"
+        )
+        claim = yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
+        canonical_path = self.root / ".ai/knowledge/claims" / f"{claim['claimId']}.yaml"
+
+        def component_status() -> str:
+            worklist = self.builder.worklist(metadata_type="PermissionSet")
+            self.assertEqual(1, len(worklist["items"]))
+            return worklist["items"][0]["status"]
+
+        canonical_path.write_text(yaml.safe_dump(claim, sort_keys=False), encoding="utf-8")
+        self.assertEqual("proposed", component_status())
+
+        verified = dict(claim, status="verified", revision=2, reviewRef="KREV-TEST-1",
+                        verifiedAt="2026-07-10T12:00:00Z")
+        canonical_path.write_text(yaml.safe_dump(verified, sort_keys=False), encoding="utf-8")
+        self.assertEqual("verified-current", component_status())
+
+        stale = dict(verified, evidenceRefs=["KEVD-SOMETHING-ELSE-0000000001"])
+        canonical_path.write_text(yaml.safe_dump(stale, sort_keys=False), encoding="utf-8")
+        self.assertEqual("stale-refresh", component_status())
+
+        rejected = dict(claim, status="rejected", revision=2, reviewRef="KREV-TEST-1")
+        canonical_path.write_text(yaml.safe_dump(rejected, sort_keys=False), encoding="utf-8")
+        worklist = self.builder.worklist(metadata_type="PermissionSet")
+        self.assertEqual("blocked", worklist["items"][0]["status"])
+        self.assertIn("rejected", worklist["items"][0]["reason"])
+
+    def test_worklist_write_persists_schema_valid_derived_view(self) -> None:
+        self.builder.inventory()
+        result = self.builder.worklist(metadata_type="CustomObject", write=True)
+        path = self.root / result["path"]
+        self.assertTrue(path.is_file())
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual("force-app-knowledge-worklist", saved["kind"])
+        self.assertEqual("CustomObject", saved["metadataTypeFilter"])
+        self.assertNotIn("path", saved)
+        with self.assertRaisesRegex(KnowledgeBuildError, "available types"):
+            self.builder.worklist(metadata_type="NoSuchType")
+
+    def test_worklist_requires_a_current_inventory(self) -> None:
+        with self.assertRaisesRegex(KnowledgeBuildError, "run inventory first"):
+            self.builder.worklist()
+        self.builder.inventory()
+        field = self.root / "force-app/main/default/objects/Engagement__c/fields/Account__c.field-meta.xml"
+        field.write_text(FIELD_XML.replace("Account</label>", "Client Account</label>"), encoding="utf-8")
+        with self.assertRaisesRegex(KnowledgeBuildError, "changed after inventory"):
+            self.builder.worklist()
 
     def test_dirty_or_changed_source_cannot_be_commit_bound_evidence(self) -> None:
         self.builder.inventory()

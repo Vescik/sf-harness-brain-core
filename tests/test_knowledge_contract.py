@@ -27,6 +27,7 @@ SCHEMA_FILES = (
     "knowledge-claim.schema.json",
     "knowledge-evidence.schema.json",
     "knowledge-review.schema.json",
+    "knowledge-claims-index.schema.json",
     "principle-registry.schema.json",
     "knowledge-policy.schema.json",
 )
@@ -647,6 +648,102 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         self.assertIn("Only rows in this section are eligible as grounded facts", trusted)
         self.assertNotIn("KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", untrusted)
         self.assertNotIn("Synthetic fixture only; ExampleManagedObject__c", rendered)
+
+    def test_render_indexes_emits_deterministic_claims_index(self) -> None:
+        self.propose()
+        self.registry.render_indexes(check=False)
+        index_path = self.root / ".ai/knowledge/claims-index.json"
+        first = index_path.read_text(encoding="utf-8")
+        index = json.loads(first)
+        self.assertEqual("knowledge-claims-index", index["kind"])
+        self.assertEqual(1, index["claimCount"])
+        row = index["claims"][0]
+        self.assertEqual("KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", row["claimId"])
+        self.assertFalse(row["effective"])
+        self.assertEqual([], row["candidateKeywords"])
+        self.registry.render_indexes(check=False)
+        self.assertEqual(first, index_path.read_text(encoding="utf-8"))
+        self.registry.render_indexes(check=True)
+        index_path.write_text(first.replace('"claimCount": 1', '"claimCount": 2'), encoding="utf-8")
+        with self.assertRaisesRegex(ContractError, "indexes drifted"):
+            self.registry.render_indexes(check=True)
+
+    def test_claims_index_marks_promoted_claims_effective(self) -> None:
+        self.promote()
+        self.registry.render_indexes(check=False)
+        index = json.loads(
+            (self.root / ".ai/knowledge/claims-index.json").read_text(encoding="utf-8")
+        )
+        self.assertTrue(index["claims"][0]["effective"])
+        self.assertEqual("verified", index["claims"][0]["status"])
+
+    def test_query_matches_keyword_tiers_and_description_text(self) -> None:
+        claim = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        claim["candidateKeywords"] = ["Revenue Adjustment"]
+        path = self.root / "inputs/candidate-keyword-claim.yaml"
+        path.write_text(yaml.safe_dump(claim, sort_keys=False), encoding="utf-8")
+        self.registry.propose(
+            path,
+            [self.root / "inputs/knowledge-evidence.complete.yaml"],
+            expected_revision=0,
+        )
+        self.write_chat_reviewer()
+        self.registry.approve_claim(claim["claimId"], 1)
+
+        by_candidate = self.registry.query(keyword="revenue adjustment")
+        self.assertEqual(1, by_candidate["count"])
+        self.assertEqual("candidateKeywords", by_candidate["claims"][0]["keywordTier"])
+        self.assertEqual(0, self.registry.query(keyword="no-such-term")["count"])
+
+        by_text = self.registry.query(text="exists in the accessible QA schema")
+        self.assertEqual(1, by_text["count"])
+        self.assertEqual(0, self.registry.query(text="no such statement fragment")["count"])
+
+    def test_propose_rejects_keywords_outside_the_approved_taxonomy(self) -> None:
+        claim = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        claim["keywords"] = ["Rozliczenia"]
+        path = self.root / "inputs/taxonomy-keyword-claim.yaml"
+        path.write_text(yaml.safe_dump(claim, sort_keys=False), encoding="utf-8")
+        evidence = [self.root / "inputs/knowledge-evidence.complete.yaml"]
+        with self.assertRaisesRegex(ContractError, "approved terms"):
+            self.registry.propose(path, evidence, expected_revision=0)
+
+        taxonomy = self.root / ".ai/knowledge/keyword-taxonomy.md"
+        taxonomy.write_text(
+            "# Keyword Taxonomy\n\n## Terms\n\n- Rozliczenia — billing settlement processes\n",
+            encoding="utf-8",
+        )
+        proposed = self.registry.propose(path, evidence, expected_revision=0)
+        self.assertEqual("proposed", proposed["status"])
+
+    def test_taxonomy_parser_ignores_comments_and_the_live_taxonomy_is_empty(self) -> None:
+        taxonomy = self.root / ".ai/knowledge/keyword-taxonomy.md"
+        taxonomy.write_text(
+            "# Keyword Taxonomy\n\n## Terms\n\n"
+            "<!-- Format example, not a term:\n- <term> — <what it covers>\n-->\n"
+            "- Rozliczenia — billing settlement processes\n",
+            encoding="utf-8",
+        )
+        self.assertEqual({"Rozliczenia"}, self.registry.approved_taxonomy_terms())
+        # The live repository taxonomy holds only the commented format example — zero terms.
+        self.assertEqual(set(), KnowledgeRegistry(ROOT).approved_taxonomy_terms())
+
+    def test_keyword_report_aggregates_candidates_for_human_curation(self) -> None:
+        claim = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        claim["candidateKeywords"] = ["revenue adjustment", "billing event"]
+        path = self.root / "inputs/report-claim.yaml"
+        path.write_text(yaml.safe_dump(claim, sort_keys=False), encoding="utf-8")
+        self.registry.propose(
+            path,
+            [self.root / "inputs/knowledge-evidence.complete.yaml"],
+            expected_revision=0,
+        )
+        report = self.registry.keyword_report()
+        self.assertEqual(2, report["candidateTermCount"])
+        terms = {item["term"]: item for item in report["candidateTerms"]}
+        self.assertEqual({"revenue adjustment", "billing event"}, set(terms))
+        self.assertEqual([claim["claimId"]], terms["revenue adjustment"]["claimIds"])
+        self.assertFalse(terms["revenue adjustment"]["approved"])
 
     def test_review_file_must_be_human_and_schema_valid(self) -> None:
         self.propose()

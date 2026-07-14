@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:force-app-knowledge-worklist.schema.json",
+  "title": "force-app Knowledge derived batch worklist",
+  "description": "Derived batch-progress view joining the inventory, current drafts, and canonical claims. Recomputed from ground truth on every invocation; never hand-edited and never authoritative on its own.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "repositoryCommit", "sourceTreeDigest",
+    "counts", "items"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "force-app-knowledge-worklist" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sourceTreeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "metadataTypeFilter": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$" },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pending": { "type": "integer", "minimum": 0 },
+        "drafted": { "type": "integer", "minimum": 0 },
+        "proposed": { "type": "integer", "minimum": 0 },
+        "verified-current": { "type": "integer", "minimum": 0 },
+        "stale-refresh": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["componentId", "metadataType", "name", "path", "sha256", "status", "claims"],
+        "properties": {
+          "componentId": { "type": "string", "minLength": 1 },
+          "metadataType": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "pattern": "^force-app/" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "status": {
+            "enum": ["pending", "drafted", "proposed", "verified-current", "stale-refresh", "blocked"]
+          },
+          "reason": { "type": "string", "minLength": 1 },
+          "claims": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["claimId", "claimType", "state"],
+              "properties": {
+                "claimId": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
+                "claimType": { "type": "string", "minLength": 1 },
+                "state": {
+                  "enum": ["missing", "drafted", "proposed", "verified-current", "verified-stale", "attention"]
+                },
+                "revision": { "type": "integer", "minimum": 1 },
+                "reason": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "status": { "const": "blocked" } } },
+            "then": { "required": ["reason"] }
+          }
+        ]
+      }
+    }
+  }
+}

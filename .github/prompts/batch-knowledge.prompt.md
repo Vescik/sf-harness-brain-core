@@ -14,3 +14,7 @@ chunk, default 10, max 25). Announce each phase as you enter it (DISCOVER → PL
 EXECUTE → VERIFY) and never skip or reorder phases; a failed verification returns to the phase
 that caused it. Stop for the human's explicit go-ahead after presenting the plan, and rely on the
 chat-approval dialog for every promotion batch.
+
+If this batch continues an earlier interrupted run, do not reconstruct progress from chat
+history: rerun `inventory` and `worklist --metadata-type <Type>` per the skill's resume rule and
+continue from the first `pending` component.

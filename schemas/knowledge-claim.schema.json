@@ -80,6 +80,11 @@
     "reviewBy": { "type": "string", "format": "date-time" },
     "sensitivity": { "enum": ["public", "internal-sanitized"] },
     "keywords": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "candidateKeywords": {
+      "description": "Model-suggested, source-grounded terms pending human curation. Advisory only: never a grounded fact, never rendered as established Knowledge. Approved terms enter keywords via the human-curated taxonomy.",
+      "type": "array", "uniqueItems": true, "maxItems": 5,
+      "items": { "type": "string", "minLength": 1, "maxLength": 60 }
+    },
     "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "supersedes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/claimRef" } },
     "supersededBy": { "anyOf": [{ "$ref": "#/$defs/claimRef" }, { "type": "null" }] },

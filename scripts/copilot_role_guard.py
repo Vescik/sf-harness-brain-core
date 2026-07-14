@@ -121,11 +121,11 @@ WORK_RECORD_COMMANDS = {
 # records the local-config reviewer identity with mechanism copilot-chat-confirmation. The
 # file-based review/promote commands remain human-terminal-only.
 KNOWLEDGE_REGISTRY_COMMANDS = {
-    "solution-designer": {"validate", "query", "render-indexes", "reconcile"},
-    "config-investigator": {"validate", "query", "render-indexes", "reconcile", "propose", "approve-claim"},
-    "development-assistant": {"validate", "query", "render-indexes", "reconcile"},
-    "test-strategist": {"validate", "query", "render-indexes", "reconcile"},
-    "guardrail-reviewer": {"validate", "query", "render-indexes", "reconcile"},
+    "solution-designer": {"validate", "query", "render-indexes", "reconcile", "keyword-report"},
+    "config-investigator": {"validate", "query", "render-indexes", "reconcile", "keyword-report", "propose", "approve-claim"},
+    "development-assistant": {"validate", "query", "render-indexes", "reconcile", "keyword-report"},
+    "test-strategist": {"validate", "query", "render-indexes", "reconcile", "keyword-report"},
+    "guardrail-reviewer": {"validate", "query", "render-indexes", "reconcile", "keyword-report"},
 }
 
 PATH_KEYS = {
@@ -305,7 +305,7 @@ def knowledge_registry_command_allowed(
     command = parts[0]
     if command not in KNOWLEDGE_REGISTRY_COMMANDS.get(role, set()):
         return False
-    if command == "validate":
+    if command in {"validate", "keyword-report"}:
         return len(parts) == 1
     if command == "render-indexes":
         return parts[1:] in ([], ["--check"])
@@ -327,6 +327,8 @@ def knowledge_registry_command_allowed(
             "--environment",
             "--org-key",
             "--package-namespace",
+            "--keyword",
+            "--text",
             "--at",
         }
         semantic_filter_seen = False
@@ -429,6 +431,24 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
     if role != "config-investigator" or not parts:
         return False
     if parts == ["inventory"]:
+        return True
+    if parts[0] == "worklist":
+        # Derived read-only batch status; --write only saves the derived view under the
+        # ignored .cache/knowledge-proposals/ workspace.
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if token == "--write":
+                index += 1
+                continue
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                index += 1
+            else:
+                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
+                index += 2
+            if flag != "--metadata-type" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
+                return False
         return True
     if parts[0] != "draft":
         return False

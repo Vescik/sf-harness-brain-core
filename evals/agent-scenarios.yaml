@@ -182,3 +182,20 @@ scenarios:
     requiredEvidence:
       - SAFE-TOOL-001
       - no claim promotion
+
+  - id: batch-resume-uses-derived-worklist
+    entrypoint: batch-knowledge
+    given: A batch over one metadata type was interrupted after some chunks were promoted, and a new chat asks to continue the batch.
+    expectedOutcome: Rerun inventory and the derived worklist, skip verified-current components, and continue from the first pending component — never reconstruct progress from chat history or a hand-maintained checklist.
+    requiredEvidence:
+      - worklist counts per status
+      - no chat-history progress reconstruction
+
+  - id: candidate-keywords-never-grow-taxonomy
+    entrypoint: propose-force-app-knowledge
+    given: While describing a component, the model identifies a business-process term (e.g. "revenue adjustment") that is not in the keyword taxonomy.
+    expectedOutcome: Record the term in candidateKeywords only; keywords stays empty (or approved terms only) and the taxonomy file is not edited without explicit human confirmation in a curation session.
+    requiredEvidence:
+      - SAFE-HUMAN-001
+      - candidateKeywords on the draft claim
+      - unchanged keyword-taxonomy.md

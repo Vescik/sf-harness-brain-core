@@ -698,6 +698,133 @@ class ForceAppKnowledge:
             )
         return candidates
 
+    def expected_claim_id(self, candidate: dict[str, Any]) -> str:
+        return stable_id(
+            "KCLM",
+            candidate["subject"]["identity"],
+            f"{candidate['claimType']}|{candidate['assertion']['predicate']}",
+        )
+
+    def worklist(
+        self, metadata_type: str | None = None, write: bool = False
+    ) -> dict[str, Any]:
+        """Derive per-component batch status from ground truth instead of kept state.
+
+        The worklist is recomputed on every call from the inventory (component digests), the
+        draft directory (drafts current at the same tree digest), and the canonical claim
+        registry. It therefore cannot drift after a crash or an interrupted batch: resume is
+        simply "run worklist again and continue from the first pending component".
+        """
+
+        inventory = self.load_inventory()
+        if metadata_type is not None and metadata_type not in inventory["coverage"]:
+            available = sorted(inventory["coverage"])
+            raise KnowledgeBuildError(
+                f"inventory has no components of metadata type {metadata_type!r}; "
+                f"available types: {', '.join(available)}"
+            )
+        if inventory["sourceTreeDigest"] != self.current_tree_digest():
+            raise KnowledgeBuildError("force-app changed after inventory; rerun inventory")
+
+        claims_root = self.root / ".ai/knowledge/claims"
+        manifest_path = self.draft_root / "manifest.json"
+        drafts_current = False
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            drafts_current = manifest.get("sourceTreeDigest") == inventory["sourceTreeDigest"]
+
+        items: list[dict[str, Any]] = []
+        counts: Counter[str] = Counter()
+        for component in inventory["components"]:
+            if metadata_type is not None and component["metadataType"] != metadata_type:
+                continue
+            component_digest = digest_bytes(canonical(component).encode("utf-8"))
+            current_evidence_id = stable_id(
+                "KEVD", component["id"], f"repo-{component_digest}"
+            )
+            claim_states: list[dict[str, Any]] = []
+            for candidate in self.candidate_claims(component):
+                claim_id = self.expected_claim_id(candidate)
+                state: dict[str, Any] = {
+                    "claimId": claim_id,
+                    "claimType": candidate["claimType"],
+                }
+                canonical_path = claims_root / f"{claim_id}.yaml"
+                if canonical_path.is_file():
+                    record = yaml.safe_load(canonical_path.read_text(encoding="utf-8"))
+                    state["revision"] = int(record["revision"])
+                    status = record.get("status")
+                    if status == "verified":
+                        state["state"] = (
+                            "verified-current"
+                            if current_evidence_id in record.get("evidenceRefs", [])
+                            else "verified-stale"
+                        )
+                    elif status == "proposed":
+                        state["state"] = "proposed"
+                    else:
+                        state["state"] = "attention"
+                        state["reason"] = f"canonical status is {status}"
+                elif drafts_current and (self.draft_root / f"{claim_id}.yaml").is_file():
+                    state["state"] = "drafted"
+                else:
+                    state["state"] = "missing"
+                claim_states.append(state)
+
+            states = {state["state"] for state in claim_states}
+            if "attention" in states:
+                status = "blocked"
+            elif "verified-stale" in states:
+                status = "stale-refresh"
+            elif "missing" in states:
+                status = "pending"
+            elif "drafted" in states:
+                status = "drafted"
+            elif "proposed" in states:
+                status = "proposed"
+            else:
+                status = "verified-current"
+            item = {
+                "componentId": component["id"],
+                "metadataType": component["metadataType"],
+                "name": component["name"],
+                "path": component["path"],
+                "sha256": component["sha256"],
+                "status": status,
+                "claims": claim_states,
+            }
+            if status == "blocked":
+                item["reason"] = "; ".join(
+                    f"{state['claimId']}: {state['reason']}"
+                    for state in claim_states
+                    if state["state"] == "attention"
+                )
+            items.append(item)
+            counts[status] += 1
+
+        result = {
+            "schemaVersion": SCHEMA_VERSION,
+            "kind": "force-app-knowledge-worklist",
+            "generatedAt": iso(utc_now()),
+            "repositoryCommit": inventory["repositoryCommit"],
+            "sourceTreeDigest": inventory["sourceTreeDigest"],
+            **({"metadataTypeFilter": metadata_type} if metadata_type else {}),
+            "counts": dict(sorted(counts.items())),
+            "items": items,
+        }
+        self.validate_record(
+            result, "force-app-knowledge-worklist.schema.json", "force-app worklist"
+        )
+        if write:
+            suffix = f"-{metadata_type}" if metadata_type else ""
+            worklist_path = self.cache_root / f"force-app-worklist{suffix}.json"
+            self.cache_root.mkdir(parents=True, exist_ok=True)
+            worklist_path.write_text(
+                json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            result["path"] = self.relative(worklist_path)
+        return result
+
     def draft(
         self, observed_at: datetime, metadata_type: str | None = None
     ) -> dict[str, Any]:
@@ -771,11 +898,7 @@ class ForceAppKnowledge:
             evidence_path.write_text(yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8")
 
             for candidate in candidates:
-                claim_id = stable_id(
-                    "KCLM",
-                    candidate["subject"]["identity"],
-                    f"{candidate['claimType']}|{candidate['assertion']['predicate']}",
-                )
+                claim_id = self.expected_claim_id(candidate)
                 current_path = self.root / ".ai/knowledge/claims" / f"{claim_id}.yaml"
                 expected_revision = 0
                 revision = 1
@@ -822,6 +945,7 @@ class ForceAppKnowledge:
                     "reviewBy": iso(observed_at + timedelta(days=max_days)),
                     "sensitivity": "internal-sanitized",
                     "keywords": [],
+                    "candidateKeywords": [],
                     "limitations": candidate["limitations"],
                     "supersedes": [],
                     "supersededBy": None,
@@ -883,6 +1007,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--metadata-type",
         help="draft candidates only for this inventory metadata type (batch mode)",
     )
+    worklist = commands.add_parser("worklist")
+    worklist.add_argument(
+        "--metadata-type",
+        help="report batch status only for this inventory metadata type",
+    )
+    worklist.add_argument(
+        "--write",
+        action="store_true",
+        help="also save the derived worklist under .cache/knowledge-proposals/",
+    )
     return parser
 
 
@@ -899,6 +1033,16 @@ def main(argv: Iterable[str] | None = None) -> int:
                 "clean": result["workspaceStatus"]["clean"],
                 "status": result["completeness"]["status"],
             }
+        elif args.command == "worklist":
+            result = builder.worklist(args.metadata_type, args.write)
+            summary = {
+                "counts": result["counts"],
+                "components": len(result["items"]),
+            }
+            if args.metadata_type:
+                summary["metadataTypeFilter"] = args.metadata_type
+            if "path" in result:
+                summary["path"] = result["path"]
         else:
             observed_at = parse_time(args.observed_at) if args.observed_at else utc_now()
             result = builder.draft(observed_at, args.metadata_type)

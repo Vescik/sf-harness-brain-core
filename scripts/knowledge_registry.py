@@ -600,6 +600,8 @@ class KnowledgeRegistry:
         environment: str | None = None,
         org_key: str | None = None,
         package_namespace: str | None = None,
+        keyword: str | None = None,
+        text: str | None = None,
         at: datetime | None = None,
     ) -> dict[str, Any]:
         filters = {
@@ -611,6 +613,8 @@ class KnowledgeRegistry:
             "environment": environment,
             "org_key": org_key,
             "package_namespace": package_namespace,
+            "keyword": keyword,
+            "text": text,
         }
         if not any(value is not None for value in filters.values()):
             raise ContractError("query requires at least one Knowledge filter")
@@ -637,19 +641,109 @@ class KnowledgeRegistry:
                 and claim["scope"]["packageNamespace"] != package_namespace
             ):
                 continue
+            keyword_tier = None
+            if keyword is not None:
+                needle = keyword.casefold()
+                if any(needle == str(term).casefold() for term in claim["keywords"]):
+                    keyword_tier = "keywords"
+                elif any(
+                    needle == str(term).casefold()
+                    for term in claim.get("candidateKeywords", [])
+                ):
+                    keyword_tier = "candidateKeywords"
+                if keyword_tier is None:
+                    continue
+            if text is not None:
+                haystack = str(claim["statement"])
+                value = claim["assertion"]["value"]
+                if isinstance(value, dict) and isinstance(value.get("description"), str):
+                    haystack += "\n" + value["description"]
+                if text.casefold() not in haystack.casefold():
+                    continue
             if not self.claim_is_effective(claim, effective_at):
                 continue
-            matches.append(
-                {
-                    "claim": copy.deepcopy(claim),
-                    "sha256": file_sha256(path),
-                    "path": path.relative_to(self.root).as_posix(),
-                }
-            )
+            match = {
+                "claim": copy.deepcopy(claim),
+                "sha256": file_sha256(path),
+                "path": path.relative_to(self.root).as_posix(),
+            }
+            if keyword_tier is not None:
+                match["keywordTier"] = keyword_tier
+            matches.append(match)
         return {
             "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
             "count": len(matches),
             "claims": matches,
+        }
+
+    TAXONOMY_TERM = re.compile(r"^[-*]\s+\**([^—:*]+?)\**\s*(?:[—:].*)?$")
+
+    def approved_taxonomy_terms(self) -> set[str]:
+        """Parse the approved terms out of the human-curated keyword taxonomy.
+
+        Terms live as list items under the `## Terms` heading of
+        `.ai/knowledge/keyword-taxonomy.md`: `- <term> — <what it covers>`. The taxonomy grows
+        only through explicit human confirmation; this parser never writes.
+        """
+
+        path = self.root / ".ai/knowledge/keyword-taxonomy.md"
+        if not path.is_file():
+            return set()
+        terms: set[str] = set()
+        in_terms = False
+        in_comment = False
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if in_comment:
+                if "-->" in stripped:
+                    in_comment = False
+                continue
+            if stripped.startswith("<!--"):
+                in_comment = "-->" not in stripped
+                continue
+            if stripped.startswith("## "):
+                in_terms = stripped == "## Terms"
+                continue
+            if not in_terms:
+                continue
+            match = self.TAXONOMY_TERM.match(stripped)
+            if match:
+                terms.add(match.group(1).strip())
+        return terms
+
+    def enforce_keyword_taxonomy(self, claim: dict[str, Any]) -> None:
+        keywords = [str(term) for term in claim["keywords"]]
+        if not keywords:
+            return
+        approved = self.approved_taxonomy_terms()
+        unapproved = sorted(term for term in keywords if term not in approved)
+        if unapproved:
+            raise ContractError(
+                "claim keywords must be approved terms from .ai/knowledge/keyword-taxonomy.md "
+                f"(the taxonomy grows only through explicit human confirmation): {unapproved}; "
+                "put model-suggested terms in candidateKeywords instead"
+            )
+
+    def keyword_report(self) -> dict[str, Any]:
+        approved = self.approved_taxonomy_terms()
+        candidates: dict[str, list[str]] = {}
+        for _, claim in self.records(self.claims):
+            for term in claim.get("candidateKeywords", []):
+                candidates.setdefault(str(term), []).append(str(claim["claimId"]))
+        report = [
+            {
+                "term": term,
+                "count": len(claim_ids),
+                "approved": term in approved,
+                "claimIds": sorted(claim_ids),
+            }
+            for term, claim_ids in candidates.items()
+        ]
+        report.sort(key=lambda item: (-item["count"], item["term"]))
+        return {
+            "approvedTermCount": len(approved),
+            "candidateTermCount": len(report),
+            "candidateTerms": report,
         }
 
     def write_evidence_immutable(self, record: dict[str, Any]) -> None:
@@ -706,6 +800,7 @@ class KnowledgeRegistry:
                 "draft placeholder is unfilled: read the component source and replace the "
                 "<AGENT_...> sentinel with a real description before proposing"
             )
+        self.enforce_keyword_taxonomy(claim)
         if parse_time(claim["reviewBy"], "claim reviewBy") <= self.at_time():
             raise ContractError("proposed claim is already expired at current time")
 
@@ -1181,17 +1276,58 @@ class KnowledgeRegistry:
         lines.extend(["", "<!-- END GENERATED CLAIM INDEX -->", ""])
         return "\n".join(lines)
 
+    def claims_index_row(
+        self, claim: dict[str, Any], path: Path, at: datetime
+    ) -> dict[str, Any]:
+        row = {
+            "claimId": claim["claimId"],
+            "revision": claim["revision"],
+            "domain": claim["domain"],
+            "claimType": claim["claimType"],
+            "subject": claim["subject"],
+            "predicate": claim["assertion"]["predicate"],
+            "status": claim["status"],
+            "effective": self.claim_is_effective(claim, at),
+            "reviewBy": claim["reviewBy"],
+            "keywords": claim["keywords"],
+            "candidateKeywords": claim.get("candidateKeywords", []),
+            "statement": claim["statement"],
+            "evidenceRefs": claim["evidenceRefs"],
+            "path": path.relative_to(self.root).as_posix(),
+        }
+        value = claim["assertion"]["value"]
+        if isinstance(value, dict) and isinstance(value.get("description"), str):
+            row["descriptionExcerpt"] = value["description"][:240]
+        return row
+
+    def rendered_claims_index(self, rows: list[dict[str, Any]]) -> str:
+        index = {
+            "schemaVersion": 1,
+            "kind": "knowledge-claims-index",
+            "claimCount": len(rows),
+            "claims": sorted(rows, key=lambda row: str(row["claimId"])),
+        }
+        self.validate_data(index, "knowledge-claims-index.schema.json", "claims index")
+        return json.dumps(index, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
     def render_indexes(self, check: bool) -> dict[str, Any]:
         effective_at = self.at_time()
         self.validate_all(effective_at, enforce_current=False)
         by_domain: dict[str, list[dict[str, Any]]] = {domain: [] for domain in DOMAIN_VIEWS}
+        index_rows: list[dict[str, Any]] = []
         for path, claim in self.records(self.claims):
             self.validate_data(claim, "knowledge-claim.schema.json", str(path))
             by_domain[claim["domain"]].append(claim)
+            index_rows.append(self.claims_index_row(claim, path, effective_at))
         drift: list[str] = []
-        for domain, claims in by_domain.items():
-            path = self.root / ".ai/knowledge" / f"{domain}.md"
-            expected = self.rendered_domain(domain, claims, effective_at)
+        rendered = [
+            (self.root / ".ai/knowledge" / f"{domain}.md", self.rendered_domain(domain, claims, effective_at))
+            for domain, claims in by_domain.items()
+        ]
+        rendered.append(
+            (self.root / ".ai/knowledge/claims-index.json", self.rendered_claims_index(index_rows))
+        )
+        for path, expected in rendered:
             if check:
                 actual = path.read_text(encoding="utf-8") if path.is_file() else ""
                 if actual != expected:
@@ -1200,7 +1336,11 @@ class KnowledgeRegistry:
                 atomic_text_write(path, expected)
         if drift:
             raise ContractError(f"generated Knowledge indexes drifted: {drift}")
-        return {"domains": len(by_domain), "mode": "check" if check else "write"}
+        return {
+            "domains": len(by_domain),
+            "claims": len(index_rows),
+            "mode": "check" if check else "write",
+        }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1245,10 +1385,23 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--environment", choices=("development", "qa", "uat", "not-applicable"))
     query.add_argument("--org-key")
     query.add_argument("--package-namespace")
+    query.add_argument(
+        "--keyword",
+        help="match one approved keyword or candidate keyword (exact term, case-insensitive)",
+    )
+    query.add_argument(
+        "--text",
+        help="substring match over claim statement and component description",
+    )
     query.add_argument("--at")
 
     render = commands.add_parser("render-indexes")
     render.add_argument("--check", action="store_true")
+
+    commands.add_parser(
+        "keyword-report",
+        help="aggregate candidateKeywords across claims for a human taxonomy-curation session",
+    )
     return parser
 
 
@@ -1309,10 +1462,14 @@ def main() -> int:
                 environment=args.environment,
                 org_key=args.org_key,
                 package_namespace=args.package_namespace,
+                keyword=args.keyword,
+                text=args.text,
                 at=parse_time(args.at, "query --at") if args.at else None,
             )
         elif args.command == "render-indexes":
             result = registry.render_indexes(args.check)
+        elif args.command == "keyword-report":
+            result = registry.keyword_report()
         else:  # pragma: no cover - argparse guarantees a known command
             raise ContractError(f"unsupported command: {args.command}")
     except ContractError as exc:

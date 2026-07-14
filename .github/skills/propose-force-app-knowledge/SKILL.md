@@ -37,12 +37,26 @@ source-tree drift, parser errors, or changed `HEAD`.
    source shows — never business intent, org runtime behavior, or anything you cannot point to in
    the file. These claims stay `assurance: inferred` and the registry rejects any unfilled
    sentinel at propose time.
-5. Present candidate IDs, domains, statements, limitations, and reconciliation risk. Do not submit
+
+   While writing each description, also fill the claim's `candidateKeywords` with 0–5 terms
+   naming the business process or feature the source visibly serves (e.g. "revenue adjustment",
+   "billing event"). Ground every term in the source (object names, labels, action names);
+   preserve Polish business terms verbatim; never invent product names. Candidate keywords are
+   advisory suggestions for later human taxonomy curation
+   ([curate-knowledge-keywords](../curate-knowledge-keywords/SKILL.md)) — the `keywords` field
+   itself accepts only approved taxonomy terms, and the registry rejects anything else at
+   propose time.
+5. Before selecting candidates, look up what the registry already knows so proposals never
+   duplicate or ignore related Knowledge: `python scripts/knowledge_registry.py query
+   --subject-identity <identity>` for exact-subject duplicates, and `--keyword <term>` /
+   `--text <fragment>` for related claims by approved or candidate keyword and description text.
+   The generated `.ai/knowledge/claims-index.json` is the same data as one scannable file.
+6. Present candidate IDs, domains, statements, limitations, and reconciliation risk. Do not submit
    the whole set by default.
-6. Only when the caller explicitly selects claim IDs, run each selected manifest command through
+7. Only when the caller explicitly selects claim IDs, run each selected manifest command through
    `python scripts/knowledge_registry.py propose`. The registry performs schema validation,
    reconciliation, immutable evidence checks, and optimistic concurrency.
-7. After proposing, offer chat-approved promotion: for each claim the caller wants verified, run
+8. After proposing, offer chat-approved promotion: for each claim the caller wants verified, run
    `python scripts/knowledge_registry.py approve-claim --claim-id <id> --expected-revision <n>`
    (add `--decision reject` to reject). The safety hook stops every invocation for the human's
    confirmation click, and the registry records the local-config `knowledge.chatReviewer` as the
