@@ -34,6 +34,19 @@ NAMED_CREDENTIAL_XML = """<?xml version="1.0" encoding="UTF-8"?>
   <password>never-export-this-secret</password>
 </NamedCredential>
 """
+APPROVAL_PROCESS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
+  <active>true</active><label>Engagement Approval v2</label>
+  <entryCriteria><criteriaItems><field>Engagement__c.Status__c</field></criteriaItems></entryCriteria>
+  <approvalStep><name>Step_1</name></approvalStep>
+  <approvalStep><name>Step_2</name></approvalStep>
+</ApprovalProcess>
+"""
+PERMISSION_SET_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>Engagement Manager</label><hasActivationRequired>false</hasActivationRequired>
+</PermissionSet>
+"""
 
 
 def write(path: Path, value: str) -> None:
@@ -68,6 +81,15 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         write(
             self.root / "force-app/main/default/lwc/engagementCard/engagementCard.js",
             "import NAME from '@salesforce/schema/Engagement__c.Name';\n",
+        )
+        write(
+            self.root
+            / "force-app/main/default/approvalProcesses/Engagement__c.Engagement_Approval_v2.approvalProcess-meta.xml",
+            APPROVAL_PROCESS_XML,
+        )
+        write(
+            self.root / "force-app/main/default/permissionsets/Engagement_Manager.permissionset-meta.xml",
+            PERMISSION_SET_XML,
         )
         (self.root / "schemas").mkdir()
         for name in (
@@ -105,7 +127,10 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         manifest = self.builder.draft(
             datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc)
         )
-        self.assertEqual(5, manifest["claimCount"])
+        # 8 claims: object, field, relation, trigger automation, approval-process automation,
+        # named-credential integration, plus generic component-inventory for the LWC bundle and
+        # the permission set — full coverage means no recognized component drafts nothing.
+        self.assertEqual(8, manifest["claimCount"])
         claims = [
             yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
             for bundle in manifest["bundles"]
@@ -118,10 +143,27 @@ class ForceAppKnowledgeTests(unittest.TestCase):
                 "object-relation",
                 "automation-inventory",
                 "integration",
+                "component-inventory",
             },
             {claim["claimType"] for claim in claims},
         )
         self.assertNotIn("runtime-behavior", {claim["claimType"] for claim in claims})
+        approval = next(
+            claim
+            for claim in claims
+            if claim["subject"]["identity"] == "Engagement__c.Engagement_Approval_v2"
+        )
+        self.assertEqual("automation-inventory", approval["claimType"])
+        facts = approval["assertion"]["value"]["facts"]
+        self.assertEqual("Engagement__c", facts["object"])
+        self.assertTrue(facts["active"])
+        self.assertEqual(2, facts["stepCount"])
+        permission_set = next(
+            claim
+            for claim in claims
+            if claim["subject"]["identity"] == "Permissionset:Engagement_Manager"
+        )
+        self.assertEqual("component-inventory", permission_set["domain"])
         for bundle in manifest["bundles"]:
             if "claimFile" not in bundle:
                 continue

@@ -16,7 +16,7 @@
         "object-existence", "object-ownership", "field-schema", "object-relation",
         "automation-inventory", "package-installation", "package-limitation",
         "reference-data", "runtime-behavior", "business-meaning", "business-process",
-        "integration", "glossary"
+        "integration", "glossary", "component-inventory"
       ]
     },
     "claimRef": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
@@ -31,7 +31,7 @@
       "enum": [
         "current-implementation", "business-processes", "object-relations",
         "object-descriptions", "field-descriptions", "automation-map", "integration-map",
-        "glossary", "known-limitations"
+        "glossary", "known-limitations", "component-inventory"
       ]
     },
     "claimType": { "$ref": "#/$defs/claimType" },
@@ -40,7 +40,7 @@
       "additionalProperties": false,
       "required": ["kind", "identity"],
       "properties": {
-        "kind": { "enum": ["object", "field", "relation", "automation", "package", "record-type", "process", "integration", "term", "surface"] },
+        "kind": { "enum": ["object", "field", "relation", "automation", "package", "record-type", "process", "integration", "term", "surface", "component"] },
         "identity": { "type": "string", "minLength": 1, "maxLength": 255 }
       }
     },

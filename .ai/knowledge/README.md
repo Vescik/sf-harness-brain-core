@@ -24,6 +24,7 @@ must not be hand-edited with factual entries.
 | [integration-map.md](integration-map.md) | External-system and data-flow claims. |
 | [glossary.md](glossary.md) | Approved business-to-technical terms. |
 | [known-limitations.md](known-limitations.md) | Version-scoped package limitation claims. |
+| [component-inventory.md](component-inventory.md) | Generic source-component claims for every other metadata type (layouts, permission sets, custom metadata, bundles, …). |
 | [keyword-taxonomy.md](keyword-taxonomy.md) | Separately curated vocabulary; terms are not factual evidence. |
 
 ## Retrieval rule

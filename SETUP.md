@@ -191,8 +191,12 @@ persists per workspace. (These are the only configured MCP servers; no write-mod
 - Pull before starting work.
 - Create a branch; do not commit directly to `main`.
 - Investigators prepare sanitized schema-v3 YAML only in ignored `.cache/knowledge-proposals/` and
-  use the guarded `propose` command to create immutable evidence and `proposed` claims. A named human uses
-  the Knowledge review/promotion command before a claim becomes trusted; raw cache and unreviewed
+  use the guarded `propose` command to create immutable evidence and `proposed` claims. Promotion
+  needs a human either way: the agent may request
+  `knowledge_registry.py approve-claim --claim-id <id> --expected-revision <n>` and the safety
+  hook stops it for your confirmation click (recorded as `copilot-chat-confirmation` with the
+  `knowledge.chatReviewer` name from local config), or a human runs the file-based
+  `review`/`promote` commands directly for external mechanisms. Raw cache and unreviewed
   `output/` remain ignored.
 - Resume governed work from `recordId` and `handoffId`. Validate record revision, role, scope/design
   hashes, approval, evidence, and repository commits; chat history is not workflow state.

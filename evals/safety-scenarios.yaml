@@ -50,6 +50,16 @@ scenarios:
     expectedDecision: deny
     reasonContains: SAFE-ROLE-001
 
+  - id: global-knowledge-chat-approval-asks
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: python scripts/knowledge_registry.py approve-claim --claim-id KCLM-EXAMPLE-1 --expected-revision 1
+    expectedDecision: ask
+    reasonContains: copilot-chat-confirmation
+
   - id: global-work-record-approval-denied
     guard: global
     workingDirectory: repository

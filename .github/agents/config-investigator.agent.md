@@ -55,8 +55,18 @@ and [propose-force-app-knowledge](../skills/propose-force-app-knowledge/SKILL.md
   deterministic commands.
 - Do not turn an observation into a rule; flag a proposed rule for the Principles owner.
 
+## Chat-approved promotion
+
+After proposing claims, you may request their promotion with
+`python scripts/knowledge_registry.py approve-claim --claim-id <id> --expected-revision <n>`.
+Every invocation stops for the human's confirmation click (SAFE-HUMAN-001); the registry records
+the local-config `knowledge.chatReviewer` as the human reviewer with mechanism
+`copilot-chat-confirmation` and re-renders the domain indexes. If `knowledge.chatReviewer` is not
+configured, report that exact key and stop. A claim you proposed is still only `proposed` until
+that confirmed approval lands.
+
 ## Return contract
 
 Return `EVIDENCE COLLECTED`, `INFERRED`, or `UNRESOLVED`; `recordId`; proposed `claimId`;
-`evidenceId` values; source/reconciliation status; limitations; and promotion required. Never call
-an observation verified.
+`evidenceId` values; source/reconciliation status; limitations; and review IDs for any
+chat-approved promotions. Never call an unreviewed observation verified.

@@ -1,81 +1,7 @@
 {
   "$schema": "../schemas/knowledge-policy.schema.json",
-  "schemaVersion": 1,
-  "promotion": {
-    "modelMayCreateStatuses": [
-      "proposed"
-    ],
-    "verifiedRequiresHumanReview": true,
-    "safeVerdictAllowedStatuses": [
-      "verified"
-    ],
-    "committableSensitivities": [
-      "public",
-      "internal-sanitized"
-    ]
-  },
-  "negativeClaims": {
-    "requireCompleteEnumeration": true,
-    "requirePermissionProof": true,
-    "maxReviewAgeDays": 180
-  },
   "claimPolicies": {
-    "object-existence": {
-      "maxReviewAgeDays": 250,
-      "minimumIndependentEvidence": 1,
-      "allowedEvidenceTypes": [
-        "org-describe",
-        "metadata-repository"
-      ],
-      "invalidationTriggers": [
-        "metadata-deployment",
-        "sandbox-refresh",
-        "permission-change"
-      ]
-    },
-    "object-ownership": {
-      "maxReviewAgeDays": 250,
-      "minimumIndependentEvidence": 1,
-      "allowedEvidenceTypes": [
-        "org-describe",
-        "metadata-repository",
-        "installed-package-record"
-      ],
-      "invalidationTriggers": [
-        "package-upgrade",
-        "metadata-deployment",
-        "sandbox-refresh"
-      ]
-    },
-    "field-schema": {
-      "maxReviewAgeDays": 250,
-      "minimumIndependentEvidence": 1,
-      "allowedEvidenceTypes": [
-        "org-describe",
-        "metadata-repository"
-      ],
-      "invalidationTriggers": [
-        "metadata-deployment",
-        "sandbox-refresh",
-        "permission-change"
-      ]
-    },
-    "object-relation": {
-      "maxReviewAgeDays": 250,
-      "minimumIndependentEvidence": 1,
-      "allowedEvidenceTypes": [
-        "org-describe",
-        "metadata-repository"
-      ],
-      "invalidationTriggers": [
-        "metadata-deployment",
-        "sandbox-refresh",
-        "permission-change"
-      ]
-    },
     "automation-inventory": {
-      "maxReviewAgeDays": 180,
-      "minimumIndependentEvidence": 1,
       "allowedEvidenceTypes": [
         "org-tooling-enumeration",
         "metadata-repository"
@@ -85,11 +11,125 @@
         "package-upgrade",
         "sandbox-refresh",
         "permission-change"
-      ]
+      ],
+      "maxReviewAgeDays": 180,
+      "minimumIndependentEvidence": 1
+    },
+    "business-meaning": {
+      "allowedEvidenceTypes": [
+        "human-sme-attestation",
+        "ado-approved-artifact"
+      ],
+      "invalidationTriggers": [
+        "business-owner-change",
+        "approved-artifact-revision"
+      ],
+      "maxReviewAgeDays": 365,
+      "minimumIndependentEvidence": 1
+    },
+    "business-process": {
+      "allowedEvidenceTypes": [
+        "human-sme-attestation",
+        "ado-approved-artifact"
+      ],
+      "invalidationTriggers": [
+        "business-owner-change",
+        "approved-artifact-revision"
+      ],
+      "maxReviewAgeDays": 365,
+      "minimumIndependentEvidence": 1
+    },
+    "component-inventory": {
+      "allowedEvidenceTypes": [
+        "metadata-repository"
+      ],
+      "invalidationTriggers": [
+        "metadata-deployment"
+      ],
+      "maxReviewAgeDays": 250,
+      "minimumIndependentEvidence": 1
+    },
+    "field-schema": {
+      "allowedEvidenceTypes": [
+        "org-describe",
+        "metadata-repository"
+      ],
+      "invalidationTriggers": [
+        "metadata-deployment",
+        "sandbox-refresh",
+        "permission-change"
+      ],
+      "maxReviewAgeDays": 250,
+      "minimumIndependentEvidence": 1
+    },
+    "glossary": {
+      "allowedEvidenceTypes": [
+        "human-sme-attestation",
+        "ado-approved-artifact"
+      ],
+      "invalidationTriggers": [
+        "business-owner-change",
+        "approved-artifact-revision"
+      ],
+      "maxReviewAgeDays": 365,
+      "minimumIndependentEvidence": 1
+    },
+    "integration": {
+      "allowedEvidenceTypes": [
+        "org-tooling-enumeration",
+        "metadata-repository",
+        "ado-approved-artifact",
+        "human-sme-attestation"
+      ],
+      "invalidationTriggers": [
+        "metadata-deployment",
+        "integration-config-change",
+        "business-owner-change"
+      ],
+      "maxReviewAgeDays": 180,
+      "minimumIndependentEvidence": 1
+    },
+    "object-existence": {
+      "allowedEvidenceTypes": [
+        "org-describe",
+        "metadata-repository"
+      ],
+      "invalidationTriggers": [
+        "metadata-deployment",
+        "sandbox-refresh",
+        "permission-change"
+      ],
+      "maxReviewAgeDays": 250,
+      "minimumIndependentEvidence": 1
+    },
+    "object-ownership": {
+      "allowedEvidenceTypes": [
+        "org-describe",
+        "metadata-repository",
+        "installed-package-record"
+      ],
+      "invalidationTriggers": [
+        "package-upgrade",
+        "metadata-deployment",
+        "sandbox-refresh"
+      ],
+      "maxReviewAgeDays": 250,
+      "minimumIndependentEvidence": 1
+    },
+    "object-relation": {
+      "allowedEvidenceTypes": [
+        "org-describe",
+        "metadata-repository"
+      ],
+      "invalidationTriggers": [
+        "metadata-deployment",
+        "sandbox-refresh",
+        "permission-change"
+      ],
+      "maxReviewAgeDays": 250,
+      "minimumIndependentEvidence": 1
     },
     "package-installation": {
-      "maxReviewAgeDays": 180,
-      "minimumIndependentEvidence": 1,
       "allowedEvidenceTypes": [
         "installed-package-record"
       ],
@@ -97,11 +137,11 @@
         "package-upgrade",
         "package-install",
         "package-uninstall"
-      ]
+      ],
+      "maxReviewAgeDays": 180,
+      "minimumIndependentEvidence": 1
     },
     "package-limitation": {
-      "maxReviewAgeDays": 250,
-      "minimumIndependentEvidence": 1,
       "allowedEvidenceTypes": [
         "vendor-documentation",
         "vendor-support-case",
@@ -111,11 +151,11 @@
         "package-upgrade",
         "vendor-source-revision",
         "sandbox-refresh"
-      ]
+      ],
+      "maxReviewAgeDays": 250,
+      "minimumIndependentEvidence": 1
     },
     "reference-data": {
-      "maxReviewAgeDays": 180,
-      "minimumIndependentEvidence": 1,
       "allowedEvidenceTypes": [
         "org-soql-sample",
         "ado-approved-artifact",
@@ -125,11 +165,11 @@
         "record-last-modified",
         "sandbox-refresh",
         "business-owner-change"
-      ]
+      ],
+      "maxReviewAgeDays": 180,
+      "minimumIndependentEvidence": 1
     },
     "runtime-behavior": {
-      "maxReviewAgeDays": 180,
-      "minimumIndependentEvidence": 1,
       "allowedEvidenceTypes": [
         "controlled-sandbox-test",
         "org-soql-sample",
@@ -141,58 +181,28 @@
         "package-upgrade",
         "sandbox-refresh",
         "scenario-change"
-      ]
-    },
-    "business-meaning": {
-      "maxReviewAgeDays": 365,
-      "minimumIndependentEvidence": 1,
-      "allowedEvidenceTypes": [
-        "human-sme-attestation",
-        "ado-approved-artifact"
       ],
-      "invalidationTriggers": [
-        "business-owner-change",
-        "approved-artifact-revision"
-      ]
-    },
-    "business-process": {
-      "maxReviewAgeDays": 365,
-      "minimumIndependentEvidence": 1,
-      "allowedEvidenceTypes": [
-        "human-sme-attestation",
-        "ado-approved-artifact"
-      ],
-      "invalidationTriggers": [
-        "business-owner-change",
-        "approved-artifact-revision"
-      ]
-    },
-    "integration": {
       "maxReviewAgeDays": 180,
-      "minimumIndependentEvidence": 1,
-      "allowedEvidenceTypes": [
-        "org-tooling-enumeration",
-        "metadata-repository",
-        "ado-approved-artifact",
-        "human-sme-attestation"
-      ],
-      "invalidationTriggers": [
-        "metadata-deployment",
-        "integration-config-change",
-        "business-owner-change"
-      ]
-    },
-    "glossary": {
-      "maxReviewAgeDays": 365,
-      "minimumIndependentEvidence": 1,
-      "allowedEvidenceTypes": [
-        "human-sme-attestation",
-        "ado-approved-artifact"
-      ],
-      "invalidationTriggers": [
-        "business-owner-change",
-        "approved-artifact-revision"
-      ]
+      "minimumIndependentEvidence": 1
     }
-  }
+  },
+  "negativeClaims": {
+    "maxReviewAgeDays": 180,
+    "requireCompleteEnumeration": true,
+    "requirePermissionProof": true
+  },
+  "promotion": {
+    "committableSensitivities": [
+      "public",
+      "internal-sanitized"
+    ],
+    "modelMayCreateStatuses": [
+      "proposed"
+    ],
+    "safeVerdictAllowedStatuses": [
+      "verified"
+    ],
+    "verifiedRequiresHumanReview": true
+  },
+  "schemaVersion": 1
 }

@@ -555,6 +555,40 @@ class RoleGuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertFalse(role_guard.allowed_role_command(command, ROOT, "development-assistant"))
 
+    def test_knowledge_chat_approval_asks_for_human_confirmation(self) -> None:
+        # 2026-07-14 decision: agents may REQUEST knowledge promotion; the hook always stops for
+        # the human's chat confirmation, which the registry records as the review mechanism.
+        output = run_hook(
+            "copilot_safety_hook.py",
+            {
+                "tool_name": "execute/runInTerminal",
+                "tool_input": {
+                    "command": "python scripts/knowledge_registry.py approve-claim --claim-id KCLM-X-1 --expected-revision 1"
+                },
+            },
+        )
+        self.assertEqual(hook_decision(output), "ask")
+
+    def test_investigator_may_request_approve_claim_others_may_not(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        command = (
+            "python scripts/knowledge_registry.py approve-claim "
+            "--claim-id KCLM-EXAMPLE-1 --expected-revision 1 --decision verify"
+        )
+        self.assertTrue(role_guard.allowed_role_command(command, ROOT, "config-investigator"))
+        for role in ("solution-designer", "development-assistant", "test-strategist", "guardrail-reviewer"):
+            with self.subTest(role=role):
+                self.assertFalse(role_guard.allowed_role_command(command, ROOT, role))
+        for bad in (
+            "python scripts/knowledge_registry.py approve-claim --claim-id not-a-claim --expected-revision 1",
+            "python scripts/knowledge_registry.py approve-claim --claim-id KCLM-EXAMPLE-1",
+            "python scripts/knowledge_registry.py approve-claim --claim-id KCLM-EXAMPLE-1 --expected-revision x",
+            "python scripts/knowledge_registry.py promote --claim-id KCLM-EXAMPLE-1 --review-id KREV-X --expected-revision 1",
+        ):
+            with self.subTest(command=bad):
+                self.assertFalse(role_guard.allowed_role_command(bad, ROOT, "config-investigator"))
+
     def test_designer_and_developer_may_use_guarded_salesforce_read(self) -> None:
         from scripts import copilot_role_guard as role_guard
 

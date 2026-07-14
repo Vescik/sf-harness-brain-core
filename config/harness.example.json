@@ -69,5 +69,8 @@
     "adoItemMaxAgeMinutes": 30,
     "testCaseMaxAgeMinutes": 1440,
     "onStaleDefault": "ask"
+  },
+  "knowledge": {
+    "chatReviewer": "<FULL_NAME_OF_THE_HUMAN_WHO_APPROVES_KNOWLEDGE_IN_CHAT>"
   }
 }

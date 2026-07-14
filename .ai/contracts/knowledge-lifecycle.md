@@ -62,15 +62,23 @@ work without granting promotion authority:
   it atomically advances the claim to the next revision.
 - `reconcile` is read-only and classifies duplicate, conflict, parallel-scope, or new assertions.
 - `render-indexes` deterministically rebuilds or checks the Markdown domain views.
+- `approve-claim` (owner decision 2026-07-14) is the chat-approval path: it builds the immutable
+  review record itself (all digests computed from the exact pre-review records), records it, and
+  for `verify` promotes and re-renders the indexes in one step. The reviewer identity comes from
+  ignored local configuration (`knowledge.chatReviewer`) — a human-owned value — and the recorded
+  mechanism is `copilot-chat-confirmation`: the safety hook answers `ask` for every invocation,
+  so a human explicitly confirms each promotion/rejection in the chat approval dialog.
 
 In the current controlled pilot, `auditReceipt` binds a human-entered mechanism/reference and a
 recomputed content digest to the exact claim, scope, and evidence manifest. The digest detects
 tampering but does not itself verify a GitHub/ADO actor or cryptographic signature. Provider or
 signature verification is a team-wide rollout gate, not a capability claimed by this registry.
 
-Role guards should allow `propose`, `validate`, `reconcile`, and index checking independently from
-the human-only `review` and `promote` mechanisms. The registry script accepts no alternate root, so
-all writes remain under the canonical repository paths.
+Role guards allow `propose`, `validate`, `reconcile`, and index checking independently from
+promotion authority. The Investigator may additionally request `approve-claim`, which is gated by
+the human chat confirmation described above; the file-based `review` and `promote` commands remain
+human-terminal-only for external mechanisms (github-review, ado-approval). The registry script
+accepts no alternate root, so all writes remain under the canonical repository paths.
 
 ## Assurance and evidence
 

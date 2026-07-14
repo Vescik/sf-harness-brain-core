@@ -602,6 +602,20 @@ def main() -> int:
         )
         return 0
 
+    if is_terminal_tool(tool_name) and re.search(
+        r"knowledge_registry\.py", dequote(command).replace("\\", "/")
+    ) and re.search(r"(?:^|\s)approve-claim(?:\s|$)", dequote(command)):
+        print(
+            json.dumps(
+                hook_response(
+                    "ask",
+                    "SAFE-HUMAN-001: confirm this Knowledge promotion/rejection — your click is "
+                    "recorded as the copilot-chat-confirmation review mechanism.",
+                )
+            )
+        )
+        return 0
+
     if has_recursive_force_rm(text) or any(pattern.search(text) for pattern in DESTRUCTIVE_PATTERNS):
         print(json.dumps(hook_response("deny", "Destructive operation blocked by SAFE-ROLE-001.")))
         return 0

@@ -1,6 +1,6 @@
 ---
 name: propose-force-app-knowledge
-description: Draft schema-v3 Knowledge claims and immutable metadata-repository evidence from a complete, clean force-app inventory, then optionally submit an explicitly selected subset as proposed claims. Use after inventory-force-app; never verify or promote claims.
+description: Draft schema-v3 Knowledge claims and immutable metadata-repository evidence from a complete, clean force-app inventory, submit an explicitly selected subset as proposed claims, and optionally request chat-approved promotion. Use after inventory-force-app.
 user-invocable: false
 ---
 
@@ -26,16 +26,25 @@ source-tree drift, parser errors, or changed `HEAD`.
    - repository metadata establishes intended customer-owned source at a commit;
    - it does not establish deployment, runtime behavior, business meaning, effective access,
      package internals, or negative claims;
-   - LWC/Aura and generic files remain inventory-only when no applicable claim type exists.
+   - coverage is total: approval processes draft automation claims, and every other metadata
+     type (layouts, permission sets, custom metadata, bundles, …) drafts a generic
+     `component-inventory` claim — the draft never silently produces nothing for a source file.
 4. Present candidate IDs, domains, statements, limitations, and reconciliation risk. Do not submit
    the whole set by default.
 5. Only when the caller explicitly selects claim IDs, run each selected manifest command through
    `python scripts/knowledge_registry.py propose`. The registry performs schema validation,
    reconciliation, immutable evidence checks, and optimistic concurrency.
-6. Never call `review`, `promote`, or edit canonical Knowledge directly. Human review and
-   promotion remain separate lifecycle operations.
+6. After proposing, offer chat-approved promotion: for each claim the caller wants verified, run
+   `python scripts/knowledge_registry.py approve-claim --claim-id <id> --expected-revision <n>`
+   (add `--decision reject` to reject). The safety hook stops every invocation for the human's
+   confirmation click, and the registry records the local-config `knowledge.chatReviewer` as the
+   human reviewer with mechanism `copilot-chat-confirmation`, then re-renders the domain indexes.
+   If `knowledge.chatReviewer` is unset, report the exact config key and stop — never guess an
+   approver. Never call the file-based `review`/`promote` commands or edit canonical Knowledge
+   directly.
 
 ## Return
 
-Return `DRAFTED`, `PROPOSED`, `DUPLICATE`, `CONTESTED`, or `BLOCKED`; commit/tree digest; selected
-claim/evidence IDs; revisions; registry result; limitations; and required human review.
+Return `DRAFTED`, `PROPOSED`, `VERIFIED`, `REJECTED`, `DUPLICATE`, `CONTESTED`, or `BLOCKED`;
+commit/tree digest; selected claim/evidence IDs; revisions; registry results (including review
+IDs for chat approvals); limitations; and any remaining human follow-up.

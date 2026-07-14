@@ -31,6 +31,28 @@ are not durable.
 
 <!-- Entries are appended below this line as they occur — never fabricated at build time. -->
 
+## 2026-07-14 - Knowledge upgrade: total metadata coverage and chat-approved promotion
+
+- Context: running the documentation pipeline on an approval process produced nothing (only 10
+  metadata types had parsers/claim candidates), and promotion required a hand-written review YAML
+  with digests plus two terminal commands — the feature added work instead of removing it. The
+  workspace owner directed a careful autonomy upgrade.
+- Finding / decision: (1) coverage is now total — approval processes draft automation-inventory
+  claims and every other source-format metadata file drafts a generic claim into the new
+  `component-inventory` domain (schema/policy/registry extended); a recognized source file can no
+  longer draft nothing. (2) Agents may request promotion/rejection via the new
+  `knowledge_registry.py approve-claim` command: the safety hook answers `ask` so a human
+  confirms every invocation in the chat dialog, the reviewer identity comes from the human-owned
+  `knowledge.chatReviewer` value in ignored local configuration, and the recorded mechanism is
+  `copilot-chat-confirmation` (new review-schema enum value). The registry computes all binding
+  digests itself and re-renders the domain indexes. File-based `review`/`promote` remain
+  human-terminal-only; work-record approval is unchanged (terminal-only).
+- Impact: the propose → approve loop happens in one chat session with one human click per claim;
+  SAFE-HUMAN-001 was reworded to distinguish the recorded chat-confirmation dialog from chat
+  text (which is still never approval).
+- Approved by: workspace owner directive, 2026-07-14.
+- Related: `.ai/contracts/knowledge-lifecycle.md`, `docs/force-app-knowledge-architecture.md`.
+
 ## 2026-07-14 - MCP is read-only; org mutation is not an agent capability
 
 - Context: the fleet runs Windows, where VS Code cannot sandbox MCP processes, so the

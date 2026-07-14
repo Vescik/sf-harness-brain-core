@@ -8,6 +8,14 @@
   "properties": {
     "$schema": { "type": "string" },
     "schemaVersion": { "const": 1 },
+    "knowledge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chatReviewer"],
+      "properties": {
+        "chatReviewer": { "type": "string", "minLength": 1 }
+      }
+    },
     "ado": {
       "type": "object",
       "additionalProperties": false,

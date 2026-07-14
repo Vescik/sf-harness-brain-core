@@ -42,8 +42,13 @@ flowchart LR
     K --> L["promotion and generated indexes"]
 ```
 
-The model and investigator can create `proposed` claims only. Existing registry review and
-promotion operations remain human-governed.
+The model and investigator can create `proposed` claims directly. Promotion stays human-governed
+in one of two ways: the investigator may request
+`knowledge_registry.py approve-claim --claim-id <id> --expected-revision <n>`, which the safety
+hook stops for the human's chat-confirmation click (recorded as `copilot-chat-confirmation` with
+the reviewer named in `knowledge.chatReviewer` local configuration, then auto-promoted and
+re-indexed), or a human runs the file-based `review`/`promote` commands directly for external
+mechanisms (owner decision 2026-07-14).
 
 ## Functionalities and artifacts
 
@@ -67,9 +72,15 @@ completeness, limitations, and a digest of the sanitized observation.
   inventory candidates.
 - Named/external credentials and remote sites: component identity, label, endpoint host only;
   integration candidates.
-- LWC/Aura: exposure, targets and source-declared references; inventory only because repository
-  presence alone does not establish runtime behavior.
-- Other metadata: path, category and digest only, explicitly counted as generic coverage.
+- Approval processes: object, label, active flag, step count, entry-criteria presence; automation
+  inventory candidates.
+- LWC/Aura: exposure, targets and source-declared references; generic `component-inventory`
+  candidates (repository presence alone does not establish runtime behavior).
+- Every other source-format metadata file (layouts, permission sets, custom metadata, labels,
+  queues, …): metadata type derived from the file suffix, label/fullName facts, and a generic
+  `component-inventory` candidate — coverage is total, so a recognized source file never drafts
+  nothing (2026-07-14 upgrade).
+- Non-metadata files: path, category and digest only, explicitly counted as generic coverage.
 
 Credential values, source bodies, records, tokens, private keys, and inferred business semantics
 are never included.

@@ -113,10 +113,13 @@ WORK_RECORD_COMMANDS = {
 
 # Knowledge mutation is intentionally narrower than filesystem edit permission. Models may validate
 # the registry, and only the Investigator may submit a schema-valid proposed claim/evidence set.
-# Human review and promotion commands are never agent-allowlisted.
+# `approve-claim` (owner decision 2026-07-14) lets the Investigator REQUEST promotion/rejection;
+# the safety hook answers `ask`, so a human confirms every invocation in chat and the registry
+# records the local-config reviewer identity with mechanism copilot-chat-confirmation. The
+# file-based review/promote commands remain human-terminal-only.
 KNOWLEDGE_REGISTRY_COMMANDS = {
     "solution-designer": {"validate", "query"},
-    "config-investigator": {"validate", "query", "propose"},
+    "config-investigator": {"validate", "query", "propose", "approve-claim"},
     "development-assistant": {"validate", "query"},
     "test-strategist": {"validate", "query"},
     "guardrail-reviewer": {"validate", "query"},
@@ -329,6 +332,30 @@ def knowledge_registry_command_allowed(
             semantic_filter_seen = semantic_filter_seen or token != "--at"
             index += 2
         return index == len(parts) and semantic_filter_seen
+    if command == "approve-claim":
+        if role != "config-investigator":
+            return False
+        allowed_flags = {"--claim-id", "--expected-revision", "--decision", "--rationale"}
+        seen: dict[str, str] = {}
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                if flag not in allowed_flags or not value:
+                    return False
+                seen[flag] = value
+                index += 1
+                continue
+            if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
+                return False
+            seen[token] = parts[index + 1]
+            index += 2
+        return (
+            bool(re.fullmatch(r"KCLM-[A-Z0-9][A-Z0-9-]{2,79}", seen.get("--claim-id", "")))
+            and seen.get("--expected-revision", "").isdigit()
+            and seen.get("--decision", "verify") in {"verify", "reject"}
+        )
     if command != "propose" or role != "config-investigator":
         return False
     values: dict[str, list[str]] = {

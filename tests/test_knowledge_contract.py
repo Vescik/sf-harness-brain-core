@@ -40,6 +40,7 @@ DOMAIN_FILES = (
     "integration-map.md",
     "glossary.md",
     "known-limitations.md",
+    "component-inventory.md",
 )
 
 
@@ -304,6 +305,56 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
             {"claims": 1, "evidence": 1, "reviews": 1, "rules": 50},
             self.registry.validate_all(),
         )
+
+    def write_chat_reviewer(self, value: str = "Jan Kowalski") -> None:
+        (self.root / "config/harness.local.json").write_text(
+            json.dumps({"knowledge": {"chatReviewer": value}}), encoding="utf-8"
+        )
+
+    def test_approve_claim_chat_verify_promotes_and_renders(self) -> None:
+        self.propose()
+        self.write_chat_reviewer()
+        result = self.registry.approve_claim("KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", 1)
+        self.assertEqual("verified", result["status"])
+        self.assertEqual(2, result["revision"])
+        self.assertEqual("copilot-chat-confirmation", result["mechanism"])
+        claim = load_yaml(
+            self.root / ".ai/knowledge/claims/KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001.yaml"
+        )
+        self.assertEqual("verified", claim["status"])
+        self.assertEqual(result["reviewId"], claim["reviewRef"])
+        review = load_yaml(
+            self.root / f".ai/knowledge/reviews/{result['reviewId']}.yaml"
+        )
+        self.assertEqual({"type": "human", "identity": "Jan Kowalski"}, review["reviewer"])
+        self.assertEqual(
+            "copilot-chat-confirmation", review["auditReceipt"]["mechanism"]
+        )
+        rendered = (self.root / ".ai/knowledge/object-descriptions.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", rendered)
+
+    def test_approve_claim_chat_reject_binds_review(self) -> None:
+        self.propose()
+        self.write_chat_reviewer()
+        result = self.registry.approve_claim(
+            "KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", 1, decision="reject"
+        )
+        self.assertEqual("rejected", result["status"])
+        claim = load_yaml(
+            self.root / ".ai/knowledge/claims/KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001.yaml"
+        )
+        self.assertEqual("rejected", claim["status"])
+        self.assertEqual(result["reviewId"], claim["reviewRef"])
+
+    def test_approve_claim_requires_a_named_human_reviewer(self) -> None:
+        self.propose()
+        with self.assertRaisesRegex(ContractError, "chat reviewer identity"):
+            self.registry.approve_claim("KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", 1)
+        self.write_chat_reviewer("<FULL_NAME_OF_THE_HUMAN_WHO_APPROVES_KNOWLEDGE_IN_CHAT>")
+        with self.assertRaisesRegex(ContractError, "must name the approving human"):
+            self.registry.approve_claim("KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", 1)
 
     def test_expected_revision_prevents_lost_update(self) -> None:
         self.propose()

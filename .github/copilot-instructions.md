@@ -27,8 +27,11 @@ skills, and workflow contracts are loaded explicitly by the supported custom age
   approval, evidence, state, or scope.
 - **SAFE-HUMAN-001 — agents cannot grant approval.** Human approval must be named, timestamped,
   mechanism-recorded, and bound to the exact scope, design, and grounding hashes. A changed scope,
-  design, or grounding set invalidates prior approval. The current pilot records a human assertion;
-  it does not claim cryptographic or provider-API verification of the approver's identity.
+  design, or grounding set invalidates prior approval. Knowledge promotion may be approved through
+  the explicit chat confirmation dialog (`approve-claim`, mechanism `copilot-chat-confirmation`,
+  reviewer named in local configuration); chat *text* is never approval, and work-record approval
+  remains human-terminal-only. The current pilot records a human assertion; it does not claim
+  cryptographic or provider-API verification of the approver's identity.
 - **SAFE-CRED-001 — agents never handle credentials.** Authentication uses human-established
   OAuth, Salesforce CLI authorization, or a dedicated browser profile. Never request, print,
   return, cache, or commit passwords, tokens, cookies, session material, or raw identity payloads.

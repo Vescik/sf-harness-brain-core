@@ -90,6 +90,13 @@ DOMAIN_VIEWS: dict[str, tuple[str, str]] = {
         "automatically a vendor constraint. A Principle change is a separate owner-reviewed operation in\n"
         "the rule registry. Do not hand-edit.",
     ),
+    "component-inventory": (
+        "Component Inventory",
+        "Generated view of canonical component-inventory claims: every source-format metadata component\n"
+        "(approval processes get richer automation claims; layouts, permission sets, custom metadata,\n"
+        "labels, and any other type land here generically). Source existence only — business meaning,\n"
+        "runtime behavior, and org state are not established by these claims. Do not hand-edit.",
+    ),
 }
 
 
@@ -851,7 +858,9 @@ class KnowledgeRegistry:
             raise ContractError("claim is already expired at current time")
 
     def record_review(self, review_file: Path) -> dict[str, Any]:
-        review = load_yaml(review_file)
+        return self.record_review_data(load_yaml(review_file))
+
+    def record_review_data(self, review: dict[str, Any]) -> dict[str, Any]:
         self.validate_data(review, "knowledge-review.schema.json", "Knowledge review")
         self.verify_audit_receipt(review)
         path = self.review_path(review["reviewId"])
@@ -932,6 +941,126 @@ class KnowledgeRegistry:
             raise ContractError("claim changed after validation; promotion aborted")
         atomic_yaml_write(claim_path, promoted)
         return {"claimId": claim_id, "status": "verified", "revision": promoted["revision"]}
+
+    def approve_claim(
+        self,
+        claim_id: str,
+        expected_revision: int,
+        decision: str = "verify",
+        rationale: str | None = None,
+    ) -> dict[str, Any]:
+        """One-command chat-approval review: build the immutable review record (all digests
+        computed here), record it, and — for verify — promote the claim and refresh the
+        generated domain indexes.
+
+        The approving human is named once in ignored local configuration
+        (`knowledge.chatReviewer`); the VS Code confirmation dialog raised by the safety hook and
+        the non-auto-approved terminal command is the recorded approval mechanism
+        (`copilot-chat-confirmation`). Owner decision 2026-07-14 — this replaces hand-written
+        review YAML for the common promote/reject path; the file-based `review` + `promote`
+        commands remain for external mechanisms (github-review, ado-approval).
+        """
+
+        if decision not in {"verify", "reject"}:
+            raise ContractError("approve-claim decision must be verify or reject")
+        local_config_path = self.root / "config" / "harness.local.json"
+        try:
+            local_config = json.loads(local_config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ContractError(
+                "cannot read config/harness.local.json for the chat reviewer identity"
+            ) from exc
+        reviewer = str(local_config.get("knowledge", {}).get("chatReviewer", "")).strip()
+        if not reviewer or reviewer.startswith("<"):
+            raise ContractError(
+                "knowledge.chatReviewer in config/harness.local.json must name the approving "
+                "human before chat approval"
+            )
+        claim_path = self.claim_path(claim_id)
+        if not claim_path.is_file():
+            raise ContractError(f"claim does not exist: {claim_id}")
+        claim = load_yaml(claim_path)
+        self.validate_data(claim, "knowledge-claim.schema.json", str(claim_path))
+        if claim["revision"] != expected_revision:
+            raise ContractError(
+                f"expected revision {expected_revision}, found {claim['revision']}"
+            )
+        if claim["status"] not in {"proposed", "stale", "contested"}:
+            raise ContractError(f"claim status {claim['status']} is not reviewable")
+        evidence_records = []
+        for evidence_id in sorted(str(ref) for ref in claim["evidenceRefs"]):
+            evidence_path = self.evidence_path(evidence_id)
+            if not evidence_path.is_file():
+                raise ContractError(f"claim evidence does not exist: {evidence_id}")
+            evidence_records.append(load_yaml(evidence_path))
+        at = self.at_time()
+        reviewed_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        suffix = "CHAT-VERIFY" if decision == "verify" else "CHAT-REJECT"
+        review_id = f"KREV-{claim_id[5:61]}-R{expected_revision}-{suffix}"
+        receipt = {
+            "mechanism": "copilot-chat-confirmation",
+            "reference": f"vscode-chat://approve-claim/{claim_id}/r{expected_revision}",
+            "verifiedAt": reviewed_at,
+        }
+        receipt["receiptDigest"] = canonical_digest(receipt)
+        review = {
+            "schemaVersion": 3,
+            "reviewId": review_id,
+            "reviewType": "promotion" if decision == "verify" else "rejection",
+            "claimId": claim_id,
+            "claimRevision": expected_revision,
+            "reviewedStatus": claim["status"],
+            "decision": decision,
+            "resultingStatus": "verified" if decision == "verify" else "rejected",
+            "reviewer": {"type": "human", "identity": reviewer},
+            "reviewedAt": reviewed_at,
+            "evidenceRefs": sorted(str(ref) for ref in claim["evidenceRefs"]),
+            "policyVersion": 1,
+            "scopeMatch": True,
+            "freshness": {
+                "status": "current",
+                "evaluatedAt": reviewed_at,
+                "triggeredInvalidators": [],
+            },
+            "conflictingClaimRefs": [],
+            **self.review_bindings(claim, evidence_records),
+            "auditReceipt": receipt,
+            "rationale": rationale
+            or (
+                f"Chat-approval {decision} by {reviewer} through the guarded approve-claim "
+                "command; digests were computed from the exact pre-review records."
+            ),
+        }
+        self.record_review_data(review)
+        if decision == "verify":
+            promoted = self.promote(claim_id, review_id, expected_revision)
+            self.render_indexes(check=False)
+            return {
+                "claimId": claim_id,
+                "reviewId": review_id,
+                "status": "verified",
+                "revision": promoted["revision"],
+                "reviewer": reviewer,
+                "mechanism": "copilot-chat-confirmation",
+            }
+        rejected = copy.deepcopy(claim)
+        rejected["revision"] = expected_revision + 1
+        rejected["status"] = "rejected"
+        rejected["reviewRef"] = review_id
+        self.validate_data(rejected, "knowledge-claim.schema.json", "rejected claim")
+        current = load_yaml(claim_path)
+        if current["revision"] != expected_revision:
+            raise ContractError("claim changed after validation; rejection aborted")
+        atomic_yaml_write(claim_path, rejected)
+        self.render_indexes(check=False)
+        return {
+            "claimId": claim_id,
+            "reviewId": review_id,
+            "status": "rejected",
+            "revision": rejected["revision"],
+            "reviewer": reviewer,
+            "mechanism": "copilot-chat-confirmation",
+        }
 
     @staticmethod
     def reconciliation_key(claim: dict[str, Any]) -> tuple[str, str, str]:
@@ -1087,6 +1216,12 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--review-id", required=True)
     promote.add_argument("--expected-revision", required=True, type=int)
 
+    approve = commands.add_parser("approve-claim")
+    approve.add_argument("--claim-id", required=True)
+    approve.add_argument("--expected-revision", required=True, type=int)
+    approve.add_argument("--decision", choices=("verify", "reject"), default="verify")
+    approve.add_argument("--rationale")
+
     reconcile = commands.add_parser("reconcile")
     reconcile.add_argument("--claim-file", required=True)
 
@@ -1122,6 +1257,10 @@ def main() -> int:
             result = registry.record_review(registry.contained_input(args.review_file))
         elif args.command == "promote":
             result = registry.promote(args.claim_id, args.review_id, args.expected_revision)
+        elif args.command == "approve-claim":
+            result = registry.approve_claim(
+                args.claim_id, args.expected_revision, args.decision, args.rationale
+            )
         elif args.command == "reconcile":
             result = registry.reconcile(load_yaml(registry.contained_input(args.claim_file)))
         elif args.command == "query":

@@ -36,7 +36,7 @@
         "object-existence", "object-ownership", "field-schema", "object-relation",
         "automation-inventory", "package-installation", "package-limitation",
         "reference-data", "runtime-behavior", "business-meaning", "business-process",
-        "integration", "glossary"
+        "integration", "glossary", "component-inventory"
       ],
       "properties": {
         "object-existence": { "$ref": "#/$defs/claimPolicy" },
@@ -51,7 +51,8 @@
         "business-meaning": { "$ref": "#/$defs/claimPolicy" },
         "business-process": { "$ref": "#/$defs/claimPolicy" },
         "integration": { "$ref": "#/$defs/claimPolicy" },
-        "glossary": { "$ref": "#/$defs/claimPolicy" }
+        "glossary": { "$ref": "#/$defs/claimPolicy" },
+        "component-inventory": { "$ref": "#/$defs/claimPolicy" }
       }
     }
   },

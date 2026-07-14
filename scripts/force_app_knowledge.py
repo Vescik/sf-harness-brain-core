@@ -356,6 +356,59 @@ class ForceAppKnowledge:
             needle=host or name,
         )
 
+    def parse_approval_process(self, path: Path) -> dict[str, Any]:
+        root = self.parse_xml(path)
+        name = path.name.removesuffix(".approvalProcess-meta.xml")
+        object_name = name.split(".", 1)[0] if "." in name else None
+        steps = [item for item in root.iter() if local_name(item.tag) == "approvalStep"]
+        references = []
+        if object_name:
+            references.append({"kind": "operates-on", "target": object_name})
+        return self.component(
+            "ApprovalProcess",
+            name,
+            path,
+            {
+                "object": object_name,
+                "label": direct_text(root, "label"),
+                "active": boolean(direct_text(root, "active")),
+                "stepCount": len(steps),
+                "entryCriteriaPresent": any(
+                    local_name(item.tag) == "entryCriteria" for item in root.iter()
+                ),
+            },
+            references,
+            name,
+        )
+
+    GENERIC_META = re.compile(r"^(?P<name>.+)\.(?P<token>[A-Za-z0-9_]+)-meta\.xml$")
+
+    def parse_generic_meta(self, path: Path) -> dict[str, Any]:
+        """Fallback for every source-format metadata file without a dedicated parser.
+
+        Coverage must be total: an unrecognized type (layout, permission set, custom metadata,
+        queue, label, …) still yields an inventory component and a generic component-inventory
+        claim instead of silently producing nothing (observed live with an approval process).
+        """
+
+        match = self.GENERIC_META.match(path.name)
+        if match is None:
+            raise ValueError(f"not a source-format metadata file: {path.name}")
+        token = match.group("token")
+        metadata_type = token[0].upper() + token[1:]
+        root = self.parse_xml(path)
+        return self.component(
+            metadata_type,
+            match.group("name"),
+            path,
+            {
+                "label": direct_text(root, "label")
+                or direct_text(root, "masterLabel")
+                or direct_text(root, "fullName"),
+                "rootElement": local_name(root.tag),
+            },
+        )
+
     def inventory(self) -> dict[str, Any]:
         if not self.source_root.is_dir():
             raise KnowledgeBuildError("required root force-app directory is missing")
@@ -367,6 +420,7 @@ class ForceAppKnowledge:
             ("*.object-meta.xml", self.parse_object),
             ("*.field-meta.xml", self.parse_field),
             ("*.flow-meta.xml", self.parse_flow),
+            ("*.approvalProcess-meta.xml", self.parse_approval_process),
         ]
         for pattern, parser in parsers:
             for path in sorted(self.source_root.rglob(pattern)):
@@ -413,6 +467,18 @@ class ForceAppKnowledge:
                     diagnostics.append(
                         {"severity": "error", "path": self.relative(path), "message": str(exc)}
                     )
+        # Total coverage: every remaining source-format metadata file gets at least a generic
+        # component so the draft never silently skips a metadata type.
+        for path in sorted(self.source_root.rglob("*-meta.xml")):
+            if path in handled:
+                continue
+            try:
+                components.append(self.parse_generic_meta(path))
+                handled.add(path)
+            except (ET.ParseError, OSError, ValueError) as exc:
+                diagnostics.append(
+                    {"severity": "error", "path": self.relative(path), "message": str(exc)}
+                )
 
         all_files = sorted(path for path in self.source_root.rglob("*") if path.is_file())
         recognized_paths = {item["path"] for item in components}
@@ -519,7 +585,7 @@ class ForceAppKnowledge:
                         "limitations": [common_limit, "Business cardinality and reference-data semantics are not established."],
                     }
                 )
-        elif metadata_type in {"Flow", "ApexClass", "ApexTrigger"}:
+        elif metadata_type in {"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess"}:
             candidates.append(
                 {
                     "domain": "automation-map",
@@ -545,6 +611,23 @@ class ForceAppKnowledge:
                     },
                     "statement": f"{component['name']} is a source-defined {metadata_type} component at the repository commit.",
                     "limitations": [common_limit, "Authentication, payloads, data direction, and business ownership are not established."],
+                }
+            )
+        else:
+            # Total coverage: any other metadata type (layout, permission set, custom metadata,
+            # LWC/Aura bundle, queue, label, …) yields a generic component-inventory claim so the
+            # documentation pipeline never produces nothing for a recognized source file.
+            candidates.append(
+                {
+                    "domain": "component-inventory",
+                    "claimType": "component-inventory",
+                    "subject": {"kind": "component", "identity": component["id"]},
+                    "assertion": {
+                        "predicate": "source-defined-component",
+                        "value": {"metadataType": metadata_type, "facts": facts},
+                    },
+                    "statement": f"{component['name']} is a source-defined {metadata_type} component at the repository commit.",
+                    "limitations": [common_limit, "Business meaning, runtime behavior, and org deployment state are not established."],
                 }
             )
         return candidates

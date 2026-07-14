@@ -5,6 +5,31 @@
 > `tests/e2e/` are authoritative. Earlier two-folder or nested-`salesforce/` descriptions in this
 > iteration history are superseded.
 
+## Iteration 7 — Knowledge upgrade: total coverage and chat-approved promotion (2026-07-14)
+
+### Changes
+
+- Fixed the observed live failure where inventory + draft on an approval process produced
+  nothing: `force_app_knowledge.py` now parses approval processes into automation-inventory
+  candidates and every other source-format metadata file into a generic candidate in the new
+  `component-inventory` domain (claim/evidence/policy schemas, policy config, registry domain
+  views, generated index, and knowledge README extended). A recognized source file can no longer
+  draft nothing.
+- Added `knowledge_registry.py approve-claim`: one guarded command that builds the immutable
+  review record itself (all binding digests computed), records it, promotes on `verify` (or
+  binds a rejection), and re-renders the domain indexes. The safety hook answers `ask` for every
+  invocation — the human's chat confirmation click is the approval — and the registry records
+  the human named in `knowledge.chatReviewer` (new local-config key) with the new
+  `copilot-chat-confirmation` review mechanism. Role guard allows the request for
+  Config Investigator only; file-based `review`/`promote` and work-record approval remain
+  human-terminal-only. SAFE-HUMAN-001, the knowledge lifecycle contract, the investigator agent,
+  the propose skill, and SETUP §7 describe the new loop.
+
+### Validation — 2026-07-14
+
+- Harness validation: PASS — 2,414 checks. Unit suite: PASS — 190 tests. Safety evaluations:
+  PASS — 31 scenarios.
+
 ## Iteration 6 — Read-only MCP model; human-approved CLI retrieve (2026-07-14)
 
 ### Changes
