@@ -130,6 +130,11 @@ the `py` launcher or `python3`). The same
 commands are available through `Terminal: Run Task` as Harness: Validate, Harness: Test, Harness:
 Evals, and Harness: Preflight.
 
+Preflight caches a PASS per capability for 30 minutes (keyed to the exact local config and
+`ADO_ORGANIZATION`), so agents re-checking at the start of every workflow do not re-run live org
+proofs on each prompt. Any config change invalidates the receipt immediately; failures are never
+cached; `--force` re-runs everything (use it after re-authorizing an alias).
+
 ## 5. Verify Copilot customizations
 
 1. Trust the cloned repository only after reviewing it; the single named workspace folder

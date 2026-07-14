@@ -555,13 +555,34 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     if script in (validate_harness, run_evals):
         return not remainder
     if script == preflight:
-        if not remainder:
-            return True
-        return (
-            len(remainder) == 2
-            and remainder[0] == "--capability"
-            and remainder[1] in PREFLIGHT_CAPABILITIES
-        )
+        index2 = 0
+        while index2 < len(remainder):
+            token = remainder[index2]
+            if token == "--force":
+                index2 += 1
+                continue
+            if token == "--capability" and index2 + 1 < len(remainder):
+                if remainder[index2 + 1] not in PREFLIGHT_CAPABILITIES:
+                    return False
+                index2 += 2
+                continue
+            if token == "--max-age-minutes" and index2 + 1 < len(remainder):
+                if not remainder[index2 + 1].isdigit():
+                    return False
+                index2 += 2
+                continue
+            if token.startswith("--capability="):
+                if token.split("=", 1)[1] not in PREFLIGHT_CAPABILITIES:
+                    return False
+                index2 += 1
+                continue
+            if token.startswith("--max-age-minutes="):
+                if not token.split("=", 1)[1].isdigit():
+                    return False
+                index2 += 1
+                continue
+            return False
+        return True
     if script == work_record:
         return work_record_command_allowed(remainder, role)
     if script == knowledge_registry:

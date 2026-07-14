@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from xml.etree import ElementTree
 from urllib.parse import urlparse
@@ -374,6 +376,53 @@ def validate_capability(config: dict, capability: str) -> list[str]:
     return failures
 
 
+RECEIPT_DIR = ROOT / ".cache" / "preflight"
+DEFAULT_RECEIPT_MAX_AGE_MINUTES = 30
+
+
+def _receipt_context_digest(capability: str) -> str:
+    """Bind a cached PASS to the exact local config and relevant environment.
+
+    Any config edit (aliases, hosts, allowlists) or ADO_ORGANIZATION change invalidates the
+    receipt immediately, so caching only skips re-proving an unchanged setup.
+    """
+
+    material = CONFIG_PATH.read_bytes() if CONFIG_PATH.is_file() else b""
+    if capability in {"ado", "release"}:
+        material += os.environ.get("ADO_ORGANIZATION", "").encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+def load_fresh_receipt(capability: str, max_age_minutes: int) -> dict | None:
+    path = RECEIPT_DIR / f"{capability}.json"
+    try:
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        passed_at = datetime.fromisoformat(str(receipt["passedAt"]))
+    except (OSError, json.JSONDecodeError, KeyError, ValueError):
+        return None
+    if receipt.get("result") != "PASS":
+        return None
+    if receipt.get("contextDigest") != _receipt_context_digest(capability):
+        return None
+    age = datetime.now(timezone.utc) - passed_at
+    if age > timedelta(minutes=max_age_minutes):
+        return None
+    return receipt
+
+
+def write_receipt(capability: str) -> None:
+    RECEIPT_DIR.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "capability": capability,
+        "result": "PASS",
+        "passedAt": datetime.now(timezone.utc).isoformat(),
+        "contextDigest": _receipt_context_digest(capability),
+    }
+    (RECEIPT_DIR / f"{capability}.json").write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -390,7 +439,29 @@ def main() -> int:
             "release",
         ),
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="ignore a fresh PASS receipt and re-run every check (including live org proofs)",
+    )
+    parser.add_argument(
+        "--max-age-minutes",
+        type=int,
+        default=DEFAULT_RECEIPT_MAX_AGE_MINUTES,
+        help="how long a PASS receipt for an unchanged config stays fresh (0 disables reuse)",
+    )
     args = parser.parse_args()
+    # Skills run preflight at the start of nearly every workflow; a fresh PASS for an unchanged
+    # config/environment is returned from the receipt instead of re-running live org proofs on
+    # every prompt (2026-07-14 usability fix). Failures are never cached.
+    if not args.force and args.max_age_minutes > 0:
+        receipt = load_fresh_receipt(args.capability, args.max_age_minutes)
+        if receipt is not None:
+            print(
+                f"PASS: harness preflight ({args.capability}) — cached receipt from "
+                f"{receipt['passedAt']} for the unchanged configuration; use --force to re-run"
+            )
+            return 0
     try:
         config = load_config()
     except ValueError as exc:
@@ -402,6 +473,7 @@ def main() -> int:
         for failure in failures:
             error(failure)
         return 2
+    write_receipt(args.capability)
     print(f"PASS: harness preflight ({args.capability})")
     return 0
 

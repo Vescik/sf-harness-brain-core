@@ -199,6 +199,45 @@ class PreflightValidationTests(unittest.TestCase):
         failures = preflight.validate_origins(["http://example.invalid"], "Browser")
         self.assertTrue(any("must be HTTPS" in item for item in failures))
 
+    def test_pass_receipt_is_reused_until_config_or_env_changes(self) -> None:
+        with TemporaryDirectory() as name:
+            root = Path(name)
+            config_path = root / "config" / "harness.local.json"
+            config_path.parent.mkdir()
+            config_path.write_text('{"a": 1}', encoding="utf-8")
+            with (
+                patch.object(preflight, "ROOT", root),
+                patch.object(preflight, "CONFIG_PATH", config_path),
+                patch.object(preflight, "RECEIPT_DIR", root / ".cache/preflight"),
+            ):
+                self.assertIsNone(preflight.load_fresh_receipt("ado", 30))
+                preflight.write_receipt("ado")
+                self.assertIsNotNone(preflight.load_fresh_receipt("ado", 30))
+                # zero max-age disables reuse; config change invalidates the digest binding
+                self.assertIsNone(preflight.load_fresh_receipt("ado", 0))
+                config_path.write_text('{"a": 2}', encoding="utf-8")
+                self.assertIsNone(preflight.load_fresh_receipt("ado", 30))
+                # a receipt for one capability never satisfies another
+                preflight.write_receipt("metadata")
+                self.assertIsNone(preflight.load_fresh_receipt("salesforce-review", 30))
+
+    def test_ado_receipt_binds_the_runtime_organization(self) -> None:
+        with TemporaryDirectory() as name:
+            root = Path(name)
+            config_path = root / "config" / "harness.local.json"
+            config_path.parent.mkdir()
+            config_path.write_text("{}", encoding="utf-8")
+            with (
+                patch.object(preflight, "ROOT", root),
+                patch.object(preflight, "CONFIG_PATH", config_path),
+                patch.object(preflight, "RECEIPT_DIR", root / ".cache/preflight"),
+                patch.dict("os.environ", {"ADO_ORGANIZATION": "org-one"}),
+            ):
+                preflight.write_receipt("ado")
+                self.assertIsNotNone(preflight.load_fresh_receipt("ado", 30))
+                with patch.dict("os.environ", {"ADO_ORGANIZATION": "org-two"}):
+                    self.assertIsNone(preflight.load_fresh_receipt("ado", 30))
+
     def test_wildcard_manifest_blocks_salesforce_write(self) -> None:
         manifest = (
             '<?xml version="1.0" encoding="UTF-8"?>\n'

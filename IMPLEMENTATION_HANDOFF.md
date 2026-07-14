@@ -5,6 +5,27 @@
 > `tests/e2e/` are authoritative. Earlier two-folder or nested-`salesforce/` descriptions in this
 > iteration history are superseded.
 
+## Iteration 9 — Guard usability: unblock workflow commands; preflight receipts (2026-07-14)
+
+### Changes
+
+- Role guard no longer denies commands the harness's own skills instruct agents to run (live
+  flailing fix): `validate_harness.py`/`run_evals.py` for every role, preflight bare and with any
+  capability for every role, `knowledge_registry.py render-indexes [--check]` and `reconcile`
+  (draft-workspace inputs) for every role, and tool `--version` checks. The denial reason now
+  lists the allowed command families; a permanent regression test asserts every skill-instructed
+  command passes the guard. Deploys, approvals, promote/review, destructive and chained commands
+  stay denied.
+- Preflight caches a PASS receipt per capability (30-minute default, keyed to the exact local
+  config and `ADO_ORGANIZATION`), so skills starting every workflow with a preflight no longer
+  re-run live sandbox proofs on each prompt. Failures are never cached; `--force` and
+  `--max-age-minutes` control reuse.
+
+### Validation — 2026-07-14
+
+- Harness validation: PASS — 2,455 checks. Unit suite: PASS — 199 tests. Safety evaluations:
+  PASS — 31 scenarios.
+
 ## Iteration 8 — Batch knowledge conversion (2026-07-14)
 
 ### Changes
