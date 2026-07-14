@@ -199,6 +199,17 @@ class PreflightValidationTests(unittest.TestCase):
         failures = preflight.validate_origins(["http://example.invalid"], "Browser")
         self.assertTrue(any("must be HTTPS" in item for item in failures))
 
+    def test_browser_and_promoted_tests_sections_are_optional(self) -> None:
+        # Windows-only deployments never use guarded Playwright; forcing those placeholder
+        # values was pure setup friction (owner observation, 2026-07-14).
+        config = safe_config()
+        del config["browser"]
+        del config["workspace"]["promotedTestsPath"]
+        self.assertEqual(preflight.validate_config(config), [])
+        failures = preflight.validate_capability(config, "playwright")
+        self.assertTrue(any("browser" in failure for failure in failures))
+        self.assertTrue(any("promotedTestsPath" in failure for failure in failures))
+
     def test_pass_receipt_is_reused_until_config_or_env_changes(self) -> None:
         with TemporaryDirectory() as name:
             root = Path(name)

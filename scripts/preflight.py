@@ -219,11 +219,14 @@ def validate_metadata(config: dict) -> list[str]:
         manifest = contained_workspace_path(
             root, config["workspace"]["manifestPath"], "workspace.manifestPath"
         )
-        contained_workspace_path(
-            root,
-            config["workspace"]["promotedTestsPath"],
-            "workspace.promotedTestsPath",
-        )
+        # promotedTestsPath is optional (browser workflows are macOS/Linux-only and many
+        # deployments never use them); validate it only when configured.
+        if config["workspace"].get("promotedTestsPath"):
+            contained_workspace_path(
+                root,
+                config["workspace"]["promotedTestsPath"],
+                "workspace.promotedTestsPath",
+            )
     except ValueError as exc:
         failures.append(str(exc))
         return failures
@@ -366,9 +369,20 @@ def validate_capability(config: dict, capability: str) -> list[str]:
                     )
             except (OSError, subprocess.SubprocessError):
                 failures.append("playwright-cli version check failed")
-        profile = Path(config["browser"]["profileDirectory"]).expanduser()
-        if not profile.is_absolute() or not profile.is_dir():
-            failures.append(f"browser profile directory is missing or not absolute: {profile}")
+        if "browser" not in config:
+            failures.append(
+                "playwright capability requires an optional `browser` section "
+                "(allowedOrigins, profileDirectory) in config/harness.local.json — add it only "
+                "on macOS/Linux where guarded browser execution is supported"
+            )
+        else:
+            profile = Path(config["browser"]["profileDirectory"]).expanduser()
+            if not profile.is_absolute() or not profile.is_dir():
+                failures.append(f"browser profile directory is missing or not absolute: {profile}")
+        if not config["workspace"].get("promotedTestsPath"):
+            failures.append(
+                "playwright capability requires workspace.promotedTestsPath for reviewed test promotion"
+            )
     if capability == "release":
         query_id = str(config.get("ado", {}).get("releaseQueryId", ""))
         if not query_id:

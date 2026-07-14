@@ -54,16 +54,9 @@
     "sharedSandboxWritesApproved": false,
     "sharedSandboxApprovalRef": ""
   },
-  "browser": {
-    "allowedOrigins": [
-      "https://<MY_DOMAIN>--<SANDBOX>.sandbox.my.salesforce.com"
-    ],
-    "profileDirectory": "<ABSOLUTE_LOCAL_PROFILE_PATH>"
-  },
   "workspace": {
     "salesforceRootName": "brain-core",
-    "manifestPath": "manifest/package.xml",
-    "promotedTestsPath": "<RELATIVE_PATH_IN_REPOSITORY_ROOT>"
+    "manifestPath": "manifest/package.xml"
   },
   "cache": {
     "adoItemMaxAgeMinutes": 30,

@@ -70,6 +70,10 @@ scope and must not be used as a substitute for claim-backed ownership or human a
 enforced: `preflight --capability salesforce-write` fails while the configured manifest still
 contains any `<members>*</members>` entry.
 
+The `browser` section and `workspace.promotedTestsPath` are optional — add them only when you
+use guarded Playwright browser testing (macOS/Linux); the example omits them and the
+`playwright` preflight capability tells you exactly what to add if you ever need it.
+
 The file holds identifiers, allowlists, and paths, not secrets. ADO uses OAuth through VS Code; Salesforce uses
 existing CLI authorization; Playwright uses a human-created persistent profile outside Git.
 Alias names and environment labels are not treated as proof: Salesforce MCP startup first checks

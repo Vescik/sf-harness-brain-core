@@ -165,7 +165,7 @@ team lead / harness maintainer:
 | `salesforce.orgs[].expectedInstanceHost` | The sandbox My Domain host | filled in Part 7 |
 | `salesforce.orgs[].expectedOrganizationId` | The sandbox org id | filled in Part 7 |
 | `salesforce.review.allowedObjectApiNames` | Objects the agent may read via the review facade | team lead (keep narrow) |
-| `browser.profileDirectory` | Playwright browser profile path | skip on Windows (browser mode is macOS/Linux only) |
+| `browser` section + `workspace.promotedTestsPath` | Guarded Playwright settings | **omit entirely** — optional, needed only for browser testing on macOS/Linux |
 
 Leave every `allowAgentWrite` as `false`. Write mode is a separate, human-approved decision and
 does not run on Windows at all.
