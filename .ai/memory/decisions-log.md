@@ -53,6 +53,25 @@ are not durable.
 - Approved by: workspace owner directive, 2026-07-14.
 - Related: `.ai/contracts/knowledge-lifecycle.md`, `docs/force-app-knowledge-architecture.md`.
 
+## 2026-07-14 - Batch knowledge conversion: one metadata type per run, chunked chat approval
+
+- Context: the team must convert a large existing architecture into Knowledge; doing it
+  component-by-component does not scale, and mixing metadata types in one run makes review
+  sloppy. The owner requested a batch flow (one type per batch, e.g. all Flows) following
+  discovery → planning → plan verification → execution → result verification.
+- Finding / decision: new public `/batch-knowledge type=<MetadataType> [chunk=N]` prompt backed
+  by a five-phase skill. Supporting mechanics: `force_app_knowledge.py draft --metadata-type`
+  filters drafting to one type; `knowledge_registry.py approve-claim --claim-spec
+  <claimId>:<revision>` (repeatable, capped at 25) lets one human confirmation click approve one
+  chunk. Skips already-verified fresh claims; stop rules pause instead of improvising; a batch
+  report lands in `output/documentation/`.
+- Impact: converting e.g. 60 flows costs ~6 confirmation clicks (10-component chunks) while
+  every claim still gets an individually recorded chat-approval review; counts moved to
+  12 prompts / 16 skills and the validator now derives all counts from one constant.
+- Approved by: workspace owner directive, 2026-07-14.
+- Related: `docs/force-app-knowledge-architecture.md` (batch section), the two 2026-07-14
+  knowledge entries below.
+
 ## 2026-07-14 - AI description layer: agents author what components do
 
 - Context: purely mechanical claims ("X exists at commit Y, 2 steps") carry no understanding —

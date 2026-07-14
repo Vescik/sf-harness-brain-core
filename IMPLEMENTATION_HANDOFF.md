@@ -5,6 +5,26 @@
 > `tests/e2e/` are authoritative. Earlier two-folder or nested-`salesforce/` descriptions in this
 > iteration history are superseded.
 
+## Iteration 8 — Batch knowledge conversion (2026-07-14)
+
+### Changes
+
+- New public `/batch-knowledge type=<MetadataType> [chunk=N]` prompt and five-phase
+  `batch-knowledge` skill (discover → plan → verify plan → execute → verify) for converting a
+  large architecture into Knowledge one metadata type per run, skipping already-verified fresh
+  claims, with stop rules and a batch report under `output/documentation/`.
+- `force_app_knowledge.py draft --metadata-type <Type>` drafts one type per batch (manifest
+  records the filter); `knowledge_registry.py approve-claim --claim-spec <claimId>:<revision>`
+  (repeatable, capped at 25) approves a chunk with one human confirmation click while recording
+  an individual review per claim.
+- Customization surface is now 12 public prompts / 16 internal skills; the validator derives
+  every count from a single constant so future additions cannot drift silently.
+
+### Validation — 2026-07-14
+
+- Harness validation: PASS — 2,455 checks. Unit suite: PASS — 195 tests. Safety evaluations:
+  PASS — 31 scenarios.
+
 ## Iteration 7 — Knowledge upgrade: total coverage and chat-approved promotion (2026-07-14)
 
 ### Changes

@@ -670,8 +670,17 @@ class ForceAppKnowledge:
             )
         return candidates
 
-    def draft(self, observed_at: datetime) -> dict[str, Any]:
+    def draft(
+        self, observed_at: datetime, metadata_type: str | None = None
+    ) -> dict[str, Any]:
         inventory = self.load_inventory()
+        if metadata_type is not None:
+            available = sorted(inventory["coverage"])
+            if metadata_type not in inventory["coverage"]:
+                raise KnowledgeBuildError(
+                    f"inventory has no components of metadata type {metadata_type!r}; "
+                    f"available types: {', '.join(available)}"
+                )
         if inventory["completeness"]["status"] != "complete":
             raise KnowledgeBuildError("inventory is partial; resolve diagnostics before drafting")
         if inventory["sourceTreeDigest"] != self.current_tree_digest():
@@ -692,6 +701,8 @@ class ForceAppKnowledge:
             old.unlink()
         bundles: list[dict[str, Any]] = []
         for component in inventory["components"]:
+            if metadata_type is not None and component["metadataType"] != metadata_type:
+                continue
             candidates = self.candidate_claims(component)
             if not candidates:
                 continue
@@ -814,6 +825,7 @@ class ForceAppKnowledge:
             "repositoryCommit": commit,
             "sourceTreeDigest": inventory["sourceTreeDigest"],
             "reviewStatus": "draft",
+            **({"metadataTypeFilter": metadata_type} if metadata_type else {}),
             "claimCount": sum("claimFile" in item for item in bundles),
             "bundles": bundles,
             "limitations": [
@@ -839,6 +851,10 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("inventory")
     draft = commands.add_parser("draft")
     draft.add_argument("--observed-at")
+    draft.add_argument(
+        "--metadata-type",
+        help="draft candidates only for this inventory metadata type (batch mode)",
+    )
     return parser
 
 
@@ -857,12 +873,14 @@ def main(argv: Iterable[str] | None = None) -> int:
             }
         else:
             observed_at = parse_time(args.observed_at) if args.observed_at else utc_now()
-            result = builder.draft(observed_at)
+            result = builder.draft(observed_at, args.metadata_type)
             summary = {
                 "path": builder.relative(builder.draft_root / "manifest.json"),
                 "claims": result["claimCount"],
                 "reviewStatus": result["reviewStatus"],
             }
+            if args.metadata_type:
+                summary["metadataTypeFilter"] = args.metadata_type
     except (KnowledgeBuildError, json.JSONDecodeError, yaml.YAMLError) as exc:
         print(f"ERROR: {exc}")
         return 2

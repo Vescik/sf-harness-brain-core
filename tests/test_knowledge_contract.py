@@ -443,6 +443,29 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         rendered = (self.root / ".ai/knowledge/automation-map.md").read_text(encoding="utf-8")
         self.assertIn("KCLM-DESC-FLOW-001", rendered)
 
+    def test_approve_claim_batch_cli_argument_contract(self) -> None:
+        # The CLI runs against the repository root, not the temp fixture — so assert the
+        # argument-contract behavior here (batch/single exclusivity, spec parsing, requirements).
+        for bad_args, expected in (
+            (["--claim-spec", "KCLM-X:1", "--claim-id", "KCLM-X"], "not both"),
+            (["--claim-spec", "no-revision"], "claimId>:<revision"),
+            ([], "requires --claim-id"),
+        ):
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/knowledge_registry.py"),
+                    "approve-claim",
+                    *bad_args,
+                ],
+                capture_output=True,
+                text=True,
+                cwd=ROOT,
+                timeout=30,
+            )
+            self.assertEqual(2, completed.returncode)
+            self.assertIn(expected, completed.stdout)
+
     def test_propose_rejects_unfilled_description_sentinel(self) -> None:
         claim = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
         claim["statement"] = (

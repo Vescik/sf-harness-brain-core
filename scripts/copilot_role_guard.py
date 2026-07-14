@@ -335,26 +335,49 @@ def knowledge_registry_command_allowed(
     if command == "approve-claim":
         if role != "config-investigator":
             return False
-        allowed_flags = {"--claim-id", "--expected-revision", "--decision", "--rationale"}
+        allowed_flags = {
+            "--claim-id",
+            "--expected-revision",
+            "--claim-spec",
+            "--decision",
+            "--rationale",
+        }
         seen: dict[str, str] = {}
+        claim_specs: list[str] = []
         index = 1
         while index < len(parts):
             token = parts[index]
             if "=" in token:
                 flag, value = token.split("=", 1)
-                if flag not in allowed_flags or not value:
-                    return False
-                seen[flag] = value
                 index += 1
-                continue
-            if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
+            else:
+                flag = token
+                if index + 1 >= len(parts) or parts[index + 1].startswith("--"):
+                    return False
+                value = parts[index + 1]
+                index += 2
+            if flag not in allowed_flags or not value:
                 return False
-            seen[token] = parts[index + 1]
-            index += 2
+            if flag == "--claim-spec":
+                claim_specs.append(value)
+            else:
+                seen[flag] = value
+        if seen.get("--decision", "verify") not in {"verify", "reject"}:
+            return False
+        if claim_specs:
+            # Batch form: one human confirmation covers up to 25 explicit claim:revision pairs.
+            return (
+                "--claim-id" not in seen
+                and "--expected-revision" not in seen
+                and len(claim_specs) <= 25
+                and all(
+                    re.fullmatch(r"KCLM-[A-Z0-9][A-Z0-9-]{2,79}:\d+", spec)
+                    for spec in claim_specs
+                )
+            )
         return (
             bool(re.fullmatch(r"KCLM-[A-Z0-9][A-Z0-9-]{2,79}", seen.get("--claim-id", "")))
             and seen.get("--expected-revision", "").isdigit()
-            and seen.get("--decision", "verify") in {"verify", "reject"}
         )
     if command != "propose" or role != "config-investigator":
         return False
@@ -394,16 +417,25 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
         return False
     if parts == ["inventory"]:
         return True
-    if parts == ["draft"]:
-        return True
-    if len(parts) == 3 and parts[0] == "draft" and parts[1] == "--observed-at":
-        return bool(
-            re.fullmatch(
-                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
-                parts[2],
-            )
-        )
-    return False
+    if parts[0] != "draft":
+        return False
+    validators = {
+        "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
+        "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
+    }
+    index = 1
+    while index < len(parts):
+        token = parts[index]
+        if "=" in token:
+            flag, value = token.split("=", 1)
+            index += 1
+        else:
+            flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
+            index += 2
+        pattern = validators.get(flag)
+        if pattern is None or not re.fullmatch(pattern, value):
+            return False
+    return True
 
 
 # Read-only orientation commands available to every role. Rationale: a default-deny terminal

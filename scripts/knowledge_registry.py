@@ -1222,8 +1222,14 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--expected-revision", required=True, type=int)
 
     approve = commands.add_parser("approve-claim")
-    approve.add_argument("--claim-id", required=True)
-    approve.add_argument("--expected-revision", required=True, type=int)
+    approve.add_argument("--claim-id")
+    approve.add_argument("--expected-revision", type=int)
+    approve.add_argument(
+        "--claim-spec",
+        action="append",
+        default=[],
+        help="batch form: <claimId>:<revision>, repeatable (max 25 per invocation)",
+    )
     approve.add_argument("--decision", choices=("verify", "reject"), default="verify")
     approve.add_argument("--rationale")
 
@@ -1263,9 +1269,34 @@ def main() -> int:
         elif args.command == "promote":
             result = registry.promote(args.claim_id, args.review_id, args.expected_revision)
         elif args.command == "approve-claim":
-            result = registry.approve_claim(
-                args.claim_id, args.expected_revision, args.decision, args.rationale
-            )
+            if args.claim_spec:
+                if args.claim_id is not None or args.expected_revision is not None:
+                    raise ContractError(
+                        "use either --claim-id/--expected-revision or repeatable --claim-spec, not both"
+                    )
+                if len(args.claim_spec) > 25:
+                    raise ContractError("a chat-approval batch is capped at 25 claims")
+                batch: list[tuple[str, int]] = []
+                for spec in args.claim_spec:
+                    claim_id, separator, revision = spec.rpartition(":")
+                    if not separator or not revision.isdigit():
+                        raise ContractError(
+                            f"--claim-spec must be <claimId>:<revision>, got {spec!r}"
+                        )
+                    batch.append((claim_id, int(revision)))
+                results = [
+                    registry.approve_claim(claim_id, revision, args.decision, args.rationale)
+                    for claim_id, revision in batch
+                ]
+                result = {"batch": results, "count": len(results)}
+            else:
+                if args.claim_id is None or args.expected_revision is None:
+                    raise ContractError(
+                        "approve-claim requires --claim-id and --expected-revision (or --claim-spec)"
+                    )
+                result = registry.approve_claim(
+                    args.claim_id, args.expected_revision, args.decision, args.rationale
+                )
         elif args.command == "reconcile":
             result = registry.reconcile(load_yaml(registry.contained_input(args.claim_file)))
         elif args.command == "query":

@@ -34,7 +34,7 @@ Static validation in CI proves file shape and policy invariants. It does not pro
 installed VS Code build exposes every tool. Before a developer pilot, open **Chat: Open
 Customizations** and **Chat Diagnostics** on each supported platform and record:
 
-- exactly five agents, eleven public prompts, fifteen internal skills, and three Principle files;
+- exactly five agents, twelve public prompts, sixteen internal skills, and three Principle files;
 - no unresolved tool, handoff, frontmatter, hook, or MCP diagnostic;
 - one successful harmless read call through each configured external server.
 

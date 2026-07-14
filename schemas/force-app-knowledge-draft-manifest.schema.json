@@ -15,6 +15,7 @@
     "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
     "sourceTreeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "reviewStatus": { "const": "draft" },
+    "metadataTypeFilter": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$" },
     "claimCount": { "type": "integer", "minimum": 0 },
     "bundles": {
       "type": "array",

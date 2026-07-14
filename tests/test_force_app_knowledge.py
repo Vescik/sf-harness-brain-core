@@ -178,6 +178,27 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             evidence = (self.root / bundle["evidenceFile"]).read_text(encoding="utf-8")
             self.assertNotIn("never-export-this-secret", evidence)
 
+    def test_metadata_type_filter_drafts_one_type_per_batch(self) -> None:
+        self.builder.inventory()
+        manifest = self.builder.draft(
+            datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc), "ApprovalProcess"
+        )
+        self.assertEqual("ApprovalProcess", manifest["metadataTypeFilter"])
+        # One automation claim + one description stub for the single approval process.
+        self.assertEqual(2, manifest["claimCount"])
+        claims = [
+            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
+            for bundle in manifest["bundles"]
+            if "claimFile" in bundle
+        ]
+        self.assertTrue(
+            all("Engagement_Approval_v2" in claim["subject"]["identity"] for claim in claims)
+        )
+        with self.assertRaisesRegex(KnowledgeBuildError, "available types"):
+            self.builder.draft(
+                datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc), "NoSuchType"
+            )
+
     def test_dirty_or_changed_source_cannot_be_commit_bound_evidence(self) -> None:
         self.builder.inventory()
         field = self.root / "force-app/main/default/objects/Engagement__c/fields/Account__c.field-meta.xml"

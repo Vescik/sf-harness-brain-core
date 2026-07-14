@@ -87,6 +87,18 @@ completeness, limitations, and a digest of the sanitized observation.
   nothing (2026-07-14 upgrade).
 - Non-metadata files: path, category and digest only, explicitly counted as generic coverage.
 
+## Batch conversion (`/batch-knowledge`)
+
+Large architectures are converted one metadata type per batch through the five-phase
+`batch-knowledge` skill: DISCOVER (inventory + existing-claim query + `knowledge.chatReviewer`
+check) → PLAN (per-component dispositions, chunks of ≤25, expected approval clicks) → VERIFY PLAN
+(clean-tree re-check, reconciliation, explicit human go-ahead) → EXECUTE (per chunk:
+`draft --metadata-type <Type>`, agent-written descriptions, `propose`, one
+`approve-claim --claim-spec <id>:<rev> …` batch = one human confirmation) → VERIFY (registry
+query against the plan, `render-indexes --check`, batch report under `output/documentation/`).
+Stop rules (dirty tree, propose failure, reconciliation conflict, ungroundable description)
+pause the batch instead of improvising.
+
 Credential values, source bodies, records, tokens, private keys, and inferred business semantics
 are never included.
 

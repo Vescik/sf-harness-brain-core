@@ -589,6 +589,26 @@ class RoleGuardTests(unittest.TestCase):
             with self.subTest(command=bad):
                 self.assertFalse(role_guard.allowed_role_command(bad, ROOT, "config-investigator"))
 
+    def test_investigator_batch_approve_claim_specs_are_validated(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        good = (
+            "python scripts/knowledge_registry.py approve-claim "
+            "--claim-spec KCLM-A-1:1 --claim-spec KCLM-B-2:3"
+        )
+        self.assertTrue(role_guard.allowed_role_command(good, ROOT, "config-investigator"))
+        many = " ".join(
+            ["python scripts/knowledge_registry.py approve-claim"]
+            + [f"--claim-spec KCLM-A-{i}:1" for i in range(26)]
+        )
+        for bad in (
+            many,  # over the 25-claim cap
+            "python scripts/knowledge_registry.py approve-claim --claim-spec KCLM-A-1",  # no revision
+            "python scripts/knowledge_registry.py approve-claim --claim-spec KCLM-A-1:1 --claim-id KCLM-B-2 --expected-revision 1",  # mixed forms
+        ):
+            with self.subTest(command=bad[:60]):
+                self.assertFalse(role_guard.allowed_role_command(bad, ROOT, "config-investigator"))
+
     def test_designer_and_developer_may_use_guarded_salesforce_read(self) -> None:
         from scripts import copilot_role_guard as role_guard
 
