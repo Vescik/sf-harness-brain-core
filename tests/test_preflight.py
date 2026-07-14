@@ -114,7 +114,7 @@ class PreflightValidationTests(unittest.TestCase):
         self.assertEqual("stdio", ado["type"])
         self.assertIn("@azure-devops/mcp@2.8.1", ado["args"])
         self.assertEqual(
-            ["work-items", "wiki", "test-plans"],
+            ["work-items", "wiki", "test-plans", "search"],
             ado["args"][ado["args"].index("-d") + 1 :],
         )
 

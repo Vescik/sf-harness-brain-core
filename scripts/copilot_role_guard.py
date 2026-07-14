@@ -17,6 +17,7 @@ from typing import Any, Iterable
 ALLOWED_PREFIXES = {
     "solution-designer": (
         ".cache/ado-items/",
+        ".cache/ado-wiki/",
         "output/solution-design/",
     ),
     "config-investigator": (
@@ -28,11 +29,13 @@ ALLOWED_PREFIXES = {
         "output/feature-health/",
         "output/handover/",
         ".cache/ado-items/",
+        ".cache/ado-wiki/",
         ".cache/test-cases/",
     ),
     "development-assistant": (
         "output/documentation/",
         ".cache/ado-items/",
+        ".cache/ado-wiki/",
         # Agent-authored dev-tool batch PLANS only; approval stays human-terminal-only
         # (scripts/approve_dev_tool_batch.py — the safety hook denies Copilot invocations)
         # and receipts under .cache/receipts/ are written exclusively by governed executors.

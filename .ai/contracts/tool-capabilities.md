@@ -5,7 +5,7 @@ upgrade.
 
 | Logical capability | Configured implementation | Consumers |
 |---|---|---|
-| ADO work-item/query/wiki/test-plan reads | `ado-readonly/*` local stdio MCP (`@azure-devops/mcp`, version-pinned, domains bounded to work-items/wiki/test-plans) | intake, feature health, QA sync, handover |
+| ADO work-item/query/wiki/test-plan reads + project-scoped text search | `ado-readonly/*` local stdio MCP (`@azure-devops/mcp`, version-pinned, domains bounded to work-items/wiki/test-plans/search) | intake, feature health, QA sync, handover, search-ado |
 | Reconciled Salesforce org identity | `salesforce-readonly/review_org_identity` | investigator, design, review |
 | Reconciled installed package inventory | `salesforce-readonly/review_installed_packages` | investigator, design, review |
 | Reconciled allowlisted object contract | `salesforce-readonly/review_object_contract` | investigator, design, review, QA |
@@ -22,7 +22,10 @@ upgrade.
 - `wit_work_item`: get, get_batch, list_comments, list_revisions
 - `wit_query`: get, get_results
 - `wit_work_item_attachment`: download only after MIME/size validation
-- `wiki`: list/get operations only
+- `wiki`: list/get operations only (`wiki_list_wikis`, `wiki_list_pages`, `wiki_get_page`,
+  `wiki_get_page_content`); `wiki_create_or_update_page` is never used
+- `search_wiki`, `search_workitem`: always with the configured `project` (the hook denies
+  unscoped calls); `search_code` is exposed by the domain but unused
 - `testplan`: list_plans, list_suites, list_cases
 
 Exact dispatcher input schemas come from the running server and must be captured in sanitized

@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 5, "prompts": 16, "skills": 18, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 5, "prompts": 17, "skills": 19, "instructions": 3}
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",
@@ -153,6 +153,7 @@ def check_required_files(audit: Audit) -> None:
         ".ai/repo-map.json",
         "scripts/approve_dev_tool_batch.py",
         "schemas/dev-tool-batch.schema.json",
+        "schemas/ado-wiki-cache.schema.json",
         ".ai/contracts/execution-contract.md",
         ".ai/contracts/tool-capabilities.md",
         ".ai/contracts/knowledge-lifecycle.md",
@@ -479,9 +480,11 @@ def check_settings_and_mcp(audit: Audit) -> None:
             "work-items",
             "wiki",
             "test-plans",
+            "search",
         ],
         "ADO MCP args must pin the package version, take the organization from the "
-        "preflight-checked environment, and bound the domains to work-items/wiki/test-plans",
+        "preflight-checked environment, and bound the domains to "
+        "work-items/wiki/test-plans/search",
     )
     audit.require(not any(item.get("id") == "ado_org" for item in mcp.get("inputs", [])), "independent ADO organization prompt is forbidden")
     for name in ("salesforce-readonly",):
@@ -710,6 +713,7 @@ def check_python_yaml_safety(audit: Audit) -> None:
 def check_schemas_and_evals(audit: Audit) -> None:
     mappings = {
         "ado-item-cache.schema.json": ("ado-item.complete.json", "ado-item.partial.json"),
+        "ado-wiki-cache.schema.json": ("ado-wiki.complete.json", "ado-wiki.partial.json"),
         "test-case-cache.schema.json": ("test-cases.complete.json", "test-cases.partial.json"),
         "output-envelope.schema.json": ("output.incomplete.json",),
     }
@@ -811,6 +815,7 @@ def check_grounding_contracts(audit: Audit) -> None:
         "force-app-knowledge-worklist.schema.json",
         "knowledge-claims-index.schema.json",
         "dev-tool-batch.schema.json",
+        "ado-wiki-cache.schema.json",
     ):
         schema = load_json(ROOT / "schemas" / schema_name, audit)
         try:

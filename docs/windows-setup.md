@@ -182,6 +182,6 @@ Get-Content .cache\denials.log -Tail 20
   tool. Bare `core_list_orgs`/`run_soql_query`/`deploy_metadata` are no longer bypassable.
 - **ADO toolset bounding — FIXED by the stdio switch.** The hosted endpoint did not honor the
   `X-MCP-Toolsets` header, so the harness now runs the local `@azure-devops/mcp` (version-pinned)
-  whose `-d work-items wiki test-plans` domain args are actually honored. The local server has no
-  server-side read-only mode; read-only remains harness policy (hooks + role guard) — an accepted
-  owner decision (2026-07-14). Org-scope + enumeration guards stay the effective control.
+  whose `-d work-items wiki test-plans search` domain args are actually honored. The local server
+  has no server-side read-only mode; read-only remains harness policy (hooks + role guard) — an
+  accepted owner decision (2026-07-14). Org-scope + enumeration guards stay the effective control.

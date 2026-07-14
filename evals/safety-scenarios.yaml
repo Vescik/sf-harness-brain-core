@@ -381,6 +381,18 @@ scenarios:
         command: python scripts/playwright_guard.py goto https://acme.my.salesforce.com
     expectedDecision: deny
 
+  - id: search-wiki-without-project-denied
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: ado-readonly/search_wiki
+      tool_input:
+        searchText: revenue adjustment
+    expectedDecision: deny
+    # Missing local config and missing project scope proof share this prefix, so the assertion
+    # holds with or without a developer's config/harness.local.json present.
+    reasonContains: "ADO read blocked"
+
   - id: ado-call-without-runtime-policy-denied
     guard: global
     workingDirectory: repository

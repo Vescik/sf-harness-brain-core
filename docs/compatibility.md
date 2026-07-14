@@ -14,7 +14,7 @@ Last verified against vendor documentation: 2026-07-10
 | PyYAML | `>=6,<7`; CI uses the lock file | Frontmatter and evaluation validation. |
 | jsonschema | `>=4,<5`; CI uses the lock file | Draft 2020-12 configuration/cache/output validation. |
 | Node.js | 22+ (`.nvmrc` pins 24) | The pinned `@salesforce/mcp` requires Node ≥22.19; CI installs the `.nvmrc` version. |
-| Azure DevOps MCP | Local stdio `@azure-devops/mcp@2.8.1` (pinned in `.vscode/mcp.json`) | Switched from the hosted endpoint 2026-07-14: its toolset header was not honored, while local `-d` domain args are. No server-side read-only — read-only is harness policy (hooks); requires `az login`. |
+| Azure DevOps MCP | Local stdio `@azure-devops/mcp@2.8.1` (pinned in `.vscode/mcp.json`), domains work-items/wiki/test-plans/search | Switched from the hosted endpoint 2026-07-14: its toolset header was not honored, while local `-d` domain args are. No server-side read-only — read-only is harness policy (hooks); requires `az login`. |
 | Salesforce DX MCP | `@salesforce/mcp@0.30.15` | Pinned to the version verified on 2026-07-10; update deliberately. |
 | Playwright CLI | `@playwright/cli@0.1.17` | Use executable `playwright-cli` only through `scripts/playwright_guard.py`. |
 

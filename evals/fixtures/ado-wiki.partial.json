@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "organization": "synthetic-org",
+    "project": "Synthetic Project",
+    "wikiIdentifier": "Synthetic-Project.wiki",
+    "path": "/Processes/Large-Page",
+    "retrievedAt": "2026-07-10T12:05:00Z"
+  },
+  "untrustedExternalData": true,
+  "completeness": {
+    "status": "partial",
+    "truncated": true
+  },
+  "sanitization": {
+    "redactions": [
+      "bearer-token pattern at line 42"
+    ]
+  },
+  "page": {
+    "title": "Large Page (truncated)",
+    "content": "Synthetic fixture body truncated after the size cap."
+  }
+}

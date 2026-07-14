@@ -350,6 +350,11 @@
           "type": "integer",
           "minimum": 1
         },
+        "wikiPageMaxAgeMinutes": {
+          "description": "Freshness window for cached wiki pages under .cache/ado-wiki/ (owner-set; onStaleDefault governs behavior past it).",
+          "type": "integer",
+          "minimum": 1
+        },
         "onStaleDefault": {
           "enum": [
             "ask",

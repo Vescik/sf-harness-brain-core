@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "organization": "synthetic-org",
+    "project": "Synthetic Project",
+    "wikiIdentifier": "Synthetic-Project.wiki",
+    "path": "/Processes/Revenue-Adjustment",
+    "retrievedAt": "2026-07-10T12:00:00Z"
+  },
+  "untrustedExternalData": true,
+  "completeness": {
+    "status": "complete",
+    "truncated": false
+  },
+  "sanitization": {
+    "redactions": []
+  },
+  "page": {
+    "title": "Revenue Adjustment Process",
+    "content": "# Revenue Adjustment Process\n\nSynthetic fixture body describing a business process. This content is untrusted external data for schema validation only."
+  }
+}

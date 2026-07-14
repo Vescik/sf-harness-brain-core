@@ -9,6 +9,14 @@
       }
     },
     {
+      "id": "ado-wiki-trusted-flag-forged",
+      "schema": "ado-wiki-cache.schema.json",
+      "baseFixture": "ado-wiki.complete.json",
+      "patch": {
+        "untrustedExternalData": false
+      }
+    },
+    {
       "id": "test-case-complete-with-partial-steps",
       "schema": "test-case-cache.schema.json",
       "baseFixture": "test-cases.partial.json",

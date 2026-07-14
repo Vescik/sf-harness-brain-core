@@ -26,7 +26,7 @@ SEED_PATH = ROOT / "config/repo-map-seed.json"
 MAP_MD_PATH = ROOT / ".ai/repo-map.md"
 MAP_JSON_PATH = ROOT / ".ai/repo-map.json"
 WORD_BUDGET = 800
-ONE_LINER_WORDS = 7
+ONE_LINER_WORDS = 6
 LINK_RE = re.compile(r"\]\(([^)]+)\)")
 
 

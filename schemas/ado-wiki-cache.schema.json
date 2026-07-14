@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:ado-wiki-cache.schema.json",
+  "title": "Cached sanitized Azure DevOps wiki page",
+  "description": "One fetched wiki page under .cache/ado-wiki/, written by the search-ado skill. Untrusted external data with provenance and recorded redactions; freshness is governed by cache.wikiPageMaxAgeMinutes and cache.onStaleDefault.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "source", "untrustedExternalData", "completeness", "sanitization", "page"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["organization", "project", "wikiIdentifier", "path", "retrievedAt"],
+      "properties": {
+        "organization": { "type": "string", "minLength": 1 },
+        "project": { "type": "string", "minLength": 1 },
+        "wikiIdentifier": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "retrievedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "untrustedExternalData": { "const": true },
+    "completeness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "truncated"],
+      "properties": {
+        "status": { "enum": ["complete", "partial"] },
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "sanitization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redactions"],
+      "properties": {
+        "redactions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "content"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 400 },
+        "content": { "type": "string" }
+      }
+    }
+  }
+}
