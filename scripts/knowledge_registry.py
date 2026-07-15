@@ -10,6 +10,7 @@ import json
 import os
 import re
 import tempfile
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -31,9 +32,21 @@ SCOPE_FIELDS = (
     "environment",
     "orgKey",
     "packageNamespace",
-    "packageKey",
     "packageVersion",
     "repositoryCommit",
+)
+
+# Reference-kind vocabulary for the component usage registry carried in assertion.value.references.
+# Field kinds name an `Object.Field`; object kinds name a bare object; invoke kinds name another
+# automation/method. Used to answer "which components use object/field X?" search queries.
+FIELD_REF_KINDS = frozenset(
+    {"reads-field", "writes-field", "references-field", "places-field", "grants-field-permission", "schema"}
+)
+OBJECT_REF_KINDS = frozenset(
+    {"operates-on", "object-token", "relationship", "queries-object", "dml-object", "grants-object-permission"}
+)
+INVOKE_REF_KINDS = frozenset(
+    {"invokes-apex", "invokes-class", "subflow", "action", "apex-method", "apex-controller"}
 )
 
 
@@ -301,6 +314,59 @@ class KnowledgeRegistry:
             )
 
     @staticmethod
+    def derived_polarity(claim: dict[str, Any]) -> str:
+        """Polarity of a claim, derived when the optional field is absent.
+
+        A false-valued object-existence or package-installation claim is negative; every other
+        source-defined claim is positive. An explicitly stored polarity is honoured, but the
+        false-value rule always wins so negative-claim governance cannot be bypassed by omitting it.
+        """
+
+        value = claim.get("assertion", {}).get("value")
+        if claim.get("claimType") in {"object-existence", "package-installation"} and value is False:
+            return "negative"
+        return claim.get("polarity", "positive")
+
+    @staticmethod
+    def claim_usage(claim: dict[str, Any]) -> dict[str, list[str]]:
+        """Objects, fields, and invoked components a claim's subject uses.
+
+        Reads the structured `references`/`facts` carried in assertion.value for source-defined
+        component and automation claims. Powers the --uses-object/--uses-field/--invokes queries and
+        the claims-index usesObjects/usesFields summary. Returns empty lists for claims without a
+        usage payload.
+        """
+
+        value = claim.get("assertion", {}).get("value")
+        objects: set[str] = set()
+        fields: set[str] = set()
+        invokes: set[str] = set()
+        if isinstance(value, dict):
+            facts = value.get("facts")
+            if isinstance(facts, dict):
+                if isinstance(facts.get("object"), str):
+                    objects.add(facts["object"])
+                for name in facts.get("referencedObjects", []) or []:
+                    objects.add(str(name))
+            for reference in value.get("references", []) or []:
+                kind = reference.get("kind")
+                target = str(reference.get("target", ""))
+                if not target:
+                    continue
+                if kind in FIELD_REF_KINDS:
+                    fields.add(target)
+                    objects.add(target.split(".", 1)[0])
+                elif kind in OBJECT_REF_KINDS:
+                    objects.add(target.split(".", 1)[0])
+                elif kind in INVOKE_REF_KINDS:
+                    invokes.add(target)
+        return {
+            "objects": sorted(name for name in objects if name),
+            "fields": sorted(fields),
+            "invokes": sorted(invokes),
+        }
+
+    @staticmethod
     def structured_fact(claim: dict[str, Any]) -> str:
         identity = str(claim["subject"]["identity"])
         value = claim["assertion"]["value"]
@@ -345,8 +411,8 @@ class KnowledgeRegistry:
             "packageVersion",
             "repositoryCommit",
         ):
-            claim_value = claim_scope[field]
-            evidence_value = evidence[field]
+            claim_value = claim_scope.get(field)
+            evidence_value = evidence.get(field)
             if claim_value is not None or evidence_value is not None:
                 if claim_value != evidence_value:
                     raise ContractError(f"{evidence_id}: {field} scope mismatch")
@@ -374,7 +440,7 @@ class KnowledgeRegistry:
     ) -> None:
         claim_id = str(claim["claimId"])
         for field in ("supersedes", "contradicts", "relatedClaims"):
-            refs = [str(ref) for ref in claim[field]]
+            refs = [str(ref) for ref in claim.get(field, [])]
             if claim_id in refs:
                 raise ContractError(f"{claim_id}: {field} may not reference itself")
             missing = sorted(set(refs) - set(claim_by_id))
@@ -603,6 +669,9 @@ class KnowledgeRegistry:
         keyword: str | None = None,
         text: str | None = None,
         feature: str | None = None,
+        uses_object: str | None = None,
+        uses_field: str | None = None,
+        invokes: str | None = None,
         at: datetime | None = None,
     ) -> dict[str, Any]:
         filters = {
@@ -617,6 +686,9 @@ class KnowledgeRegistry:
             "keyword": keyword,
             "text": text,
             "feature": feature,
+            "uses_object": uses_object,
+            "uses_field": uses_field,
+            "invokes": invokes,
         }
         if not any(value is not None for value in filters.values()):
             raise ContractError("query requires at least one Knowledge filter")
@@ -666,6 +738,20 @@ class KnowledgeRegistry:
                 if isinstance(value, dict) and isinstance(value.get("description"), str):
                     haystack += "\n" + value["description"]
                 if text.casefold() not in haystack.casefold():
+                    continue
+            if uses_object is not None or uses_field is not None or invokes is not None:
+                usage = self.claim_usage(claim)
+                if uses_object is not None and uses_object.casefold() not in {
+                    name.casefold() for name in usage["objects"]
+                }:
+                    continue
+                if uses_field is not None and uses_field.casefold() not in {
+                    name.casefold() for name in usage["fields"]
+                }:
+                    continue
+                if invokes is not None and invokes.casefold() not in {
+                    name.casefold() for name in usage["invokes"]
+                }:
                     continue
             if not self.claim_is_effective(claim, effective_at):
                 continue
@@ -941,7 +1027,7 @@ class KnowledgeRegistry:
             age = review_time - observed
             if age > timedelta(days=claim_policy["maxReviewAgeDays"]):
                 raise ContractError(f"{evidence['evidenceId']}: evidence is stale under policy")
-            if claim["polarity"] == "negative" and (
+            if self.derived_polarity(claim) == "negative" and (
                 not evidence["completeness"]["enumerationComplete"]
                 or not evidence["completeness"]["permissionsProven"]
             ):
@@ -949,11 +1035,13 @@ class KnowledgeRegistry:
                     f"{evidence['evidenceId']}: negative claim lacks complete enumeration or permission proof"
                 )
             if (
-                claim["polarity"] == "negative"
+                self.derived_polarity(claim) == "negative"
                 and age > timedelta(days=policy["negativeClaims"]["maxReviewAgeDays"])
             ):
                 raise ContractError(f"{evidence['evidenceId']}: negative-claim evidence is stale")
-        independent = {record["independenceKey"] for record in evidence_records}
+        independent = {
+            record.get("independenceKey", record["evidenceId"]) for record in evidence_records
+        }
         if len(independent) < claim_policy["minimumIndependentEvidence"]:
             raise ContractError("review does not meet independent evidence minimum")
         review_by = parse_time(claim["reviewBy"], "claim reviewBy")
@@ -1226,6 +1314,130 @@ class KnowledgeRegistry:
             )
         return "referenced by an active contradiction"
 
+    def stale_report(self, warn_days: int = 30, at: datetime | None = None) -> dict[str, Any]:
+        """Report verified claims whose freshness window has passed or is about to (read-only).
+
+        A verified claim stops being an established fact once `reviewBy` passes (`is_fresh`). This
+        surfaces `expired` claims (already past `reviewBy`, so no longer effective) and `expiring`
+        claims (within `warn_days` of expiry) so a human can schedule re-verification. It never
+        mutates status — transitioning a claim to `stale` remains a governed human review.
+        """
+
+        effective_at = self.at_time(at)
+        self.validate_all(effective_at, enforce_current=False)
+        horizon = effective_at + timedelta(days=warn_days)
+        expired: list[dict[str, Any]] = []
+        expiring: list[dict[str, Any]] = []
+        for _, claim in self.records(self.claims):
+            if claim["status"] != "verified":
+                continue
+            review_by = parse_time(claim["reviewBy"], "claim reviewBy")
+            entry = {
+                "claimId": claim["claimId"],
+                "claimType": claim["claimType"],
+                "subject": claim["subject"],
+                "reviewBy": claim["reviewBy"],
+                "effective": self.claim_is_effective(claim, effective_at),
+            }
+            if review_by <= effective_at:
+                expired.append(entry)
+            elif review_by <= horizon:
+                expiring.append(entry)
+        expired.sort(key=lambda item: (item["reviewBy"], item["claimId"]))
+        expiring.sort(key=lambda item: (item["reviewBy"], item["claimId"]))
+        return {
+            "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
+            "warnDays": warn_days,
+            "expiredCount": len(expired),
+            "expiringCount": len(expiring),
+            "expired": expired,
+            "expiring": expiring,
+        }
+
+    HARD_CITATION_STATUSES = {"rejected", "superseded"}
+
+    def verify_citations(
+        self,
+        claim_refs: list[dict[str, Any]],
+        at: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Validate cited claim references against current canonical state (read-only, advisory).
+
+        Each reference (from a handoff/output envelope `claimRefs` entry, or a `<claimId>:<revision>`
+        spec) is checked for existence, revision/sha match against the current claim file, and
+        effectiveness. Citing a missing/rejected/superseded claim or a drifted snapshot is `invalid`;
+        citing a stale or contested claim is a `warning`. Nothing is mutated.
+        """
+
+        effective_at = self.at_time(at)
+        self.validate_all(effective_at, enforce_current=False)
+        citations: list[dict[str, Any]] = []
+        for ref in claim_refs:
+            claim_id = str(ref["claimId"])
+            revision = ref.get("revision")
+            sha = ref.get("sha256")
+            entry: dict[str, Any] = {"claimId": claim_id}
+            if revision is not None:
+                entry["revision"] = revision
+            path = self.claim_path(claim_id)
+            if not path.is_file():
+                verdict, severity, reason = "missing", "invalid", "no canonical claim with this id"
+            else:
+                claim = load_yaml(path)
+                if sha is not None and file_sha256(path) != sha:
+                    verdict, severity, reason = (
+                        "sha-mismatch", "invalid",
+                        "cited snapshot digest does not match the current claim",
+                    )
+                elif revision is not None and int(claim["revision"]) != int(revision):
+                    verdict, severity, reason = (
+                        "revision-mismatch", "invalid",
+                        f"cited revision {revision} != current revision {claim['revision']}",
+                    )
+                elif not self.claim_is_effective(claim, effective_at):
+                    verdict = "not-effective"
+                    reason = self.non_effective_reason(claim, effective_at)
+                    severity = (
+                        "invalid"
+                        if claim.get("status") in self.HARD_CITATION_STATUSES
+                        else "warning"
+                    )
+                else:
+                    verdict, severity, reason = "ok", "ok", None
+            entry["verdict"] = verdict
+            entry["severity"] = severity
+            if reason:
+                entry["reason"] = reason
+            citations.append(entry)
+        counts = Counter(item["severity"] for item in citations)
+        return {
+            "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
+            "citationCount": len(citations),
+            "counts": {
+                "ok": counts.get("ok", 0),
+                "warning": counts.get("warning", 0),
+                "invalid": counts.get("invalid", 0),
+            },
+            "citations": citations,
+        }
+
+    @staticmethod
+    def claim_refs_from_envelope(envelope: dict[str, Any]) -> list[dict[str, Any]]:
+        """Normalize an envelope's claimRefs (objects or bare id strings) to dicts with claimId."""
+
+        raw = envelope.get("claimRefs")
+        if not isinstance(raw, list):
+            raise ContractError("envelope has no claimRefs array to verify")
+        refs: list[dict[str, Any]] = []
+        for item in raw:
+            if isinstance(item, str):
+                refs.append({"claimId": item})
+            elif isinstance(item, dict) and "claimId" in item:
+                refs.append(item)
+            else:
+                raise ContractError(f"unrecognized claimRefs entry: {item!r}")
+        return refs
+
     def rendered_domain(
         self, domain: str, claims: list[dict[str, Any]], at: datetime
     ) -> str:
@@ -1280,6 +1492,30 @@ class KnowledgeRegistry:
                     f"{self.escape_table(self.structured_fact(claim))} | "
                     f"{self.escape_table(self.non_effective_reason(claim, at))} |"
                 )
+        if domain == "automation-map" and claims:
+            by_object: dict[str, set[str]] = {}
+            for claim in claims:
+                for obj in self.claim_usage(claim)["objects"]:
+                    by_object.setdefault(obj, set()).add(str(claim["claimId"]))
+            if by_object:
+                lines.extend(
+                    [
+                        "",
+                        "## Automations by object",
+                        "",
+                        "Reverse index derived from the source-declared component usage registry. Includes "
+                        "non-effective claims; confirm status in the tables above before relying on a row.",
+                        "",
+                        "| Object | Automations |",
+                        "|---|---|",
+                    ]
+                )
+                for obj in sorted(by_object):
+                    automations = ", ".join(
+                        f"[{claim_id}](claims/{claim_id}.yaml)"
+                        for claim_id in sorted(by_object[obj])
+                    )
+                    lines.append(f"| {self.escape_table(obj)} | {automations} |")
         lines.extend(["", "<!-- END GENERATED CLAIM INDEX -->", ""])
         return "\n".join(lines)
 
@@ -1307,6 +1543,11 @@ class KnowledgeRegistry:
         value = claim["assertion"]["value"]
         if isinstance(value, dict) and isinstance(value.get("description"), str):
             row["descriptionExcerpt"] = value["description"][:240]
+        usage = self.claim_usage(claim)
+        if usage["objects"]:
+            row["usesObjects"] = usage["objects"]
+        if usage["fields"]:
+            row["usesFields"] = usage["fields"]
         return row
 
     def rendered_feature_map(self, claims: list[dict[str, Any]], at: datetime) -> str:
@@ -1465,6 +1706,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--feature",
         help="match one feature-membership tag (exact name, case-insensitive)",
     )
+    query.add_argument(
+        "--uses-object",
+        help="match claims whose subject uses this object (from the component usage registry)",
+    )
+    query.add_argument(
+        "--uses-field",
+        help="match claims whose subject uses this Object.Field (from the component usage registry)",
+    )
+    query.add_argument(
+        "--invokes",
+        help="match claims whose subject invokes this Apex class, subflow, or action",
+    )
     query.add_argument("--at")
 
     render = commands.add_parser("render-indexes")
@@ -1474,6 +1727,34 @@ def build_parser() -> argparse.ArgumentParser:
         "keyword-report",
         help="aggregate candidateKeywords across claims for a human taxonomy-curation session",
     )
+
+    stale = commands.add_parser(
+        "stale-report",
+        help="list verified claims past or approaching their reviewBy freshness deadline (read-only)",
+    )
+    stale.add_argument(
+        "--warn-days",
+        type=int,
+        default=30,
+        help="also report claims expiring within this many days (default 30)",
+    )
+    stale.add_argument("--at")
+
+    citations = commands.add_parser(
+        "verify-citations",
+        help="check an envelope's cited claimRefs resolve to existing, effective claims (advisory)",
+    )
+    citations.add_argument(
+        "--envelope", help="path to a handoff/output envelope JSON whose claimRefs are verified"
+    )
+    citations.add_argument(
+        "--claim-ref",
+        action="append",
+        default=[],
+        metavar="KCLM-...[:REV]",
+        help="verify a single claim id, optionally :revision (repeatable)",
+    )
+    citations.add_argument("--at")
     return parser
 
 
@@ -1537,12 +1818,40 @@ def main() -> int:
                 keyword=args.keyword,
                 text=args.text,
                 feature=args.feature,
+                uses_object=args.uses_object,
+                uses_field=args.uses_field,
+                invokes=args.invokes,
                 at=parse_time(args.at, "query --at") if args.at else None,
             )
         elif args.command == "render-indexes":
             result = registry.render_indexes(args.check)
         elif args.command == "keyword-report":
             result = registry.keyword_report()
+        elif args.command == "stale-report":
+            result = registry.stale_report(
+                args.warn_days,
+                at=parse_time(args.at, "stale-report --at") if args.at else None,
+            )
+        elif args.command == "verify-citations":
+            if bool(args.envelope) == bool(args.claim_ref):
+                raise ContractError(
+                    "verify-citations requires exactly one of --envelope or --claim-ref"
+                )
+            if args.envelope:
+                envelope = load_json(registry.contained_input(args.envelope))
+                claim_refs = registry.claim_refs_from_envelope(envelope)
+            else:
+                claim_refs = []
+                for spec in args.claim_ref:
+                    claim_id, separator, revision = spec.rpartition(":")
+                    if separator and revision.isdigit():
+                        claim_refs.append({"claimId": claim_id, "revision": int(revision)})
+                    else:
+                        claim_refs.append({"claimId": spec})
+            result = registry.verify_citations(
+                claim_refs,
+                at=parse_time(args.at, "verify-citations --at") if args.at else None,
+            )
         else:  # pragma: no cover - argparse guarantees a known command
             raise ContractError(f"unsupported command: {args.command}")
     except ContractError as exc:

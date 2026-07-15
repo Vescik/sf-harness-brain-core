@@ -1,4 +1,4 @@
-# Template: Knowledge Claim Proposal (Schema v2)
+# Template: Knowledge Claim Proposal (Schema v3)
 
 Canonical Knowledge is stored as YAML records, not as free-form entries inside domain Markdown
 files. Validate claims with `schemas/knowledge-claim.schema.json`, evidence with
@@ -24,26 +24,24 @@ The domain Markdown files are generated indexes. Do not paste a claim into them 
 ## Claim proposal skeleton
 
 ```yaml
-schemaVersion: 2
+schemaVersion: 3
 claimId: KCLM-<STABLE-ID>
 revision: 1
 domain: <allowed domain from the schema>
 claimType: <allowed claim type from the schema>
 subject:
-  kind: <object | field | relation | automation | package | record-type | process | integration | term | surface>
+  kind: <object | field | relation | automation | package | record-type | process | integration | term | surface | component>
   identity: <exact scoped identity>
 assertion:
   predicate: <stable predicate>
-  value: <structured value>
+  value: <structured value; for source-defined components this carries {metadataType, facts, references}>
 statement: <bounded factual statement; no rule or recommendation>
-polarity: <positive | negative>
 status: proposed
 assurance: <observed | corroborated | reported | inferred | unknown>
 scope:
   environment: <development | qa | uat | not-applicable>
   orgKey: <configured non-production key or null>
   packageNamespace: <namespace or null; primary package identity>
-  packageKey: <optional configured local key/name or null>
   packageVersion: <version or null>
   repositoryCommit: <40-character commit or null>
 evidenceRefs: [KEVD-<STABLE-ID>]
@@ -53,12 +51,21 @@ verifiedAt: null
 reviewBy: <UTC date-time computed from policy>
 sensitivity: <public | internal-sanitized>
 keywords: []
+candidateKeywords: []
 limitations: []
 supersedes: []
 supersededBy: null
 contradicts: []
-relatedClaims: []
 ```
+
+Optional fields the registry no longer requires: `polarity` (derived — store it only to assert a
+negative claim explicitly), `packageKey`, `relatedClaims`, and the evidence receipt's
+`independenceKey`, `sourceRevision` (still required for `metadata-repository` evidence), and
+`completeness.pagesFetched`. Omit them unless they carry signal.
+
+The `assertion.value` for a source-defined component carries a structured `facts` block and a
+`references` list (the objects/fields/classes it uses — e.g. a Flow's `reads-field`/`writes-field`
+targets). Populate it from the extractor, not by hand.
 
 Never include credentials, raw record dumps, unnecessary personal/business-sensitive values, or
 invented package facts. Existing Knowledge and model inference are not evidence.

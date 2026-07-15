@@ -38,9 +38,11 @@ source-tree drift, parser errors, or changed `HEAD`.
    the file. These claims stay `assurance: inferred` and the registry rejects any unfilled
    sentinel at propose time.
 
-   While writing each description, also fill the claim's `candidateKeywords` with 0–5 terms
-   naming the business process or feature the source visibly serves (e.g. "revenue adjustment",
-   "billing event"). Ground every term in the source (object names, labels, action names);
+   While writing each description, refine the claim's `candidateKeywords` (0–5 terms). The draft
+   arrives pre-seeded with object/field-derived terms from the component's usage registry; keep the
+   apt ones, drop the noise, and add terms naming the business process or feature the source visibly
+   serves (e.g. "revenue adjustment", "billing event"). Ground every term in the source (object
+   names, labels, action names);
    preserve Polish business terms verbatim; never invent product names. Candidate keywords are
    advisory suggestions for later human taxonomy curation
    ([curate-knowledge-keywords](../curate-knowledge-keywords/SKILL.md)) — the `keywords` field

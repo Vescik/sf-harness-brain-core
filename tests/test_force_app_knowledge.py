@@ -10,7 +10,13 @@ from pathlib import Path
 
 import yaml
 
-from scripts.force_app_knowledge import ForceAppKnowledge, KnowledgeBuildError
+from scripts.force_app_knowledge import (
+    ForceAppKnowledge,
+    KnowledgeBuildError,
+    canonical,
+    digest_bytes,
+    stable_id,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -241,7 +247,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
                 datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc), "NoSuchType"
             )
 
-    def test_drafts_include_empty_candidate_keywords(self) -> None:
+    def test_drafts_seed_candidate_keywords_from_usage(self) -> None:
         self.builder.inventory()
         manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
         claims = [
@@ -250,8 +256,87 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             if "claimFile" in bundle
         ]
         for claim in claims:
+            # keywords always stays empty until a curated taxonomy term is approved.
             self.assertEqual([], claim["keywords"])
-            self.assertEqual([], claim["candidateKeywords"])
+            # candidateKeywords is advisory and never exceeds the schema's cap of five.
+            self.assertLessEqual(len(claim["candidateKeywords"]), 5)
+        # The trigger's usage registry (operates on Engagement__c) seeds an advisory candidate term.
+        trigger = next(
+            claim
+            for claim in claims
+            if claim["claimType"] == "automation-inventory"
+            and claim["subject"]["identity"] == "EngagementTrigger"
+        )
+        self.assertIn("engagement", trigger["candidateKeywords"])
+
+    def test_flow_usage_registry_records_objects_and_fields(self) -> None:
+        flow_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>Engagement Router</label><status>Active</status><processType>AutoLaunchedFlow</processType>
+  <start><object>Engagement__c</object><triggerType>RecordAfterSave</triggerType><recordTriggerType>Create</recordTriggerType></start>
+  <recordLookups><name>GetAccount</name><object>Account</object><queriedFields>Name</queriedFields></recordLookups>
+  <recordUpdates><name>SetStatus</name><object>Engagement__c</object>
+    <inputAssignments><field>Status__c</field></inputAssignments></recordUpdates>
+  <actionCalls><name>Notify</name><actionType>apex</actionType><actionName>EngagementNotifier</actionName></actionCalls>
+  <decisions><name>IsActive</name></decisions>
+</Flow>
+"""
+        write(
+            self.root / "force-app/main/default/flows/EngagementRouter.flow-meta.xml",
+            flow_xml,
+        )
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "flow"], cwd=self.root, check=True)
+        inventory = self.builder.inventory()
+        flow = next(c for c in inventory["components"] if c["metadataType"] == "Flow")
+        facts = flow["facts"]
+        self.assertEqual(["Account", "Engagement__c"], facts["referencedObjects"])
+        self.assertEqual(1, facts["elementCounts"]["decisions"])
+        references = {(ref["kind"], ref["target"]) for ref in flow["references"]}
+        self.assertIn(("reads-field", "Account.Name"), references)
+        self.assertIn(("writes-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("invokes-apex", "EngagementNotifier"), references)
+
+    def test_validation_rule_and_layout_get_dedicated_parsers(self) -> None:
+        write(
+            self.root
+            / "force-app/main/default/objects/Engagement__c/validationRules/Status_Required.validationRule-meta.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+  <fullName>Status_Required</fullName><active>true</active>
+  <errorConditionFormula>ISBLANK(Status__c)</errorConditionFormula>
+  <errorMessage>Status is required</errorMessage><errorDisplayField>Status__c</errorDisplayField>
+</ValidationRule>
+""",
+        )
+        write(
+            self.root / "force-app/main/default/layouts/Engagement__c-Engagement Layout.layout-meta.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+  <layoutSections><layoutColumns><layoutItems><field>Status__c</field></layoutItems></layoutColumns></layoutSections>
+  <relatedLists><relatedList>RelatedContactList</relatedList></relatedLists>
+</Layout>
+""",
+        )
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "vr-layout"], cwd=self.root, check=True)
+        inventory = self.builder.inventory()
+        by_type = {c["metadataType"]: c for c in inventory["components"]}
+        self.assertIn("ValidationRule", by_type)
+        self.assertIn("Layout", by_type)
+        vr = by_type["ValidationRule"]
+        self.assertEqual("Engagement__c", vr["facts"]["object"])
+        self.assertTrue(vr["facts"]["errorMessagePresent"])
+        self.assertIn(
+            ("references-field", "Engagement__c.Status__c"),
+            {(ref["kind"], ref["target"]) for ref in vr["references"]},
+        )
+        layout = by_type["Layout"]
+        self.assertEqual("Engagement__c", layout["facts"]["object"])
+        self.assertIn(
+            ("places-field", "Engagement__c.Status__c"),
+            {(ref["kind"], ref["target"]) for ref in layout["references"]},
+        )
 
     def test_worklist_derives_component_status_from_ground_truth(self) -> None:
         self.builder.inventory()
@@ -303,6 +388,49 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         worklist = self.builder.worklist(metadata_type="PermissionSet")
         self.assertEqual("blocked", worklist["items"][0]["status"])
         self.assertIn("rejected", worklist["items"][0]["reason"])
+
+    def test_coverage_summarizes_documentation_state(self) -> None:
+        self.builder.inventory()
+        # No claims yet: everything undocumented, 0% coverage, all queued to document next.
+        result = self.builder.coverage(write=True)
+        self.assertEqual("force-app-knowledge-coverage", result["kind"])
+        self.assertEqual(0, result["totals"]["documented"])
+        self.assertGreater(result["totals"]["undocumented"], 0)
+        self.assertEqual(0, result["totals"]["coveragePercent"])
+        self.assertEqual(result["totals"]["undocumented"], len(result["documentNext"]))
+        self.assertIn("CustomObject", result["byMetadataType"])
+        self.assertTrue(
+            (self.root / ".cache/knowledge-proposals/force-app-coverage.json").is_file()
+        )
+
+        # Verified claim citing the component's current evidence -> documented.
+        inventory = json.loads(self.builder.inventory_path.read_text(encoding="utf-8"))
+        obj = next(c for c in inventory["components"] if c["metadataType"] == "CustomObject")
+        candidate = self.builder.candidate_claims(obj)[0]
+        claim_id = self.builder.expected_claim_id(candidate)
+        current_evidence = stable_id(
+            "KEVD", obj["id"], f"repo-{digest_bytes(canonical(obj).encode('utf-8'))}"
+        )
+        claim_file = self.root / ".ai/knowledge/claims" / f"{claim_id}.yaml"
+        claim_file.write_text(
+            yaml.safe_dump(
+                {"revision": 2, "status": "verified", "evidenceRefs": [current_evidence]}
+            ),
+            encoding="utf-8",
+        )
+        documented = self.builder.coverage()
+        self.assertEqual(1, documented["byMetadataType"]["CustomObject"]["documented"])
+
+        # Same claim citing stale evidence (source drifted since verification) -> drifted.
+        claim_file.write_text(
+            yaml.safe_dump(
+                {"revision": 2, "status": "verified", "evidenceRefs": ["KEVD-STALE-0000000001"]}
+            ),
+            encoding="utf-8",
+        )
+        drifted = self.builder.coverage()
+        self.assertEqual(1, drifted["byMetadataType"]["CustomObject"]["drifted"])
+        self.assertTrue(any(e["status"] == "stale-refresh" for e in drifted["documentNext"]))
 
     def test_worklist_write_persists_schema_valid_derived_view(self) -> None:
         self.builder.inventory()

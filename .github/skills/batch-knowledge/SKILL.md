@@ -60,8 +60,9 @@ Produce a batch plan the human can read in one screen:
    the whole type; work through them chunk by chunk.
 2. For every behavior-bearing draft in the chunk: read the component's actual source and replace
    the `<AGENT_...>` description sentinel per the propose skill's rules (2–6 sentences, source
-   facts only), and fill `candidateKeywords` with 0–5 source-grounded business-process/feature
-   terms per the same rules (advisory only; `keywords` stays taxonomy-approved terms).
+   facts only), and refine `candidateKeywords` (0–5 terms; drafts arrive pre-seeded from the usage
+   registry — keep the apt ones, add source-grounded business-process/feature terms; advisory only,
+   `keywords` stays taxonomy-approved terms).
 3. Propose the chunk's claims with the manifest `propose` commands (the registry re-validates,
    reconciles, and rejects unfilled sentinels).
 4. Request promotion for the chunk in ONE command so the human confirms once per chunk:

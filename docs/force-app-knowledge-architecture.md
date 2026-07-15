@@ -69,22 +69,32 @@ completeness, limitations, and a digest of the sanitized observation.
 - Objects: labels, deployment and sharing values; candidate positive existence claims.
 - Fields: label/type/selected flags/formula/references; field-schema and relation candidates.
 - Apex and Flow: declarations, trigger/start configuration and bounded references; automation
-  inventory candidates.
+  inventory candidates. Each also carries a **usage registry** — the objects and fields it declares
+  it reads/writes plus the components it invokes (a Flow's `reads-field`/`writes-field`/
+  `invokes-apex` targets and `referencedObjects`/`elementCounts`; Apex `queries-object`/
+  `invokes-class` refs and `soqlObjects`/`dmlOperations` facts). Apex usage is a source-token
+  heuristic and the claim records that limitation.
+- Validation rules: owning object, active flag, error display field, error-message presence, and the
+  custom fields referenced in the formula; automation-inventory candidates (with the heuristic
+  limitation noted).
 - Named/external credentials and remote sites: component identity, label, endpoint host only;
   integration candidates.
 - Approval processes: object, label, active flag, step count, entry-criteria presence; automation
   inventory candidates.
 - AI description layer: behavior-bearing components (Flow, Apex, triggers, approval processes,
-  LWC/Aura) additionally draft a `component-description` claim whose description the agent writes
-  from the actual source before proposing (the registry rejects unfilled `<AGENT_...>`
-  sentinels). These claims are `assurance: inferred` and become `verified` only through the human
-  chat approval; they answer "what does this component do", which structural facts alone cannot.
+  validation rules, LWC/Aura) additionally draft a `component-description` claim whose description
+  the agent writes from the actual source before proposing (the registry rejects unfilled
+  `<AGENT_...>` sentinels). These claims are `assurance: inferred` and become `verified` only through
+  the human chat approval; they answer "what does this component do", which structural facts alone
+  cannot.
 - LWC/Aura: exposure, targets and source-declared references; generic `component-inventory`
   candidates (repository presence alone does not establish runtime behavior).
-- Every other source-format metadata file (layouts, permission sets, custom metadata, labels,
-  queues, …): metadata type derived from the file suffix, label/fullName facts, and a generic
-  `component-inventory` candidate — coverage is total, so a recognized source file never drafts
-  nothing (2026-07-14 upgrade).
+- Permission sets and layouts: dedicated extractors capture object/field permission grants (perm
+  set) and placed fields/related lists (layout) as usage references, beyond the generic label facts;
+  `component-inventory` candidates.
+- Every other source-format metadata file (custom metadata, labels, queues, …): metadata type
+  derived from the file suffix, label/fullName facts, and a generic `component-inventory` candidate —
+  coverage is total, so a recognized source file never drafts nothing (2026-07-14 upgrade).
 - Non-metadata files: path, category and digest only, explicitly counted as generic coverage.
 
 ## Batch conversion (`/batch-knowledge`)
@@ -101,6 +111,25 @@ pause the batch instead of improvising.
 
 Credential values, source bodies, records, tokens, private keys, and inferred business semantics
 are never included.
+
+## Coverage and health (read-only, advisory)
+
+Three deterministic reports make usage and validity visible without mutating any claim:
+
+- `python scripts/force_app_knowledge.py coverage` — reuses the worklist status engine to report,
+  per metadata type, how much of the force-app source is documented by a fresh verified claim vs
+  proposed vs undocumented vs **drifted** (a verified claim whose component source digest no longer
+  matches its evidence), plus a prioritised "document next" list that orders the next batch.
+- `python scripts/knowledge_registry.py stale-report [--warn-days N]` — verified claims past
+  `reviewBy` (`expired`) or within `N` days of it (`expiring`), so re-verification is scheduled
+  before facts silently stop being effective.
+- `python scripts/knowledge_registry.py verify-citations --envelope <path>` — validates a
+  handoff/output envelope's cited `claimRefs` against current canonical state (`ok` / `missing` /
+  `revision-mismatch` / `sha-mismatch` / `not-effective`), catching a design that cites a claim which
+  has since drifted, expired, or been contested/rejected.
+
+Marking a drifted or expired claim `stale` remains a governed human review; these reports never
+mutate Knowledge.
 
 ## Prompts, agent, and skills
 

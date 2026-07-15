@@ -5,9 +5,9 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaVersion", "evidenceId", "sourceType", "sourceLocator", "independenceKey", "authorityFor",
-    "environment", "orgKey", "packageNamespace", "packageKey", "packageVersion", "repositoryCommit",
-    "observedAt", "retrievedAt", "sourceRevision", "collector",
+    "schemaVersion", "evidenceId", "sourceType", "sourceLocator", "authorityFor",
+    "environment", "orgKey", "packageNamespace", "packageVersion", "repositoryCommit",
+    "observedAt", "retrievedAt", "collector",
     "completeness", "sensitivity", "sanitization", "contentDigest", "summary"
   ],
   "$defs": {
@@ -59,7 +59,7 @@
     "completeness": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "enumerationComplete", "permissionsProven", "pagesFetched", "missingSegments"],
+      "required": ["status", "enumerationComplete", "permissionsProven", "missingSegments"],
       "properties": {
         "status": { "enum": ["complete", "partial"] },
         "enumerationComplete": { "type": "boolean" },

@@ -127,12 +127,21 @@ WORK_RECORD_COMMANDS = {
 # the safety hook answers `ask`, so a human confirms every invocation in chat and the registry
 # records the local-config reviewer identity with mechanism copilot-chat-confirmation. The
 # file-based review/promote commands remain human-terminal-only.
+_KNOWLEDGE_READ_COMMANDS = {
+    "validate",
+    "query",
+    "render-indexes",
+    "reconcile",
+    "keyword-report",
+    "stale-report",
+    "verify-citations",
+}
 KNOWLEDGE_REGISTRY_COMMANDS = {
-    "solution-designer": {"validate", "query", "render-indexes", "reconcile", "keyword-report"},
-    "config-investigator": {"validate", "query", "render-indexes", "reconcile", "keyword-report", "propose", "approve-claim"},
-    "development-assistant": {"validate", "query", "render-indexes", "reconcile", "keyword-report"},
-    "test-strategist": {"validate", "query", "render-indexes", "reconcile", "keyword-report"},
-    "guardrail-reviewer": {"validate", "query", "render-indexes", "reconcile", "keyword-report"},
+    "solution-designer": set(_KNOWLEDGE_READ_COMMANDS),
+    "config-investigator": _KNOWLEDGE_READ_COMMANDS | {"propose", "approve-claim"},
+    "development-assistant": set(_KNOWLEDGE_READ_COMMANDS),
+    "test-strategist": set(_KNOWLEDGE_READ_COMMANDS),
+    "guardrail-reviewer": set(_KNOWLEDGE_READ_COMMANDS),
 }
 
 PATH_KEYS = {
@@ -339,6 +348,10 @@ def knowledge_registry_command_allowed(
             "--package-namespace",
             "--keyword",
             "--text",
+            "--feature",
+            "--uses-object",
+            "--uses-field",
+            "--invokes",
             "--at",
         }
         semantic_filter_seen = False
@@ -357,6 +370,26 @@ def knowledge_registry_command_allowed(
             semantic_filter_seen = semantic_filter_seen or token != "--at"
             index += 2
         return index == len(parts) and semantic_filter_seen
+    if command in {"stale-report", "verify-citations"}:
+        # Read-only advisory reports; envelope inputs stay repository-contained at runtime.
+        allowed_flags = (
+            {"--warn-days", "--at"}
+            if command == "stale-report"
+            else {"--envelope", "--claim-ref", "--at"}
+        )
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                if flag not in allowed_flags or not value:
+                    return False
+                index += 1
+                continue
+            if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
+                return False
+            index += 2
+        return True
     if command == "approve-claim":
         if role != "config-investigator":
             return False
@@ -460,6 +493,10 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
             if flag != "--metadata-type" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
                 return False
         return True
+    if parts[0] == "coverage":
+        # Read-only documentation-coverage summary; --write only saves the derived view under the
+        # ignored .cache/knowledge-proposals/ workspace.
+        return parts[1:] in ([], ["--write"])
     if parts[0] != "draft":
         return False
     validators = {

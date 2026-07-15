@@ -125,6 +125,27 @@ class AgentCommandSurfaceTests(unittest.TestCase):
                 "solution-designer",
             )
         )
+        # Usage-registry query flags and the read-only report commands are agent-allowed.
+        self.assertTrue(
+            role_guard.knowledge_registry_command_allowed(
+                ["query", "--uses-object", "Invoice__c"], "development-assistant"
+            )
+        )
+        self.assertTrue(
+            role_guard.knowledge_registry_command_allowed(
+                ["stale-report", "--warn-days", "30"], "guardrail-reviewer"
+            )
+        )
+        self.assertTrue(
+            role_guard.knowledge_registry_command_allowed(
+                ["verify-citations", "--envelope", "output/handover/x.json"], "guardrail-reviewer"
+            )
+        )
+        self.assertFalse(
+            role_guard.knowledge_registry_command_allowed(
+                ["stale-report", "--unknown", "1"], "guardrail-reviewer"
+            )
+        )
         self.assertTrue(
             role_guard.knowledge_registry_command_allowed(
                 [

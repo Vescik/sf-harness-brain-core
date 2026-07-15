@@ -45,8 +45,9 @@ bound to a commit otherwise.
    process, LWC/Aura) you intend to propose, read the component's actual source and replace the
    `<AGENT_...>` sentinel with 2–6 grounded sentences (purpose, entry conditions, key steps, what it
    reads or changes), exactly as [propose-force-app-knowledge](../propose-force-app-knowledge/SKILL.md)
-   requires. Fill `candidateKeywords` with the visible business/feature terms. The registry rejects
-   an unfilled sentinel at propose time.
+   requires. Refine `candidateKeywords` (drafts arrive pre-seeded from the component's usage
+   registry — keep the apt object/field-derived terms and add the visible business/feature terms).
+   The registry rejects an unfilled sentinel at propose time.
 6. **Optional live-org reconcile (deep discovery).** When a review org is configured, retrieve the
    deployed boundary artifacts to catch org-only components and drift:
    `python scripts/salesforce_read.py retrieve --org <alias> --metadata Flow:<name> --metadata ApexClass:<name> --metadata FlexiPage:<name> --metadata ApprovalProcess:<name>`

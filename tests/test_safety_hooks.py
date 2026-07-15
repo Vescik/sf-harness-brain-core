@@ -451,6 +451,16 @@ class RoleGuardTests(unittest.TestCase):
                 ["draft"], "development-assistant"
             )
         )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                ["coverage", "--write"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["coverage", "--unknown"], "config-investigator"
+            )
+        )
 
     def test_designer_cannot_edit_decision_log_directly(self) -> None:
         output = run_hook(

@@ -18,6 +18,7 @@ from scripts.knowledge_registry import (
     ContractError,
     KnowledgeRegistry,
     canonical_digest,
+    file_sha256,
 )
 
 
@@ -443,6 +444,156 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         self.assertEqual("inferred", promoted["assurance"])
         rendered = (self.root / ".ai/knowledge/automation-map.md").read_text(encoding="utf-8")
         self.assertIn("KCLM-DESC-FLOW-001", rendered)
+
+    def test_trimmed_usage_claim_is_searchable_by_object_and_field(self) -> None:
+        # A claim authored WITHOUT the now-optional fields (polarity, packageKey, relatedClaims,
+        # evidence independenceKey/pagesFetched) still proposes, promotes, and renders — and its
+        # usage registry is searchable by object and by field.
+        commit = "a" * 40
+        evidence = {
+            "schemaVersion": 3,
+            "evidenceId": "KEVD-FLOW-ROUTER-001",
+            "sourceType": "metadata-repository",
+            "sourceLocator": f"git://{commit}/force-app/main/default/flows/EngagementRouter.flow-meta.xml",
+            "authorityFor": ["automation-inventory"],
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": commit,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "retrievedAt": "2026-07-10T11:00:00Z",
+            "sourceRevision": f"sha256:{'b' * 64}",
+            "collector": {"kind": "tool", "name": "force_app_knowledge.py", "version": "2"},
+            "completeness": {
+                "status": "complete",
+                "enumerationComplete": False,
+                "permissionsProven": False,
+                "missingSegments": [],
+            },
+            "sensitivity": "internal-sanitized",
+            "sanitization": {"rawDataCommitted": False, "redactions": []},
+            "contentDigest": f"sha256:{'c' * 64}",
+            "summary": "Sanitized source observation of Flow:EngagementRouter.",
+        }
+        claim = {
+            "schemaVersion": 3,
+            "claimId": "KCLM-FLOW-ROUTER-001",
+            "revision": 1,
+            "domain": "automation-map",
+            "claimType": "automation-inventory",
+            "subject": {"kind": "automation", "identity": "EngagementRouter"},
+            "assertion": {
+                "predicate": "source-defined-automation",
+                "value": {
+                    "metadataType": "Flow",
+                    "facts": {"object": "Engagement__c", "referencedObjects": ["Account", "Engagement__c"]},
+                    "references": [
+                        {"kind": "operates-on", "target": "Engagement__c"},
+                        {"kind": "reads-field", "target": "Account.Name"},
+                        {"kind": "writes-field", "target": "Engagement__c.Status__c"},
+                        {"kind": "invokes-apex", "target": "EngagementNotifier"},
+                    ],
+                },
+            },
+            "statement": "EngagementRouter is a source-defined Flow component at the repository commit.",
+            "status": "proposed",
+            "assurance": "observed",
+            "scope": {
+                "environment": "not-applicable",
+                "orgKey": None,
+                "packageNamespace": None,
+                "packageVersion": None,
+                "repositoryCommit": commit,
+            },
+            "evidenceRefs": ["KEVD-FLOW-ROUTER-001"],
+            "reviewRef": None,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "verifiedAt": None,
+            "reviewBy": "2026-12-01T11:00:00Z",
+            "sensitivity": "internal-sanitized",
+            "keywords": [],
+            "candidateKeywords": ["engagement"],
+            "limitations": ["Repository metadata establishes intended source only."],
+            "supersedes": [],
+            "supersededBy": None,
+            "contradicts": [],
+        }
+        (self.root / "inputs/flow-claim.yaml").write_text(
+            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
+        )
+        (self.root / "inputs/flow-evidence.yaml").write_text(
+            yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8"
+        )
+        proposed = self.registry.propose(
+            self.root / "inputs/flow-claim.yaml",
+            [self.root / "inputs/flow-evidence.yaml"],
+            expected_revision=0,
+        )
+        self.assertEqual("proposed", proposed["status"])
+        self.write_chat_reviewer()
+        self.assertEqual("verified", self.registry.approve_claim("KCLM-FLOW-ROUTER-001", 1)["status"])
+
+        by_object = self.registry.query(uses_object="Engagement__c")
+        self.assertEqual(1, by_object["count"])
+        self.assertEqual("KCLM-FLOW-ROUTER-001", by_object["claims"][0]["claim"]["claimId"])
+        self.assertEqual(1, self.registry.query(uses_field="Account.Name")["count"])
+        self.assertEqual(1, self.registry.query(invokes="EngagementNotifier")["count"])
+        self.assertEqual(0, self.registry.query(uses_object="Contact")["count"])
+
+        index = load_json(self.root / ".ai/knowledge/claims-index.json")
+        row = next(r for r in index["claims"] if r["claimId"] == "KCLM-FLOW-ROUTER-001")
+        self.assertEqual(["Account", "Engagement__c"], row["usesObjects"])
+        self.assertIn("Engagement__c.Status__c", row["usesFields"])
+        automation_map = (self.root / ".ai/knowledge/automation-map.md").read_text(encoding="utf-8")
+        self.assertIn("## Automations by object", automation_map)
+
+    def test_stale_report_flags_expired_and_expiring_verified_claims(self) -> None:
+        # promote() yields a verified claim with reviewBy 2026-08-08 (29 days after the 2026-07-10 now).
+        self.promote()
+        current = self.registry.stale_report(warn_days=30)
+        self.assertEqual(0, current["expiredCount"])
+        self.assertEqual(1, current["expiringCount"])
+        self.assertEqual(
+            "KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", current["expiring"][0]["claimId"]
+        )
+
+        narrow = self.registry.stale_report(warn_days=7)
+        self.assertEqual(0, narrow["expiredCount"])
+        self.assertEqual(0, narrow["expiringCount"])
+
+        future = self.registry.stale_report(
+            warn_days=30, at=datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc)
+        )
+        self.assertEqual(1, future["expiredCount"])
+        self.assertFalse(future["expired"][0]["effective"])
+
+    def test_verify_citations_checks_existence_freshness_and_digest(self) -> None:
+        self.promote()
+        claim_id = "KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001"
+        path = self.root / ".ai/knowledge/claims" / f"{claim_id}.yaml"
+        sha = file_sha256(path)
+
+        ok = self.registry.verify_citations([{"claimId": claim_id, "revision": 2, "sha256": sha}])
+        self.assertEqual("ok", ok["citations"][0]["verdict"])
+        self.assertEqual({"ok": 1, "warning": 0, "invalid": 0}, ok["counts"])
+
+        missing = self.registry.verify_citations([{"claimId": "KCLM-NO-SUCH-CLAIM-0001"}])
+        self.assertEqual("missing", missing["citations"][0]["verdict"])
+        self.assertEqual("invalid", missing["citations"][0]["severity"])
+
+        bad_sha = self.registry.verify_citations([{"claimId": claim_id, "sha256": "0" * 64}])
+        self.assertEqual("sha-mismatch", bad_sha["citations"][0]["verdict"])
+
+        bad_rev = self.registry.verify_citations([{"claimId": claim_id, "revision": 5}])
+        self.assertEqual("revision-mismatch", bad_rev["citations"][0]["verdict"])
+
+        expired = self.registry.verify_citations(
+            [{"claimId": claim_id, "revision": 2}],
+            at=datetime(2026, 9, 1, 12, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual("not-effective", expired["citations"][0]["verdict"])
+        self.assertEqual("warning", expired["citations"][0]["severity"])
 
     def test_approve_claim_batch_cli_argument_contract(self) -> None:
         # The CLI runs against the repository root, not the temp fixture — so assert the
