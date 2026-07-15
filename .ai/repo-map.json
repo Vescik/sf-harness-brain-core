@@ -12,6 +12,7 @@
           "managed-package-constraints"
         ],
         "skills": [
+          "feature-documentor",
           "inventory-force-app",
           "investigate-object",
           "propose-force-app-knowledge",
@@ -276,6 +277,13 @@
       "path": ".github/prompts/document-metadata-change.prompt.md"
     },
     {
+      "agent": "config-investigator",
+      "argumentHint": "feature=<name> anchors=<Object__c,Object__c> [depth=<n>] [hubs=<Object__c,...>] [claimIds=<ID,...>]",
+      "description": "Document a Salesforce feature from anchor objects — discover its relations, automations, and UI, draft feature-tagged proposed claims, and render a reviewed dossier.",
+      "name": "feature-documentor",
+      "path": ".github/prompts/feature-documentor.prompt.md"
+    },
+    {
       "agent": "test-strategist",
       "argumentHint": "itemId=<Feature ID> [recordId=<ID>]",
       "description": "Run the Feature/BRD-to-Story coverage gate before Solution Design.",
@@ -404,6 +412,11 @@
       "path": ".github/skills/curate-knowledge-keywords/SKILL.md"
     },
     {
+      "description": "Document a feature end to end — crawl an anchor object's relations (lookups, reverse child relationships, junctions) and its automations and UI (flows, approval processes, apex, Lightning/Visualforce pages), draft feature-tagged proposed claims, and render a human-readable dossier. Reconcile against the live org when available; never self-verify.",
+      "name": "feature-documentor",
+      "path": ".github/skills/feature-documentor/SKILL.md"
+    },
+    {
       "description": "Fetch and normalize one Azure DevOps work item or a one-level hierarchy with cache completeness, optional Test Case relations, and provenance. Use as internal context for design, documentation, coverage, and handover workflows.",
       "name": "fetch-ado-item",
       "path": ".github/skills/fetch-ado-item/SKILL.md"
@@ -485,7 +498,7 @@
     ".ai/contracts/source-authority.md": "sha256:8d2a124483cc8fe283b0bc41aed47c26ea303a2758cbd5ee2664b69b3949de25",
     ".ai/contracts/tool-capabilities.md": "sha256:9daa9e6485af7b556fac6007c94f3daf4c26c191c9256d871f4efe20a906a9c5",
     ".ai/contracts/workflow-state-machine.md": "sha256:b2b4e313741bec172732b18977beaccfb741379b55ff4f2b422383485b0e2334",
-    ".github/agents/config-investigator.agent.md": "sha256:3654f6f150ef567a76676f899e5ef527c66dd65ce436a562ea4706b402dd31a3",
+    ".github/agents/config-investigator.agent.md": "sha256:61bd2e6563c14c0b64cc5c8c1fee814d2e8253c13aab4921a7891d3b8a52c386",
     ".github/agents/development-assistant.agent.md": "sha256:cb488b93df31c2711c41a26522cd6d7664802b26c234b5a3cb7dbaf8deea1550",
     ".github/agents/guardrail-reviewer.agent.md": "sha256:f5255898f451589e7894be68f146814b013be253ebe5a145c6e444c83f14d8c6",
     ".github/agents/solution-designer.agent.md": "sha256:6f4b5c24d9eff635b924c75ecca621117fd936902e455ebb35f49962938810db",
@@ -496,6 +509,7 @@
     ".github/prompts/batch-knowledge.prompt.md": "sha256:b744b614968a26b22a59c3c9e368db0cd15f1253021bf7e3ef8b94f8c8cc3d7c",
     ".github/prompts/check-against-principles.prompt.md": "sha256:4dc93199dd92924bb294a38fa7db096e9a2f3e912889d944ca4da86cb325328f",
     ".github/prompts/document-metadata-change.prompt.md": "sha256:33feb2ed7d04a09a4de114a732cae85b2f3eaa41ce44ffeedd38b47676e158c8",
+    ".github/prompts/feature-documentor.prompt.md": "sha256:315822708385cb7b672f0af063c11f35dc41ebdb927f4756f0999c5fa9dd5abc",
     ".github/prompts/feature-health.prompt.md": "sha256:28647ddc5360e88de2db6f75dd4673dcf66237c5a4469ce0956f4d1a8635ea0b",
     ".github/prompts/fetch-ado-item.prompt.md": "sha256:4ebe4c347c5b21d3dea9959d387b0b2bb69a0f20e571f15c3e4f1334d175b1bd",
     ".github/prompts/generate-playwright-test.prompt.md": "sha256:555c92e0aa73438a2e570c90b17fa15c6a1b56dc065770cd8f33bb75008ac337",
@@ -514,6 +528,7 @@
     ".github/skills/check-against-principles/SKILL.md": "sha256:871c456825ddf6adbb35f601c1cb33db3adb85805cac901540f893e64d7d799f",
     ".github/skills/check-feature-coverage/SKILL.md": "sha256:8788d588ee99c9f917044ca2b1affcd719f9ae280b097f41095d38ce18292d07",
     ".github/skills/curate-knowledge-keywords/SKILL.md": "sha256:59638d318738e874a727441d6637068e404e80cbc564eac6bbf92666ea646220",
+    ".github/skills/feature-documentor/SKILL.md": "sha256:9291456ae963d09a20dd020550dec2a204afcdcb6233711b0979ffcdd6ee18a1",
     ".github/skills/fetch-ado-item/SKILL.md": "sha256:02ad5d68ff86e39c27e6acd29058b617483c0b7d07cd69b007acbae2e88104c8",
     ".github/skills/fetch-test-case/SKILL.md": "sha256:56fc8adf313c98b5588890dd03eda7489673ee497c2b69efe5ccc1e4bdf2539e",
     ".github/skills/generate-playwright-test/SKILL.md": "sha256:603561c5ef314c5065b85331c8165cd8ebd79f6ed5d403c99139e5168d6d0806",
@@ -531,5 +546,5 @@
     ".github/skills/update-knowledge-base/SKILL.md": "sha256:b4b5e956df79e2ad2c3a0f2e03401d18fdfce8dfce988a6a235d611021a80b40",
     "config/repo-map-seed.json": "sha256:e05458eb3feebb6e237b982efe5993e7b50f11ae12dfd948bd4792976e8add89"
   },
-  "wordCount": 782
+  "wordCount": 797
 }

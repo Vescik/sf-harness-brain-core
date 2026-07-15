@@ -85,6 +85,11 @@
       "type": "array", "uniqueItems": true, "maxItems": 5,
       "items": { "type": "string", "minLength": 1, "maxLength": 60 }
     },
+    "feature": {
+      "description": "Optional feature-membership tags grouping this claim's subject under one or more named product features (set by the feature documentor). Advisory grouping only: it is not part of claim identity or reconciliation, and a subject may belong to several features.",
+      "type": "array", "uniqueItems": true, "maxItems": 20,
+      "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+    },
     "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "supersedes": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/claimRef" } },
     "supersededBy": { "anyOf": [{ "$ref": "#/$defs/claimRef" }, { "type": "null" }] },

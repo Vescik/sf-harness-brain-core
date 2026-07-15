@@ -33,7 +33,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 ## Roles (`.github/agents/`)
 
-- **config-investigator** — Read-only evidence collector for allowlisted Salesforce …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority; skills: inventory-force-app, investigate-object, propose-force-app-knowledge, update-knowledge-base.
+- **config-investigator** — Read-only evidence collector for allowlisted Salesforce …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority; skills: feature-documentor, inventory-force-app, investigate-object, propose-force-app-knowledge, update-knowledge-base.
 - **development-assistant** — Implement a human-accepted Salesforce design in …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: execution-contract, workflow-state-machine. Hands off to: guardrail-reviewer, solution-designer.
 - **guardrail-reviewer** — Independently review a design or implementation …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, workflow-state-machine; skills: check-against-principles. Hands off to: development-assistant, solution-designer.
 - **solution-designer** — Design the change before implementation, establish …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, workflow-state-machine; skills: check-against-principles, solution-design. Hands off to: development-assistant, guardrail-reviewer.
@@ -45,6 +45,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `check-against-principles` — Evaluate a scoped design or implementation …
 - `check-feature-coverage` — Compare a current Azure DevOps Feature …
 - `curate-knowledge-keywords` — Curate the Knowledge keyword taxonomy from …
+- `feature-documentor` — Document a feature end to end …
 - `fetch-ado-item` — Fetch and normalize one Azure DevOps …
 - `fetch-test-case` — Fetch and normalize one Azure Test …
 - `generate-playwright-test` — Explore a guarded Salesforce sandbox and …
@@ -66,6 +67,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `/batch-knowledge` → config-investigator
 - `/check-against-principles` → guardrail-reviewer
 - `/document-metadata-change` → development-assistant
+- `/feature-documentor` → config-investigator
 - `/feature-health` → test-strategist
 - `/fetch-ado-item` → solution-designer
 - `/generate-playwright-test` → test-strategist
