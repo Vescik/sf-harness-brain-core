@@ -22,7 +22,9 @@ Load the [Managed Package Constraints](../instructions/managed-package-constrain
 [investigate-object skill](../skills/investigate-object/SKILL.md), and
 [update-knowledge-base skill](../skills/update-knowledge-base/SKILL.md). For repository-wide
 Knowledge bootstrap or refresh, also load [inventory-force-app](../skills/inventory-force-app/SKILL.md)
-and [propose-force-app-knowledge](../skills/propose-force-app-knowledge/SKILL.md).
+and [propose-force-app-knowledge](../skills/propose-force-app-knowledge/SKILL.md). To document a
+feature and its relations, automations, and UI as a unit, load
+[feature-documentor](../skills/feature-documentor/SKILL.md).
 
 ## Required procedure
 

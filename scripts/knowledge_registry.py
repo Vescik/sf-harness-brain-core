@@ -602,6 +602,7 @@ class KnowledgeRegistry:
         package_namespace: str | None = None,
         keyword: str | None = None,
         text: str | None = None,
+        feature: str | None = None,
         at: datetime | None = None,
     ) -> dict[str, Any]:
         filters = {
@@ -615,6 +616,7 @@ class KnowledgeRegistry:
             "package_namespace": package_namespace,
             "keyword": keyword,
             "text": text,
+            "feature": feature,
         }
         if not any(value is not None for value in filters.values()):
             raise ContractError("query requires at least one Knowledge filter")
@@ -639,6 +641,11 @@ class KnowledgeRegistry:
             if (
                 package_namespace is not None
                 and claim["scope"]["packageNamespace"] != package_namespace
+            ):
+                continue
+            if feature is not None and not any(
+                feature.casefold() == str(tag).casefold()
+                for tag in claim.get("feature", []) or []
             ):
                 continue
             keyword_tier = None
@@ -1295,10 +1302,66 @@ class KnowledgeRegistry:
             "evidenceRefs": claim["evidenceRefs"],
             "path": path.relative_to(self.root).as_posix(),
         }
+        if claim.get("feature"):
+            row["feature"] = claim["feature"]
         value = claim["assertion"]["value"]
         if isinstance(value, dict) and isinstance(value.get("description"), str):
             row["descriptionExcerpt"] = value["description"][:240]
         return row
+
+    def rendered_feature_map(self, claims: list[dict[str, Any]], at: datetime) -> str:
+        """Group feature-tagged claims under each feature heading.
+
+        Generated deterministically alongside the domain views. A claim may carry several feature
+        tags and therefore appear under more than one heading; only effective verified rows are
+        established facts. The feature tag is written by the feature documentor and is advisory
+        grouping metadata, never part of claim identity.
+        """
+
+        title = "Feature Map"
+        description = (
+            "Generated view grouping canonical claims by the feature-membership tag written by the\n"
+            "feature documentor. Do not hand-edit. A claim may appear under several features; only\n"
+            "rows marked effective are established current facts."
+        )
+        by_feature: dict[str, list[dict[str, Any]]] = {}
+        for claim in claims:
+            for feature in claim.get("feature", []) or []:
+                by_feature.setdefault(str(feature), []).append(claim)
+        lines = [
+            f"# {title} — Generated Claim Index",
+            "",
+            description,
+            "",
+            "<!-- BEGIN GENERATED CLAIM INDEX -->",
+            "",
+        ]
+        if not by_feature:
+            lines.append("_No feature-tagged claims are indexed._")
+        else:
+            for feature in sorted(by_feature):
+                lines.extend(
+                    [
+                        f"## {self.escape_table(feature)}",
+                        "",
+                        "| Claim | Type | Subject | Status | Effective | Structured fact |",
+                        "|---|---|---|---|---|---|",
+                    ]
+                )
+                for claim in sorted(by_feature[feature], key=lambda item: item["claimId"]):
+                    effective = "yes" if self.claim_is_effective(claim, at) else "no"
+                    subject = f"{claim['subject']['kind']}:{claim['subject']['identity']}"
+                    lines.append(
+                        "| "
+                        f"[{claim['claimId']}](claims/{claim['claimId']}.yaml) | "
+                        f"{claim['claimType']} | {self.escape_table(subject)} | "
+                        f"{claim['status']} | {effective} | "
+                        f"{self.escape_table(self.structured_fact(claim))} |"
+                    )
+                lines.append("")
+            lines.pop()  # trailing blank before the end marker is added below
+        lines.extend(["", "<!-- END GENERATED CLAIM INDEX -->", ""])
+        return "\n".join(lines)
 
     def rendered_claims_index(self, rows: list[dict[str, Any]]) -> str:
         index = {
@@ -1314,16 +1377,21 @@ class KnowledgeRegistry:
         effective_at = self.at_time()
         self.validate_all(effective_at, enforce_current=False)
         by_domain: dict[str, list[dict[str, Any]]] = {domain: [] for domain in DOMAIN_VIEWS}
+        all_claims: list[dict[str, Any]] = []
         index_rows: list[dict[str, Any]] = []
         for path, claim in self.records(self.claims):
             self.validate_data(claim, "knowledge-claim.schema.json", str(path))
             by_domain[claim["domain"]].append(claim)
+            all_claims.append(claim)
             index_rows.append(self.claims_index_row(claim, path, effective_at))
         drift: list[str] = []
         rendered = [
             (self.root / ".ai/knowledge" / f"{domain}.md", self.rendered_domain(domain, claims, effective_at))
             for domain, claims in by_domain.items()
         ]
+        rendered.append(
+            (self.root / ".ai/knowledge/feature-map.md", self.rendered_feature_map(all_claims, effective_at))
+        )
         rendered.append(
             (self.root / ".ai/knowledge/claims-index.json", self.rendered_claims_index(index_rows))
         )
@@ -1392,6 +1460,10 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument(
         "--text",
         help="substring match over claim statement and component description",
+    )
+    query.add_argument(
+        "--feature",
+        help="match one feature-membership tag (exact name, case-insensitive)",
     )
     query.add_argument("--at")
 
@@ -1464,6 +1536,7 @@ def main() -> int:
                 package_namespace=args.package_namespace,
                 keyword=args.keyword,
                 text=args.text,
+                feature=args.feature,
                 at=parse_time(args.at, "query --at") if args.at else None,
             )
         elif args.command == "render-indexes":

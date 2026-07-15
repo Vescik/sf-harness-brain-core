@@ -46,6 +46,15 @@ APEX_IMPORT_RE = re.compile(r"@salesforce/apex/([A-Za-z0-9_]+\.[A-Za-z0-9_]+)")
 SCHEMA_IMPORT_RE = re.compile(r"@salesforce/schema/([A-Za-z0-9_.]+)")
 AURA_CONTROLLER_RE = re.compile(r"\bcontroller\s*=\s*[\"']([A-Za-z][A-Za-z0-9_]*)[\"']")
 
+# Reference kinds whose target names an object (its head token before any `.field`). Used by the
+# feature crawl to associate an automation/UI component with the objects it touches. subflow,
+# action, apex-method, and apex-controller targets name automations/methods, not objects.
+OBJECT_REF_KINDS = frozenset({"relationship", "operates-on", "object-token", "schema"})
+AUTOMATION_TYPES = frozenset({"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess"})
+UI_TYPES = frozenset(
+    {"LightningComponentBundle", "AuraDefinitionBundle", "ApexPage", "FlexiPage", "Layout", "CustomTab"}
+)
+
 
 class KnowledgeBuildError(RuntimeError):
     pass
@@ -134,6 +143,13 @@ def stable_id(prefix: str, identity: str, discriminator: str) -> str:
     return f"{prefix}-{slug[:maximum_slug].rstrip('-')}-{suffix}"
 
 
+def feature_slug(feature: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", feature.strip().lower()).strip("-")
+    if not slug:
+        raise KnowledgeBuildError("feature name must contain at least one alphanumeric character")
+    return slug
+
+
 class ForceAppKnowledge:
     def __init__(self, root: Path = ROOT) -> None:
         self.root = root.resolve()
@@ -141,6 +157,7 @@ class ForceAppKnowledge:
         self.cache_root = self.root / ".cache/knowledge-proposals"
         self.inventory_path = self.cache_root / "force-app-inventory.json"
         self.draft_root = self.cache_root / "force-app-drafts"
+        self.dossier_root = self.root / "output/feature-dossiers"
 
     def git(self, *args: str, check: bool = True) -> str:
         completed = subprocess.run(
@@ -578,7 +595,9 @@ class ForceAppKnowledge:
         "<AGENT_WRITES_WHAT_THIS_COMPONENT_DOES_BASED_ON_ITS_SOURCE_BEFORE_PROPOSING>"
     )
 
-    def candidate_claims(self, component: dict[str, Any]) -> list[dict[str, Any]]:
+    def candidate_claims(
+        self, component: dict[str, Any], feature: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         metadata_type = component["metadataType"]
         facts = component["facts"]
         common_limit = "Repository metadata establishes intended source only; deployed org state was not reconciled."
@@ -696,6 +715,9 @@ class ForceAppKnowledge:
                     ],
                 }
             )
+        if feature:
+            for candidate in candidates:
+                candidate["feature"] = list(feature)
         return candidates
 
     def expected_claim_id(self, candidate: dict[str, Any]) -> str:
@@ -826,7 +848,11 @@ class ForceAppKnowledge:
         return result
 
     def draft(
-        self, observed_at: datetime, metadata_type: str | None = None
+        self,
+        observed_at: datetime,
+        metadata_type: str | None = None,
+        feature: list[str] | None = None,
+        component_ids: set[str] | None = None,
     ) -> dict[str, Any]:
         inventory = self.load_inventory()
         if metadata_type is not None:
@@ -858,7 +884,9 @@ class ForceAppKnowledge:
         for component in inventory["components"]:
             if metadata_type is not None and component["metadataType"] != metadata_type:
                 continue
-            candidates = self.candidate_claims(component)
+            if component_ids is not None and component["id"] not in component_ids:
+                continue
+            candidates = self.candidate_claims(component, feature)
             if not candidates:
                 continue
             component_digest = digest_bytes(canonical(component).encode("utf-8"))
@@ -952,6 +980,8 @@ class ForceAppKnowledge:
                     "contradicts": [],
                     "relatedClaims": [],
                 }
+                if candidate.get("feature"):
+                    claim["feature"] = candidate["feature"]
                 self.validate_record(claim, "knowledge-claim.schema.json", claim_id)
                 claim_path = self.draft_root / f"{claim_id}.yaml"
                 claim_path.write_text(yaml.safe_dump(claim, sort_keys=False), encoding="utf-8")
@@ -996,6 +1026,335 @@ class ForceAppKnowledge:
         )
         return manifest
 
+    # -- Feature documentor -------------------------------------------------------------------
+
+    def crawl_path(self, slug: str) -> Path:
+        return self.cache_root / f"feature-{slug}.json"
+
+    @staticmethod
+    def component_objects(component: dict[str, Any]) -> set[str]:
+        """Objects a component touches: its object folder, name/reference associations.
+
+        Combines three source-grounded signals so the crawl associates each component with the
+        objects it belongs to: (1) the `objects/<Object>/…` folder it lives in (fields, validation
+        rules, record types, list views); (2) a naming convention for object-scoped surfaces
+        (`Object-Layout` layouts, object-named tabs); (3) reference edges parsed from the source
+        (a Flow's `operates-on`, an Apex object token, an LWC `@salesforce/schema` import). It never
+        guesses beyond what the source shows — FlexiPage/formula/roll-up associations are not
+        derivable here and are reported as crawl limitations.
+        """
+
+        objects: set[str] = set()
+        path = component["path"]
+        if "/objects/" in path:
+            objects.add(path.split("/objects/", 1)[1].split("/", 1)[0])
+        metadata_type = component["metadataType"]
+        if metadata_type == "Layout":
+            objects.add(component["name"].split("-", 1)[0])
+        elif metadata_type == "CustomTab":
+            objects.add(component["name"])
+        for reference in component["references"]:
+            if reference["kind"] in OBJECT_REF_KINDS:
+                objects.add(reference["target"].split(".", 1)[0])
+        return {name for name in objects if name}
+
+    def feature_crawl(
+        self,
+        feature: str,
+        anchors: list[str],
+        depth: int = 1,
+        hubs: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Crawl the metadata graph out from anchor objects and record the feature boundary.
+
+        BFS over the inventory reference graph, in both directions (a field on the anchor →
+        outbound related object; a field on any other object referencing the anchor → inbound child
+        relationship). Object hops are bounded by `depth`; objects on the `hubs` stop-list are kept
+        as relation endpoints but never expanded, so a utility object referenced everywhere cannot
+        drag the whole org into one feature. The result is a sanitized, schema-valid boundary the
+        caller presents to a human before any claim is drafted.
+        """
+
+        if not anchors:
+            raise KnowledgeBuildError("feature crawl requires at least one anchor object")
+        if depth < 0:
+            raise KnowledgeBuildError("crawl depth must not be negative")
+        slug = feature_slug(feature)
+        hub_set = {name for name in (hubs or []) if name}
+        inventory = self.load_inventory()
+        if inventory["sourceTreeDigest"] != self.current_tree_digest():
+            raise KnowledgeBuildError("force-app changed after inventory; rerun inventory")
+        components = inventory["components"]
+
+        known_objects = {c["name"] for c in components if c["metadataType"] == "CustomObject"}
+        fields = [c for c in components if c["metadataType"] == "CustomField"]
+        fields_by_owner: dict[str, list[dict[str, Any]]] = {}
+        fields_referencing: dict[str, list[dict[str, Any]]] = {}
+        for field in fields:
+            owner = field["facts"].get("object")
+            if owner:
+                fields_by_owner.setdefault(owner, []).append(field)
+            for target in field["facts"].get("referenceTo", []) or []:
+                fields_referencing.setdefault(target, []).append(field)
+
+        anchor_set = list(dict.fromkeys(anchors))
+        unresolved = sorted(name for name in anchor_set if name not in known_objects)
+        boundary_objects: set[str] = set(anchor_set)
+        frontier: set[str] = set(anchor_set)
+        for _ in range(depth):
+            next_frontier: set[str] = set()
+            for obj in sorted(frontier):
+                for field in fields_by_owner.get(obj, []):
+                    for target in field["facts"].get("referenceTo", []) or []:
+                        if target in hub_set or target in boundary_objects:
+                            continue
+                        boundary_objects.add(target)
+                        next_frontier.add(target)
+                for field in fields_referencing.get(obj, []):
+                    owner = field["facts"].get("object")
+                    if not owner or owner in hub_set or owner in boundary_objects:
+                        continue
+                    boundary_objects.add(owner)
+                    next_frontier.add(owner)
+            if not next_frontier:
+                break
+            frontier = next_frontier
+
+        def relation(field: dict[str, Any], from_object: str, to_object: str) -> dict[str, str]:
+            return {
+                "fromObject": from_object,
+                "field": field["facts"].get("fullName", field["name"]),
+                "toObject": to_object,
+                "type": field["facts"].get("type") or "Unknown",
+            }
+
+        outbound: list[dict[str, str]] = []
+        inbound: list[dict[str, str]] = []
+        for anchor in anchor_set:
+            for field in fields_by_owner.get(anchor, []):
+                for target in field["facts"].get("referenceTo", []) or []:
+                    outbound.append(relation(field, anchor, target))
+            for field in fields_referencing.get(anchor, []):
+                owner = field["facts"].get("object") or "Unknown"
+                inbound.append(relation(field, owner, anchor))
+        outbound.sort(key=lambda item: (item["fromObject"], item["field"], item["toObject"]))
+        inbound.sort(key=lambda item: (item["fromObject"], item["field"], item["toObject"]))
+
+        junctions: list[dict[str, Any]] = []
+        for obj in sorted(boundary_objects):
+            master_details = sorted(
+                field["facts"].get("fullName", field["name"])
+                for field in fields_by_owner.get(obj, [])
+                if field["facts"].get("type") == "MasterDetail"
+            )
+            if len(master_details) >= 2:
+                junctions.append({"object": obj, "masterDetailFields": master_details})
+
+        automations: list[dict[str, str]] = []
+        ui: list[dict[str, str]] = []
+        supporting: list[dict[str, str]] = []
+        component_ids: set[str] = set()
+        for component in components:
+            metadata_type = component["metadataType"]
+            if metadata_type == "CustomObject":
+                if component["name"] in boundary_objects:
+                    component_ids.add(component["id"])
+                continue
+            if metadata_type == "CustomField":
+                if component["facts"].get("object") in boundary_objects:
+                    component_ids.add(component["id"])
+                continue
+            touched = self.component_objects(component) & boundary_objects
+            if not touched:
+                continue
+            component_ids.add(component["id"])
+            summary = {
+                "id": component["id"],
+                "metadataType": metadata_type,
+                "name": component["name"],
+                "path": component["path"],
+            }
+            if metadata_type in AUTOMATION_TYPES:
+                automations.append(summary)
+            elif metadata_type in UI_TYPES:
+                ui.append(summary)
+            else:
+                supporting.append(summary)
+        for bucket in (automations, ui, supporting):
+            bucket.sort(key=lambda item: (item["metadataType"], item["name"]))
+
+        limitations = [
+            "Feature boundary derives from source-format metadata and reference edges only; deployed "
+            "org state was not reconciled.",
+            "Object association for FlexiPages, cross-object formula fields, and roll-up summaries is "
+            "not derivable from parsed references and may be incomplete.",
+        ]
+        if unresolved:
+            limitations.append(
+                "Anchors not found as custom objects in the repository (may be standard objects or "
+                f"typos): {', '.join(unresolved)}."
+            )
+        crawl = {
+            "schemaVersion": SCHEMA_VERSION,
+            "kind": "feature-crawl",
+            "generatedAt": iso(utc_now()),
+            "repositoryCommit": inventory["repositoryCommit"],
+            "sourceTreeDigest": inventory["sourceTreeDigest"],
+            "feature": feature,
+            "slug": slug,
+            "anchors": anchor_set,
+            "depth": depth,
+            "hubStopList": sorted(hub_set),
+            "objects": sorted(boundary_objects),
+            "unresolvedAnchors": unresolved,
+            "relations": {"outbound": outbound, "inbound": inbound, "junctions": junctions},
+            "automations": automations,
+            "ui": ui,
+            "supporting": supporting,
+            "componentIds": sorted(component_ids),
+            "limitations": limitations,
+        }
+        self.validate_record(crawl, "feature-crawl.schema.json", "feature crawl")
+        self.cache_root.mkdir(parents=True, exist_ok=True)
+        self.crawl_path(slug).write_text(
+            json.dumps(crawl, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return crawl
+
+    def load_crawl(self, slug: str) -> dict[str, Any]:
+        path = self.crawl_path(slug)
+        if not path.is_file():
+            raise KnowledgeBuildError(
+                f"feature crawl is missing for {slug!r}; run feature-crawl first"
+            )
+        crawl = json.loads(path.read_text(encoding="utf-8"))
+        self.validate_record(crawl, "feature-crawl.schema.json", "feature crawl")
+        return crawl
+
+    def feature_draft(self, feature: str, observed_at: datetime) -> dict[str, Any]:
+        """Draft feature-tagged claims restricted to a crawl boundary, then render the dossier."""
+
+        slug = feature_slug(feature)
+        crawl = self.load_crawl(slug)
+        if crawl["sourceTreeDigest"] != self.current_tree_digest():
+            raise KnowledgeBuildError("force-app changed after the feature crawl; rerun feature-crawl")
+        manifest = self.draft(
+            observed_at,
+            feature=[crawl["feature"]],
+            component_ids=set(crawl["componentIds"]),
+        )
+        dossier = self.render_dossier(crawl, manifest)
+        return {
+            "feature": crawl["feature"],
+            "slug": slug,
+            "manifest": manifest,
+            "dossierPath": self.relative(dossier),
+        }
+
+    def render_dossier(self, crawl: dict[str, Any], manifest: dict[str, Any]) -> Path:
+        """Render the human-readable feature dossier from the crawl boundary and drafted claims."""
+
+        feature = crawl["feature"]
+        descriptions: dict[str, str] = {}
+        for bundle in manifest.get("bundles", []):
+            claim_file = bundle.get("claimFile")
+            if not claim_file:
+                continue
+            claim = yaml.safe_load((self.root / claim_file).read_text(encoding="utf-8"))
+            if claim.get("claimType") == "component-description":
+                text = claim["assertion"]["value"].get("description", "")
+                descriptions[str(claim["subject"]["identity"])] = text
+
+        def describe(component_id: str) -> str:
+            text = descriptions.get(component_id)
+            if not text or text.startswith("<AGENT_"):
+                return "_description pending (fill the draft sentinel before proposing)_"
+            return text.replace("\n", " ").strip()
+
+        def esc(value: Any) -> str:
+            return str(value).replace("|", "\\|").replace("\n", " ")
+
+        lines = [
+            f"# Feature Dossier — {feature}",
+            "",
+            "Draft documentation generated by the feature documentor from source-format metadata at "
+            f"commit `{crawl['repositoryCommit'][:12]}`. Not verified Knowledge: every fact below is "
+            "a proposed claim until a human review promotes it. Do not publish to ADO or a production "
+            "wiki from here.",
+            "",
+            "## Overview",
+            "",
+            f"- **Anchor objects:** {', '.join(f'`{name}`' for name in crawl['anchors'])}",
+            f"- **Crawl depth:** {crawl['depth']}",
+            f"- **Objects in boundary:** {len(crawl['objects'])}",
+            f"- **Drafted proposed claims:** {manifest.get('claimCount', 0)}",
+        ]
+        if crawl["hubStopList"]:
+            lines.append(f"- **Hub stop-list (not expanded):** {', '.join(crawl['hubStopList'])}")
+        if crawl["unresolvedAnchors"]:
+            lines.append(f"- **Unresolved anchors:** {', '.join(crawl['unresolvedAnchors'])}")
+
+        lines.extend(["", "## Relations", "", "### Outbound (anchor references another object)", ""])
+        outbound = crawl["relations"]["outbound"]
+        if outbound:
+            lines.extend(["| From | Field | To | Type |", "|---|---|---|---|"])
+            lines.extend(
+                f"| `{esc(r['fromObject'])}` | `{esc(r['field'])}` | `{esc(r['toObject'])}` | {esc(r['type'])} |"
+                for r in outbound
+            )
+        else:
+            lines.append("_No outbound relations found._")
+        lines.extend(["", "### Inbound (another object references the anchor)", ""])
+        inbound = crawl["relations"]["inbound"]
+        if inbound:
+            lines.extend(["| From | Field | To | Type |", "|---|---|---|---|"])
+            lines.extend(
+                f"| `{esc(r['fromObject'])}` | `{esc(r['field'])}` | `{esc(r['toObject'])}` | {esc(r['type'])} |"
+                for r in inbound
+            )
+        else:
+            lines.append("_No inbound relations found._")
+        junctions = crawl["relations"]["junctions"]
+        if junctions:
+            lines.extend(["", "### Junction objects (many-to-many bridges)", ""])
+            lines.extend(
+                f"- `{esc(j['object'])}` — master-detail to {', '.join(f'`{esc(f)}`' for f in j['masterDetailFields'])}"
+                for j in junctions
+            )
+
+        for heading, bucket in (
+            ("Automations", crawl["automations"]),
+            ("UI surfaces", crawl["ui"]),
+            ("Supporting components", crawl["supporting"]),
+        ):
+            lines.extend(["", f"## {heading}", ""])
+            if bucket:
+                lines.extend(["| Type | Name | Description |", "|---|---|---|"])
+                lines.extend(
+                    f"| {esc(item['metadataType'])} | `{esc(item['name'])}` | {esc(describe(item['id']))} |"
+                    for item in bucket
+                )
+            else:
+                lines.append(f"_No {heading.lower()} in the boundary._")
+
+        lines.extend(["", "## Limitations", ""])
+        lines.extend(f"- {esc(item)}" for item in crawl["limitations"])
+        lines.extend(
+            [
+                "",
+                "## Source traceability",
+                "",
+                f"- Repository commit: `{crawl['repositoryCommit']}`",
+                f"- Source tree digest: `{crawl['sourceTreeDigest']}`",
+                f"- Crawl generated at: {crawl['generatedAt']}",
+                "",
+            ]
+        )
+        self.dossier_root.mkdir(parents=True, exist_ok=True)
+        dossier_path = self.dossier_root / f"{crawl['slug']}.md"
+        dossier_path.write_text("\n".join(lines), encoding="utf-8")
+        return dossier_path
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1017,6 +1376,24 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also save the derived worklist under .cache/knowledge-proposals/",
     )
+    crawl = commands.add_parser(
+        "feature-crawl", help="crawl the metadata graph from anchor objects into a feature boundary"
+    )
+    crawl.add_argument("--feature", required=True)
+    crawl.add_argument("--anchors", required=True, help="comma-separated anchor object API names")
+    crawl.add_argument("--depth", type=int, default=1, help="object hops to expand (default 1)")
+    crawl.add_argument(
+        "--hub",
+        action="append",
+        default=[],
+        help="object to keep as a relation endpoint but never expand (repeatable)",
+    )
+    feature_draft = commands.add_parser(
+        "feature-draft",
+        help="draft feature-tagged claims for a crawl boundary and render its dossier",
+    )
+    feature_draft.add_argument("--feature", required=True)
+    feature_draft.add_argument("--observed-at")
     return parser
 
 
@@ -1043,6 +1420,30 @@ def main(argv: Iterable[str] | None = None) -> int:
                 summary["metadataTypeFilter"] = args.metadata_type
             if "path" in result:
                 summary["path"] = result["path"]
+        elif args.command == "feature-crawl":
+            anchors = [name.strip() for name in args.anchors.split(",") if name.strip()]
+            result = builder.feature_crawl(args.feature, anchors, args.depth, args.hub)
+            summary = {
+                "feature": result["feature"],
+                "path": builder.relative(builder.crawl_path(result["slug"])),
+                "objects": len(result["objects"]),
+                "outboundRelations": len(result["relations"]["outbound"]),
+                "inboundRelations": len(result["relations"]["inbound"]),
+                "junctions": len(result["relations"]["junctions"]),
+                "automations": len(result["automations"]),
+                "ui": len(result["ui"]),
+                "components": len(result["componentIds"]),
+                "unresolvedAnchors": result["unresolvedAnchors"],
+            }
+        elif args.command == "feature-draft":
+            observed_at = parse_time(args.observed_at) if args.observed_at else utc_now()
+            result = builder.feature_draft(args.feature, observed_at)
+            summary = {
+                "feature": result["feature"],
+                "claims": result["manifest"]["claimCount"],
+                "dossierPath": result["dossierPath"],
+                "reviewStatus": result["manifest"]["reviewStatus"],
+            }
         else:
             observed_at = parse_time(args.observed_at) if args.observed_at else utc_now()
             result = builder.draft(observed_at, args.metadata_type)

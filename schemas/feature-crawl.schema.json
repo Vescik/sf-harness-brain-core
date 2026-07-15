@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:feature-crawl.schema.json",
+  "title": "Feature documentor crawl boundary",
+  "description": "Sanitized boundary produced by force_app_knowledge.py feature-crawl: the anchor objects, the objects/relations/components reached from them, and the limitations of the source-only derivation. Presented to a human before any claim is drafted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "repositoryCommit", "sourceTreeDigest", "feature",
+    "slug", "anchors", "depth", "hubStopList", "objects", "unresolvedAnchors", "relations",
+    "automations", "ui", "supporting", "componentIds", "limitations"
+  ],
+  "$defs": {
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromObject", "field", "toObject", "type"],
+      "properties": {
+        "fromObject": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 },
+        "toObject": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 }
+      }
+    },
+    "junction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object", "masterDetailFields"],
+      "properties": {
+        "object": { "type": "string", "minLength": 1 },
+        "masterDetailFields": {
+          "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "metadataType", "name", "path"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "metadataType": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "pattern": "^force-app/" }
+      }
+    }
+  },
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "feature-crawl" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sourceTreeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "feature": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "slug": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "anchors": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "depth": { "type": "integer", "minimum": 0 },
+    "hubStopList": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "objects": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "unresolvedAnchors": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "relations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["outbound", "inbound", "junctions"],
+      "properties": {
+        "outbound": { "type": "array", "items": { "$ref": "#/$defs/relation" } },
+        "inbound": { "type": "array", "items": { "$ref": "#/$defs/relation" } },
+        "junctions": { "type": "array", "items": { "$ref": "#/$defs/junction" } }
+      }
+    },
+    "automations": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+    "ui": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+    "supporting": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+    "componentIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "limitations": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  }
+}
