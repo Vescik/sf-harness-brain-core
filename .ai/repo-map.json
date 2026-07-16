@@ -205,12 +205,16 @@
       "purpose": "Workspace settings and MCP server definitions"
     },
     {
+      "path": "audit",
+      "purpose": "Audit records"
+    },
+    {
       "path": "config",
-      "purpose": "Harness config (harness.local.json), policies, this seed"
+      "purpose": "Harness config (harness.local.json), policies, seed"
     },
     {
       "path": "docs",
-      "purpose": "Human-facing setup, architecture, compatibility docs"
+      "purpose": "Setup, architecture, compatibility docs"
     },
     {
       "path": "evals",
@@ -577,7 +581,7 @@
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
     ".github/skills/update-knowledge-base/SKILL.md": "sha256:b6da4a24d83116ef3dea64bbd49b57d3229f9a6ab68d09eb477c4bb771d02c7c",
     ".github/skills/update-relations/SKILL.md": "sha256:5c6e3f55a32f965edf5456033e89912598b8e2cf2c5a9152d4841420c2b3e121",
-    "config/repo-map-seed.json": "sha256:e05458eb3feebb6e237b982efe5993e7b50f11ae12dfd948bd4792976e8add89"
+    "config/repo-map-seed.json": "sha256:f5e3e507a7a9a4a2b69f399bae8452c7d2d6ac2bae4af3a377803cdebe942766"
   },
-  "wordCount": 796
+  "wordCount": 800
 }

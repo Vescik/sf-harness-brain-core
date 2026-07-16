@@ -6,7 +6,7 @@ hand-edit them (hand-curated data belongs in `../keywords-map.md`, which sync ne
 
 **Naming convention**: one file per Test Suite, named `<suiteId>-<name>.md` — the suite is a
 natural boundary from day one, so the split is per-suite immediately, not threshold-based like
-the Knowledge object files (docs/archive/HARNESS_BLUEPRINT.md sections 3, 5 and 13).
+the Knowledge object files (historical design blueprint sections 3, 5 and 13; git tag `design-history`).
 
 **Entry format inside each suite file** (index only — full steps and expected results stay in
 `.cache/test-cases/<id>.json`, mirrored from ADO, which remains the source of truth):

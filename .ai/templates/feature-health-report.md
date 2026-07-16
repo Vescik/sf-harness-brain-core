@@ -3,7 +3,7 @@
 <!--
 Used by skill: check-feature-coverage (invoked via /feature-health, or by the Test Strategist).
 Output location: output/feature-health/<featureId>.md
-Source: docs/archive/HARNESS_BLUEPRINT.md section 13. All 6 sections are mandatory — a section with no
+Source: historical design blueprint section 13 (git tag design-history). All 6 sections are mandatory — a section with no
 content gets an explicit "none", it is never silently dropped.
 -->
 
