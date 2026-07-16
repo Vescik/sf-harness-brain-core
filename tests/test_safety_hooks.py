@@ -451,6 +451,60 @@ class RoleGuardTests(unittest.TestCase):
                 ["draft"], "development-assistant"
             )
         )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                ["coverage", "--write"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["coverage", "--unknown"], "config-investigator"
+            )
+        )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                ["relations-worklist", "--metadata-type", "Flow", "--write"],
+                "config-investigator",
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["relations-worklist", "--unknown"], "config-investigator"
+            )
+        )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                ["relation-health", "--write"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["relation-health", "--unknown"], "config-investigator"
+            )
+        )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                [
+                    "relations-draft",
+                    "--observed-at",
+                    "2026-07-10T12:00:00Z",
+                    "--limit",
+                    "50",
+                    "--include-heuristic",
+                ],
+                "config-investigator",
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["relations-draft", "--limit", "5000"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["relations-draft"], "development-assistant"
+            )
+        )
 
     def test_designer_cannot_edit_decision_log_directly(self) -> None:
         output = run_hook(

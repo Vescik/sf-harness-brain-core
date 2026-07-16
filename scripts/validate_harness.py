@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 5, "prompts": 18, "skills": 20, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 5, "prompts": 20, "skills": 22, "instructions": 3}
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",

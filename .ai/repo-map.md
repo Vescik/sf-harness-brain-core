@@ -33,34 +33,36 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 ## Roles (`.github/agents/`)
 
-- **config-investigator** — Read-only evidence collector for allowlisted Salesforce …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority; skills: feature-documentor, inventory-force-app, investigate-object, propose-force-app-knowledge, update-knowledge-base.
-- **development-assistant** — Implement a human-accepted Salesforce design in …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: execution-contract, workflow-state-machine. Hands off to: guardrail-reviewer, solution-designer.
-- **guardrail-reviewer** — Independently review a design or implementation …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, workflow-state-machine; skills: check-against-principles. Hands off to: development-assistant, solution-designer.
-- **solution-designer** — Design the change before implementation, establish …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, workflow-state-machine; skills: check-against-principles, solution-design. Hands off to: development-assistant, guardrail-reviewer.
-- **test-strategist** — Assess QA inventory freshness and coverage …. Loads instructions: organization-principles; contracts: execution-contract, workflow-state-machine. Hands off to: development-assistant, guardrail-reviewer.
+- **config-investigator** — Read-only evidence collector for allowlisted …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority; skills: feature-documentor, inventory-force-app, investigate-object, propose-force-app-knowledge, update-knowledge-base.
+- **development-assistant** — Implement a human-accepted Salesforce design …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: execution-contract, workflow-state-machine. Hands off to: guardrail-reviewer, solution-designer.
+- **guardrail-reviewer** — Independently review a design or …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, workflow-state-machine; skills: check-against-principles. Hands off to: development-assistant, solution-designer.
+- **solution-designer** — Design the change before implementation, …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, workflow-state-machine; skills: check-against-principles, solution-design. Hands off to: development-assistant, guardrail-reviewer.
+- **test-strategist** — Assess QA inventory freshness and …. Loads instructions: organization-principles; contracts: execution-contract, workflow-state-machine. Hands off to: development-assistant, guardrail-reviewer.
 
 ## Skills (`.github/skills/`)
 
-- `batch-knowledge` — Five-phase batch conversion of one metadata …
-- `check-against-principles` — Evaluate a scoped design or implementation …
-- `check-feature-coverage` — Compare a current Azure DevOps Feature …
-- `curate-knowledge-keywords` — Curate the Knowledge keyword taxonomy from …
-- `feature-documentor` — Document a feature end to end …
-- `fetch-ado-item` — Fetch and normalize one Azure DevOps …
-- `fetch-test-case` — Fetch and normalize one Azure Test …
-- `generate-playwright-test` — Explore a guarded Salesforce sandbox and …
-- `generate-release-handover` — Compose a current, sourced monthly release-handover …
-- `generate-technical-documentation` — Generate a sourced technical-documentation draft for …
-- `inventory-force-app` — Inventory the repository-root Salesforce force-app into …
-- `investigate-object` — Collect bounded, sanitized, reconciled evidence for …
-- `propose-force-app-knowledge` — Draft schema-v3 Knowledge claims and immutable …
-- `search-ado` — Read-only Azure DevOps text search - …
-- `search-knowledge` — Read-only search over the governed Knowledge …
-- `solution-design` — Five-phase Solution Design workflow (discover, plan, …
-- `suggest-test-cases` — Rank existing synced Test Cases for …
-- `sync-test-cases` — Synchronize an allowlisted Azure Test Plan …
-- `tune-test-case-keywords` — Curate one Test Case keyword mapping …
-- `update-knowledge-base` — Govern proposed Salesforce/package claims, immutable evidence, …
+- `batch-knowledge` — Five-phase batch conversion of one …
+- `check-against-principles` — Evaluate a scoped design or …
+- `check-feature-coverage` — Compare a current Azure DevOps …
+- `curate-knowledge-keywords` — Curate the Knowledge keyword taxonomy …
+- `feature-documentor` — Document a feature end to …
+- `fetch-ado-item` — Fetch and normalize one Azure …
+- `fetch-test-case` — Fetch and normalize one Azure …
+- `generate-playwright-test` — Explore a guarded Salesforce sandbox …
+- `generate-release-handover` — Compose a current, sourced monthly …
+- `generate-technical-documentation` — Generate a sourced technical-documentation draft …
+- `inventory-force-app` — Inventory the repository-root Salesforce force-app …
+- `investigate-object` — Collect bounded, sanitized, reconciled evidence …
+- `propose-force-app-knowledge` — Draft schema-v3 Knowledge claims and …
+- `relation-health` — Read-only report of verified object-relation/component-relation …
+- `search-ado` — Read-only Azure DevOps text search …
+- `search-knowledge` — Read-only search over the governed …
+- `solution-design` — Five-phase Solution Design workflow (discover, …
+- `suggest-test-cases` — Rank existing synced Test Cases …
+- `sync-test-cases` — Synchronize an allowlisted Azure Test …
+- `tune-test-case-keywords` — Curate one Test Case keyword …
+- `update-knowledge-base` — Govern proposed Salesforce/package claims, immutable …
+- `update-relations` — Repo-wide incremental sweep proposing governed …
 
 ## Commands (`.github/prompts/`, public)
 
@@ -75,6 +77,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `/investigate-object` → config-investigator
 - `/propose-force-app-knowledge` → config-investigator
 - `/refresh-force-app-knowledge` → config-investigator
+- `/relation-health` → config-investigator
 - `/release-handover` → test-strategist
 - `/search-ado` → solution-designer
 - `/search-knowledge` → config-investigator
@@ -82,20 +85,21 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `/suggest-test-cases` → test-strategist
 - `/sync-test-cases` → test-strategist
 - `/tune-test-case-keywords` → test-strategist
+- `/update-relations` → config-investigator
 
 ## Contracts (`.ai/contracts/`)
 
-- `execution-contract` — Every skill must apply this contract …
-- `knowledge-lifecycle` — This contract defines how an observation …
-- `source-authority` — Source authority depends on the claim …
-- `tool-capabilities` — Exact dispatcher input schemas come from …
-- `workflow-state-machine` — This contract defines durable workflow state …
+- `execution-contract` — Every skill must apply this …
+- `knowledge-lifecycle` — This contract defines how an …
+- `source-authority` — Source authority depends on the …
+- `tool-capabilities` — Exact dispatcher input schemas come …
+- `workflow-state-machine` — This contract defines durable workflow …
 
 ## Instructions (`.github/instructions/`)
 
 - `managed-package-constraints` — Generic managed-package and closed-surface constraints
-- `organization-principles` — Company policy, review, naming, decision, Knowledge-promotion, …
-- `salesforce-best-practices` — General Salesforce engineering and evidence practices …
+- `organization-principles` — Company policy, review, naming, decision, …
+- `salesforce-best-practices` — General Salesforce engineering and evidence …
 
 ## Resume here
 

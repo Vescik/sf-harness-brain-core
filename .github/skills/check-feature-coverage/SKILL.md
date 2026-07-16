@@ -28,7 +28,11 @@ For BRD attachments:
    behavior from title alone.
 3. Build a two-way requirement↔Story matrix with `covered | partial | absent | ambiguous` and a
    rationale. Identify gaps and orphan Stories; an enabler is a review item, not an automatic error.
-4. Check Tier 1 constraints and Known Limitations for affected package surfaces.
+4. Check Tier 1 constraints and Known Limitations for affected package surfaces. Query the registry
+   for each affected object rather than only reading the static view: `python
+   scripts/knowledge_registry.py query --subject-identity <ApiName> --claim-type package-limitation`
+   and `--uses-object <Object>` for dependent automations. Treat only effective claims as facts;
+   record an explicit gap when Knowledge is empty.
 5. Save all mandatory sections using the Feature Health template and the output envelope.
 
 ## Verdict

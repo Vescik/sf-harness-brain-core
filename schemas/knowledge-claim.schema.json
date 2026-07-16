@@ -6,17 +6,18 @@
   "additionalProperties": false,
   "required": [
     "schemaVersion", "claimId", "revision", "domain", "claimType", "subject", "assertion",
-    "statement", "polarity", "status", "assurance", "scope", "evidenceRefs", "reviewRef", "observedAt",
+    "statement", "status", "assurance", "scope", "evidenceRefs", "reviewRef", "observedAt",
     "verifiedAt", "reviewBy", "sensitivity", "keywords", "limitations", "supersedes",
-    "supersededBy", "contradicts", "relatedClaims"
+    "supersededBy", "contradicts"
   ],
   "$defs": {
     "claimType": {
       "enum": [
         "object-existence", "object-ownership", "field-schema", "object-relation",
-        "automation-inventory", "package-installation", "package-limitation",
-        "reference-data", "runtime-behavior", "business-meaning", "business-process",
-        "integration", "glossary", "component-inventory", "component-description"
+        "component-relation", "automation-inventory", "package-installation",
+        "package-limitation", "reference-data", "runtime-behavior", "business-meaning",
+        "business-process", "integration", "glossary", "component-inventory",
+        "component-description"
       ]
     },
     "claimRef": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
@@ -54,18 +55,21 @@
       }
     },
     "statement": { "type": "string", "minLength": 1, "maxLength": 2000 },
-    "polarity": { "enum": ["positive", "negative"] },
+    "polarity": {
+      "description": "Optional. When omitted the registry derives it (positive by default; negative for false-valued object-existence/package-installation claims). Store it only to assert a negative claim explicitly.",
+      "enum": ["positive", "negative"]
+    },
     "status": { "enum": ["proposed", "verified", "stale", "contested", "superseded", "rejected"] },
     "assurance": { "enum": ["observed", "corroborated", "reported", "inferred", "unknown"] },
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["environment", "orgKey", "packageNamespace", "packageKey", "packageVersion", "repositoryCommit"],
+      "required": ["environment", "orgKey", "packageNamespace", "packageVersion", "repositoryCommit"],
       "properties": {
         "environment": { "enum": ["development", "qa", "uat", "not-applicable"] },
         "orgKey": { "type": ["string", "null"], "minLength": 1 },
         "packageNamespace": { "type": ["string", "null"], "pattern": "^[A-Za-z][A-Za-z0-9_]{0,14}$" },
-        "packageKey": { "type": ["string", "null"], "minLength": 1 },
+        "packageKey": { "description": "Optional. Local configured package key; omit unless a local key is needed to disambiguate packages beyond packageNamespace.", "type": ["string", "null"], "minLength": 1 },
         "packageVersion": { "type": ["string", "null"], "minLength": 1 },
         "repositoryCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" }
       }
@@ -231,6 +235,31 @@
         "required": ["claimType", "assertion"]
       },
       "then": { "properties": { "polarity": { "const": "negative" } } }
+    },
+    {
+      "if": {
+        "properties": { "claimType": { "const": "component-relation" } },
+        "required": ["claimType"]
+      },
+      "then": {
+        "properties": {
+          "subject": { "properties": { "kind": { "const": "relation" } } },
+          "assertion": {
+            "properties": {
+              "value": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["target", "sourceMetadataType", "heuristic"],
+                "properties": {
+                  "target": { "type": "string", "minLength": 1 },
+                  "sourceMetadataType": { "type": "string", "minLength": 1 },
+                  "heuristic": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     {
       "if": {

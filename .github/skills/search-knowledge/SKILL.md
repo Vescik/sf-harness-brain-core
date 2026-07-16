@@ -1,6 +1,6 @@
 ---
 name: search-knowledge
-description: Read-only search over the governed Knowledge registry - by subject, approved or candidate keyword, and statement/description text - reporting effective facts separately from non-effective records. Never proposes, promotes, or edits Knowledge.
+description: Read-only search over the governed Knowledge registry - by subject, approved or candidate keyword, statement/description text, and the component usage registry (object/field/invoked-component dependency) - reporting effective facts separately from non-effective records. Never proposes, promotes, or edits Knowledge.
 user-invocable: false
 ---
 
@@ -12,8 +12,9 @@ only a `verified`, fresh, scope-matched, uncontradicted claim is an established 
 
 ## Inputs
 
-At least one of: a subject identity (object/field/component API name), a keyword, or a free-text
-fragment. Optional narrowing: domain, claim type, environment/org scope.
+At least one of: a subject identity (object/field/component API name), a keyword, a free-text
+fragment, or a dependency lookup (which components use an object/field or invoke a component).
+Optional narrowing: domain, claim type, environment/org scope.
 
 ## Procedure
 
@@ -23,9 +24,15 @@ fragment. Optional narrowing: domain, claim type, environment/org scope.
      `keywords` and advisory `candidateKeywords`; the result names which tier matched)
    - text: `python scripts/knowledge_registry.py query --text <fragment>` (statement + component
      description substring)
+   - dependency: `python scripts/knowledge_registry.py query --uses-object <Object>` |
+     `--uses-field <Object.Field>` | `--invokes <name>` — finds every automation/component whose
+     source-declared usage registry touches that object/field or invokes that Apex/subflow/action
+     (e.g. "which automations write `Claim__c.Status__c`?").
    - combine with `--domain`, `--claim-type`, `--environment`, `--org-key` as needed.
 2. For a broad scan, read the generated `.ai/knowledge/claims-index.json` — one row per claim
-   with status, keywords, and description excerpt. Only rows with `effective: true` are facts.
+   with status, keywords, description excerpt, and `usesObjects`/`usesFields` dependency summary.
+   Only rows with `effective: true` are facts. The `automation-map.md` view also carries an
+   "Automations by object" reverse index.
 3. For vocabulary questions ("what process terms exist?"), run
    `python scripts/knowledge_registry.py keyword-report` and read
    `.ai/knowledge/keyword-taxonomy.md` (approved terms) — candidate terms are suggestions
@@ -44,4 +51,5 @@ from this skill. Missing knowledge is a finding — route creation to
 ## Return
 
 Return the filters used, effective claims (ID, statement, keywords, evidence refs), non-effective
-matches with reasons, keyword tier for keyword hits, and suggested next steps for gaps.
+matches with reasons, keyword tier for keyword hits, dependency hits (objects/fields used) for
+usage queries, and suggested next steps for gaps.

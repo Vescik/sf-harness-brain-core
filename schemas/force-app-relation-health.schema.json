@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:force-app-relation-health.schema.json",
+  "title": "force-app orphaned relation-claim report",
+  "description": "Read-only diff of verified object-relation/component-relation claims against the current inventory's live reference edges, surfacing claims whose source component or edge no longer exists so a human can review them for stale-marking. Never mutates Knowledge.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "repositoryCommit", "sourceTreeDigest",
+    "orphanedCount", "orphaned"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "force-app-relation-health" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sourceTreeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "orphanedCount": { "type": "integer", "minimum": 0 },
+    "orphaned": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["claimId", "claimType", "subjectIdentity", "reason", "revision"],
+        "properties": {
+          "claimId": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
+          "claimType": { "enum": ["object-relation", "component-relation"] },
+          "subjectIdentity": { "type": "string", "minLength": 1 },
+          "reason": { "enum": ["component removed", "edge no longer present in source"] },
+          "revision": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

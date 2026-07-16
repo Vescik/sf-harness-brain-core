@@ -33,6 +33,12 @@ DRAFT_ROOT = CACHE_ROOT / "force-app-drafts"
 SCHEMA_VERSION = 1
 COLLECTOR_VERSION = "1.0.0"
 CUSTOM_OBJECT_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*(?:__c|__mdt|__e|__x))\b")
+# Custom-field token inside a formula/expression (validation rules). Standard fields cannot be told
+# apart from function names by source alone, so the usage registry records custom fields only.
+FORMULA_FIELD_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*__c)\b")
+# Upper bound on emitted usage references per component (permission sets and layouts can enumerate
+# hundreds of field grants). The total is always recorded in facts even when references are capped.
+MAX_USAGE_REFS = 300
 TRIGGER_RE = re.compile(
     r"\btrigger\s+([A-Za-z][A-Za-z0-9_]*)\s+on\s+([A-Za-z][A-Za-z0-9_]*)\s*\(([^)]+)\)",
     re.IGNORECASE | re.MULTILINE,
@@ -45,12 +51,51 @@ CLASS_RE = re.compile(
 APEX_IMPORT_RE = re.compile(r"@salesforce/apex/([A-Za-z0-9_]+\.[A-Za-z0-9_]+)")
 SCHEMA_IMPORT_RE = re.compile(r"@salesforce/schema/([A-Za-z0-9_.]+)")
 AURA_CONTROLLER_RE = re.compile(r"\bcontroller\s*=\s*[\"']([A-Za-z][A-Za-z0-9_]*)[\"']")
+# Source-token heuristics for Apex usage. These read declared source only and are best-effort: they
+# do not resolve variable types or dynamic SOQL, so the automation-inventory claim records an
+# explicit heuristic limitation.
+SOQL_FROM_RE = re.compile(r"\bFROM\s+([A-Za-z][A-Za-z0-9_]*)", re.IGNORECASE)
+DML_RE = re.compile(r"\b(insert|update|upsert|delete|undelete)\b", re.IGNORECASE)
+APEX_CALL_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]{2,})\.[A-Za-z_][A-Za-z0-9_]*\s*\(")
+# Common platform types/namespaces excluded from the invokes-class heuristic to reduce noise.
+APEX_SYSTEM_TYPES = frozenset(
+    {
+        "System", "Database", "Schema", "String", "Integer", "Decimal", "Double", "Boolean",
+        "Date", "Datetime", "Time", "Math", "JSON", "Test", "Limits", "UserInfo", "Trigger",
+        "List", "Map", "Set", "Id", "Blob", "Long", "Object", "SObject", "Type", "Label",
+        "ApexPages", "PageReference", "Http", "HttpRequest", "HttpResponse", "Messaging", "Address",
+        "Pattern", "Matcher", "Exception", "DmlException", "SObjectType", "SObjectField",
+    }
+)
 
 # Reference kinds whose target names an object (its head token before any `.field`). Used by the
 # feature crawl to associate an automation/UI component with the objects it touches. subflow,
-# action, apex-method, and apex-controller targets name automations/methods, not objects.
-OBJECT_REF_KINDS = frozenset({"relationship", "operates-on", "object-token", "schema"})
-AUTOMATION_TYPES = frozenset({"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess"})
+# action, apex-method, apex-controller, invokes-apex, invokes-class, and related-list targets name
+# automations/methods/related lists, not objects.
+OBJECT_REF_KINDS = frozenset(
+    {
+        "relationship",
+        "operates-on",
+        "object-token",
+        "schema",
+        "reads-field",
+        "writes-field",
+        "references-field",
+        "places-field",
+        "grants-field-permission",
+        "queries-object",
+        "dml-object",
+        "grants-object-permission",
+    }
+)
+# Reference kinds derived via regex source-token heuristics rather than structural XML/JS parsing
+# (Apex object tokens, SOQL FROM targets, and invoked-class names). Best-effort: dynamic references
+# and unresolved variable types may be missing or approximate. Drives component-relation claims'
+# heuristic flag and assurance level.
+HEURISTIC_REF_KINDS = frozenset({"object-token", "queries-object", "invokes-class"})
+AUTOMATION_TYPES = frozenset(
+    {"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess", "ValidationRule"}
+)
 UI_TYPES = frozenset(
     {"LightningComponentBundle", "AuraDefinitionBundle", "ApexPage", "FlexiPage", "Layout", "CustomTab"}
 )
@@ -251,6 +296,26 @@ class ForceAppKnowledge:
             f"<fullName>{field_name}</fullName>",
         )
 
+    # Flow data elements and the field-usage polarity each implies. Read from source only: which
+    # objects/fields the Flow declares it touches, never runtime values. recordDeletes filters are
+    # counted as writes because the element mutates records.
+    FLOW_DATA_ELEMENTS = {
+        "recordLookups": "reads-field",
+        "recordCreates": "writes-field",
+        "recordUpdates": "writes-field",
+        "recordDeletes": "writes-field",
+    }
+
+    @staticmethod
+    def _flow_element_fields(element: ET.Element) -> set[str]:
+        """Field API names a Flow data element declares (queried fields, assignments, filters)."""
+
+        fields: set[str] = set(descendant_texts(element, "queriedFields"))
+        for child in element.iter():
+            if local_name(child.tag) == "field" and child.text and child.text.strip():
+                fields.add(child.text.strip())
+        return fields
+
     def parse_flow(self, path: Path) -> dict[str, Any]:
         root = self.parse_xml(path)
         starts = [item for item in root.iter() if local_name(item.tag) == "start"]
@@ -267,6 +332,38 @@ class ForceAppKnowledge:
             {"kind": "action", "target": value}
             for value in descendant_texts(root, "actionName")
         )
+        # Usage registry: objects and fields the Flow's data elements declare they read or write.
+        referenced_objects: set[str] = set()
+        if object_name:
+            referenced_objects.add(object_name)
+        for tag, kind in self.FLOW_DATA_ELEMENTS.items():
+            for element in (item for item in root.iter() if local_name(item.tag) == tag):
+                element_object = direct_text(element, "object")
+                if element_object:
+                    referenced_objects.add(element_object)
+                for field in self._flow_element_fields(element):
+                    target = f"{element_object}.{field}" if element_object else field
+                    references.append({"kind": kind, "target": target})
+        # Invoked Apex: actionCalls whose actionType is apex name a class the Flow depends on.
+        for element in (item for item in root.iter() if local_name(item.tag) == "actionCalls"):
+            if direct_text(element, "actionType") == "apex":
+                action = direct_text(element, "actionName")
+                if action:
+                    references.append({"kind": "invokes-apex", "target": action})
+        element_counts = {
+            key: sum(1 for item in root.iter() if local_name(item.tag) == tag)
+            for key, tag in (
+                ("decisions", "decisions"),
+                ("loops", "loops"),
+                ("screens", "screens"),
+                ("subflows", "subflows"),
+                ("actionCalls", "actionCalls"),
+                ("recordLookups", "recordLookups"),
+                ("recordCreates", "recordCreates"),
+                ("recordUpdates", "recordUpdates"),
+                ("recordDeletes", "recordDeletes"),
+            )
+        }
         name = path.name.removesuffix(".flow-meta.xml")
         return self.component(
             "Flow",
@@ -279,6 +376,9 @@ class ForceAppKnowledge:
                 "object": object_name,
                 "triggerType": direct_text(start, "triggerType"),
                 "recordTriggerType": direct_text(start, "recordTriggerType"),
+                "referencedObjects": sorted(referenced_objects),
+                "elementCounts": {key: value for key, value in element_counts.items() if value}
+                or None,
             },
             references,
             name,
@@ -304,6 +404,20 @@ class ForceAppKnowledge:
             match = CLASS_RE.search(source)
             name = match.group(2) if match else path.stem
             facts = {"declarationKind": match.group(1).lower() if match else "unknown"}
+        # Usage registry (source-token heuristic): objects queried, DML verbs used, classes invoked.
+        soql_objects = sorted(set(SOQL_FROM_RE.findall(source)))
+        references.extend({"kind": "queries-object", "target": value} for value in soql_objects)
+        dml_operations = sorted({value.lower() for value in DML_RE.findall(source)})
+        invoked = sorted(
+            value
+            for value in set(APEX_CALL_RE.findall(source))
+            if value not in APEX_SYSTEM_TYPES and value != name
+        )
+        references.extend({"kind": "invokes-class", "target": value} for value in invoked)
+        if soql_objects:
+            facts["soqlObjects"] = soql_objects
+        if dml_operations:
+            facts["dmlOperations"] = dml_operations
         return self.component(metadata_type, name, path, facts, references, name)
 
     def parse_lwc(self, bundle: Path) -> dict[str, Any]:
@@ -398,6 +512,84 @@ class ForceAppKnowledge:
             name,
         )
 
+    def parse_validation_rule(self, path: Path) -> dict[str, Any]:
+        root = self.parse_xml(path)
+        try:
+            object_name: str | None = object_from_path(path)
+        except ValueError:
+            object_name = None
+        rule = path.name.removesuffix(".validationRule-meta.xml")
+        name = f"{object_name}.{rule}" if object_name else rule
+        formula = direct_text(root, "errorConditionFormula") or ""
+        references: list[dict[str, str]] = []
+        if object_name:
+            references.append({"kind": "operates-on", "target": object_name})
+            for field in sorted(set(FORMULA_FIELD_RE.findall(formula))):
+                references.append({"kind": "references-field", "target": f"{object_name}.{field}"})
+        return self.component(
+            "ValidationRule",
+            name,
+            path,
+            {
+                "object": object_name,
+                "active": boolean(direct_text(root, "active")),
+                "errorDisplayField": direct_text(root, "errorDisplayField"),
+                "errorMessagePresent": direct_text(root, "errorMessage") is not None,
+            },
+            references,
+            rule,
+        )
+
+    def parse_permission_set(self, path: Path) -> dict[str, Any]:
+        root = self.parse_xml(path)
+        name = path.name.removesuffix(".permissionset-meta.xml")
+        object_perms = [e for e in root.iter() if local_name(e.tag) == "objectPermissions"]
+        field_perms = [e for e in root.iter() if local_name(e.tag) == "fieldPermissions"]
+        references: list[dict[str, str]] = []
+        for element in object_perms:
+            target = direct_text(element, "object")
+            if target:
+                references.append({"kind": "grants-object-permission", "target": target})
+        for element in field_perms:
+            target = direct_text(element, "field")
+            if target:
+                references.append({"kind": "grants-field-permission", "target": target})
+        references.sort(key=lambda item: (item["kind"], item["target"]))
+        facts: dict[str, Any] = {
+            "label": direct_text(root, "label"),
+            "hasActivationRequired": boolean(direct_text(root, "hasActivationRequired")),
+            "objectPermissionCount": len(object_perms),
+            "fieldPermissionCount": len(field_perms),
+        }
+        if len(references) > MAX_USAGE_REFS:
+            facts["referencesTruncated"] = True
+            references = references[:MAX_USAGE_REFS]
+        return self.component("PermissionSet", name, path, facts, references, name)
+
+    def parse_layout(self, path: Path) -> dict[str, Any]:
+        root = self.parse_xml(path)
+        name = path.name.removesuffix(".layout-meta.xml")
+        object_name = name.split("-", 1)[0] if "-" in name else None
+        field_targets: set[str] = set()
+        for element in root.iter():
+            if local_name(element.tag) == "layoutItems":
+                field = direct_text(element, "field")
+                if field:
+                    field_targets.add(f"{object_name}.{field}" if object_name else field)
+        references = [{"kind": "places-field", "target": target} for target in sorted(field_targets)]
+        references.extend(
+            {"kind": "related-list", "target": value}
+            for value in descendant_texts(root, "relatedList")
+        )
+        facts = {
+            "object": object_name,
+            "fieldCount": len(field_targets),
+        }
+        if len(references) > MAX_USAGE_REFS:
+            facts["referencesTruncated"] = True
+            references = references[:MAX_USAGE_REFS]
+        return self.component("Layout", name, path, facts, references, name)
+
     GENERIC_META = re.compile(r"^(?P<name>.+)\.(?P<token>[A-Za-z0-9_]+)-meta\.xml$")
 
     # Suffix tokens whose naive capitalization is not the Metadata API type name (validated by a
@@ -455,6 +647,9 @@ class ForceAppKnowledge:
             ("*.field-meta.xml", self.parse_field),
             ("*.flow-meta.xml", self.parse_flow),
             ("*.approvalProcess-meta.xml", self.parse_approval_process),
+            ("*.validationRule-meta.xml", self.parse_validation_rule),
+            ("*.permissionset-meta.xml", self.parse_permission_set),
+            ("*.layout-meta.xml", self.parse_layout),
         ]
         for pattern, parser in parsers:
             for path in sorted(self.source_root.rglob(pattern)):
@@ -595,6 +790,35 @@ class ForceAppKnowledge:
         "<AGENT_WRITES_WHAT_THIS_COMPONENT_DOES_BASED_ON_ITS_SOURCE_BEFORE_PROPOSING>"
     )
 
+    KEYWORD_SUFFIX_RE = re.compile(r"__(?:c|r|mdt|e|x|b|p|latitude__s|longitude__s)$", re.IGNORECASE)
+
+    @classmethod
+    def keyword_seeds(cls, component: dict[str, Any]) -> list[str]:
+        """Advisory candidate keywords derived from the objects/fields a component uses.
+
+        Source-grounded terms only (object/field API names, suffix-stripped and de-camelised) that
+        seed the human keyword-curation queue. Never promoted automatically: they land in
+        `candidateKeywords`, and only a curated taxonomy term ever enters `keywords`.
+        """
+
+        tokens: set[str] = set()
+        facts = component.get("facts", {})
+        obj = facts.get("object")
+        if isinstance(obj, str):
+            tokens.add(obj)
+        for value in facts.get("referencedObjects", []) or []:
+            tokens.add(str(value))
+        for reference in component.get("references", []):
+            if reference["kind"] in OBJECT_REF_KINDS:
+                tokens.update(str(reference["target"]).split("."))
+        terms: set[str] = set()
+        for token in tokens:
+            term = cls.KEYWORD_SUFFIX_RE.sub("", token)
+            term = re.sub(r"\s+", " ", term.replace("_", " ").strip().lower())
+            if 1 <= len(term) <= 60:
+                terms.add(term)
+        return sorted(terms)[:5]
+
     def candidate_claims(
         self, component: dict[str, Any], feature: list[str] | None = None
     ) -> list[dict[str, Any]]:
@@ -636,7 +860,13 @@ class ForceAppKnowledge:
                         "limitations": [common_limit, "Business cardinality and reference-data semantics are not established."],
                     }
                 )
-        elif metadata_type in {"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess"}:
+        elif metadata_type in {"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess", "ValidationRule"}:
+            automation_limits = [common_limit, "Runtime paths, order of execution, and side effects are not established."]
+            if metadata_type in {"ApexClass", "ApexTrigger", "ValidationRule"}:
+                automation_limits.append(
+                    "Object/field usage is a source-token heuristic: dynamic references, standard-field "
+                    "usage, and unresolved variable types may be missing or approximate."
+                )
             candidates.append(
                 {
                     "domain": "automation-map",
@@ -647,7 +877,7 @@ class ForceAppKnowledge:
                         "value": {"metadataType": metadata_type, "facts": facts, "references": component["references"]},
                     },
                     "statement": f"{component['name']} is a source-defined {metadata_type} component at the repository commit.",
-                    "limitations": [common_limit, "Runtime paths, order of execution, and side effects are not established."],
+                    "limitations": automation_limits,
                 }
             )
         elif metadata_type in {"NamedCredential", "ExternalCredential", "RemoteSiteSetting"}:
@@ -690,13 +920,14 @@ class ForceAppKnowledge:
             "ApexClass",
             "ApexTrigger",
             "ApprovalProcess",
+            "ValidationRule",
             "LightningComponentBundle",
             "AuraDefinitionBundle",
         }:
             candidates.append(
                 {
                     "domain": "automation-map"
-                    if metadata_type in {"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess"}
+                    if metadata_type in {"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess", "ValidationRule"}
                     else "component-inventory",
                     "claimType": "component-description",
                     "subject": {"kind": "component", "identity": component["id"]},
@@ -715,10 +946,74 @@ class ForceAppKnowledge:
                     ],
                 }
             )
+        seeds = self.keyword_seeds(component)
+        if seeds:
+            for candidate in candidates:
+                candidate["candidateKeywords"] = seeds
         if feature:
             for candidate in candidates:
                 candidate["feature"] = list(feature)
         return candidates
+
+    def relation_candidates(self, component: dict[str, Any]) -> list[dict[str, Any]]:
+        """First-class component-relation claims for every reference edge this component carries.
+
+        `CustomField.referenceTo` edges are excluded: `candidate_claims()` already emits those as
+        `object-relation` claims. Every other reference kind (a Flow's `operates-on`/`reads-field`/
+        `writes-field`/`invokes-apex`, an Apex class's `queries-object`/`invokes-class`, an LWC's
+        `apex-method`/`schema`, permission-set/layout grants, …) is otherwise only visible embedded
+        inside its owning component's own claim. This promotes each edge to its own independently
+        reconcilable, deterministically-identified relation claim, so it can be created, tracked,
+        and later flagged as orphaned on its own instead of only as a side effect of that owning
+        claim being drafted.
+        """
+
+        if component["metadataType"] == "CustomField":
+            return []
+        common_limit = "Repository metadata establishes intended source only; deployed org state was not reconciled."
+        candidates: list[dict[str, Any]] = []
+        for reference in component["references"]:
+            kind = reference["kind"]
+            target = reference["target"]
+            heuristic = kind in HEURISTIC_REF_KINDS
+            identity = f"{component['id']}->{kind}->{target}"
+            candidates.append(
+                {
+                    "domain": "object-relations",
+                    "claimType": "component-relation",
+                    "subject": {"kind": "relation", "identity": identity},
+                    "assertion": {
+                        "predicate": kind,
+                        "value": {
+                            "target": target,
+                            "sourceMetadataType": component["metadataType"],
+                            "heuristic": heuristic,
+                        },
+                    },
+                    "assurance": "inferred" if heuristic else "observed",
+                    "statement": f"{component['id']} has a {kind} reference to {target} in source-format metadata.",
+                    "limitations": [common_limit] + (
+                        [
+                            "Source-token heuristic: dynamic references and unresolved variable "
+                            "types may be missing or approximate."
+                        ]
+                        if heuristic
+                        else ["Business cardinality and reference-data semantics are not established."]
+                    ),
+                }
+            )
+        return candidates
+
+    def all_relation_candidates(self, component: dict[str, Any]) -> list[dict[str, Any]]:
+        """Every relation-claim candidate (object-relation + component-relation) for one component."""
+
+        if component["metadataType"] == "CustomField":
+            return [
+                candidate
+                for candidate in self.candidate_claims(component)
+                if candidate["claimType"] == "object-relation"
+            ]
+        return self.relation_candidates(component)
 
     def expected_claim_id(self, candidate: dict[str, Any]) -> str:
         return stable_id(
@@ -847,12 +1142,253 @@ class ForceAppKnowledge:
             result["path"] = self.relative(worklist_path)
         return result
 
+    def relations_worklist(
+        self, metadata_type: str | None = None, write: bool = False
+    ) -> dict[str, Any]:
+        """Edge-granular status for every object-relation/component-relation candidate.
+
+        Mirrors `worklist()`'s ground-truth-recomputation contract but at reference-edge
+        granularity: one component can carry many relation edges independently at different
+        states (some already verified, one newly added), which a single per-component status
+        cannot represent. Read-only; never proposes. Because a candidate's deterministic claim ID
+        is derived from its own (component, kind, target) identity, an unchanged edge always
+        regenerates the same ID and is reported `verified-current`/`proposed` as-is — a rerun with
+        no source changes reports identical output, which is what lets a sweep touch only what's
+        new.
+        """
+
+        inventory = self.load_inventory()
+        if metadata_type is not None and metadata_type not in inventory["coverage"]:
+            available = sorted(inventory["coverage"])
+            raise KnowledgeBuildError(
+                f"inventory has no components of metadata type {metadata_type!r}; "
+                f"available types: {', '.join(available)}"
+            )
+        if inventory["sourceTreeDigest"] != self.current_tree_digest():
+            raise KnowledgeBuildError("force-app changed after inventory; rerun inventory")
+
+        claims_root = self.root / ".ai/knowledge/claims"
+        items: list[dict[str, Any]] = []
+        counts: Counter[str] = Counter()
+        for component in inventory["components"]:
+            if metadata_type is not None and component["metadataType"] != metadata_type:
+                continue
+            component_digest = digest_bytes(canonical(component).encode("utf-8"))
+            current_evidence_id = stable_id("KEVD", component["id"], f"repo-{component_digest}")
+            for candidate in self.all_relation_candidates(component):
+                claim_id = self.expected_claim_id(candidate)
+                value = candidate["assertion"]["value"]
+                if candidate["claimType"] == "object-relation":
+                    target, heuristic = value, False
+                else:
+                    target, heuristic = value["target"], value["heuristic"]
+                item: dict[str, Any] = {
+                    "claimId": claim_id,
+                    "claimType": candidate["claimType"],
+                    "sourceComponentId": component["id"],
+                    "sourceMetadataType": component["metadataType"],
+                    "predicate": candidate["assertion"]["predicate"],
+                    "target": target,
+                    "heuristic": heuristic,
+                }
+                canonical_path = claims_root / f"{claim_id}.yaml"
+                if canonical_path.is_file():
+                    record = yaml.safe_load(canonical_path.read_text(encoding="utf-8"))
+                    item["revision"] = int(record["revision"])
+                    status = record.get("status")
+                    if status == "verified":
+                        item["state"] = (
+                            "verified-current"
+                            if current_evidence_id in record.get("evidenceRefs", [])
+                            else "verified-stale"
+                        )
+                    elif status == "proposed":
+                        item["state"] = "proposed"
+                    else:
+                        item["state"] = "blocked"
+                        item["reason"] = f"canonical status is {status}"
+                else:
+                    item["state"] = "missing"
+                items.append(item)
+                counts[item["state"]] += 1
+
+        result = {
+            "schemaVersion": SCHEMA_VERSION,
+            "kind": "force-app-relations-worklist",
+            "generatedAt": iso(utc_now()),
+            "repositoryCommit": inventory["repositoryCommit"],
+            "sourceTreeDigest": inventory["sourceTreeDigest"],
+            **({"metadataTypeFilter": metadata_type} if metadata_type else {}),
+            "counts": dict(sorted(counts.items())),
+            "items": items,
+        }
+        self.validate_record(
+            result, "force-app-relations-worklist.schema.json", "force-app relations worklist"
+        )
+        if write:
+            suffix = f"-{metadata_type}" if metadata_type else ""
+            path = self.cache_root / f"force-app-relations-worklist{suffix}.json"
+            self.cache_root.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            result["path"] = self.relative(path)
+        return result
+
+    def relation_health(self, write: bool = False) -> dict[str, Any]:
+        """Read-only: verified relation claims whose source edge no longer exists in current source.
+
+        Knowledge is append-only, so a deleted field/component or a retargeted reference doesn't
+        remove or update its old claim by itself — this diffs every `verified` object-relation/
+        component-relation claim's `subject.identity` against the live set derived fresh from
+        `all_relation_candidates()` for the current inventory, and flags the ones with no live
+        match for human stale-marking. Never mutates Knowledge; marking an orphan `stale` remains a
+        separate governed `review`/`promote` step.
+        """
+
+        inventory = self.load_inventory()
+        if inventory["sourceTreeDigest"] != self.current_tree_digest():
+            raise KnowledgeBuildError("force-app changed after inventory; rerun inventory")
+        live_component_ids = {component["id"] for component in inventory["components"]}
+        live_identities: set[str] = set()
+        for component in inventory["components"]:
+            for candidate in self.all_relation_candidates(component):
+                live_identities.add(candidate["subject"]["identity"])
+
+        orphaned: list[dict[str, Any]] = []
+        claims_root = self.root / ".ai/knowledge/claims"
+        for path in sorted(claims_root.glob("*.yaml")):
+            claim = yaml.safe_load(path.read_text(encoding="utf-8"))
+            claim_type = claim.get("claimType")
+            if claim_type not in {"object-relation", "component-relation"}:
+                continue
+            if claim.get("status") != "verified":
+                continue
+            identity = claim["subject"]["identity"]
+            if identity in live_identities:
+                continue
+            if claim_type == "component-relation":
+                source_component_id = identity.split("->", 1)[0]
+            else:
+                # object-relation identity is "{Object}.{Field}->{Target}"; the owning CustomField
+                # component id is the metadata-type-prefixed form of that same head token.
+                source_component_id = f"CustomField:{identity.split('->', 1)[0]}"
+            reason = (
+                "component removed"
+                if source_component_id not in live_component_ids
+                else "edge no longer present in source"
+            )
+            orphaned.append(
+                {
+                    "claimId": claim["claimId"],
+                    "claimType": claim_type,
+                    "subjectIdentity": identity,
+                    "reason": reason,
+                    "revision": int(claim["revision"]),
+                }
+            )
+
+        result = {
+            "schemaVersion": SCHEMA_VERSION,
+            "kind": "force-app-relation-health",
+            "generatedAt": iso(utc_now()),
+            "repositoryCommit": inventory["repositoryCommit"],
+            "sourceTreeDigest": inventory["sourceTreeDigest"],
+            "orphanedCount": len(orphaned),
+            "orphaned": orphaned,
+        }
+        self.validate_record(
+            result, "force-app-relation-health.schema.json", "force-app relation health"
+        )
+        if write:
+            path = self.cache_root / "force-app-relation-health.json"
+            self.cache_root.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            result["path"] = self.relative(path)
+        return result
+
+    # Component statuses that count as documented / undocumented / drifted for coverage. Drift
+    # ("stale-refresh") means a verified claim exists but the component's current source digest no
+    # longer matches the evidence it was verified against — a report-only re-review signal.
+    COVERAGE_DOCUMENTED = "verified-current"
+    COVERAGE_UNDOCUMENTED = "pending"
+    COVERAGE_DRIFTED = "stale-refresh"
+    COVERAGE_ATTENTION = ("blocked", COVERAGE_DRIFTED, COVERAGE_UNDOCUMENTED)
+
+    def coverage(self, write: bool = False) -> dict[str, Any]:
+        """Documentation coverage of the force-app source, derived from the worklist.
+
+        Read-only. Reuses the worklist's per-component status (which already checks canonical claims
+        and source-digest drift) to report, per metadata type, how many components are documented by
+        a fresh verified claim vs proposed vs undocumented vs drifted, plus a prioritised
+        "document next" list. It never mutates Knowledge — marking a drifted claim stale stays a
+        governed human review.
+        """
+
+        worklist = self.worklist(metadata_type=None)
+        items = worklist["items"]
+        by_type: dict[str, Counter[str]] = {}
+        for item in items:
+            by_type.setdefault(item["metadataType"], Counter())[item["status"]] += 1
+
+        def summarize(bucket: Counter[str]) -> dict[str, int]:
+            total = sum(bucket.values())
+            documented = bucket.get(self.COVERAGE_DOCUMENTED, 0)
+            return {
+                "total": total,
+                "documented": documented,
+                "proposed": bucket.get("proposed", 0) + bucket.get("drafted", 0),
+                "undocumented": bucket.get(self.COVERAGE_UNDOCUMENTED, 0),
+                "drifted": bucket.get(self.COVERAGE_DRIFTED, 0),
+                "blocked": bucket.get("blocked", 0),
+                "coveragePercent": round(100 * documented / total) if total else 0,
+            }
+
+        by_metadata_type = {name: summarize(bucket) for name, bucket in sorted(by_type.items())}
+        overall = Counter()
+        for bucket in by_type.values():
+            overall.update(bucket)
+        priority = {"blocked": 0, self.COVERAGE_DRIFTED: 1, self.COVERAGE_UNDOCUMENTED: 2}
+        document_next = sorted(
+            (
+                {
+                    "componentId": item["componentId"],
+                    "metadataType": item["metadataType"],
+                    "name": item["name"],
+                    "path": item["path"],
+                    "status": item["status"],
+                    **({"reason": item["reason"]} if "reason" in item else {}),
+                }
+                for item in items
+                if item["status"] in priority
+            ),
+            key=lambda entry: (priority[entry["status"]], entry["metadataType"], entry["name"]),
+        )
+        result = {
+            "schemaVersion": SCHEMA_VERSION,
+            "kind": "force-app-knowledge-coverage",
+            "generatedAt": iso(utc_now()),
+            "repositoryCommit": worklist["repositoryCommit"],
+            "sourceTreeDigest": worklist["sourceTreeDigest"],
+            "totals": summarize(overall),
+            "byMetadataType": by_metadata_type,
+            "documentNext": document_next,
+        }
+        if write:
+            self.cache_root.mkdir(parents=True, exist_ok=True)
+            coverage_path = self.cache_root / "force-app-coverage.json"
+            coverage_path.write_text(
+                json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            result["path"] = self.relative(coverage_path)
+        return result
+
     def draft(
         self,
         observed_at: datetime,
         metadata_type: str | None = None,
         feature: list[str] | None = None,
         component_ids: set[str] | None = None,
+        include_relations: bool = False,
+        claim_ids: set[str] | None = None,
     ) -> dict[str, Any]:
         inventory = self.load_inventory()
         if metadata_type is not None:
@@ -887,8 +1423,17 @@ class ForceAppKnowledge:
             if component_ids is not None and component["id"] not in component_ids:
                 continue
             candidates = self.candidate_claims(component, feature)
+            if include_relations:
+                candidates = candidates + self.relation_candidates(component)
             if not candidates:
                 continue
+            if claim_ids is not None:
+                candidates = [
+                    candidate for candidate in candidates
+                    if self.expected_claim_id(candidate) in claim_ids
+                ]
+                if not candidates:
+                    continue
             component_digest = digest_bytes(canonical(component).encode("utf-8"))
             authority_for = sorted({item["claimType"] for item in candidates})
             evidence_id = stable_id("KEVD", component["id"], f"repo-{component_digest}")
@@ -897,12 +1442,10 @@ class ForceAppKnowledge:
                 "evidenceId": evidence_id,
                 "sourceType": "metadata-repository",
                 "sourceLocator": f"git://{commit}/{component['path']}",
-                "independenceKey": f"metadata-repository:{commit}",
                 "authorityFor": authority_for,
                 "environment": "not-applicable",
                 "orgKey": None,
                 "packageNamespace": None,
-                "packageKey": None,
                 "packageVersion": None,
                 "repositoryCommit": commit,
                 "observedAt": iso(observed_at),
@@ -913,7 +1456,6 @@ class ForceAppKnowledge:
                     "status": "complete",
                     "enumerationComplete": False,
                     "permissionsProven": False,
-                    "pagesFetched": 1,
                     "missingSegments": [],
                 },
                 "sensitivity": "internal-sanitized",
@@ -955,14 +1497,12 @@ class ForceAppKnowledge:
                     "subject": candidate["subject"],
                     "assertion": candidate["assertion"],
                     "statement": candidate["statement"],
-                    "polarity": "positive",
                     "status": "proposed",
                     "assurance": candidate.get("assurance", "observed"),
                     "scope": {
                         "environment": "not-applicable",
                         "orgKey": None,
                         "packageNamespace": None,
-                        "packageKey": None,
                         "packageVersion": None,
                         "repositoryCommit": commit,
                     },
@@ -973,12 +1513,11 @@ class ForceAppKnowledge:
                     "reviewBy": iso(observed_at + timedelta(days=max_days)),
                     "sensitivity": "internal-sanitized",
                     "keywords": [],
-                    "candidateKeywords": [],
+                    "candidateKeywords": candidate.get("candidateKeywords", []),
                     "limitations": candidate["limitations"],
                     "supersedes": [],
                     "supersededBy": None,
                     "contradicts": [],
-                    "relatedClaims": [],
                 }
                 if candidate.get("feature"):
                     claim["feature"] = candidate["feature"]
@@ -1024,6 +1563,57 @@ class ForceAppKnowledge:
         (self.draft_root / "manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
+        return manifest
+
+    def relations_draft(
+        self,
+        observed_at: datetime,
+        metadata_type: str | None = None,
+        limit: int = 200,
+        include_heuristic: bool = False,
+    ) -> dict[str, Any]:
+        """Draft only the relation-claim candidates not yet captured as a canonical claim.
+
+        Thin wrapper: takes up to `limit` `missing` items from `relations_worklist()` (excluding
+        source-token-heuristic edges by default — see `HEURISTIC_REF_KINDS`, the highest-noise
+        source of false positives), then drafts exactly those candidates through the existing
+        `draft()` pipeline restricted with `component_ids`/`claim_ids`, so no other candidate for
+        the same components (its primary claim, or an unselected relation edge) is drafted as a
+        side effect. Like every `draft()` call, this clears `.cache/knowledge-proposals/
+        force-app-drafts/` first — do not interleave with an in-progress unrelated batch draft.
+        """
+
+        if limit < 1:
+            raise KnowledgeBuildError("relations-draft limit must be at least 1")
+        worklist = self.relations_worklist(metadata_type)
+        missing = [item for item in worklist["items"] if item["state"] == "missing"]
+        eligible = [item for item in missing if include_heuristic or not item["heuristic"]]
+        selected = eligible[:limit]
+        claim_ids = {item["claimId"] for item in selected}
+        component_ids = {item["sourceComponentId"] for item in selected}
+        if claim_ids:
+            manifest = self.draft(
+                observed_at,
+                component_ids=component_ids,
+                include_relations=True,
+                claim_ids=claim_ids,
+            )
+        else:
+            manifest = {
+                "schemaVersion": SCHEMA_VERSION,
+                "kind": "force-app-knowledge-draft-manifest",
+                "generatedAt": iso(observed_at),
+                "repositoryCommit": worklist["repositoryCommit"],
+                "sourceTreeDigest": worklist["sourceTreeDigest"],
+                "reviewStatus": "no-op",
+                "claimCount": 0,
+                "bundles": [],
+                "limitations": [],
+            }
+        manifest["totalMissing"] = len(missing)
+        manifest["heuristicSkipped"] = len(missing) - len(eligible)
+        manifest["drafted"] = len(claim_ids)
+        manifest["remainingMissing"] = len(missing) - len(claim_ids)
         return manifest
 
     # -- Feature documentor -------------------------------------------------------------------
@@ -1376,6 +1966,56 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also save the derived worklist under .cache/knowledge-proposals/",
     )
+    coverage = commands.add_parser(
+        "coverage", help="report documentation coverage of force-app source (read-only)"
+    )
+    coverage.add_argument(
+        "--write",
+        action="store_true",
+        help="also save the coverage report under .cache/knowledge-proposals/",
+    )
+    relations_worklist = commands.add_parser(
+        "relations-worklist",
+        help="report edge-granular object-relation/component-relation claim status (read-only)",
+    )
+    relations_worklist.add_argument(
+        "--metadata-type",
+        help="report relation status only for this source component's inventory metadata type",
+    )
+    relations_worklist.add_argument(
+        "--write",
+        action="store_true",
+        help="also save the derived relations worklist under .cache/knowledge-proposals/",
+    )
+    relations_draft = commands.add_parser(
+        "relations-draft",
+        help="draft only object-relation/component-relation candidates not yet captured",
+    )
+    relations_draft.add_argument("--observed-at")
+    relations_draft.add_argument(
+        "--metadata-type",
+        help="draft relation candidates only for this source component's inventory metadata type",
+    )
+    relations_draft.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="cap the number of relation claims drafted this run (default 200)",
+    )
+    relations_draft.add_argument(
+        "--include-heuristic",
+        action="store_true",
+        help="also draft source-token-heuristic edges (Apex object-token/queries-object/invokes-class); excluded by default",
+    )
+    relation_health = commands.add_parser(
+        "relation-health",
+        help="report verified relation claims whose source edge no longer exists (read-only)",
+    )
+    relation_health.add_argument(
+        "--write",
+        action="store_true",
+        help="also save the derived relation-health report under .cache/knowledge-proposals/",
+    )
     crawl = commands.add_parser(
         "feature-crawl", help="crawl the metadata graph from anchor objects into a feature boundary"
     )
@@ -1418,6 +2058,46 @@ def main(argv: Iterable[str] | None = None) -> int:
             }
             if args.metadata_type:
                 summary["metadataTypeFilter"] = args.metadata_type
+            if "path" in result:
+                summary["path"] = result["path"]
+        elif args.command == "coverage":
+            result = builder.coverage(args.write)
+            summary = {
+                "totals": result["totals"],
+                "documentNext": len(result["documentNext"]),
+            }
+            if "path" in result:
+                summary["path"] = result["path"]
+        elif args.command == "relations-worklist":
+            result = builder.relations_worklist(args.metadata_type, args.write)
+            summary = {
+                "counts": result["counts"],
+                "edges": len(result["items"]),
+            }
+            if args.metadata_type:
+                summary["metadataTypeFilter"] = args.metadata_type
+            if "path" in result:
+                summary["path"] = result["path"]
+        elif args.command == "relations-draft":
+            observed_at = parse_time(args.observed_at) if args.observed_at else utc_now()
+            result = builder.relations_draft(
+                observed_at, args.metadata_type, args.limit, args.include_heuristic
+            )
+            summary = {
+                "path": builder.relative(builder.draft_root / "manifest.json"),
+                "drafted": result["drafted"],
+                "totalMissing": result["totalMissing"],
+                "heuristicSkipped": result["heuristicSkipped"],
+                "remainingMissing": result["remainingMissing"],
+                "reviewStatus": result["reviewStatus"],
+            }
+            if args.metadata_type:
+                summary["metadataTypeFilter"] = args.metadata_type
+        elif args.command == "relation-health":
+            result = builder.relation_health(args.write)
+            summary = {
+                "orphanedCount": result["orphanedCount"],
+            }
             if "path" in result:
                 summary["path"] = result["path"]
         elif args.command == "feature-crawl":

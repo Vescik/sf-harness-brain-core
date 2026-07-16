@@ -1,6 +1,6 @@
 # Knowledge Index
 
-Knowledge uses the schema-v2 lifecycle in
+Knowledge uses the schema-v3 lifecycle in
 [`../contracts/knowledge-lifecycle.md`](../contracts/knowledge-lifecycle.md). Canonical records live
 in three directories:
 
@@ -25,7 +25,7 @@ must not be hand-edited with factual entries.
 | [glossary.md](glossary.md) | Approved business-to-technical terms. |
 | [known-limitations.md](known-limitations.md) | Version-scoped package limitation claims. |
 | [component-inventory.md](component-inventory.md) | Generic source-component claims for every other metadata type (layouts, permission sets, custom metadata, bundles, …). |
-| [claims-index.json](claims-index.json) | Machine-readable index of every canonical claim (status, keywords, description excerpt) for search and duplicate lookup; only rows with `effective: true` are established facts. Validated by `schemas/knowledge-claims-index.schema.json`. |
+| [claims-index.json](claims-index.json) | Machine-readable index of every canonical claim (status, keywords, description excerpt, and `usesObjects`/`usesFields` dependency summary) for search and duplicate lookup; only rows with `effective: true` are established facts. Validated by `schemas/knowledge-claims-index.schema.json`. Query the usage registry with `knowledge_registry.py query --uses-object/--uses-field/--invokes`; the `automation-map.md` view carries an "Automations by object" reverse index. |
 | [keyword-taxonomy.md](keyword-taxonomy.md) | Separately curated vocabulary; terms are not factual evidence. |
 
 ## Retrieval rule
@@ -37,3 +37,22 @@ verdict. Existing Knowledge and generated indexes never corroborate themselves.
 
 This repository intentionally contains no organization or package facts until real, sanitized
 evidence is reviewed. Never seed examples into the live index.
+
+## Retrieval before build/test/document
+
+Consuming workflows (solution design, technical documentation, test-case suggestion, feature
+coverage, principle checks) query the registry for the components they touch — by subject and by the
+usage registry — and cite effective claims or record an explicit gap; an empty base is never a
+license to answer from model memory. Route retrieval through the
+[`search-knowledge`](../../.github/skills/search-knowledge/SKILL.md) skill.
+
+## Health & maintenance (read-only, advisory)
+
+These deterministic reports surface coverage and validity without mutating any claim — transitioning
+a claim to `stale` stays a governed human review.
+
+| Command | Purpose |
+|---|---|
+| `python scripts/force_app_knowledge.py coverage` | Documentation coverage of the force-app source: documented / proposed / undocumented / drifted counts per metadata type plus a prioritised "document next" list (reuses the worklist's status + source-drift engine). |
+| `python scripts/knowledge_registry.py stale-report [--warn-days N]` | Verified claims already past `reviewBy` (`expired`, no longer effective) or within `N` days of it (`expiring`), so re-verification can be scheduled. |
+| `python scripts/knowledge_registry.py verify-citations --envelope <path>` | Checks a handoff/output envelope's cited `claimRefs` against current canonical state: `ok`, `missing`, `revision-mismatch`, `sha-mismatch`, or `not-effective` (stale/contested/superseded/rejected). |

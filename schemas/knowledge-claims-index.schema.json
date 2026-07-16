@@ -41,6 +41,8 @@
           "keywords": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
           "candidateKeywords": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
           "feature": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 80 } },
+          "usesObjects": { "description": "Objects the claim's subject uses, derived from its component usage registry.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "usesFields": { "description": "Object.Field references the claim's subject uses, derived from its component usage registry.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
           "statement": { "type": "string", "minLength": 1 },
           "descriptionExcerpt": { "type": "string", "minLength": 1, "maxLength": 240 },
           "evidenceRefs": {

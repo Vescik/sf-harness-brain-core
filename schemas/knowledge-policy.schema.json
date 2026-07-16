@@ -34,15 +34,17 @@
       "additionalProperties": false,
       "required": [
         "object-existence", "object-ownership", "field-schema", "object-relation",
-        "automation-inventory", "package-installation", "package-limitation",
-        "reference-data", "runtime-behavior", "business-meaning", "business-process",
-        "integration", "glossary", "component-inventory", "component-description"
+        "component-relation", "automation-inventory", "package-installation",
+        "package-limitation", "reference-data", "runtime-behavior", "business-meaning",
+        "business-process", "integration", "glossary", "component-inventory",
+        "component-description"
       ],
       "properties": {
         "object-existence": { "$ref": "#/$defs/claimPolicy" },
         "object-ownership": { "$ref": "#/$defs/claimPolicy" },
         "field-schema": { "$ref": "#/$defs/claimPolicy" },
         "object-relation": { "$ref": "#/$defs/claimPolicy" },
+        "component-relation": { "$ref": "#/$defs/claimPolicy" },
         "automation-inventory": { "$ref": "#/$defs/claimPolicy" },
         "package-installation": { "$ref": "#/$defs/claimPolicy" },
         "package-limitation": { "$ref": "#/$defs/claimPolicy" },
