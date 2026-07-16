@@ -24,7 +24,9 @@ model-only evidence, mutable evidence, or unknown fields.
    repository lineage, aliases, and related claims.
 3. Evidence is immutable. Corrections create a new evidence record and retain history.
 4. Investigators/models may create `proposed` only. Prepare sanitized schema-v3 claim/evidence
-   drafts under `.cache/knowledge-proposals/`, then run the guarded `propose` command; it is the
+   drafts under `.cache/knowledge-proposals/` (the
+   [knowledge-entry template](../../../.ai/templates/knowledge-entry.md) is the human-facing
+   companion to the claim schema), then run the guarded `propose` command; it is the
    only agent path that writes canonical Knowledge. `verified`, `rejected`, `contested`,
    `superseded`, and re-verification require the lifecycle transition and human review defined by
    policy. A human cannot make unsupported evidence true.

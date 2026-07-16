@@ -32,7 +32,9 @@ outside the configured review allowlist.
 6. Treat MCP/CLI agreement as transport corroboration. On `MISMATCH`, `INCOMPLETE`, truncation,
    schema drift, sensitive-output detection, or scope mismatch, return unresolved and do not promote.
 7. Create immutable sanitized evidence and one `proposed` claim through the governed Knowledge
-   command. Record limitations, repository drift, package version, and missing authority.
+   command; the [knowledge-entry template](../../../.ai/templates/knowledge-entry.md) is the
+   human-facing companion to the claim schema. Record limitations, repository drift, package
+   version, and missing authority.
 8. Append evidence references to the work record. Human review is a separate operation.
 
 ## Prohibitions

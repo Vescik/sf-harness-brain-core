@@ -19,6 +19,7 @@ Establish facts for a calling agent or human. Do not design or implement.
 Load the [Managed Package Constraints](../instructions/managed-package-constraints.instructions.md),
 [source authority contract](../../.ai/contracts/source-authority.md),
 [Knowledge lifecycle](../../.ai/contracts/knowledge-lifecycle.md),
+[tool capability map](../../.ai/contracts/tool-capabilities.md),
 [investigate-object skill](../skills/investigate-object/SKILL.md), and
 [update-knowledge-base skill](../skills/update-knowledge-base/SKILL.md). For repository-wide
 Knowledge bootstrap or refresh, also load [inventory-force-app](../skills/inventory-force-app/SKILL.md)

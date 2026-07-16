@@ -25,6 +25,7 @@ must not be hand-edited with factual entries.
 | [glossary.md](glossary.md) | Approved business-to-technical terms. |
 | [known-limitations.md](known-limitations.md) | Version-scoped package limitation claims. |
 | [component-inventory.md](component-inventory.md) | Generic source-component claims for every other metadata type (layouts, permission sets, custom metadata, bundles, …). |
+| [feature-map.md](feature-map.md) | Generated view grouping canonical claims by feature-membership tag (written by the feature documentor). |
 | [claims-index.json](claims-index.json) | Machine-readable index of every canonical claim (status, keywords, description excerpt, and `usesObjects`/`usesFields` dependency summary) for search and duplicate lookup; only rows with `effective: true` are established facts. Validated by `schemas/knowledge-claims-index.schema.json`. Query the usage registry with `knowledge_registry.py query --uses-object/--uses-field/--invokes`; the `automation-map.md` view carries an "Automations by object" reverse index. |
 | [keyword-taxonomy.md](keyword-taxonomy.md) | Separately curated vocabulary; terms are not factual evidence. |
 

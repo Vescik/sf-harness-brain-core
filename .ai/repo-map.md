@@ -33,11 +33,11 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 ## Roles (`.github/agents/`)
 
-- **config-investigator** — Read-only evidence collector for allowlisted …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority; skills: feature-documentor, inventory-force-app, investigate-object, propose-force-app-knowledge, update-knowledge-base.
-- **development-assistant** — Implement a human-accepted Salesforce design …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: execution-contract, workflow-state-machine. Hands off to: guardrail-reviewer, solution-designer.
-- **guardrail-reviewer** — Independently review a design or …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, workflow-state-machine; skills: check-against-principles. Hands off to: development-assistant, solution-designer.
-- **solution-designer** — Design the change before implementation, …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, workflow-state-machine; skills: check-against-principles, solution-design. Hands off to: development-assistant, guardrail-reviewer.
-- **test-strategist** — Assess QA inventory freshness and …. Loads instructions: organization-principles; contracts: execution-contract, workflow-state-machine. Hands off to: development-assistant, guardrail-reviewer.
+- **config-investigator** — Read-only evidence collector for allowlisted …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority, tool-capabilities; skills: feature-documentor, inventory-force-app, investigate-object, propose-force-app-knowledge, update-knowledge-base.
+- **development-assistant** — Implement a human-accepted Salesforce design …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: execution-contract, tool-capabilities, workflow-state-machine. Hands off to: guardrail-reviewer, solution-designer.
+- **guardrail-reviewer** — Independently review a design or …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, tool-capabilities, workflow-state-machine; skills: check-against-principles. Hands off to: development-assistant, solution-designer.
+- **solution-designer** — Design the change before implementation, …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, tool-capabilities, workflow-state-machine; skills: check-against-principles, solution-design. Hands off to: development-assistant, guardrail-reviewer.
+- **test-strategist** — Assess QA inventory freshness and …. Loads instructions: organization-principles; contracts: execution-contract, tool-capabilities, workflow-state-machine. Hands off to: development-assistant, guardrail-reviewer.
 
 ## Skills (`.github/skills/`)
 

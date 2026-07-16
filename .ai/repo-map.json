@@ -6,7 +6,8 @@
       "loads": {
         "contracts": [
           "knowledge-lifecycle",
-          "source-authority"
+          "source-authority",
+          "tool-capabilities"
         ],
         "instructions": [
           "managed-package-constraints"
@@ -31,6 +32,7 @@
       "loads": {
         "contracts": [
           "execution-contract",
+          "tool-capabilities",
           "workflow-state-machine"
         ],
         "instructions": [
@@ -52,6 +54,7 @@
       "loads": {
         "contracts": [
           "source-authority",
+          "tool-capabilities",
           "workflow-state-machine"
         ],
         "instructions": [
@@ -75,6 +78,7 @@
       "loads": {
         "contracts": [
           "source-authority",
+          "tool-capabilities",
           "workflow-state-machine"
         ],
         "instructions": [
@@ -99,6 +103,7 @@
       "loads": {
         "contracts": [
           "execution-contract",
+          "tool-capabilities",
           "workflow-state-machine"
         ],
         "instructions": [
@@ -522,11 +527,11 @@
     ".ai/contracts/source-authority.md": "sha256:8d2a124483cc8fe283b0bc41aed47c26ea303a2758cbd5ee2664b69b3949de25",
     ".ai/contracts/tool-capabilities.md": "sha256:9daa9e6485af7b556fac6007c94f3daf4c26c191c9256d871f4efe20a906a9c5",
     ".ai/contracts/workflow-state-machine.md": "sha256:b2b4e313741bec172732b18977beaccfb741379b55ff4f2b422383485b0e2334",
-    ".github/agents/config-investigator.agent.md": "sha256:61bd2e6563c14c0b64cc5c8c1fee814d2e8253c13aab4921a7891d3b8a52c386",
-    ".github/agents/development-assistant.agent.md": "sha256:84ec619340fb2e2c9e06d7e0c018879df71abd772619715cc1e911b3f9b12b42",
-    ".github/agents/guardrail-reviewer.agent.md": "sha256:f5255898f451589e7894be68f146814b013be253ebe5a145c6e444c83f14d8c6",
-    ".github/agents/solution-designer.agent.md": "sha256:6f4b5c24d9eff635b924c75ecca621117fd936902e455ebb35f49962938810db",
-    ".github/agents/test-strategist.agent.md": "sha256:102ec2db2e1b895b1785f73eb6bc4ac6acf13d1500c9d418fe061a1ccae0b3f6",
+    ".github/agents/config-investigator.agent.md": "sha256:748033b7b0ae40bafe1bc0471a95a513bd745e9a7f2201a192bc4a4f0e30d2c8",
+    ".github/agents/development-assistant.agent.md": "sha256:e86317924c6a871b09d05dbb755da66b69bce9c640e8dc0d0d8ff33de1fec907",
+    ".github/agents/guardrail-reviewer.agent.md": "sha256:69e2b8cd60eed926a9a7605396b6e78b9006850350bc7136299312c91b710b6a",
+    ".github/agents/solution-designer.agent.md": "sha256:07b62ece1b273beb840d38df01ce8f93225378e8747af8769a31f31797b443d8",
+    ".github/agents/test-strategist.agent.md": "sha256:adc27d8fb14285756838a4069483a578b20a470c3bbd85d3d91a21464ac3c237",
     ".github/instructions/managed-package-constraints.instructions.md": "sha256:cccd7e181cc44c99514a1be64f9d57194c5e66fb464a1cd3da138411da1ed5c9",
     ".github/instructions/organization-principles.instructions.md": "sha256:23712c8784dc60a2adf6c535cb4054af1bacb0018bd7d56c1ff52e482284193f",
     ".github/instructions/salesforce-best-practices.instructions.md": "sha256:8d286666f9736a2c84a4681d9c1c65c029e47473524494e54dad64ba5993a6ee",
@@ -558,10 +563,10 @@
     ".github/skills/fetch-ado-item/SKILL.md": "sha256:02ad5d68ff86e39c27e6acd29058b617483c0b7d07cd69b007acbae2e88104c8",
     ".github/skills/fetch-test-case/SKILL.md": "sha256:56fc8adf313c98b5588890dd03eda7489673ee497c2b69efe5ccc1e4bdf2539e",
     ".github/skills/generate-playwright-test/SKILL.md": "sha256:603561c5ef314c5065b85331c8165cd8ebd79f6ed5d403c99139e5168d6d0806",
-    ".github/skills/generate-release-handover/SKILL.md": "sha256:0ae841e6d85afad19a0517615687f2ae63886748d303be1c6abd3ff8b6b004bf",
+    ".github/skills/generate-release-handover/SKILL.md": "sha256:81ecaffbe6ca1e4c4375c1727d23913f4156ad2d54a9fda39fa13d662c9a6cbd",
     ".github/skills/generate-technical-documentation/SKILL.md": "sha256:1bf4c671e8aa8dae0a0a1866b304700268ff0696e93fef87c019d0b4c595d373",
     ".github/skills/inventory-force-app/SKILL.md": "sha256:1f01b6b1aff5c27b538a5807f556f6b1efb6346af14769f623dc7392edb1c02f",
-    ".github/skills/investigate-object/SKILL.md": "sha256:f881e19602f29636469459bbf33150475a883da7aa4e23e4c2073baac12a67cd",
+    ".github/skills/investigate-object/SKILL.md": "sha256:24dac2f0e28e764355163939610a887d04fbf92c8aec3c4f7b824ed83925bd12",
     ".github/skills/propose-force-app-knowledge/SKILL.md": "sha256:3decaa233ac9f07e667f5c7123befe38ab3954e9bf4bb56eb33c2a1e10ec1ee9",
     ".github/skills/relation-health/SKILL.md": "sha256:b744dfc2c829496afc804be03610bd653baac1fb8e81d969ab0a68a8f0b32442",
     ".github/skills/search-ado/SKILL.md": "sha256:4c6a1e155d7cf3b2079953837681ebd89e6226b4ff98f8ae30f079640b788cc7",
@@ -570,9 +575,9 @@
     ".github/skills/suggest-test-cases/SKILL.md": "sha256:4ebb53a086698f440d2fbd85716cb7758f959317dda6233ad4f1fd945bf888df",
     ".github/skills/sync-test-cases/SKILL.md": "sha256:86b1af1a8415d07f548e7160a565933be7dfede396e55341345fe76ffccfe529",
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
-    ".github/skills/update-knowledge-base/SKILL.md": "sha256:b4b5e956df79e2ad2c3a0f2e03401d18fdfce8dfce988a6a235d611021a80b40",
+    ".github/skills/update-knowledge-base/SKILL.md": "sha256:b6da4a24d83116ef3dea64bbd49b57d3229f9a6ab68d09eb477c4bb771d02c7c",
     ".github/skills/update-relations/SKILL.md": "sha256:5c6e3f55a32f965edf5456033e89912598b8e2cf2c5a9152d4841420c2b3e121",
     "config/repo-map-seed.json": "sha256:e05458eb3feebb6e237b982efe5993e7b50f11ae12dfd948bd4792976e8add89"
   },
-  "wordCount": 791
+  "wordCount": 796
 }

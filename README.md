@@ -2,7 +2,7 @@
 
 A private, team-versioned GitHub Copilot harness for Salesforce development around any configured
 closed managed package. It combines a minimal always-on safety/grounding kernel, five SDLC agents,
-twelve public prompt commands, sixteen internal skills, governed but initially unseeded
+twenty public prompt commands, twenty-two internal skills, governed but initially unseeded
 Knowledge/Memory/QA layers, reconciled read-only org review, durable handoffs, and repeatable
 validation. No object, namespace, package behavior, or business meaning is built in.
 
@@ -30,8 +30,8 @@ files above.
 |---|---|---|
 | Safety and Principles | `.github/copilot-instructions.md`, `.github/instructions/` | Minimal always-on kernel; detailed role-loaded Tier 1 → 2 → 3 rules |
 | Orchestration | `.github/agents/` | Design, investigation, development, QA strategy, independent review |
-| Public commands | `.github/prompts/` | Twelve deterministic slash-command entry points |
-| Internal capabilities | `.github/skills/` | Sixteen progressively loaded procedures hidden from the slash menu |
+| Public commands | `.github/prompts/` | Twenty deterministic slash-command entry points |
+| Internal capabilities | `.github/skills/` | Twenty-two progressively loaded procedures hidden from the slash menu |
 | Knowledge and contracts | `.ai/knowledge/`, `.ai/contracts/` | Schema-governed claims, immutable evidence, human reviews, source authority |
 | Work state and QA | `.ai/change-records/`, `.ai/memory/`, `.ai/qa/` | Revisioned approvals/handoffs, durable decisions, and test inventory |
 | Salesforce project | `sfdx-project.json`, `force-app/`, `manifest/`, `tests/e2e/` | Root SFDX project, source, manifests, and Salesforce tests |
