@@ -31,6 +31,39 @@ are not durable.
 
 <!-- Entries are appended below this line as they occur — never fabricated at build time. -->
 
+## 2026-07-16 - Templates are normative or removed; two script-shadow templates deleted
+
+- Context: the 2026-07-16 harness audit (audit/findings.md F-06) found the template layer
+  partially decorative: `change-record.md` and `feature-dossier.md` had zero inbound references
+  and duplicated structures owned by code (`scripts/work_record.py` design-narrative scaffold,
+  `scripts/force_app_knowledge.py` `render_dossier`), so they silently drift when the scripts
+  change; `knowledge-entry.md` was referenced only in passing by `keyword-taxonomy.md`.
+- Finding / decision: each `.ai/templates/*.md` file must be normative — referenced by its
+  producing skill or read by its producing script — or removed. Accordingly `change-record.md`
+  and `feature-dossier.md` are deleted (their structures stay script-owned), and
+  `knowledge-entry.md` is kept and cited by the `investigate-object` and `update-knowledge-base`
+  skills as the human-facing companion to `schemas/knowledge-claim.schema.json`.
+- Impact: the remaining templates (`technical-documentation.md`, `feature-health-report.md`,
+  `release-handover.md`, `knowledge-entry.md`) are all consumer-referenced; no template can
+  silently lie about a structure owned elsewhere.
+- Approved by: workspace owner, 2026-07-16 audit review (findings.md F-06).
+- Related: audit/findings.md (F-06), `.ai/templates/`, the F-07 entry below.
+
+## 2026-07-16 - tool-capabilities contract wired into every agent role
+
+- Context: the 2026-07-16 harness audit (audit/findings.md F-07) found
+  `.ai/contracts/tool-capabilities.md` (Status: normative) loaded by no agent or skill, while
+  `.ai/repo-map.md` declares contracts "loaded per role" — unlike the other four contracts,
+  which are all consumed.
+- Finding / decision: keep the contract normative and wire it into the Load list of all five
+  agents (solution-designer, config-investigator, development-assistant, guardrail-reviewer,
+  test-strategist) — every agent dispatches namespaced `ado-readonly/*` /
+  `salesforce-readonly/review_*` tools that the contract maps.
+- Impact: `repo-map.md`'s "loaded per role" claim is true again; namespaced-tool dispatch is
+  grounded in the capability map instead of model memory.
+- Approved by: workspace owner, 2026-07-16 audit review (findings.md F-07).
+- Related: audit/findings.md (F-07), `.ai/contracts/tool-capabilities.md`, `.ai/repo-map.md`.
+
 ## 2026-07-14 - Knowledge upgrade: total metadata coverage and chat-approved promotion
 
 - Context: running the documentation pipeline on an approval process produced nothing (only 10

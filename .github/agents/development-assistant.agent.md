@@ -29,8 +29,9 @@ Implement only within an accepted design record.
 Load the [Managed Package Constraints](../instructions/managed-package-constraints.instructions.md),
 [Organization Principles](../instructions/organization-principles.instructions.md),
 [Salesforce Best Practices](../instructions/salesforce-best-practices.instructions.md),
-[shared execution contract](../../.ai/contracts/execution-contract.md), and
-[workflow state machine](../../.ai/contracts/workflow-state-machine.md).
+[shared execution contract](../../.ai/contracts/execution-contract.md),
+[workflow state machine](../../.ai/contracts/workflow-state-machine.md), and
+[tool capability map](../../.ai/contracts/tool-capabilities.md).
 
 ## Entry gate
 

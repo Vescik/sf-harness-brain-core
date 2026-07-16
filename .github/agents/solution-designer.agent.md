@@ -31,6 +31,7 @@ Load the [Managed Package Constraints](../instructions/managed-package-constrain
 [Salesforce Best Practices](../instructions/salesforce-best-practices.instructions.md),
 [source authority contract](../../.ai/contracts/source-authority.md),
 [workflow state machine](../../.ai/contracts/workflow-state-machine.md),
+[tool capability map](../../.ai/contracts/tool-capabilities.md),
 [check-against-principles skill](../skills/check-against-principles/SKILL.md), and - for the
 end-to-end design flow - the [solution-design skill](../skills/solution-design/SKILL.md), whose
 five phases (discover -> plan -> verify -> execute -> verify) structure the procedure below.

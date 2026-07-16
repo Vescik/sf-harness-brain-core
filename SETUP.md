@@ -144,9 +144,9 @@ cached; `--force` re-runs everything (use it after re-authorizing an alias).
 1. Trust the cloned repository only after reviewing it; the single named workspace folder
    `brain-core` resolves to its root.
 2. Open **Chat: Open Customizations** / Chat Diagnostics.
-3. Confirm exactly five agents, twelve public prompts, sixteen internal skills, three Principle
+3. Confirm exactly five agents, twenty public prompts, twenty-two internal skills, three Principle
    files, the safety hook, and two read-only MCP servers without diagnostics.
-4. Confirm `/` shows the twelve prompts once each and their argument hints.
+4. Confirm `/` shows the twenty prompts once each and their argument hints.
 5. Verify Solution Designer and Development Assistant handoff buttons use `send: false`.
 6. Run one harmless ADO read, then the three bounded Salesforce review calls against the configured
    synthetic/pilot component. Confirm no raw CLI/query/alias or sensitive payload appears in Chat.
