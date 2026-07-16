@@ -21,8 +21,9 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 | `.github/prompts` | Public slash commands, each linking its skill |
 | `.github/skills` | Internal skill procedures (SKILL.md per folder) |
 | `.vscode` | Workspace settings and MCP server definitions |
-| `config` | Harness config (harness.local.json), policies, this seed |
-| `docs` | Human-facing setup, architecture, compatibility docs |
+| `audit` | Audit records |
+| `config` | Harness config (harness.local.json), policies, seed |
+| `docs` | Setup, architecture, compatibility docs |
 | `evals` | Safety scenarios, agent scenarios, schema fixtures |
 | `force-app` | The only SFDX source root |
 | `manifest` | package.xml starter manifest |

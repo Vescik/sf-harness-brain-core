@@ -4,7 +4,7 @@ Controlled vocabulary of terms — shared between object descriptions (the optio
 field in `.ai/templates/knowledge-entry.md`) and the QA layer (`.ai/qa/keywords-map.md`). Its
 purpose: two descriptions of the same thing (e.g. "Billing" vs "Invoicing") resolve to one
 shared term once, instead of the model re-guessing synonymy every time
-(docs/archive/HARNESS_BLUEPRINT.md section 3).
+(historical design blueprint section 3; git tag `design-history`).
 
 This file is separately human-curated; it is not a generated claim index. A taxonomy term is never
 evidence that an object, field, process, or package behavior exists. Canonical claims may reference

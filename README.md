@@ -20,9 +20,9 @@ validation. No object, namespace, package behavior, or business meaning is built
 7. [IMPLEMENTATION_HANDOFF.md](IMPLEMENTATION_HANDOFF.md) — as-built changes and remaining roadmap.
 
 The original design history (`HARNESS_BLUEPRINT.md`, `BUILD_REPORT.md`, `HARNESS_DIAGRAMS.md`,
-and both `HANDOFF_FOR_FABLE*.md` reviews) lives in [docs/archive/](docs/archive/README.md). It is
-historical input only and is not the normative runtime specification where it conflicts with the
-files above.
+and both `HANDOFF_FOR_FABLE*.md` reviews) was removed from the working tree on 2026-07-16; it
+remains in git history under the tag `design-history` (`git show design-history:docs/archive/README.md`
+for the index). It was historical input only, never the normative runtime specification.
 
 ## Architecture
 

@@ -2387,7 +2387,8 @@ def _assert_not_agent_context() -> None:
     from the default Copilot terminal; both are string matchers a renamed invocation could evade.
     This check adds a matcher-independent layer, but it is ONLY active once the agent runner
     exports ``SF_HARNESS_AGENT_CONTEXT``. Until a runner is wired to set it (see
-    HANDOFF_FOR_FABLE_CHECKER.md), this provides no runtime protection on its own.
+    HANDOFF_FOR_FABLE_CHECKER.md in design history, git tag ``design-history``), this
+    provides no runtime protection on its own.
     """
 
     if os.environ.get("SF_HARNESS_AGENT_CONTEXT", "").strip():
