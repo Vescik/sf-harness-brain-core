@@ -139,6 +139,19 @@
       "maxReviewAgeDays": 250,
       "minimumIndependentEvidence": 1
     },
+    "component-relation": {
+      "allowedEvidenceTypes": [
+        "org-describe",
+        "metadata-repository"
+      ],
+      "invalidationTriggers": [
+        "metadata-deployment",
+        "sandbox-refresh",
+        "permission-change"
+      ],
+      "maxReviewAgeDays": 250,
+      "minimumIndependentEvidence": 1
+    },
     "package-installation": {
       "allowedEvidenceTypes": [
         "installed-package-record"

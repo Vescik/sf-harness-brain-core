@@ -338,10 +338,25 @@ class KnowledgeRegistry:
         """
 
         value = claim.get("assertion", {}).get("value")
+        claim_type = claim.get("claimType")
         objects: set[str] = set()
         fields: set[str] = set()
         invokes: set[str] = set()
-        if isinstance(value, dict):
+        if claim_type == "object-relation" and isinstance(value, str) and value:
+            # Bare-string target: this relation type only ever asserts an object reference.
+            objects.add(value)
+        elif claim_type == "component-relation" and isinstance(value, dict):
+            predicate = str(claim.get("assertion", {}).get("predicate", ""))
+            target = str(value.get("target", ""))
+            if target:
+                if predicate in FIELD_REF_KINDS:
+                    fields.add(target)
+                    objects.add(target.split(".", 1)[0])
+                elif predicate in OBJECT_REF_KINDS:
+                    objects.add(target.split(".", 1)[0])
+                elif predicate in INVOKE_REF_KINDS:
+                    invokes.add(target)
+        elif isinstance(value, dict):
             facts = value.get("facts")
             if isinstance(facts, dict):
                 if isinstance(facts.get("object"), str):

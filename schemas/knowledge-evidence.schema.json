@@ -14,9 +14,10 @@
     "claimType": {
       "enum": [
         "object-existence", "object-ownership", "field-schema", "object-relation",
-        "automation-inventory", "package-installation", "package-limitation",
-        "reference-data", "runtime-behavior", "business-meaning", "business-process",
-        "integration", "glossary", "component-inventory", "component-description"
+        "component-relation", "automation-inventory", "package-installation",
+        "package-limitation", "reference-data", "runtime-behavior", "business-meaning",
+        "business-process", "integration", "glossary", "component-inventory",
+        "component-description"
       ]
     }
   },

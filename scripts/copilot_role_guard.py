@@ -497,6 +497,56 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
         # Read-only documentation-coverage summary; --write only saves the derived view under the
         # ignored .cache/knowledge-proposals/ workspace.
         return parts[1:] in ([], ["--write"])
+    if parts[0] == "relations-worklist":
+        # Derived read-only edge-granular relation-claim status; --write only saves the derived
+        # view under the ignored .cache/knowledge-proposals/ workspace. Same shape as worklist.
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if token == "--write":
+                index += 1
+                continue
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                index += 1
+            else:
+                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
+                index += 2
+            if flag != "--metadata-type" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
+                return False
+        return True
+    if parts[0] == "relation-health":
+        # Read-only orphaned relation-claim report; --write only saves the derived view under the
+        # ignored .cache/knowledge-proposals/ workspace. Never mutates Knowledge.
+        return parts[1:] in ([], ["--write"])
+    if parts[0] == "relations-draft":
+        # Drafts only proposed-candidate files under the ignored .cache/knowledge-proposals/
+        # workspace, same authority as draft. --limit is bounded to guard against an unbounded
+        # repo-wide sweep dumping thousands of drafts in one call.
+        text_validators = {
+            "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
+            "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
+        }
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if token == "--include-heuristic":
+                index += 1
+                continue
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                index += 1
+            else:
+                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
+                index += 2
+            if flag == "--limit":
+                if not value.isdigit() or not (1 <= int(value) <= 2000):
+                    return False
+                continue
+            pattern = text_validators.get(flag)
+            if pattern is None or not re.fullmatch(pattern, value):
+                return False
+        return True
     if parts[0] != "draft":
         return False
     validators = {
