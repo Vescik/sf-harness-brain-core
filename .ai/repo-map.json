@@ -559,7 +559,7 @@
     ".github/prompts/sync-test-cases.prompt.md": "sha256:123ac9b75b72602c4fb0e4e5d5cb86aae648b7570feab5c0848fb9d0b3ac3860",
     ".github/prompts/tune-test-case-keywords.prompt.md": "sha256:d11c3e84e713b5ff69ea4e6b9d019d1ce0a6ad04a4ddf774fbdf2e48cf4de32e",
     ".github/prompts/update-relations.prompt.md": "sha256:9e00ee4a7dec4b17311663ec931168e170284584f3e98f21504c296e2f0c1e94",
-    ".github/skills/batch-knowledge/SKILL.md": "sha256:065fd86262f24ba5e8e2a7960a3bcc4f25d50481dfb9b8d217e7867d158d9a85",
+    ".github/skills/batch-knowledge/SKILL.md": "sha256:8f440cd38231fed999ddf188cbc2dbc3f91004f87444f239ea6ff2849fb10cdb",
     ".github/skills/check-against-principles/SKILL.md": "sha256:343abc57d5ffdc1db7c96eda640dcf609d6590e45d69e1efd203a32fc39aa96a",
     ".github/skills/check-feature-coverage/SKILL.md": "sha256:6b56459883ce318d3fd8e4c9074afe4c2a96826162473510fdedc5d85d83faf2",
     ".github/skills/curate-knowledge-keywords/SKILL.md": "sha256:59638d318738e874a727441d6637068e404e80cbc564eac6bbf92666ea646220",

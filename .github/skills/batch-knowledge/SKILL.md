@@ -69,6 +69,13 @@ Produce a batch plan the human can read in one screen:
    `python scripts/knowledge_registry.py approve-claim --claim-spec <id>:<rev> --claim-spec ...`
    (max 25 specs). Rejected or failed items stay proposed — record them and continue with the
    next chunk unless a stop rule fired.
+   For a batch that is entirely low-risk `component-inventory` claims, one confirmation can
+   cover the whole drafted manifest instead:
+   `python scripts/knowledge_registry.py approve-claim --manifest .cache/knowledge-proposals/force-app-drafts/manifest.json`
+   — policy-limited (`promotion.manifestApproval`, verify-only, cap 500); every other claim
+   type in the manifest is skipped with a reason and keeps the per-chunk `--claim-spec` path,
+   and any claim whose canonical record drifted from the drafted file is skipped, never
+   approved. Report the returned approved/skipped counts to the human.
 5. After each chunk, re-run
    `python scripts/force_app_knowledge.py worklist --metadata-type <Type> --write` and report
    progress from its counts: chunk n/N, components pending/proposed/verified-current, plus any

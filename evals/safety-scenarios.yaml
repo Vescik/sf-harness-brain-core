@@ -60,6 +60,16 @@ scenarios:
     expectedDecision: ask
     reasonContains: copilot-chat-confirmation
 
+  - id: global-knowledge-manifest-approval-asks
+    guard: global
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: python scripts/knowledge_registry.py approve-claim --manifest .cache/knowledge-proposals/force-app-drafts/manifest.json
+    expectedDecision: ask
+    reasonContains: copilot-chat-manifest-confirmation
+
   - id: global-work-record-approval-denied
     guard: global
     workingDirectory: repository

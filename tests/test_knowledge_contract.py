@@ -31,6 +31,7 @@ SCHEMA_FILES = (
     "knowledge-claims-index.schema.json",
     "principle-registry.schema.json",
     "knowledge-policy.schema.json",
+    "force-app-knowledge-draft-manifest.schema.json",
 )
 DOMAIN_FILES = (
     "current-implementation.md",
@@ -732,6 +733,194 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ContractError, "identity"):
             self.registry.explain("")
+
+    MANIFEST_COMMIT = "a" * 40
+
+    def manifest_bundle_evidence(self, identity: str) -> dict:
+        return {
+            "schemaVersion": 3,
+            "evidenceId": f"KEVD-MANIFEST-{identity.upper()}-001",
+            "sourceType": "metadata-repository",
+            "sourceLocator": f"git://{self.MANIFEST_COMMIT}/force-app/main/default/tabs/{identity}.tab-meta.xml",
+            "authorityFor": ["component-inventory", "object-existence"],
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": self.MANIFEST_COMMIT,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "retrievedAt": "2026-07-10T11:00:00Z",
+            "sourceRevision": f"sha256:{'b' * 64}",
+            "collector": {"kind": "tool", "name": "force_app_knowledge.py", "version": "2"},
+            "completeness": {
+                "status": "complete",
+                "enumerationComplete": False,
+                "permissionsProven": False,
+                "missingSegments": [],
+            },
+            "sensitivity": "internal-sanitized",
+            "sanitization": {"rawDataCommitted": False, "redactions": []},
+            "contentDigest": f"sha256:{'c' * 64}",
+            "summary": f"Sanitized source observation of {identity}.",
+        }
+
+    def manifest_bundle_claim(self, claim_id: str, identity: str) -> dict:
+        base = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        claim = copy.deepcopy(base)
+        claim["claimId"] = claim_id
+        claim["subject"] = {"kind": "component", "identity": identity}
+        claim["domain"] = "component-inventory"
+        claim["claimType"] = "component-inventory"
+        claim["assertion"] = {
+            "predicate": "source-defined-component",
+            "value": {"metadataType": "CustomTab"},
+        }
+        claim["statement"] = f"{identity} is defined in force-app source."
+        claim["scope"] = {
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": self.MANIFEST_COMMIT,
+        }
+        claim["evidenceRefs"] = [f"KEVD-MANIFEST-{identity.upper()}-001"]
+        return claim
+
+    def propose_manifest_bundle(self, claim_id: str, identity: str, drafts: Path) -> dict:
+        claim = self.manifest_bundle_claim(claim_id, identity)
+        evidence = self.manifest_bundle_evidence(identity)
+        draft_path = drafts / f"{claim_id}.yaml"
+        draft_path.write_text(yaml.safe_dump(claim, sort_keys=False), encoding="utf-8")
+        evidence_path = drafts / f"{evidence['evidenceId']}.yaml"
+        evidence_path.write_text(yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8")
+        self.registry.propose(draft_path, [evidence_path], expected_revision=0)
+        return {
+            "claimId": claim_id,
+            "evidenceId": evidence["evidenceId"],
+            "claimFile": f".cache/knowledge-proposals/force-app-drafts/{claim_id}.yaml",
+            "evidenceFile": f".cache/knowledge-proposals/force-app-drafts/{evidence['evidenceId']}.yaml",
+            "expectedRevision": 0,
+            "disposition": "new",
+            "command": "python scripts/knowledge_registry.py propose ...",
+        }
+
+    def write_manifest(self, bundles: list[dict]) -> Path:
+        drafts = self.root / ".cache/knowledge-proposals/force-app-drafts"
+        drafts.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "schemaVersion": 1,
+            "kind": "force-app-knowledge-draft-manifest",
+            "generatedAt": "2026-07-10T11:00:00Z",
+            "repositoryCommit": "a" * 40,
+            "sourceTreeDigest": f"sha256:{'d' * 64}",
+            "reviewStatus": "draft",
+            "claimCount": sum("claimFile" in bundle for bundle in bundles),
+            "bundles": bundles,
+            "limitations": ["Drafts are proposed claims only and are not verified Knowledge."],
+        }
+        path = drafts / "manifest.json"
+        path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        return path
+
+    def test_approve_manifest_promotes_inventory_claims_and_skips_the_rest(self) -> None:
+        self.write_chat_reviewer()
+        drafts = self.root / ".cache/knowledge-proposals/force-app-drafts"
+        drafts.mkdir(parents=True, exist_ok=True)
+
+        bundles: list[dict] = []
+        # Two proposable component-inventory claims.
+        for index, identity in enumerate(("ComponentOne", "ComponentTwo"), start=1):
+            bundles.append(
+                self.propose_manifest_bundle(f"KCLM-MANIFEST-INV-00{index}", identity, drafts)
+            )
+        # An object-existence claim: proposed, but NOT manifest-approvable.
+        guarded = self.manifest_bundle_claim("KCLM-MANIFEST-OBJ-001", "GuardedObject")
+        guarded["domain"] = "object-descriptions"
+        guarded["claimType"] = "object-existence"
+        guarded["subject"] = {"kind": "object", "identity": "GuardedObject__c"}
+        guarded["assertion"] = {"predicate": "exists-in-accessible-schema", "value": True}
+        guarded_evidence = self.manifest_bundle_evidence("GuardedObject")
+        guarded_path = drafts / "KCLM-MANIFEST-OBJ-001.yaml"
+        guarded_path.write_text(yaml.safe_dump(guarded, sort_keys=False), encoding="utf-8")
+        guarded_evidence_path = drafts / f"{guarded_evidence['evidenceId']}.yaml"
+        guarded_evidence_path.write_text(
+            yaml.safe_dump(guarded_evidence, sort_keys=False), encoding="utf-8"
+        )
+        self.registry.propose(guarded_path, [guarded_evidence_path], expected_revision=0)
+        bundles.append(
+            {
+                "claimId": "KCLM-MANIFEST-OBJ-001",
+                "evidenceId": guarded_evidence["evidenceId"],
+                "claimFile": ".cache/knowledge-proposals/force-app-drafts/KCLM-MANIFEST-OBJ-001.yaml",
+                "evidenceFile": f".cache/knowledge-proposals/force-app-drafts/{guarded_evidence['evidenceId']}.yaml",
+                "expectedRevision": 0,
+                "disposition": "new",
+                "command": "python scripts/knowledge_registry.py propose ...",
+            }
+        )
+        # A skipped bundle without a claim file (existing-non-proposed).
+        bundles.append(
+            {
+                "claimId": "KCLM-MANIFEST-SKIPPED-001",
+                "disposition": "existing-non-proposed",
+                "reason": "existing status is verified",
+            }
+        )
+        manifest_path = self.write_manifest(bundles)
+
+        result = self.registry.approve_manifest(manifest_path)
+        self.assertEqual(2, result["counts"]["approved"])
+        self.assertEqual(2, result["counts"]["skipped"])
+        self.assertEqual("copilot-chat-manifest-confirmation", result["mechanism"])
+        skip_reasons = {entry["claimId"]: entry["reason"] for entry in result["skipped"]}
+        self.assertIn("per-claim approval", skip_reasons["KCLM-MANIFEST-OBJ-001"])
+        self.assertIn("no drafted claim", skip_reasons["KCLM-MANIFEST-SKIPPED-001"])
+
+        for approved in result["approved"]:
+            claim = load_yaml(self.root / f".ai/knowledge/claims/{approved['claimId']}.yaml")
+            self.assertEqual("verified", claim["status"])
+            review = load_yaml(self.root / f".ai/knowledge/reviews/{approved['reviewId']}.yaml")
+            self.assertEqual(
+                "copilot-chat-manifest-confirmation", review["auditReceipt"]["mechanism"]
+            )
+            self.assertIn(
+                f"manifest/sha256:{result['manifestSha256']}",
+                review["auditReceipt"]["reference"],
+            )
+            self.registry.verify_audit_receipt(review)
+        # Full registry still validates after the batch (reviews bind correctly).
+        self.registry.validate_all()
+        # The untouched object claim is still proposed.
+        self.assertEqual(
+            "proposed",
+            load_yaml(self.root / ".ai/knowledge/claims/KCLM-MANIFEST-OBJ-001.yaml")["status"],
+        )
+
+    def test_approve_manifest_skips_drifted_content_and_fails_closed_without_policy(self) -> None:
+        self.write_chat_reviewer()
+        drafts = self.root / ".cache/knowledge-proposals/force-app-drafts"
+        drafts.mkdir(parents=True, exist_ok=True)
+        claim_id = "KCLM-MANIFEST-DRIFT-001"
+        bundle = self.propose_manifest_bundle(claim_id, "DriftingComponent", drafts)
+        # Draft file drifts after propose: the human would approve unseen content — skip.
+        claim = self.manifest_bundle_claim(claim_id, "DriftingComponent")
+        drifted = dict(claim, statement="Changed after proposal.")
+        (drafts / f"{claim_id}.yaml").write_text(
+            yaml.safe_dump(drifted, sort_keys=False), encoding="utf-8"
+        )
+        manifest_path = self.write_manifest([bundle])
+        result = self.registry.approve_manifest(manifest_path)
+        self.assertEqual(0, result["counts"]["approved"])
+        self.assertIn("drifted", result["skipped"][0]["reason"])
+
+        # Policy knob absent -> manifest approval is disabled entirely.
+        policy = load_json(self.root / "config/knowledge-policy.json")
+        del policy["promotion"]["manifestApproval"]
+        (self.root / "config/knowledge-policy.json").write_text(
+            json.dumps(policy, indent=2), encoding="utf-8"
+        )
+        with self.assertRaisesRegex(ContractError, "manifestApproval"):
+            self.registry.approve_manifest(manifest_path)
 
     def test_stale_report_flags_expired_and_expiring_verified_claims(self) -> None:
         # promote() yields a verified claim with reviewBy 2026-08-08 (29 days after the 2026-07-10 now).

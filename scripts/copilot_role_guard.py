@@ -177,6 +177,7 @@ KNOWLEDGE_APPROVE_FLAGS = frozenset({
     "--claim-spec",
     "--decision",
     "--rationale",
+    "--manifest",
 })
 KNOWLEDGE_PROPOSE_FLAGS = frozenset(
     {"--claim-file", "--evidence-file", "--expected-revision", "--refresh-verified"}
@@ -379,6 +380,20 @@ def proposal_draft_path_allowed(raw: str, root: Path) -> bool:
     return bool(relative.parts) and candidate.suffix.lower() in {".yaml", ".yml"}
 
 
+def manifest_input_path_allowed(raw: str, root: Path) -> bool:
+    """Draft-manifest JSON for approve-claim --manifest: same containment as proposal drafts."""
+    path = Path(raw)
+    if path.is_absolute():
+        return False
+    draft_root = (root / ".cache/knowledge-proposals").resolve(strict=False)
+    candidate = (root / path).resolve(strict=False)
+    try:
+        relative = candidate.relative_to(draft_root)
+    except ValueError:
+        return False
+    return bool(relative.parts) and candidate.suffix.lower() == ".json"
+
+
 def knowledge_registry_command_allowed(
     parts: list[str], role: str, root: Path = HARNESS_ROOT
 ) -> bool:
@@ -478,6 +493,17 @@ def knowledge_registry_command_allowed(
                 seen[flag] = value
         if seen.get("--decision", "verify") not in {"verify", "reject"}:
             return False
+        if "--manifest" in seen:
+            # Manifest form: one human confirmation covers a draft manifest's low-risk claims
+            # (policy-limited to component-inventory). Verify-only, standalone, and the manifest
+            # must be the JSON the drafting run wrote under the ignored proposal workspace.
+            return (
+                "--claim-id" not in seen
+                and "--expected-revision" not in seen
+                and not claim_specs
+                and seen.get("--decision", "verify") == "verify"
+                and manifest_input_path_allowed(seen["--manifest"], root)
+            )
         if claim_specs:
             # Batch form: one human confirmation covers up to 25 explicit claim:revision pairs.
             return (

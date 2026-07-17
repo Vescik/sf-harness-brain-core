@@ -778,8 +778,9 @@ def main() -> int:
             json.dumps(
                 hook_response(
                     "ask",
-                    "SAFE-HUMAN-001: confirm this Knowledge promotion/rejection — your click is "
-                    "recorded as the copilot-chat-confirmation review mechanism.",
+                    "SAFE-HUMAN-001: confirm this Knowledge promotion/rejection (single, batch, "
+                    "or manifest) — your click is recorded as the copilot-chat-confirmation or "
+                    "copilot-chat-manifest-confirmation review mechanism.",
                 )
             )
         )

@@ -72,7 +72,7 @@
       "additionalProperties": false,
       "required": ["mechanism", "reference", "verifiedAt", "receiptDigest"],
       "properties": {
-        "mechanism": { "enum": ["github-review", "ado-approval", "signed-approval-receipt", "copilot-chat-confirmation"] },
+        "mechanism": { "enum": ["github-review", "ado-approval", "signed-approval-receipt", "copilot-chat-confirmation", "copilot-chat-manifest-confirmation"] },
         "reference": { "type": "string", "minLength": 1, "maxLength": 1000 },
         "verifiedAt": { "type": "string", "format": "date-time" },
         "receiptDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }

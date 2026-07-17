@@ -1438,6 +1438,8 @@ class KnowledgeRegistry:
         expected_revision: int,
         decision: str = "verify",
         rationale: str | None = None,
+        manifest_sha: str | None = None,
+        render: bool = True,
     ) -> dict[str, Any]:
         """One-command chat-approval review: build the immutable review record (all digests
         computed here), record it, and — for verify — promote the claim and refresh the
@@ -1453,6 +1455,8 @@ class KnowledgeRegistry:
 
         if decision not in {"verify", "reject"}:
             raise ContractError("approve-claim decision must be verify or reject")
+        if manifest_sha is not None and decision != "verify":
+            raise ContractError("manifest approval supports only the verify decision")
         local_config_path = self.root / "config" / "harness.local.json"
         try:
             local_config = json.loads(local_config_path.read_text(encoding="utf-8"))
@@ -1485,11 +1489,21 @@ class KnowledgeRegistry:
             evidence_records.append(load_yaml(evidence_path))
         at = self.at_time()
         reviewed_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")
-        suffix = "CHAT-VERIFY" if decision == "verify" else "CHAT-REJECT"
+        if manifest_sha is not None:
+            suffix = "MANIFEST-VERIFY"
+            mechanism = "copilot-chat-manifest-confirmation"
+            reference = (
+                f"vscode-chat://approve-claim/manifest/sha256:{manifest_sha}/"
+                f"{claim_id}/r{expected_revision}"
+            )
+        else:
+            suffix = "CHAT-VERIFY" if decision == "verify" else "CHAT-REJECT"
+            mechanism = "copilot-chat-confirmation"
+            reference = f"vscode-chat://approve-claim/{claim_id}/r{expected_revision}"
         review_id = f"KREV-{claim_id[5:61]}-R{expected_revision}-{suffix}"
         receipt = {
-            "mechanism": "copilot-chat-confirmation",
-            "reference": f"vscode-chat://approve-claim/{claim_id}/r{expected_revision}",
+            "mechanism": mechanism,
+            "reference": reference,
             "verifiedAt": reviewed_at,
         }
         receipt["receiptDigest"] = canonical_digest(receipt)
@@ -1524,14 +1538,15 @@ class KnowledgeRegistry:
         self.record_review_data(review)
         if decision == "verify":
             promoted = self.promote(claim_id, review_id, expected_revision)
-            self.render_indexes(check=False)
+            if render:
+                self.render_indexes(check=False)
             return {
                 "claimId": claim_id,
                 "reviewId": review_id,
                 "status": "verified",
                 "revision": promoted["revision"],
                 "reviewer": reviewer,
-                "mechanism": "copilot-chat-confirmation",
+                "mechanism": mechanism,
             }
         rejected = copy.deepcopy(claim)
         rejected["revision"] = expected_revision + 1
@@ -1542,14 +1557,120 @@ class KnowledgeRegistry:
         if current["revision"] != expected_revision:
             raise ContractError("claim changed after validation; rejection aborted")
         atomic_yaml_write(claim_path, rejected)
-        self.render_indexes(check=False)
+        if render:
+            self.render_indexes(check=False)
         return {
             "claimId": claim_id,
             "reviewId": review_id,
             "status": "rejected",
             "revision": rejected["revision"],
             "reviewer": reviewer,
-            "mechanism": "copilot-chat-confirmation",
+            "mechanism": mechanism,
+        }
+
+    def approve_manifest(
+        self, manifest_path: Path, rationale: str | None = None
+    ) -> dict[str, Any]:
+        """One human confirmation approves a draft manifest's low-risk claims.
+
+        Owner decision 2026-07-17: only the claim types named in
+        `promotion.manifestApproval.allowedClaimTypes` (component-inventory — generic existence
+        records) qualify; everything else in the manifest is skipped with a reason and keeps the
+        per-claim/25-spec approval path. Each promoted claim still gets its own immutable review,
+        but every audit receipt carries the manifest's content digest under the
+        `copilot-chat-manifest-confirmation` mechanism, so the one confirmation is the recorded
+        approval for exactly the enumerated content. A claim whose canonical record drifted from
+        the drafted file (revision or digest) is skipped, never approved.
+        """
+
+        policy = load_json(self.policy_path)
+        manifest_policy = policy.get("promotion", {}).get("manifestApproval")
+        if not isinstance(manifest_policy, dict):
+            raise ContractError(
+                "knowledge policy does not enable manifest approval "
+                "(promotion.manifestApproval is absent)"
+            )
+        allowed_types = set(manifest_policy.get("allowedClaimTypes") or [])
+        max_claims = int(manifest_policy.get("maxClaims", 0))
+        if not allowed_types or max_claims < 1:
+            raise ContractError("promotion.manifestApproval must name claim types and a cap")
+        manifest = load_json(manifest_path)
+        self.validate_data(
+            manifest, "force-app-knowledge-draft-manifest.schema.json", "draft manifest"
+        )
+        manifest_sha = file_sha256(manifest_path)
+
+        approvable: list[tuple[str, int]] = []
+        skipped: list[dict[str, str]] = []
+
+        def skip(claim_id: str, reason: str) -> None:
+            skipped.append({"claimId": claim_id, "reason": reason})
+
+        for bundle in manifest["bundles"]:
+            claim_id = str(bundle["claimId"])
+            claim_file = bundle.get("claimFile")
+            if not claim_file:
+                skip(claim_id, f"bundle has no drafted claim ({bundle.get('disposition')})")
+                continue
+            draft_path = self.root / claim_file
+            if not draft_path.is_file():
+                skip(claim_id, "drafted claim file is missing")
+                continue
+            draft = load_yaml(draft_path)
+            claim_type = str(draft.get("claimType", ""))
+            if claim_type not in allowed_types:
+                skip(
+                    claim_id,
+                    f"claim type {claim_type} requires per-claim approval "
+                    "(not in promotion.manifestApproval.allowedClaimTypes)",
+                )
+                continue
+            canonical_path = self.claim_path(claim_id)
+            if not canonical_path.is_file():
+                skip(claim_id, "claim has not been proposed")
+                continue
+            canonical_claim = load_yaml(canonical_path)
+            if canonical_claim.get("status") != "proposed":
+                skip(claim_id, f"canonical status is {canonical_claim.get('status')}")
+                continue
+            if canonical_claim.get("revision") != draft.get("revision"):
+                skip(claim_id, "canonical revision drifted from the drafted revision")
+                continue
+            if canonical_digest(canonical_claim) != canonical_digest(draft):
+                skip(claim_id, "canonical claim content drifted from the drafted content")
+                continue
+            approvable.append((claim_id, int(canonical_claim["revision"])))
+
+        if len(approvable) > max_claims:
+            raise ContractError(
+                f"manifest holds {len(approvable)} approvable claims, above the "
+                f"promotion.manifestApproval.maxClaims cap of {max_claims}"
+            )
+        approved: list[dict[str, Any]] = []
+        for claim_id, revision in approvable:
+            result = self.approve_claim(
+                claim_id,
+                revision,
+                decision="verify",
+                rationale=rationale,
+                manifest_sha=manifest_sha,
+                render=False,
+            )
+            approved.append(
+                {
+                    "claimId": claim_id,
+                    "reviewId": result["reviewId"],
+                    "revision": result["revision"],
+                }
+            )
+        if approved:
+            self.render_indexes(check=False)
+        return {
+            "manifestSha256": manifest_sha,
+            "approved": approved,
+            "skipped": skipped,
+            "counts": {"approved": len(approved), "skipped": len(skipped)},
+            "mechanism": "copilot-chat-manifest-confirmation",
         }
 
     @staticmethod
@@ -1981,6 +2102,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     approve.add_argument("--decision", choices=("verify", "reject"), default="verify")
     approve.add_argument("--rationale")
+    approve.add_argument(
+        "--manifest",
+        help="approve a draft manifest's component-inventory claims in one confirmation "
+        "(policy promotion.manifestApproval; other claim types are skipped with reasons)",
+    )
 
     reconcile = commands.add_parser("reconcile")
     reconcile.add_argument("--claim-file", required=True)
@@ -2106,7 +2232,21 @@ def main() -> int:
         elif args.command == "promote":
             result = registry.promote(args.claim_id, args.review_id, args.expected_revision)
         elif args.command == "approve-claim":
-            if args.claim_spec:
+            if args.manifest is not None:
+                if (
+                    args.claim_id is not None
+                    or args.expected_revision is not None
+                    or args.claim_spec
+                ):
+                    raise ContractError(
+                        "--manifest cannot be combined with --claim-id/--expected-revision/--claim-spec"
+                    )
+                if args.decision != "verify":
+                    raise ContractError("manifest approval supports only the verify decision")
+                result = registry.approve_manifest(
+                    registry.contained_input(args.manifest), args.rationale
+                )
+            elif args.claim_spec:
                 if args.claim_id is not None or args.expected_revision is not None:
                     raise ContractError(
                         "use either --claim-id/--expected-revision or repeatable --claim-spec, not both"
