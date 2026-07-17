@@ -1852,6 +1852,172 @@ class ForceAppKnowledge:
         manifest.update(summary)
         return manifest
 
+    def dashboard(self, warn_days: int = 30) -> dict[str, Any]:
+        """Render coverage, freshness, relation, and keyword health into one static HTML page.
+
+        Read-only for every role: each data source renders independently, so a missing
+        inventory (or a store this repo does not carry) degrades to an "unavailable" panel
+        with the command to run, never a failure. The page is fully self-contained — inline
+        styles, no scripts, no external assets — and every interpolated value is escaped.
+        """
+
+        import html as html_escape
+
+        try:
+            from knowledge_registry import ContractError, KnowledgeRegistry
+        except ModuleNotFoundError:  # imported as scripts.force_app_knowledge by unit tests
+            from scripts.knowledge_registry import ContractError, KnowledgeRegistry
+
+        registry = KnowledgeRegistry(self.root)
+        recoverable = (KnowledgeBuildError, ContractError, OSError, json.JSONDecodeError)
+
+        def escape(value: Any) -> str:
+            return html_escape.escape(str(value))
+
+        def table(headers: list[str], rows: list[list[Any]]) -> str:
+            if not rows:
+                return "<p class='empty'>none</p>"
+            head = "".join(f"<th>{escape(header)}</th>" for header in headers)
+            body = "".join(
+                "<tr>" + "".join(f"<td>{escape(cell)}</td>" for cell in row) + "</tr>"
+                for row in rows
+            )
+            return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+
+        sections: dict[str, str] = {}
+        panels: list[str] = []
+
+        def panel(key: str, title: str, build, remedy: str) -> None:
+            try:
+                content = build()
+                sections[key] = "ok"
+            except recoverable as exc:
+                content = (
+                    f"<p class='empty'>unavailable — run <code>{escape(remedy)}</code> first "
+                    f"({escape(exc.__class__.__name__)})</p>"
+                )
+                sections[key] = "unavailable"
+            panels.append(f"<section><h2>{escape(title)}</h2>{content}</section>")
+
+        def coverage_panel() -> str:
+            coverage = self.coverage()
+            totals = coverage["totals"]
+            summary = (
+                f"<p><strong>{escape(totals['coveragePercent'])}%</strong> documented — "
+                f"{escape(totals['documented'])} documented, "
+                f"{escape(totals['undocumented'])} undocumented of "
+                f"{escape(totals['total'])} components</p>"
+            )
+            rows = [
+                [name, stats["documented"], stats["drifted"], stats["undocumented"]]
+                for name, stats in sorted(coverage["byMetadataType"].items())
+            ]
+            queue = table(
+                ["component", "metadata type", "status"],
+                [
+                    [item["componentId"], item["metadataType"], item["status"]]
+                    for item in coverage["documentNext"][:25]
+                ],
+            )
+            return (
+                summary
+                + table(["metadata type", "documented", "drifted", "undocumented"], rows)
+                + f"<h3>Document next (top {min(25, len(coverage['documentNext']))})</h3>"
+                + queue
+            )
+
+        def freshness_panel() -> str:
+            stale = registry.stale_report(warn_days=warn_days)
+            rows = [
+                [entry["claimId"], entry["claimType"], entry["reviewBy"], state]
+                for state, entries in (("expired", stale["expired"]), ("expiring", stale["expiring"]))
+                for entry in entries
+            ]
+            return (
+                f"<p>{escape(stale['expiredCount'])} expired, "
+                f"{escape(stale['expiringCount'])} expiring within {escape(warn_days)} days</p>"
+                + table(["claim", "type", "reviewBy", "state"], rows)
+            )
+
+        def relation_panel() -> str:
+            health = self.relation_health()
+            rows = [
+                [entry["claimId"], entry.get("reason", "orphaned")]
+                for entry in health.get("orphaned", [])
+            ]
+            return f"<p>{escape(health['orphanedCount'])} orphaned relation claims</p>" + table(
+                ["claim", "reason"], rows
+            )
+
+        def keyword_panel() -> str:
+            report = registry.keyword_report()
+            rows = [
+                [entry["term"], entry["count"], "yes" if entry["approved"] else "no"]
+                for entry in report["candidateTerms"]
+            ]
+            return (
+                f"<p>{escape(report['approvedTermCount'])} approved terms, "
+                f"{escape(report['candidateTermCount'])} candidates</p>"
+                + table(["candidate term", "claims", "approved"], rows)
+            )
+
+        panel(
+            "coverage",
+            "Documentation coverage",
+            coverage_panel,
+            "python scripts/force_app_knowledge.py inventory",
+        )
+        panel(
+            "freshness",
+            "Claim freshness",
+            freshness_panel,
+            "python scripts/knowledge_registry.py validate",
+        )
+        panel(
+            "relations",
+            "Relation health",
+            relation_panel,
+            "python scripts/force_app_knowledge.py inventory",
+        )
+        panel(
+            "keywords",
+            "Keyword curation",
+            keyword_panel,
+            "python scripts/knowledge_registry.py keyword-report",
+        )
+
+        generated_at = iso(utc_now())
+        commit = None
+        try:
+            commit = self.repository_commit()
+        except (KnowledgeBuildError, OSError):
+            pass
+        footer = f"Generated {escape(generated_at)}"
+        if commit:
+            footer += f" at commit <code>{escape(commit)}</code>"
+        page = (
+            "<meta charset='utf-8'>\n"
+            "<meta name='viewport' content='width=device-width, initial-scale=1'>\n"
+            "<title>Knowledge dashboard</title>\n"
+            "<style>\n"
+            "body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:60rem;padding:0 1rem;color:#1a1a1a}\n"
+            "h1{border-bottom:2px solid #ddd;padding-bottom:.4rem}\n"
+            "section{margin:1.5rem 0}\n"
+            "table{border-collapse:collapse;width:100%;font-size:.9rem}\n"
+            "th,td{border:1px solid #ccc;padding:.35rem .5rem;text-align:left}\n"
+            "th{background:#f2f2f2}\n"
+            ".empty{color:#777;font-style:italic}\n"
+            "footer{margin-top:2rem;color:#777;font-size:.85rem}\n"
+            "</style>\n"
+            "<h1>Knowledge dashboard</h1>\n"
+            + "\n".join(panels)
+            + f"\n<footer>{footer}</footer>\n"
+        )
+        output_path = self.root / "output/knowledge-dashboard.html"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(page, encoding="utf-8")
+        return {"path": self.relative(output_path), "sections": sections}
+
     # -- Feature documentor -------------------------------------------------------------------
 
     def crawl_path(self, slug: str) -> Path:
@@ -2269,6 +2435,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="report the refresh selection without clearing or writing the drafts workspace",
     )
+    dashboard = commands.add_parser(
+        "dashboard",
+        help="render coverage/freshness/relation/keyword health into output/knowledge-dashboard.html (read-only)",
+    )
+    dashboard.add_argument(
+        "--warn-days",
+        type=int,
+        default=30,
+        help="expiring-claim horizon for the freshness panel (default 30)",
+    )
     relation_health = commands.add_parser(
         "relation-health",
         help="report verified relation claims whose source edge no longer exists (read-only)",
@@ -2379,6 +2555,9 @@ def main(argv: Iterable[str] | None = None) -> int:
                 summary["reviewStatus"] = result["reviewStatus"]
             if args.metadata_type:
                 summary["metadataTypeFilter"] = args.metadata_type
+        elif args.command == "dashboard":
+            result = builder.dashboard(warn_days=args.warn_days)
+            summary = {"path": result["path"], "sections": result["sections"]}
         elif args.command == "relation-health":
             result = builder.relation_health(args.write)
             summary = {

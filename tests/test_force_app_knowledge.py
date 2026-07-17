@@ -607,6 +607,66 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         with self.assertRaisesRegex(KnowledgeBuildError, "available types"):
             self.builder.worklist(metadata_type="NoSuchType")
 
+    def test_dashboard_renders_with_graceful_panels_and_escaping(self) -> None:
+        # Without an inventory the coverage/relation panels degrade to "unavailable" and the
+        # command still succeeds; nothing raises on a store this root does not carry.
+        result = self.builder.dashboard()
+        page_path = self.root / "output/knowledge-dashboard.html"
+        self.assertTrue(page_path.is_file())
+        self.assertEqual("unavailable", result["sections"]["coverage"])
+        page = page_path.read_text(encoding="utf-8")
+        self.assertIn("unavailable", page)
+        self.assertNotIn("<script", page)
+
+        # With an inventory, coverage renders; a hostile statement in a claim is escaped.
+        self.builder.inventory()
+        manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
+        bundle = next(item for item in manifest["bundles"] if "claimFile" in item)
+        claim = yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
+        claim["candidateKeywords"] = ["<script>alert(1)</script>"]
+        (self.root / ".ai/knowledge/claims" / f"{claim['claimId']}.yaml").write_text(
+            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
+        )
+        result = self.builder.dashboard()
+        self.assertEqual("ok", result["sections"]["coverage"])
+        page = page_path.read_text(encoding="utf-8")
+        self.assertNotIn("<script>alert(1)</script>", page)
+
+    def test_dashboard_guard_allows_every_role_with_bounded_flags(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        for role in (
+            "solution-designer",
+            "config-investigator",
+            "knowledge-curator",
+            "development-assistant",
+            "test-strategist",
+            "guardrail-reviewer",
+        ):
+            with self.subTest(role=role):
+                self.assertTrue(
+                    role_guard.force_app_knowledge_command_allowed(["dashboard"], role)
+                )
+                self.assertTrue(
+                    role_guard.force_app_knowledge_command_allowed(
+                        ["dashboard", "--warn-days", "45"], role
+                    )
+                )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["dashboard", "--warn-days", "9999"], "solution-designer"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["dashboard", "--unknown"], "solution-designer"
+            )
+        )
+        # The all-roles carve-out never leaks into the drafting commands.
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(["inventory"], "solution-designer")
+        )
+
     def test_worklist_requires_a_current_inventory(self) -> None:
         with self.assertRaisesRegex(KnowledgeBuildError, "run inventory first"):
             self.builder.worklist()

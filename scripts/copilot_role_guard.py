@@ -208,6 +208,7 @@ KNOWLEDGE_COMMAND_FLAGS = {
 FORCE_APP_KNOWLEDGE_ROLES = frozenset({"config-investigator", "knowledge-curator"})
 FORCE_APP_COMMAND_FLAGS = {
     "inventory": frozenset(),
+    "dashboard": frozenset({"--warn-days"}),
     "worklist": frozenset({"--metadata-type", "--write"}),
     "coverage": frozenset({"--write"}),
     "relations-worklist": frozenset({"--metadata-type", "--write"}),
@@ -566,9 +567,24 @@ def knowledge_registry_command_allowed(
 
 
 def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
-    if role not in FORCE_APP_KNOWLEDGE_ROLES or not parts:
+    if not parts or parts[0] not in FORCE_APP_COMMAND_FLAGS:
         return False
-    if parts[0] not in FORCE_APP_COMMAND_FLAGS:
+    if parts[0] == "dashboard":
+        # Read-only aggregate health page under output/; the one force-app knowledge command
+        # every role may run — it drafts nothing and reads only derived views.
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                index += 1
+            else:
+                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
+                index += 2
+            if flag != "--warn-days" or not value.isdigit() or not (0 <= int(value) <= 365):
+                return False
+        return True
+    if role not in FORCE_APP_KNOWLEDGE_ROLES:
         return False
     if parts == ["inventory"]:
         return True
