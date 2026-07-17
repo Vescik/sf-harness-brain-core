@@ -104,6 +104,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             "force-app-knowledge-inventory.schema.json",
             "force-app-knowledge-draft-manifest.schema.json",
             "force-app-knowledge-worklist.schema.json",
+            "force-app-relations-worklist.schema.json",
         ):
             shutil.copy2(ROOT / "schemas" / name, self.root / "schemas" / name)
         (self.root / "config").mkdir()
@@ -181,7 +182,14 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         for bundle in manifest["bundles"]:
             if "claimFile" not in bundle:
                 continue
-            self.assertIn("scripts/knowledge_registry.py propose", bundle["command"])
+            # Manifest commands must run on Windows terminals too: a bare `python`
+            # launcher with forward-slash paths, never a venv-relative interpreter.
+            self.assertTrue(
+                bundle["command"].startswith("python scripts/knowledge_registry.py propose"),
+                bundle["command"],
+            )
+            self.assertNotIn(".venv", bundle["command"])
+            self.assertNotIn("\\", bundle["command"])
             evidence = (self.root / bundle["evidenceFile"]).read_text(encoding="utf-8")
             self.assertNotIn("never-export-this-secret", evidence)
 
@@ -388,6 +396,78 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         worklist = self.builder.worklist(metadata_type="PermissionSet")
         self.assertEqual("blocked", worklist["items"][0]["status"])
         self.assertIn("rejected", worklist["items"][0]["reason"])
+
+    def test_refresh_selects_only_drifted_and_expiring_claims(self) -> None:
+        self.builder.inventory()
+        manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
+        claims_root = self.root / ".ai/knowledge/claims"
+        by_type: dict[str, dict] = {}
+        for bundle in manifest["bundles"]:
+            if "claimFile" not in bundle:
+                continue
+            claim = yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
+            verified = dict(
+                claim,
+                status="verified",
+                revision=2,
+                reviewRef="KREV-TEST-1",
+                verifiedAt="2026-07-10T12:00:00Z",
+                reviewBy="2027-07-10T12:00:00Z",
+            )
+            (claims_root / f"{claim['claimId']}.yaml").write_text(
+                yaml.safe_dump(verified, sort_keys=False), encoding="utf-8"
+            )
+            by_type.setdefault(claim["claimType"], verified)
+
+        now = datetime(2026, 7, 17, 12, 0, tzinfo=timezone.utc)
+        result = self.builder.refresh(now)
+        self.assertEqual(0, result["refreshSelected"])
+        self.assertEqual("no-op", result["reviewStatus"])
+
+        def rewrite(record: dict, **overrides) -> dict:
+            updated = dict(record, **overrides)
+            (claims_root / f"{record['claimId']}.yaml").write_text(
+                yaml.safe_dump(updated, sort_keys=False), encoding="utf-8"
+            )
+            return updated
+
+        expired = rewrite(by_type["component-inventory"], reviewBy="2026-07-01T00:00:00Z")
+        expiring = rewrite(by_type["object-existence"], reviewBy="2026-08-01T00:00:00Z")
+        drifted = rewrite(by_type["field-schema"], evidenceRefs=["KEVD-SOMETHING-ELSE-0000000001"])
+
+        # Dry run reports the selection without touching the drafts workspace.
+        manifest_before = (self.root / ".cache/knowledge-proposals/force-app-drafts/manifest.json").read_bytes()
+        preview = self.builder.refresh(now, warn_days=30, dry_run=True)
+        self.assertTrue(preview["dryRun"])
+        self.assertEqual(3, preview["refreshSelected"])
+        self.assertEqual(1, preview["driftCount"])
+        self.assertEqual(1, preview["expiredCount"])
+        self.assertEqual(1, preview["expiringCount"])
+        self.assertEqual(
+            {expired["claimId"], expiring["claimId"], drifted["claimId"]},
+            {entry["claimId"] for entry in preview["selection"]},
+        )
+        self.assertEqual(
+            manifest_before,
+            (self.root / ".cache/knowledge-proposals/force-app-drafts/manifest.json").read_bytes(),
+        )
+
+        # Default horizon: drift and expired only; expiring claims wait for warn-days.
+        result = self.builder.refresh(now)
+        self.assertEqual(2, result["refreshSelected"])
+        self.assertEqual(0, result["expiringCount"])
+        self.assertEqual(2, result["claimCount"])
+        drafted_ids = {
+            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))["claimId"]
+            for bundle in result["bundles"]
+            if "claimFile" in bundle
+        }
+        self.assertEqual({expired["claimId"], drifted["claimId"]}, drafted_ids)
+
+        # The limit caps a run and reports the remainder for the next pass.
+        capped = self.builder.refresh(now, warn_days=30, limit=1, dry_run=True)
+        self.assertEqual(1, capped["refreshSelected"])
+        self.assertEqual(2, capped["remaining"])
 
     def test_coverage_summarizes_documentation_state(self) -> None:
         self.builder.inventory()

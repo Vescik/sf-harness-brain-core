@@ -867,7 +867,9 @@ class KnowledgeRegistry:
             return
         atomic_yaml_write(path, record)
 
-    def write_proposed_claim(self, record: dict[str, Any], expected_revision: int) -> None:
+    def write_proposed_claim(
+        self, record: dict[str, Any], expected_revision: int, refresh_verified: bool = False
+    ) -> None:
         self.validate_data(record, "knowledge-claim.schema.json", "proposed claim")
         self.validate_temporal_claim(record)
         if record["status"] != "proposed":
@@ -876,7 +878,9 @@ class KnowledgeRegistry:
         if path.exists():
             current = load_yaml(path)
             self.validate_data(current, "knowledge-claim.schema.json", str(path))
-            if current["status"] != "proposed":
+            if current["status"] != "proposed" and not (
+                refresh_verified and current["status"] in {"verified", "stale"}
+            ):
                 raise ContractError("propose may not replace a non-proposed claim")
             if current["revision"] != expected_revision:
                 raise ContractError(
@@ -893,7 +897,11 @@ class KnowledgeRegistry:
         atomic_yaml_write(path, record)
 
     def propose(
-        self, claim_file: Path, evidence_files: list[Path], expected_revision: int
+        self,
+        claim_file: Path,
+        evidence_files: list[Path],
+        expected_revision: int,
+        refresh_verified: bool = False,
     ) -> dict[str, Any]:
         claim = load_yaml(claim_file)
         proposed_evidence = [load_yaml(path) for path in evidence_files]
@@ -960,7 +968,14 @@ class KnowledgeRegistry:
             if expected_revision != 0 or claim["revision"] != 1:
                 raise ContractError("new proposal requires expected revision 0 and revision 1")
         else:
-            if current["status"] != "proposed":
+            if current["status"] != "proposed" and not (
+                refresh_verified and current["status"] in {"verified", "stale"}
+            ):
+                # A verified claim whose source drifted or whose reviewBy passed has no other
+                # lifecycle route back through review. --refresh-verified demotes it to a new
+                # proposed revision against fresh evidence — fail-safe by construction: the
+                # claim stops being effective until a human re-approves it, and the model
+                # still cannot create any status other than proposed.
                 raise ContractError("propose may not replace a non-proposed claim")
             if current["revision"] != expected_revision:
                 raise ContractError(
@@ -973,7 +988,7 @@ class KnowledgeRegistry:
 
         for record in proposed_evidence:
             self.write_evidence_immutable(record)
-        self.write_proposed_claim(claim, expected_revision)
+        self.write_proposed_claim(claim, expected_revision, refresh_verified)
         return {
             "claimId": claim["claimId"],
             "status": "proposed",
@@ -1676,6 +1691,11 @@ def build_parser() -> argparse.ArgumentParser:
     propose.add_argument("--claim-file", required=True)
     propose.add_argument("--evidence-file", action="append", default=[])
     propose.add_argument("--expected-revision", required=True, type=int)
+    propose.add_argument(
+        "--refresh-verified",
+        action="store_true",
+        help="allow replacing a verified/stale claim with a new proposed revision (refresh workflow)",
+    )
 
     review = commands.add_parser("review")
     review.add_argument("--review-file", required=True)
@@ -1784,6 +1804,7 @@ def main() -> int:
                 registry.contained_input(args.claim_file),
                 [registry.contained_input(path) for path in args.evidence_file],
                 args.expected_revision,
+                refresh_verified=args.refresh_verified,
             )
         elif args.command == "review":
             result = registry.record_review(registry.contained_input(args.review_file))

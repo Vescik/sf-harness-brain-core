@@ -1077,6 +1077,8 @@ class ForceAppKnowledge:
                             if current_evidence_id in record.get("evidenceRefs", [])
                             else "verified-stale"
                         )
+                        if record.get("reviewBy"):
+                            state["reviewBy"] = record["reviewBy"]
                     elif status == "proposed":
                         state["state"] = "proposed"
                     else:
@@ -1202,6 +1204,8 @@ class ForceAppKnowledge:
                             if current_evidence_id in record.get("evidenceRefs", [])
                             else "verified-stale"
                         )
+                        if record.get("reviewBy"):
+                            item["reviewBy"] = record["reviewBy"]
                     elif status == "proposed":
                         item["state"] = "proposed"
                     else:
@@ -1389,6 +1393,7 @@ class ForceAppKnowledge:
         component_ids: set[str] | None = None,
         include_relations: bool = False,
         claim_ids: set[str] | None = None,
+        refresh_claim_ids: set[str] | None = None,
     ) -> dict[str, Any]:
         inventory = self.load_inventory()
         if metadata_type is not None:
@@ -1475,18 +1480,31 @@ class ForceAppKnowledge:
                 disposition = "new"
                 if current_path.is_file():
                     current = yaml.safe_load(current_path.read_text(encoding="utf-8"))
-                    if current.get("status") != "proposed":
+                    status = current.get("status")
+                    if status == "proposed":
+                        expected_revision = int(current["revision"])
+                        revision = expected_revision + 1
+                        disposition = "update-proposed"
+                    elif (
+                        refresh_claim_ids is not None
+                        and claim_id in refresh_claim_ids
+                        and status in {"verified", "stale"}
+                    ):
+                        # Refresh selection: demote the drifted/expired claim to a new proposed
+                        # revision against current evidence; the registry requires the explicit
+                        # --refresh-verified acknowledgement emitted in the manifest command.
+                        expected_revision = int(current["revision"])
+                        revision = expected_revision + 1
+                        disposition = "refresh-verified"
+                    else:
                         bundles.append(
                             {
                                 "claimId": claim_id,
                                 "disposition": "existing-non-proposed",
-                                "reason": f"existing status is {current.get('status')}",
+                                "reason": f"existing status is {status}",
                             }
                         )
                         continue
-                    expected_revision = int(current["revision"])
-                    revision = expected_revision + 1
-                    disposition = "update-proposed"
                 max_days = int(policy["claimPolicies"][candidate["claimType"]]["maxReviewAgeDays"])
                 claim = {
                     "schemaVersion": 3,
@@ -1533,8 +1551,9 @@ class ForceAppKnowledge:
                         "expectedRevision": expected_revision,
                         "disposition": disposition,
                         "command": (
-                            f".venv/bin/python scripts/knowledge_registry.py propose --claim-file {self.relative(claim_path)} "
+                            f"python scripts/knowledge_registry.py propose --claim-file {self.relative(claim_path)} "
                             f"--evidence-file {self.relative(evidence_path)} --expected-revision {expected_revision}"
+                            + (" --refresh-verified" if disposition == "refresh-verified" else "")
                         ),
                     }
                 )
@@ -1614,6 +1633,119 @@ class ForceAppKnowledge:
         manifest["heuristicSkipped"] = len(missing) - len(eligible)
         manifest["drafted"] = len(claim_ids)
         manifest["remainingMissing"] = len(missing) - len(claim_ids)
+        return manifest
+
+    def refresh(
+        self,
+        observed_at: datetime,
+        metadata_type: str | None = None,
+        warn_days: int = 0,
+        limit: int = 200,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Re-draft only the verified claims that drifted or are (nearly) past re-review.
+
+        Without this, the store decays silently: every verified claim carries a `reviewBy`
+        deadline after which it stops being effective, and a full `draft` rerun is the only
+        recovery — re-touching claims that are still perfectly current. `refresh` selects the
+        minimal set instead: claims whose source drifted after verification (`verified-stale`
+        in either worklist) plus claims past `reviewBy` at `observed_at` (and, with
+        `warn_days`, claims expiring within that window), then delegates to `draft()`
+        restricted to exactly those claim/component IDs. Like every `draft()` call this clears
+        the drafts workspace first; `--dry-run` reports the selection without touching it.
+        """
+
+        if limit < 1:
+            raise KnowledgeBuildError("refresh limit must be at least 1")
+        if warn_days < 0:
+            raise KnowledgeBuildError("refresh warn-days must not be negative")
+        horizon = observed_at + timedelta(days=warn_days)
+
+        def classify(state: str, review_by: str | None) -> str | None:
+            if state == "verified-stale":
+                return "drift"
+            if state == "verified-current" and review_by:
+                deadline = parse_time(review_by)
+                if deadline <= observed_at:
+                    return "expired"
+                if warn_days and deadline <= horizon:
+                    return "expiring"
+            return None
+
+        worklist = self.worklist(metadata_type)
+        matches: list[dict[str, Any]] = []
+        for item in worklist["items"]:
+            for state in item["claims"]:
+                reason = classify(state["state"], state.get("reviewBy"))
+                if reason:
+                    matches.append(
+                        {
+                            "claimId": state["claimId"],
+                            "claimType": state["claimType"],
+                            "componentId": item["componentId"],
+                            "reason": reason,
+                            "relation": False,
+                        }
+                    )
+        # CustomField object-relation claims appear in both worklists (all_relation_candidates
+        # reuses candidate_claims for fields) — count each claim once.
+        seen_claims = {match["claimId"] for match in matches}
+        for item in self.relations_worklist(metadata_type)["items"]:
+            reason = classify(item["state"], item.get("reviewBy"))
+            if reason and item["claimId"] not in seen_claims:
+                matches.append(
+                    {
+                        "claimId": item["claimId"],
+                        "claimType": item["claimType"],
+                        "componentId": item["sourceComponentId"],
+                        "reason": reason,
+                        "relation": True,
+                    }
+                )
+
+        selected = matches[:limit]
+        claim_ids = {match["claimId"] for match in selected}
+        component_ids = {match["componentId"] for match in selected}
+        reasons = Counter(match["reason"] for match in selected)
+        summary = {
+            "refreshSelected": len(selected),
+            "driftCount": reasons["drift"],
+            "expiredCount": reasons["expired"],
+            "expiringCount": reasons["expiring"],
+            "remaining": len(matches) - len(selected),
+        }
+        if dry_run:
+            return {
+                "schemaVersion": SCHEMA_VERSION,
+                "kind": "force-app-knowledge-refresh-selection",
+                "generatedAt": iso(observed_at),
+                "repositoryCommit": worklist["repositoryCommit"],
+                "sourceTreeDigest": worklist["sourceTreeDigest"],
+                "dryRun": True,
+                **summary,
+                "selection": selected,
+            }
+        if claim_ids:
+            manifest = self.draft(
+                observed_at,
+                component_ids=component_ids,
+                include_relations=any(match["relation"] for match in selected),
+                claim_ids=claim_ids,
+                refresh_claim_ids=claim_ids,
+            )
+        else:
+            manifest = {
+                "schemaVersion": SCHEMA_VERSION,
+                "kind": "force-app-knowledge-draft-manifest",
+                "generatedAt": iso(observed_at),
+                "repositoryCommit": worklist["repositoryCommit"],
+                "sourceTreeDigest": worklist["sourceTreeDigest"],
+                "reviewStatus": "no-op",
+                "claimCount": 0,
+                "bundles": [],
+                "limitations": [],
+            }
+        manifest.update(summary)
         return manifest
 
     # -- Feature documentor -------------------------------------------------------------------
@@ -2007,6 +2139,32 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also draft source-token-heuristic edges (Apex object-token/queries-object/invokes-class); excluded by default",
     )
+    refresh = commands.add_parser(
+        "refresh",
+        help="re-draft only verified claims that drifted or are past/near their reviewBy deadline",
+    )
+    refresh.add_argument("--observed-at")
+    refresh.add_argument(
+        "--metadata-type",
+        help="refresh candidates only for this inventory metadata type",
+    )
+    refresh.add_argument(
+        "--warn-days",
+        type=int,
+        default=0,
+        help="also select verified claims expiring within this many days (default 0: drift and expired only)",
+    )
+    refresh.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="cap the number of claims refreshed this run (default 200)",
+    )
+    refresh.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report the refresh selection without clearing or writing the drafts workspace",
+    )
     relation_health = commands.add_parser(
         "relation-health",
         help="report verified relation claims whose source edge no longer exists (read-only)",
@@ -2091,6 +2249,30 @@ def main(argv: Iterable[str] | None = None) -> int:
                 "remainingMissing": result["remainingMissing"],
                 "reviewStatus": result["reviewStatus"],
             }
+            if args.metadata_type:
+                summary["metadataTypeFilter"] = args.metadata_type
+        elif args.command == "refresh":
+            observed_at = parse_time(args.observed_at) if args.observed_at else utc_now()
+            result = builder.refresh(
+                observed_at,
+                args.metadata_type,
+                warn_days=args.warn_days,
+                limit=args.limit,
+                dry_run=args.dry_run,
+            )
+            summary = {
+                "refreshSelected": result["refreshSelected"],
+                "driftCount": result["driftCount"],
+                "expiredCount": result["expiredCount"],
+                "expiringCount": result["expiringCount"],
+                "remaining": result["remaining"],
+            }
+            if args.dry_run:
+                summary["dryRun"] = True
+                summary["selection"] = result["selection"]
+            else:
+                summary["path"] = builder.relative(builder.draft_root / "manifest.json")
+                summary["reviewStatus"] = result["reviewStatus"]
             if args.metadata_type:
                 summary["metadataTypeFilter"] = args.metadata_type
         elif args.command == "relation-health":

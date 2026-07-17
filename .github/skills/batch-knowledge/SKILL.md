@@ -83,6 +83,29 @@ continue executing from the first `pending` or `drafted` component. Never recons
 from chat history or a hand-maintained checklist — the derived worklist is recomputed from the
 registry and cannot drift.
 
+## Refresh mode (drift + expiry maintenance)
+
+Use refresh mode when the batch goal is keeping existing Knowledge current rather than
+documenting new components — the store decays without it: every verified claim stops being
+effective at its `reviewBy` deadline, and `stale-refresh` components hold claims whose source
+changed after verification.
+
+1. DISCOVER: `python scripts/force_app_knowledge.py refresh --dry-run --warn-days 30`
+   (optionally `--metadata-type <Type>`). The selection lists each claim with its reason —
+   `drift` (source changed), `expired` (past reviewBy), `expiring` (within the warn window) —
+   plus `remaining` when the `--limit` cap truncated the sweep. `python scripts/knowledge_registry.py
+   stale-report` gives the registry-wide expiry view when scoping the run.
+2. VERIFY PLAN: present the dry-run selection to the human exactly like a batch plan (counts by
+   reason, expected approval clicks) and get the explicit go-ahead.
+3. EXECUTE: `python scripts/force_app_knowledge.py refresh` with the same filters. Drafts land in
+   the same workspace with disposition `refresh-verified`, and their manifest `propose` commands
+   carry `--refresh-verified` — the explicit acknowledgement that a verified/stale claim is being
+   demoted to a new proposed revision against current evidence. Fill description sentinels and
+   propose/approve per chunk exactly as in Phase 4. Until re-approval the refreshed claims are
+   `proposed` and not effective — schedule the run so the approval step follows promptly.
+4. VERIFY: rerun `refresh --dry-run` — a clean pass selects nothing (or only the `remaining`
+   overflow for the next run) — then continue with Phase 5 as usual.
+
 ## Phase 5 — VERIFY
 
 1. Query the registry for the type again and compare against the plan: every planned component

@@ -62,6 +62,18 @@ jobs:
       - name: Validate harness structure and contracts
         run: python scripts/validate_harness.py
 
+      - name: Validate knowledge registry contract and index drift
+        # validate_harness.py already runs these as grounding checks; the explicit step makes a
+        # knowledge-store failure attributable in the CI log instead of a generic harness error.
+        run: |
+          python scripts/knowledge_registry.py validate
+          python scripts/knowledge_registry.py render-indexes --check
+
+      - name: Report knowledge freshness (advisory)
+        # Advisory only: expired/expiring claims are surfaced in the log for re-review
+        # scheduling but never fail CI. A corrupt store already fails the validate step above.
+        run: python scripts/knowledge_registry.py stale-report
+
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
 

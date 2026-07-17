@@ -856,6 +856,11 @@ def check_grounding_contracts(audit: Audit) -> None:
     audit.require(example_review.get("allowedObjectApiNames") == [], "disabled example object allowlist must be empty")
     workflow = (ROOT / ".github/workflows/harness-ci.yml").read_text(encoding="utf-8")
     audit.require("npm ci --ignore-scripts" in workflow, "CI must install the pinned Salesforce review runtime without lifecycle scripts")
+    audit.require(
+        "python scripts/knowledge_registry.py validate" in workflow
+        and "python scripts/knowledge_registry.py render-indexes --check" in workflow,
+        "CI must keep the explicit knowledge registry validate/render-indexes gates",
+    )
 
 
 def check_repo_map(audit: Audit) -> None:

@@ -336,8 +336,8 @@
     },
     {
       "agent": "config-investigator",
-      "argumentHint": "[recordId=<ID>] [claimIds=<ID,ID,...>]",
-      "description": "Run the governed force-app inventory and claim-draft stages, with optional explicit proposal submission.",
+      "argumentHint": "[type=<MetadataType>] [warnDays=<N>] [claimIds=<ID,ID,...>]",
+      "description": "Keep existing force-app Knowledge current - select drifted/expired/expiring verified claims, re-draft them against current source, and route them through proposal and chat approval.",
       "name": "refresh-force-app-knowledge",
       "path": ".github/prompts/refresh-force-app-knowledge.prompt.md"
     },
@@ -549,7 +549,7 @@
     ".github/prompts/inventory-force-app.prompt.md": "sha256:fbe782d0d3473eb32dbdc5b23fca697978a4128d3073c4b9fe485347a5ce8634",
     ".github/prompts/investigate-object.prompt.md": "sha256:3d7e3b24c44b627f95d095f5998b92e0e34d4acf6d807f5ac49185342c9bf36d",
     ".github/prompts/propose-force-app-knowledge.prompt.md": "sha256:f836be0cd76303a32c24dbbb6ec4bc26c8191cce9af874f0b1c17427c77c13ea",
-    ".github/prompts/refresh-force-app-knowledge.prompt.md": "sha256:9e51fd204d6b33a25baad30cc53ee6df39db942090f2b2e6c9ef7b5245152abc",
+    ".github/prompts/refresh-force-app-knowledge.prompt.md": "sha256:4b29e459610201bb7ba0ec3e7707cf1f3b2312a3973f17652a7f482461999429",
     ".github/prompts/relation-health.prompt.md": "sha256:81907a5f9cf2462332ca6d178f81a57b9e5ea7c32257838e1e770209b666f082",
     ".github/prompts/release-handover.prompt.md": "sha256:fb1e1475798109b891f8bc3c56aaad086bb75984dca8110241f5510cc75a5ec5",
     ".github/prompts/search-ado.prompt.md": "sha256:e6fa23e465545216101e2e4411b799278c39e335d260a205eca72f57bdc0c5b0",
@@ -559,7 +559,7 @@
     ".github/prompts/sync-test-cases.prompt.md": "sha256:123ac9b75b72602c4fb0e4e5d5cb86aae648b7570feab5c0848fb9d0b3ac3860",
     ".github/prompts/tune-test-case-keywords.prompt.md": "sha256:d11c3e84e713b5ff69ea4e6b9d019d1ce0a6ad04a4ddf774fbdf2e48cf4de32e",
     ".github/prompts/update-relations.prompt.md": "sha256:9e00ee4a7dec4b17311663ec931168e170284584f3e98f21504c296e2f0c1e94",
-    ".github/skills/batch-knowledge/SKILL.md": "sha256:594a12353a7a6fc67bcbe3bbb97983b5e737ebb293104944a3bdba19f3edb9e1",
+    ".github/skills/batch-knowledge/SKILL.md": "sha256:065fd86262f24ba5e8e2a7960a3bcc4f25d50481dfb9b8d217e7867d158d9a85",
     ".github/skills/check-against-principles/SKILL.md": "sha256:343abc57d5ffdc1db7c96eda640dcf609d6590e45d69e1efd203a32fc39aa96a",
     ".github/skills/check-feature-coverage/SKILL.md": "sha256:6b56459883ce318d3fd8e4c9074afe4c2a96826162473510fdedc5d85d83faf2",
     ".github/skills/curate-knowledge-keywords/SKILL.md": "sha256:59638d318738e874a727441d6637068e404e80cbc564eac6bbf92666ea646220",

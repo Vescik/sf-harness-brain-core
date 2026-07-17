@@ -733,6 +733,31 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
                 expected_revision=0,
             )
 
+    def test_refresh_verified_repropose_requires_the_explicit_flag(self) -> None:
+        # Refresh workflow: a verified claim may be demoted to a new proposed revision only
+        # under the explicit --refresh-verified acknowledgement; the plain propose path keeps
+        # rejecting any replacement of non-proposed claims.
+        self.promote()
+        refreshed = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        refreshed["revision"] = 3
+        path = self.root / "inputs/knowledge-claim.refresh.yaml"
+        path.write_text(yaml.safe_dump(refreshed, sort_keys=False), encoding="utf-8")
+        evidence = [self.root / "inputs/knowledge-evidence.complete.yaml"]
+        with self.assertRaisesRegex(ContractError, "non-proposed claim"):
+            self.registry.propose(path, evidence, expected_revision=2)
+        result = self.registry.propose(
+            path, evidence, expected_revision=2, refresh_verified=True
+        )
+        self.assertEqual({"claimId": "KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", "status": "proposed", "revision": 3, "reconciliation": "new"}, result)
+        canonical_claim = load_yaml(
+            self.root / ".ai/knowledge/claims/KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001.yaml"
+        )
+        self.assertEqual("proposed", canonical_claim["status"])
+        self.assertEqual(3, canonical_claim["revision"])
+        # The refresh flag never lets revision optimism slip.
+        with self.assertRaisesRegex(ContractError, "expected revision"):
+            self.registry.propose(path, evidence, expected_revision=5, refresh_verified=True)
+
     def test_reconcile_distinguishes_duplicate_conflict_and_parallel_scope(self) -> None:
         self.propose()
         base = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")

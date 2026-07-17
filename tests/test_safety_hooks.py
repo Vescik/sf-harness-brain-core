@@ -426,6 +426,17 @@ class RoleGuardTests(unittest.TestCase):
         )
         self.assertEqual(hook_decision(allowed), "continue")
         self.assertEqual(hook_decision(denied), "deny")
+        refreshed = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "execute/runInTerminal",
+                "tool_input": {"command": command + " --refresh-verified"},
+            },
+            "--role",
+            "config-investigator",
+        )
+        self.assertEqual(hook_decision(refreshed), "continue")
 
     def test_investigator_force_app_knowledge_commands_are_narrowly_allowlisted(self) -> None:
         from scripts import copilot_role_guard as role_guard
@@ -503,6 +514,38 @@ class RoleGuardTests(unittest.TestCase):
         self.assertFalse(
             role_guard.force_app_knowledge_command_allowed(
                 ["relations-draft"], "development-assistant"
+            )
+        )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                [
+                    "refresh",
+                    "--observed-at",
+                    "2026-07-10T12:00:00Z",
+                    "--metadata-type",
+                    "Flow",
+                    "--warn-days",
+                    "30",
+                    "--limit",
+                    "50",
+                    "--dry-run",
+                ],
+                "config-investigator",
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["refresh", "--warn-days", "9999"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["refresh", "--unknown"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["refresh"], "development-assistant"
             )
         )
 

@@ -28,13 +28,13 @@
           "claimFile": { "type": "string", "pattern": "^\\.cache/knowledge-proposals/force-app-drafts/" },
           "evidenceFile": { "type": "string", "pattern": "^\\.cache/knowledge-proposals/force-app-drafts/" },
           "expectedRevision": { "type": "integer", "minimum": 0 },
-          "disposition": { "enum": ["new", "update-proposed", "existing-non-proposed"] },
+          "disposition": { "enum": ["new", "update-proposed", "refresh-verified", "existing-non-proposed"] },
           "command": { "type": "string", "minLength": 1 },
           "reason": { "type": "string", "minLength": 1 }
         },
         "allOf": [
           {
-            "if": { "properties": { "disposition": { "enum": ["new", "update-proposed"] } } },
+            "if": { "properties": { "disposition": { "enum": ["new", "update-proposed", "refresh-verified"] } } },
             "then": { "required": ["evidenceId", "claimFile", "evidenceFile", "expectedRevision", "command"] }
           },
           {

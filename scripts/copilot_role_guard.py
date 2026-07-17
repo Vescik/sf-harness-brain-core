@@ -144,6 +144,63 @@ KNOWLEDGE_REGISTRY_COMMANDS = {
     "guardrail-reviewer": set(_KNOWLEDGE_READ_COMMANDS),
 }
 
+# Per-subcommand flag allowlists for the two knowledge CLIs. tests/test_guard_parser_contract.py
+# diffs these against the scripts' argparse parsers, so a parser flag added without a guard
+# decision (or a guard typo) fails CI instead of silently denying/allowing at runtime.
+KNOWLEDGE_QUERY_FLAGS = frozenset({
+    "--claim-id",
+    "--domain",
+    "--claim-type",
+    "--subject-kind",
+    "--subject-identity",
+    "--environment",
+    "--org-key",
+    "--package-namespace",
+    "--keyword",
+    "--text",
+    "--feature",
+    "--uses-object",
+    "--uses-field",
+    "--invokes",
+    "--at",
+})
+# Flags that do not count as a semantic filter on their own (query must narrow by content).
+KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS = frozenset({"--at"})
+KNOWLEDGE_APPROVE_FLAGS = frozenset({
+    "--claim-id",
+    "--expected-revision",
+    "--claim-spec",
+    "--decision",
+    "--rationale",
+})
+KNOWLEDGE_PROPOSE_FLAGS = frozenset(
+    {"--claim-file", "--evidence-file", "--expected-revision", "--refresh-verified"}
+)
+KNOWLEDGE_COMMAND_FLAGS = {
+    "validate": frozenset(),
+    "keyword-report": frozenset(),
+    "render-indexes": frozenset({"--check"}),
+    "reconcile": frozenset({"--claim-file"}),
+    "query": KNOWLEDGE_QUERY_FLAGS,
+    "stale-report": frozenset({"--warn-days", "--at"}),
+    "verify-citations": frozenset({"--envelope", "--claim-ref", "--at"}),
+    "propose": KNOWLEDGE_PROPOSE_FLAGS,
+    "approve-claim": KNOWLEDGE_APPROVE_FLAGS,
+}
+
+# Roles allowed to run force_app_knowledge.py at all (extraction/drafting authority).
+FORCE_APP_KNOWLEDGE_ROLES = frozenset({"config-investigator"})
+FORCE_APP_COMMAND_FLAGS = {
+    "inventory": frozenset(),
+    "worklist": frozenset({"--metadata-type", "--write"}),
+    "coverage": frozenset({"--write"}),
+    "relations-worklist": frozenset({"--metadata-type", "--write"}),
+    "relation-health": frozenset({"--write"}),
+    "relations-draft": frozenset({"--observed-at", "--metadata-type", "--limit", "--include-heuristic"}),
+    "refresh": frozenset({"--observed-at", "--metadata-type", "--warn-days", "--limit", "--dry-run"}),
+    "draft": frozenset({"--observed-at", "--metadata-type"}),
+}
+
 PATH_KEYS = {
     "path",
     "filepath",
@@ -337,23 +394,7 @@ def knowledge_registry_command_allowed(
             return proposal_draft_path_allowed(parts[1].split("=", 1)[1], root)
         return False
     if command == "query":
-        allowed_flags = {
-            "--claim-id",
-            "--domain",
-            "--claim-type",
-            "--subject-kind",
-            "--subject-identity",
-            "--environment",
-            "--org-key",
-            "--package-namespace",
-            "--keyword",
-            "--text",
-            "--feature",
-            "--uses-object",
-            "--uses-field",
-            "--invokes",
-            "--at",
-        }
+        allowed_flags = KNOWLEDGE_QUERY_FLAGS
         semantic_filter_seen = False
         index = 1
         while index < len(parts):
@@ -362,21 +403,17 @@ def knowledge_registry_command_allowed(
                 flag, value = token.split("=", 1)
                 if flag not in allowed_flags or not value:
                     return False
-                semantic_filter_seen = semantic_filter_seen or flag != "--at"
+                semantic_filter_seen = semantic_filter_seen or flag not in KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS
                 index += 1
                 continue
             if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
                 return False
-            semantic_filter_seen = semantic_filter_seen or token != "--at"
+            semantic_filter_seen = semantic_filter_seen or token not in KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS
             index += 2
         return index == len(parts) and semantic_filter_seen
     if command in {"stale-report", "verify-citations"}:
         # Read-only advisory reports; envelope inputs stay repository-contained at runtime.
-        allowed_flags = (
-            {"--warn-days", "--at"}
-            if command == "stale-report"
-            else {"--envelope", "--claim-ref", "--at"}
-        )
+        allowed_flags = KNOWLEDGE_COMMAND_FLAGS[command]
         index = 1
         while index < len(parts):
             token = parts[index]
@@ -393,13 +430,7 @@ def knowledge_registry_command_allowed(
     if command == "approve-claim":
         if role != "config-investigator":
             return False
-        allowed_flags = {
-            "--claim-id",
-            "--expected-revision",
-            "--claim-spec",
-            "--decision",
-            "--rationale",
-        }
+        allowed_flags = KNOWLEDGE_APPROVE_FLAGS
         seen: dict[str, str] = {}
         claim_specs: list[str] = []
         index = 1
@@ -439,14 +470,18 @@ def knowledge_registry_command_allowed(
         )
     if command != "propose" or role != "config-investigator":
         return False
+    # --refresh-verified is the explicit acknowledgement that a verified/stale claim is being
+    # demoted to a new proposed revision (refresh workflow); the registry enforces when it is
+    # actually applicable, the guard only recognizes the bare flag.
     values: dict[str, list[str]] = {
-        "--claim-file": [],
-        "--evidence-file": [],
-        "--expected-revision": [],
+        flag: [] for flag in KNOWLEDGE_PROPOSE_FLAGS - {"--refresh-verified"}
     }
     index = 1
     while index < len(parts):
         token = parts[index]
+        if token == "--refresh-verified":
+            index += 1
+            continue
         if "=" in token:
             flag, value = token.split("=", 1)
             if flag not in values or not value:
@@ -471,7 +506,9 @@ def knowledge_registry_command_allowed(
 
 
 def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
-    if role != "config-investigator" or not parts:
+    if role not in FORCE_APP_KNOWLEDGE_ROLES or not parts:
+        return False
+    if parts[0] not in FORCE_APP_COMMAND_FLAGS:
         return False
     if parts == ["inventory"]:
         return True
@@ -541,6 +578,39 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
                 index += 2
             if flag == "--limit":
                 if not value.isdigit() or not (1 <= int(value) <= 2000):
+                    return False
+                continue
+            pattern = text_validators.get(flag)
+            if pattern is None or not re.fullmatch(pattern, value):
+                return False
+        return True
+    if parts[0] == "refresh":
+        # Selects only drifted/expired/expiring verified claims and delegates to draft with the
+        # same authority; outputs stay under the ignored .cache/knowledge-proposals/ workspace.
+        # --warn-days is bounded to a year so a typo cannot select the entire verified store,
+        # and --limit shares the relations-draft anti-sweep bound.
+        text_validators = {
+            "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
+            "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
+        }
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if token == "--dry-run":
+                index += 1
+                continue
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                index += 1
+            else:
+                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
+                index += 2
+            if flag == "--limit":
+                if not value.isdigit() or not (1 <= int(value) <= 2000):
+                    return False
+                continue
+            if flag == "--warn-days":
+                if not value.isdigit() or not (0 <= int(value) <= 365):
                     return False
                 continue
             pattern = text_validators.get(flag)
