@@ -1,6 +1,6 @@
 ---
 name: refresh-force-app-knowledge
-description: Keep existing force-app Knowledge current - select drifted/expired/expiring verified claims, re-draft them against current source, and route them through proposal and chat approval.
+description: Re-draft drifted/expired/expiring verified claims against current source, then propose and chat-approve them.
 argument-hint: "[type=<MetadataType>] [warnDays=<N>] [claimIds=<ID,ID,...>]"
 agent: config-investigator
 tools: ['read', 'search', 'execute/runInTerminal']

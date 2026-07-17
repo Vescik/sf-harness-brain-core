@@ -23,6 +23,11 @@ ALLOWED_PREFIXES = {
     "config-investigator": (
         ".cache/knowledge-proposals/",
     ),
+    # Repo-source Knowledge maintenance only: fills draft sentinels and runs the governed
+    # knowledge commands. Deliberately NO Salesforce org surface and no work-record authority.
+    "knowledge-curator": (
+        ".cache/knowledge-proposals/",
+    ),
     "test-strategist": (
         ".ai/qa/",
         "output/generated-tests/",
@@ -137,9 +142,13 @@ _KNOWLEDGE_READ_COMMANDS = {
     "stale-report",
     "verify-citations",
 }
+# Roles that may submit proposals and request chat-approved promotion. The curator exists so
+# Knowledge maintenance does not require the org-facing investigator surface.
+KNOWLEDGE_MUTATION_ROLES = frozenset({"config-investigator", "knowledge-curator"})
 KNOWLEDGE_REGISTRY_COMMANDS = {
     "solution-designer": set(_KNOWLEDGE_READ_COMMANDS),
     "config-investigator": _KNOWLEDGE_READ_COMMANDS | {"propose", "approve-claim"},
+    "knowledge-curator": _KNOWLEDGE_READ_COMMANDS | {"propose", "approve-claim"},
     "development-assistant": set(_KNOWLEDGE_READ_COMMANDS),
     "test-strategist": set(_KNOWLEDGE_READ_COMMANDS),
     "guardrail-reviewer": set(_KNOWLEDGE_READ_COMMANDS),
@@ -196,7 +205,7 @@ KNOWLEDGE_COMMAND_FLAGS = {
 }
 
 # Roles allowed to run force_app_knowledge.py at all (extraction/drafting authority).
-FORCE_APP_KNOWLEDGE_ROLES = frozenset({"config-investigator"})
+FORCE_APP_KNOWLEDGE_ROLES = frozenset({"config-investigator", "knowledge-curator"})
 FORCE_APP_COMMAND_FLAGS = {
     "inventory": frozenset(),
     "worklist": frozenset({"--metadata-type", "--write"}),
@@ -468,7 +477,7 @@ def knowledge_registry_command_allowed(
             index += 2
         return True
     if command == "approve-claim":
-        if role != "config-investigator":
+        if role not in KNOWLEDGE_MUTATION_ROLES:
             return False
         allowed_flags = KNOWLEDGE_APPROVE_FLAGS
         seen: dict[str, str] = {}
@@ -519,7 +528,7 @@ def knowledge_registry_command_allowed(
             bool(re.fullmatch(r"KCLM-[A-Z0-9][A-Z0-9-]{2,79}", seen.get("--claim-id", "")))
             and seen.get("--expected-revision", "").isdigit()
         )
-    if command != "propose" or role != "config-investigator":
+    if command != "propose" or role not in KNOWLEDGE_MUTATION_ROLES:
         return False
     # --refresh-verified is the explicit acknowledgement that a verified/stale claim is being
     # demoted to a new proposed revision (refresh workflow); the registry enforces when it is

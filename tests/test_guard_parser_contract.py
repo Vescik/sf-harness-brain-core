@@ -106,12 +106,16 @@ class GuardParserContractTests(unittest.TestCase):
         self.assertIs(guard.KNOWLEDGE_COMMAND_FLAGS["propose"], guard.KNOWLEDGE_PROPOSE_FLAGS)
 
     def test_role_grants_are_pinned(self) -> None:
-        # Knowledge mutation stays with the Investigator role(s): read commands for everyone,
+        # Knowledge mutation stays with the knowledge roles: read commands for everyone,
         # propose/approve-claim only where a human confirmation flow exists. Widening a role
         # here must be a deliberate, reviewed change.
+        self.assertEqual(
+            frozenset({"config-investigator", "knowledge-curator"}),
+            guard.KNOWLEDGE_MUTATION_ROLES,
+        )
         for role, commands in guard.KNOWLEDGE_REGISTRY_COMMANDS.items():
             extra = commands - guard._KNOWLEDGE_READ_COMMANDS
-            if role == "config-investigator":
+            if role in guard.KNOWLEDGE_MUTATION_ROLES:
                 self.assertEqual({"propose", "approve-claim"}, extra, role)
             else:
                 self.assertEqual(set(), extra, role)
@@ -120,7 +124,13 @@ class GuardParserContractTests(unittest.TestCase):
             set().union(*guard.KNOWLEDGE_REGISTRY_COMMANDS.values()),
             "flag allowlists and role command grants must cover the same command set",
         )
-        self.assertEqual(frozenset({"config-investigator"}), guard.FORCE_APP_KNOWLEDGE_ROLES)
+        self.assertEqual(
+            frozenset({"config-investigator", "knowledge-curator"}),
+            guard.FORCE_APP_KNOWLEDGE_ROLES,
+        )
+        # The curator never gains org-facing or work-record authority.
+        self.assertNotIn("knowledge-curator", guard.SALESFORCE_READ_ROLES)
+        self.assertNotIn("knowledge-curator", getattr(guard, "WORK_RECORD_COMMANDS", {}))
 
 
 if __name__ == "__main__":

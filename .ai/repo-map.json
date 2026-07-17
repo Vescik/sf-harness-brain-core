@@ -70,6 +70,28 @@
       "path": ".github/agents/guardrail-reviewer.agent.md"
     },
     {
+      "description": "Maintains governed Knowledge from repository source. Runs health reports, batch/refresh drafting, and human-approved promotion; no Salesforce org surface.",
+      "handoffs": [],
+      "loads": {
+        "contracts": [
+          "knowledge-lifecycle",
+          "source-authority",
+          "workflow-state-machine"
+        ],
+        "instructions": [
+          "managed-package-constraints"
+        ],
+        "skills": [
+          "batch-knowledge",
+          "curate-knowledge-keywords",
+          "propose-force-app-knowledge",
+          "search-knowledge"
+        ]
+      },
+      "name": "knowledge-curator",
+      "path": ".github/agents/knowledge-curator.agent.md"
+    },
+    {
       "description": "Design the change before implementation, establish affected components and evidence, resolve managed-package constraints, and persist a human-reviewable design record.",
       "handoffs": [
         "development-assistant",
@@ -279,6 +301,13 @@
       "path": ".github/prompts/check-against-principles.prompt.md"
     },
     {
+      "agent": "knowledge-curator",
+      "argumentHint": "refresh | batch <MetadataType> | health",
+      "description": "Knowledge maintenance session - health report, then approved refresh or batch drafting with human-approved promotion.",
+      "name": "curate-knowledge",
+      "path": ".github/prompts/curate-knowledge.prompt.md"
+    },
+    {
       "agent": "development-assistant",
       "argumentHint": "recordId=<ID> itemId=<ID> [manifestPath=<path>]",
       "description": "Generate reviewed technical documentation for one accepted metadata change.",
@@ -337,7 +366,7 @@
     {
       "agent": "config-investigator",
       "argumentHint": "[type=<MetadataType>] [warnDays=<N>] [claimIds=<ID,ID,...>]",
-      "description": "Keep existing force-app Knowledge current - select drifted/expired/expiring verified claims, re-draft them against current source, and route them through proposal and chat approval.",
+      "description": "Re-draft drifted/expired/expiring verified claims against current source, then propose and chat-approve them.",
       "name": "refresh-force-app-knowledge",
       "path": ".github/prompts/refresh-force-app-knowledge.prompt.md"
     },
@@ -534,6 +563,7 @@
     ".github/agents/config-investigator.agent.md": "sha256:748033b7b0ae40bafe1bc0471a95a513bd745e9a7f2201a192bc4a4f0e30d2c8",
     ".github/agents/development-assistant.agent.md": "sha256:e86317924c6a871b09d05dbb755da66b69bce9c640e8dc0d0d8ff33de1fec907",
     ".github/agents/guardrail-reviewer.agent.md": "sha256:69e2b8cd60eed926a9a7605396b6e78b9006850350bc7136299312c91b710b6a",
+    ".github/agents/knowledge-curator.agent.md": "sha256:ec8289257f5dc8da61c85e98993eb9b849458812033e7dc16a62abe60547e28d",
     ".github/agents/solution-designer.agent.md": "sha256:07b62ece1b273beb840d38df01ce8f93225378e8747af8769a31f31797b443d8",
     ".github/agents/test-strategist.agent.md": "sha256:adc27d8fb14285756838a4069483a578b20a470c3bbd85d3d91a21464ac3c237",
     ".github/instructions/managed-package-constraints.instructions.md": "sha256:cccd7e181cc44c99514a1be64f9d57194c5e66fb464a1cd3da138411da1ed5c9",
@@ -541,6 +571,7 @@
     ".github/instructions/salesforce-best-practices.instructions.md": "sha256:8d286666f9736a2c84a4681d9c1c65c029e47473524494e54dad64ba5993a6ee",
     ".github/prompts/batch-knowledge.prompt.md": "sha256:b744b614968a26b22a59c3c9e368db0cd15f1253021bf7e3ef8b94f8c8cc3d7c",
     ".github/prompts/check-against-principles.prompt.md": "sha256:4dc93199dd92924bb294a38fa7db096e9a2f3e912889d944ca4da86cb325328f",
+    ".github/prompts/curate-knowledge.prompt.md": "sha256:d2e07df1347a78dbe232b13b0b5ed3be3889b82d624c4c5c799c626d27adad16",
     ".github/prompts/document-metadata-change.prompt.md": "sha256:33feb2ed7d04a09a4de114a732cae85b2f3eaa41ce44ffeedd38b47676e158c8",
     ".github/prompts/feature-documentor.prompt.md": "sha256:315822708385cb7b672f0af063c11f35dc41ebdb927f4756f0999c5fa9dd5abc",
     ".github/prompts/feature-health.prompt.md": "sha256:28647ddc5360e88de2db6f75dd4673dcf66237c5a4469ce0956f4d1a8635ea0b",
@@ -549,7 +580,7 @@
     ".github/prompts/inventory-force-app.prompt.md": "sha256:fbe782d0d3473eb32dbdc5b23fca697978a4128d3073c4b9fe485347a5ce8634",
     ".github/prompts/investigate-object.prompt.md": "sha256:3d7e3b24c44b627f95d095f5998b92e0e34d4acf6d807f5ac49185342c9bf36d",
     ".github/prompts/propose-force-app-knowledge.prompt.md": "sha256:f836be0cd76303a32c24dbbb6ec4bc26c8191cce9af874f0b1c17427c77c13ea",
-    ".github/prompts/refresh-force-app-knowledge.prompt.md": "sha256:4b29e459610201bb7ba0ec3e7707cf1f3b2312a3973f17652a7f482461999429",
+    ".github/prompts/refresh-force-app-knowledge.prompt.md": "sha256:4bb1ce7ce9e7be31ff1b08a1dcd2f9df0ecfdc4eff9b035e8d5bc555f84ab741",
     ".github/prompts/relation-health.prompt.md": "sha256:81907a5f9cf2462332ca6d178f81a57b9e5ea7c32257838e1e770209b666f082",
     ".github/prompts/release-handover.prompt.md": "sha256:fb1e1475798109b891f8bc3c56aaad086bb75984dca8110241f5510cc75a5ec5",
     ".github/prompts/search-ado.prompt.md": "sha256:e6fa23e465545216101e2e4411b799278c39e335d260a205eca72f57bdc0c5b0",
@@ -583,5 +614,5 @@
     ".github/skills/update-relations/SKILL.md": "sha256:5c6e3f55a32f965edf5456033e89912598b8e2cf2c5a9152d4841420c2b3e121",
     "config/repo-map-seed.json": "sha256:f5e3e507a7a9a4a2b69f399bae8452c7d2d6ac2bae4af3a377803cdebe942766"
   },
-  "wordCount": 800
+  "wordCount": 825
 }

@@ -25,7 +25,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SEED_PATH = ROOT / "config/repo-map-seed.json"
 MAP_MD_PATH = ROOT / ".ai/repo-map.md"
 MAP_JSON_PATH = ROOT / ".ai/repo-map.json"
-WORD_BUDGET = 800
+# 800 covered five agents exactly; raised once for the sixth (knowledge-curator, 2026-07-17)
+# rather than trimming existing entries. Grow only with a structural addition, never for prose.
+WORD_BUDGET = 850
 ONE_LINER_WORDS = 5
 LINK_RE = re.compile(r"\]\(([^)]+)\)")
 

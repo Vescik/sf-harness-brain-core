@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 5, "prompts": 20, "skills": 22, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 21, "skills": 22, "instructions": 3}
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",
@@ -880,8 +880,8 @@ def check_repo_map(audit: Audit) -> None:
     )
     repo_map = load_json(ROOT / ".ai/repo-map.json", audit)
     audit.require(
-        isinstance(repo_map.get("wordCount"), int) and repo_map["wordCount"] <= 800,
-        "repo-map.md exceeds its 800-word budget",
+        isinstance(repo_map.get("wordCount"), int) and repo_map["wordCount"] <= 850,
+        "repo-map.md exceeds its 850-word budget",
     )
     digests = repo_map.get("sourceDigests", {})
     expected_sources = (
