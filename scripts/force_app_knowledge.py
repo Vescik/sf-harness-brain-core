@@ -31,7 +31,7 @@ CACHE_ROOT = ROOT / ".cache/knowledge-proposals"
 INVENTORY_PATH = CACHE_ROOT / "force-app-inventory.json"
 DRAFT_ROOT = CACHE_ROOT / "force-app-drafts"
 SCHEMA_VERSION = 1
-COLLECTOR_VERSION = "1.0.0"
+COLLECTOR_VERSION = "1.1.0"
 CUSTOM_OBJECT_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*(?:__c|__mdt|__e|__x))\b")
 # Custom-field token inside a formula/expression (validation rules). Standard fields cannot be told
 # apart from function names by source alone, so the usage registry records custom fields only.
@@ -57,6 +57,31 @@ AURA_CONTROLLER_RE = re.compile(r"\bcontroller\s*=\s*[\"']([A-Za-z][A-Za-z0-9_]*
 SOQL_FROM_RE = re.compile(r"\bFROM\s+([A-Za-z][A-Za-z0-9_]*)", re.IGNORECASE)
 DML_RE = re.compile(r"\b(insert|update|upsert|delete|undelete)\b", re.IGNORECASE)
 APEX_CALL_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]{2,})\.[A-Za-z_][A-Za-z0-9_]*\s*\(")
+# Inline SOQL blocks for field-level extraction (standard fields included — the FROM object gives
+# the context that FORMULA_FIELD_RE lacks). Still a source-token heuristic: dynamic SOQL strings
+# and relationship paths are not resolved.
+SOQL_BLOCK_RE = re.compile(r"\[\s*(SELECT\b[^\]]*?)\]", re.IGNORECASE | re.DOTALL)
+SOQL_KEYWORDS = frozenset(
+    {
+        "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "NULL", "TRUE", "FALSE", "LIKE", "IN",
+        "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "ASC", "DESC", "NULLS", "FIRST",
+        "LAST", "TODAY", "YESTERDAY", "TOMORROW", "THIS_WEEK", "LAST_WEEK", "NEXT_WEEK",
+        "THIS_MONTH", "LAST_MONTH", "NEXT_MONTH", "THIS_YEAR", "LAST_YEAR", "NEXT_YEAR",
+        "INCLUDES", "EXCLUDES", "WITH", "SECURITY_ENFORCED", "USER_MODE", "SYSTEM_MODE",
+        "FOR", "UPDATE", "VIEW", "REFERENCE", "ALL", "ROWS", "TYPEOF", "END", "WHEN", "THEN", "ELSE",
+    }
+)
+SOQL_COMPARISON_FIELD_RE = re.compile(r"(?<!\.)\b([A-Za-z][A-Za-z0-9_]*)\s*(?:=|!=|<>|<=|>=|<|>)")
+SOQL_OPERATOR_FIELD_RE = re.compile(
+    r"(?<!\.)\b([A-Za-z][A-Za-z0-9_]*)\s+(?:LIKE|IN|NOT\s+IN|INCLUDES|EXCLUDES)\b", re.IGNORECASE
+)
+SOQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+# Local sObject variable declarations (`Account record;` / `Engagement__c row = ...`). Only types that
+# are custom-object tokens or SOQL FROM targets in the same file are treated as objects, so an
+# ordinary class instance never masquerades as an sObject.
+APEX_VAR_DECL_RE = re.compile(
+    r"\b([A-Z][A-Za-z0-9_]*(?:__c|__mdt|__e|__x)?)\s+([a-z][A-Za-z0-9_]*)\s*[=;]"
+)
 # Common platform types/namespaces excluded from the invokes-class heuristic to reduce noise.
 APEX_SYSTEM_TYPES = frozenset(
     {
@@ -86,13 +111,17 @@ OBJECT_REF_KINDS = frozenset(
         "queries-object",
         "dml-object",
         "grants-object-permission",
+        "soql-field",
+        "var-field-ref",
     }
 )
 # Reference kinds derived via regex source-token heuristics rather than structural XML/JS parsing
 # (Apex object tokens, SOQL FROM targets, and invoked-class names). Best-effort: dynamic references
 # and unresolved variable types may be missing or approximate. Drives component-relation claims'
 # heuristic flag and assurance level.
-HEURISTIC_REF_KINDS = frozenset({"object-token", "queries-object", "invokes-class"})
+HEURISTIC_REF_KINDS = frozenset(
+    {"object-token", "queries-object", "invokes-class", "soql-field", "var-field-ref"}
+)
 AUTOMATION_TYPES = frozenset(
     {"Flow", "ApexClass", "ApexTrigger", "ApprovalProcess", "ValidationRule"}
 )
@@ -203,6 +232,19 @@ class ForceAppKnowledge:
         self.inventory_path = self.cache_root / "force-app-inventory.json"
         self.draft_root = self.cache_root / "force-app-drafts"
         self.dossier_root = self.root / "output/feature-dossiers"
+        # Extractor tuning: config/knowledge-extraction.json overrides; built-in defaults keep
+        # template repos working without local configuration.
+        extraction: dict[str, Any] = {}
+        extraction_path = self.root / "config/knowledge-extraction.json"
+        if extraction_path.is_file():
+            try:
+                extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:
+                raise KnowledgeBuildError(f"config/knowledge-extraction.json is not valid JSON: {exc}")
+        self.max_usage_refs = int(extraction.get("maxUsageRefs", MAX_USAGE_REFS))
+        self.apex_system_types = APEX_SYSTEM_TYPES | set(extraction.get("additionalSystemTypes", []))
+        self.soql_field_extraction = bool(extraction.get("soqlFieldExtraction", True))
+        self.local_variable_resolution = bool(extraction.get("localVariableResolution", True))
 
     def git(self, *args: str, check: bool = True) -> str:
         completed = subprocess.run(
@@ -411,14 +453,76 @@ class ForceAppKnowledge:
         invoked = sorted(
             value
             for value in set(APEX_CALL_RE.findall(source))
-            if value not in APEX_SYSTEM_TYPES and value != name
+            if value not in self.apex_system_types and value != name
         )
         references.extend({"kind": "invokes-class", "target": value} for value in invoked)
+        if self.soql_field_extraction:
+            references.extend(self.soql_field_references(source))
+        if self.local_variable_resolution:
+            known_objects = set(CUSTOM_OBJECT_RE.findall(source)) | set(soql_objects)
+            references.extend(self.variable_field_references(source, known_objects))
         if soql_objects:
             facts["soqlObjects"] = soql_objects
         if dml_operations:
             facts["dmlOperations"] = dml_operations
         return self.component(metadata_type, name, path, facts, references, name)
+
+    @staticmethod
+    def soql_field_references(source: str) -> list[dict[str, str]]:
+        """SELECT/WHERE field identifiers from inline SOQL, standard fields included.
+
+        Heuristic (kind `soql-field`): subqueries and function calls are stripped, dotted
+        relationship paths and bind variables are skipped, and the FROM object provides the
+        `Object.Field` context that formula-token matching cannot.
+        """
+
+        targets: set[str] = set()
+        for block in SOQL_BLOCK_RE.findall(source):
+            flat = re.sub(r"\s+", " ", block)
+            # Drop parenthesized segments (subqueries, function args) BEFORE locating FROM, so a
+            # `(SELECT ... FROM Contacts)` subquery cannot claim the outer query's object slot.
+            flat = re.sub(r"\([^)]*\)", " ", flat)
+            from_match = SOQL_FROM_RE.search(flat)
+            if not from_match:
+                continue
+            object_name = from_match.group(1)
+            select_segment = flat[: from_match.start()]
+            select_segment = re.sub(r"^\s*SELECT\s+", "", select_segment, flags=re.IGNORECASE)
+            for token in select_segment.split(","):
+                token = token.strip()
+                if not SOQL_IDENTIFIER_RE.fullmatch(token) or token.upper() in SOQL_KEYWORDS:
+                    continue
+                targets.add(f"{object_name}.{token}")
+            clause_segment = flat[from_match.end():]
+            clause_fields = SOQL_COMPARISON_FIELD_RE.findall(clause_segment)
+            clause_fields += SOQL_OPERATOR_FIELD_RE.findall(clause_segment)
+            for field in clause_fields:
+                if field.upper() in SOQL_KEYWORDS:
+                    continue
+                targets.add(f"{object_name}.{field}")
+        return [{"kind": "soql-field", "target": target} for target in sorted(targets)]
+
+    @staticmethod
+    def variable_field_references(source: str, known_objects: set[str]) -> list[dict[str, str]]:
+        """Field accesses through locally declared sObject variables (kind `var-field-ref`).
+
+        A declaration's type counts as an object only when the same file already establishes it
+        as one (custom-object token or SOQL FROM target), so ordinary class instances are never
+        misread as sObjects. Method calls (`record.clone()`) are excluded.
+        """
+
+        declarations: dict[str, str] = {}
+        for type_name, variable in APEX_VAR_DECL_RE.findall(source):
+            if type_name in known_objects:
+                declarations[variable] = type_name
+        targets: set[str] = set()
+        for variable, type_name in declarations.items():
+            member_re = re.compile(
+                rf"\b{re.escape(variable)}\.([A-Za-z][A-Za-z0-9_]*)\b(?!\s*\()"
+            )
+            for field in member_re.findall(source):
+                targets.add(f"{type_name}.{field}")
+        return [{"kind": "var-field-ref", "target": target} for target in sorted(targets)]
 
     def parse_lwc(self, bundle: Path) -> dict[str, Any]:
         files = sorted(path for path in bundle.rglob("*") if path.is_file())
@@ -561,9 +665,9 @@ class ForceAppKnowledge:
             "objectPermissionCount": len(object_perms),
             "fieldPermissionCount": len(field_perms),
         }
-        if len(references) > MAX_USAGE_REFS:
+        if len(references) > self.max_usage_refs:
             facts["referencesTruncated"] = True
-            references = references[:MAX_USAGE_REFS]
+            references = references[: self.max_usage_refs]
         return self.component("PermissionSet", name, path, facts, references, name)
 
     def parse_layout(self, path: Path) -> dict[str, Any]:
@@ -585,9 +689,9 @@ class ForceAppKnowledge:
             "object": object_name,
             "fieldCount": len(field_targets),
         }
-        if len(references) > MAX_USAGE_REFS:
+        if len(references) > self.max_usage_refs:
             facts["referencesTruncated"] = True
-            references = references[:MAX_USAGE_REFS]
+            references = references[: self.max_usage_refs]
         return self.component("Layout", name, path, facts, references, name)
 
     GENERIC_META = re.compile(r"^(?P<name>.+)\.(?P<token>[A-Za-z0-9_]+)-meta\.xml$")

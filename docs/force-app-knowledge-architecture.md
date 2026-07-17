@@ -131,18 +131,41 @@ Three deterministic reports make usage and validity visible without mutating any
 Marking a drifted or expired claim `stale` remains a governed human review; these reports never
 mutate Knowledge.
 
-## Prompts, agent, and skills
+## Refresh workflow (drift + expiry maintenance)
+
+`python scripts/force_app_knowledge.py refresh [--metadata-type T] [--warn-days N] [--limit N]
+[--dry-run]` selects only the verified claims that drifted (`verified-stale` in either worklist)
+or are past/near `reviewBy`, and re-drafts exactly those through the normal draft pipeline. The
+resulting manifest `propose` commands carry `--refresh-verified` — the explicit registry
+acknowledgement that a verified/stale claim is demoted to a new **proposed** revision against
+current evidence. This is fail-safe by construction: the claim stops being effective until a
+human re-approves it, and the model still cannot create any status other than `proposed`.
+
+## Collector versioning and reference kinds
+
+The collector version (`COLLECTOR_VERSION`, currently 1.1.0) is recorded in every evidence
+record. 1.1.0 adds two Apex source-token heuristics, tunable via optional
+`config/knowledge-extraction.json`: `soql-field` (SELECT/WHERE field identifiers from inline
+SOQL, standard fields included) and `var-field-ref` (member accesses through locally declared
+sObject variables). Both stay `assurance: inferred`. Richer references change component facts and
+therefore component digests — after upgrading the collector, downstream repos with populated
+stores will see previously current claims flip to `verified-stale`; run the refresh workflow to
+re-draft and re-approve them.
+
+## Prompts, agents, and skills
 
 Public prompts:
 
 - `/inventory-force-app` — inventory only.
 - `/propose-force-app-knowledge` — draft and optionally submit explicitly selected IDs.
-- `/refresh-force-app-knowledge` — run the two stages in sequence.
+- `/refresh-force-app-knowledge` — drift/expiry selection, re-draft, propose, chat approval.
+- `/curate-knowledge` — knowledge-curator maintenance session (health | refresh | batch).
 
-All prompts route to the existing `config-investigator`, whose hook permits only fixed-root
-metadata preflight, the bounded inventory/draft commands, and the already governed registry
-proposal command. New hidden skills are `inventory-force-app` and
-`propose-force-app-knowledge`.
+Investigator prompts route to `config-investigator`; maintenance routes to the dedicated
+`knowledge-curator` role, which has the same knowledge command surface but no Salesforce org
+tools. Hooks permit only fixed-root metadata preflight, the bounded inventory/draft/refresh
+commands, and the governed registry proposal/approval commands. Hidden skills are
+`inventory-force-app` and `propose-force-app-knowledge`.
 
 ## Evidence boundaries
 

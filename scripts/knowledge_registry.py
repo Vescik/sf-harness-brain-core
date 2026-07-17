@@ -41,7 +41,18 @@ SCOPE_FIELDS = (
 # Field kinds name an `Object.Field`; object kinds name a bare object; invoke kinds name another
 # automation/method. Used to answer "which components use object/field X?" search queries.
 FIELD_REF_KINDS = frozenset(
-    {"reads-field", "writes-field", "references-field", "places-field", "grants-field-permission", "schema"}
+    {
+        "reads-field",
+        "writes-field",
+        "references-field",
+        "places-field",
+        "grants-field-permission",
+        "schema",
+        # Apex source-token heuristics (collector 1.1.0): SOQL SELECT/WHERE fields and
+        # local-variable member accesses. Same Object.Field target shape, assurance stays inferred.
+        "soql-field",
+        "var-field-ref",
+    }
 )
 OBJECT_REF_KINDS = frozenset(
     {"operates-on", "object-token", "relationship", "queries-object", "dml-object", "grants-object-permission"}

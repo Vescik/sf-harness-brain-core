@@ -793,6 +793,7 @@ def check_grounding_contracts(audit: Audit) -> None:
 
     for data_name, schema_name in (
         ("config/knowledge-policy.json", "knowledge-policy.schema.json"),
+        ("config/knowledge-extraction.json", "knowledge-extraction.schema.json"),
         ("config/salesforce-review-policy.json", "salesforce-review-policy.schema.json"),
     ):
         data = load_json(ROOT / data_name, audit)
@@ -814,6 +815,7 @@ def check_grounding_contracts(audit: Audit) -> None:
         "force-app-knowledge-draft-manifest.schema.json",
         "force-app-knowledge-worklist.schema.json",
         "knowledge-claims-index.schema.json",
+        "knowledge-extraction.schema.json",
         "dev-tool-batch.schema.json",
         "ado-wiki-cache.schema.json",
     ):

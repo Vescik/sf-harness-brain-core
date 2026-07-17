@@ -397,6 +397,89 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertEqual("blocked", worklist["items"][0]["status"])
         self.assertIn("rejected", worklist["items"][0]["reason"])
 
+    APEX_SERVICE = """public with sharing class EngagementService {
+    public void run() {
+        List<Engagement__c> rows = [
+            SELECT Id, Name, Status__c, (SELECT Id FROM Contacts)
+            FROM Engagement__c
+            WHERE Status__c = 'Open' AND OwnerId != null AND Name LIKE :prefix
+            ORDER BY CreatedDate DESC
+            LIMIT 10
+        ];
+        Engagement__c current = rows[0];
+        current.Status__c = 'Closed';
+        Account related = [SELECT Id FROM Account WHERE Id = :current.Account__c];
+        System.debug(related.Industry);
+        related.clone();
+        update current;
+        EngagementNotifier.notifyOwner(current);
+    }
+}
+"""
+
+    def apex_component(self, builder=None):
+        write(
+            self.root / "force-app/main/default/classes/EngagementService.cls",
+            self.APEX_SERVICE,
+        )
+        target = builder or self.builder
+        return target.parse_apex(
+            self.root / "force-app/main/default/classes/EngagementService.cls", "ApexClass"
+        )
+
+    def test_apex_soql_field_and_variable_heuristics(self) -> None:
+        component = self.apex_component()
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        # SELECT-list fields, standard fields included; subquery content dropped.
+        self.assertIn(("soql-field", "Engagement__c.Name"), references)
+        self.assertIn(("soql-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("soql-field", "Account.Id"), references)
+        self.assertNotIn(("soql-field", "Engagement__c.Contacts"), references)
+        # WHERE-clause fields via comparison and LIKE operators; bind vars/keywords excluded.
+        self.assertIn(("soql-field", "Engagement__c.OwnerId"), references)
+        no_keywords = {
+            target for kind, target in references if kind == "soql-field"
+        }
+        self.assertFalse({t for t in no_keywords if t.endswith((".LIMIT", ".ORDER", ".null"))})
+        # Local variable resolution: declared sObject vars map member reads to Object.Field;
+        # method calls are excluded.
+        self.assertIn(("var-field-ref", "Engagement__c.Status__c"), references)
+        self.assertIn(("var-field-ref", "Account.Industry"), references)
+        self.assertNotIn(("var-field-ref", "Account.clone"), references)
+        # The invokes-class heuristic still excludes system types.
+        invoked = {target for kind, target in references if kind == "invokes-class"}
+        self.assertIn("EngagementNotifier", invoked)
+        self.assertNotIn("System", invoked)
+
+    def test_extraction_config_overrides_and_defaults(self) -> None:
+        # Defaults apply without a config file.
+        self.assertEqual(300, self.builder.max_usage_refs)
+        self.assertTrue(self.builder.soql_field_extraction)
+        self.assertTrue(self.builder.local_variable_resolution)
+        # Local config tunes the extractor: caps, extra system types, feature switches.
+        (self.root / "config/knowledge-extraction.json").write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "maxUsageRefs": 5,
+                    "additionalSystemTypes": ["EngagementNotifier"],
+                    "soqlFieldExtraction": False,
+                    "localVariableResolution": False,
+                }
+            ),
+            encoding="utf-8",
+        )
+        tuned = ForceAppKnowledge(self.root)
+        self.assertEqual(5, tuned.max_usage_refs)
+        component = self.apex_component(tuned)
+        kinds = {ref["kind"] for ref in component["references"]}
+        self.assertNotIn("soql-field", kinds)
+        self.assertNotIn("var-field-ref", kinds)
+        self.assertNotIn(
+            "EngagementNotifier",
+            {ref["target"] for ref in component["references"] if ref["kind"] == "invokes-class"},
+        )
+
     def test_refresh_selects_only_drifted_and_expiring_claims(self) -> None:
         self.builder.inventory()
         manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
