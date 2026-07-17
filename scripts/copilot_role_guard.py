@@ -130,6 +130,7 @@ WORK_RECORD_COMMANDS = {
 _KNOWLEDGE_READ_COMMANDS = {
     "validate",
     "query",
+    "explain",
     "render-indexes",
     "reconcile",
     "keyword-report",
@@ -162,10 +163,14 @@ KNOWLEDGE_QUERY_FLAGS = frozenset({
     "--uses-object",
     "--uses-field",
     "--invokes",
+    "--related",
+    "--depth",
+    "--search",
+    "--top",
     "--at",
 })
 # Flags that do not count as a semantic filter on their own (query must narrow by content).
-KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS = frozenset({"--at"})
+KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS = frozenset({"--at", "--depth", "--top"})
 KNOWLEDGE_APPROVE_FLAGS = frozenset({
     "--claim-id",
     "--expected-revision",
@@ -182,6 +187,7 @@ KNOWLEDGE_COMMAND_FLAGS = {
     "render-indexes": frozenset({"--check"}),
     "reconcile": frozenset({"--claim-file"}),
     "query": KNOWLEDGE_QUERY_FLAGS,
+    "explain": frozenset({"--identity", "--kind", "--at"}),
     "stale-report": frozenset({"--warn-days", "--at"}),
     "verify-citations": frozenset({"--envelope", "--claim-ref", "--at"}),
     "propose": KNOWLEDGE_PROPOSE_FLAGS,
@@ -411,6 +417,25 @@ def knowledge_registry_command_allowed(
             semantic_filter_seen = semantic_filter_seen or token not in KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS
             index += 2
         return index == len(parts) and semantic_filter_seen
+    if command == "explain":
+        # Read-only composite subject view; requires the identity so it cannot dump the store.
+        allowed_flags = KNOWLEDGE_COMMAND_FLAGS["explain"]
+        identity_seen = False
+        index = 1
+        while index < len(parts):
+            token = parts[index]
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                if flag not in allowed_flags or not value:
+                    return False
+                identity_seen = identity_seen or flag == "--identity"
+                index += 1
+                continue
+            if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
+                return False
+            identity_seen = identity_seen or token == "--identity"
+            index += 2
+        return identity_seen
     if command in {"stale-report", "verify-citations"}:
         # Read-only advisory reports; envelope inputs stay repository-contained at runtime.
         allowed_flags = KNOWLEDGE_COMMAND_FLAGS[command]

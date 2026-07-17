@@ -548,6 +548,191 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         automation_map = (self.root / ".ai/knowledge/automation-map.md").read_text(encoding="utf-8")
         self.assertIn("## Automations by object", automation_map)
 
+    def propose_variant(
+        self, claim_id: str, identity: str, related: list[str] | None = None
+    ) -> None:
+        base = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        variant = copy.deepcopy(base)
+        variant["claimId"] = claim_id
+        variant["subject"]["identity"] = identity
+        variant["statement"] = f"{identity} exists in the accessible schema."
+        if related is not None:
+            variant["relatedClaims"] = related
+        path = self.root / f"inputs/{claim_id}.yaml"
+        path.write_text(yaml.safe_dump(variant, sort_keys=False), encoding="utf-8")
+        self.registry.propose(
+            path,
+            [self.root / "inputs/knowledge-evidence.complete.yaml"],
+            expected_revision=0,
+        )
+
+    def test_query_related_traverses_the_claim_graph_with_annotations(self) -> None:
+        self.promote()  # KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001 verified
+        anchor = "KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001"
+        self.propose_variant("KCLM-EXAMPLE-RELATED-001", "RelatedOne__c", [anchor])
+        self.propose_variant(
+            "KCLM-EXAMPLE-RELATED-002", "RelatedTwo__c", ["KCLM-EXAMPLE-RELATED-001"]
+        )
+
+        one_hop = self.registry.query(related=anchor)
+        self.assertEqual(2, one_hop["count"])
+        by_id = {match["claim"]["claimId"]: match for match in one_hop["claims"]}
+        self.assertEqual(0, by_id[anchor]["distance"])
+        self.assertTrue(by_id[anchor]["effective"])
+        neighbor = by_id["KCLM-EXAMPLE-RELATED-001"]
+        self.assertEqual(1, neighbor["distance"])
+        self.assertFalse(neighbor["effective"])
+        self.assertEqual("status is proposed", neighbor["nonEffectiveReason"])
+        self.assertEqual({"edge": "relatedClaims", "from": anchor}, neighbor["via"])
+
+        two_hops = self.registry.query(related=anchor, depth=2)
+        self.assertEqual(3, two_hops["count"])
+        self.assertIn(
+            "KCLM-EXAMPLE-RELATED-002",
+            {match["claim"]["claimId"] for match in two_hops["claims"]},
+        )
+
+        with self.assertRaisesRegex(ContractError, "--depth"):
+            self.registry.query(related=anchor, depth=9)
+        with self.assertRaisesRegex(ContractError, "--related"):
+            self.registry.query(related=anchor, domain="object-descriptions")
+        with self.assertRaisesRegex(ContractError, "does not exist"):
+            self.registry.query(related="KCLM-NOPE-000")
+
+    def promote_usage_claim(self) -> None:
+        commit = "a" * 40
+        evidence = {
+            "schemaVersion": 3,
+            "evidenceId": "KEVD-FLOW-ROUTER-002",
+            "sourceType": "metadata-repository",
+            "sourceLocator": f"git://{commit}/force-app/main/default/flows/EngagementRouter.flow-meta.xml",
+            "authorityFor": ["automation-inventory"],
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": commit,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "retrievedAt": "2026-07-10T11:00:00Z",
+            "sourceRevision": f"sha256:{'b' * 64}",
+            "collector": {"kind": "tool", "name": "force_app_knowledge.py", "version": "2"},
+            "completeness": {
+                "status": "complete",
+                "enumerationComplete": False,
+                "permissionsProven": False,
+                "missingSegments": [],
+            },
+            "sensitivity": "internal-sanitized",
+            "sanitization": {"rawDataCommitted": False, "redactions": []},
+            "contentDigest": f"sha256:{'c' * 64}",
+            "summary": "Sanitized source observation of Flow:EngagementRouter.",
+        }
+        claim = {
+            "schemaVersion": 3,
+            "claimId": "KCLM-FLOW-ROUTER-002",
+            "revision": 1,
+            "domain": "automation-map",
+            "claimType": "automation-inventory",
+            "subject": {"kind": "automation", "identity": "EngagementRouter"},
+            "assertion": {
+                "predicate": "source-defined-automation",
+                "value": {
+                    "metadataType": "Flow",
+                    "facts": {"object": "Engagement__c", "referencedObjects": ["Account"]},
+                    "references": [
+                        {"kind": "operates-on", "target": "Engagement__c"},
+                        {"kind": "reads-field", "target": "Account.Name"},
+                        {"kind": "invokes-apex", "target": "EngagementNotifier"},
+                    ],
+                },
+            },
+            "statement": "EngagementRouter is a source-defined Flow that routes engagements.",
+            "status": "proposed",
+            "assurance": "observed",
+            "scope": {
+                "environment": "not-applicable",
+                "orgKey": None,
+                "packageNamespace": None,
+                "packageVersion": None,
+                "repositoryCommit": commit,
+            },
+            "evidenceRefs": ["KEVD-FLOW-ROUTER-002"],
+            "reviewRef": None,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "verifiedAt": None,
+            "reviewBy": "2026-12-01T11:00:00Z",
+            "sensitivity": "internal-sanitized",
+            "keywords": [],
+            "candidateKeywords": [],
+            "limitations": ["Repository metadata establishes intended source only."],
+            "supersedes": [],
+            "supersededBy": None,
+            "contradicts": [],
+        }
+        (self.root / "inputs/flow-claim-2.yaml").write_text(
+            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
+        )
+        (self.root / "inputs/flow-evidence-2.yaml").write_text(
+            yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8"
+        )
+        self.registry.propose(
+            self.root / "inputs/flow-claim-2.yaml",
+            [self.root / "inputs/flow-evidence-2.yaml"],
+            expected_revision=0,
+        )
+        self.write_chat_reviewer()
+        self.registry.approve_claim("KCLM-FLOW-ROUTER-002", 1)
+
+    def test_query_search_ranks_over_subject_and_usage_tokens(self) -> None:
+        self.promote()
+        self.promote_usage_claim()
+
+        # Subject-identity tokens (camel-split) rank the flow claim first.
+        routed = self.registry.query(search="engagement router")
+        self.assertGreaterEqual(routed["count"], 1)
+        self.assertEqual("KCLM-FLOW-ROUTER-002", routed["claims"][0]["claim"]["claimId"])
+        self.assertGreater(routed["claims"][0]["score"], 0)
+
+        # Usage-registry targets are searchable: Account.Name reaches the flow claim even
+        # though "account" appears nowhere in its statement.
+        by_usage = self.registry.query(search="account")
+        self.assertEqual(1, by_usage["count"])
+        self.assertEqual("KCLM-FLOW-ROUTER-002", by_usage["claims"][0]["claim"]["claimId"])
+
+        # Zero-score results drop out entirely and --top caps the list.
+        self.assertEqual(0, self.registry.query(search="zzzunknownterm")["count"])
+        self.assertEqual(1, self.registry.query(search="the", top=1)["count"])
+        with self.assertRaisesRegex(ContractError, "--top"):
+            self.registry.query(search="engagement", top=0)
+
+        # Search composes with structured filters: rank only the survivors.
+        composed = self.registry.query(search="engagement", claim_type="object-existence")
+        self.assertTrue(
+            all(m["claim"]["claimType"] == "object-existence" for m in composed["claims"])
+        )
+
+    def test_explain_aggregates_subject_usage_and_reverse_usage(self) -> None:
+        self.promote()
+        self.promote_usage_claim()
+
+        subject = self.registry.explain("EngagementRouter")
+        self.assertEqual(1, subject["claimCount"])
+        self.assertIn("automation-inventory", subject["claims"])
+        self.assertEqual(
+            ["Account", "Engagement__c"], subject["usage"]["objects"]
+        )
+        self.assertEqual(["Account.Name"], subject["usage"]["fields"])
+        self.assertEqual(["EngagementNotifier"], subject["usage"]["invokes"])
+
+        reverse = self.registry.explain("Engagement__c")
+        self.assertEqual(0, reverse["claimCount"])
+        self.assertEqual(1, len(reverse["usedBy"]))
+        self.assertEqual("KCLM-FLOW-ROUTER-002", reverse["usedBy"][0]["claimId"])
+        self.assertEqual(["objects"], reverse["usedBy"][0]["via"])
+
+        with self.assertRaisesRegex(ContractError, "identity"):
+            self.registry.explain("")
+
     def test_stale_report_flags_expired_and_expiring_verified_claims(self) -> None:
         # promote() yields a verified claim with reviewBy 2026-08-08 (29 days after the 2026-07-10 now).
         self.promote()

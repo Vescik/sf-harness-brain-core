@@ -7,6 +7,7 @@ import argparse
 import copy
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -687,6 +688,10 @@ class KnowledgeRegistry:
         uses_object: str | None = None,
         uses_field: str | None = None,
         invokes: str | None = None,
+        related: str | None = None,
+        depth: int = 1,
+        search: str | None = None,
+        top: int = 10,
         at: datetime | None = None,
     ) -> dict[str, Any]:
         filters = {
@@ -704,9 +709,21 @@ class KnowledgeRegistry:
             "uses_object": uses_object,
             "uses_field": uses_field,
             "invokes": invokes,
+            "related": related,
+            "search": search,
         }
         if not any(value is not None for value in filters.values()):
             raise ContractError("query requires at least one Knowledge filter")
+        if related is not None:
+            others = {name for name, value in filters.items() if value is not None} - {"related"}
+            if others:
+                raise ContractError(
+                    "--related traverses the claim graph on its own; combine it only with "
+                    "--depth/--at"
+                )
+            return self.related_query(related, depth, at)
+        if not 1 <= top:
+            raise ContractError("query --top must be at least 1")
         effective_at = self.at_time(at)
         self.validate_all(effective_at, enforce_current=False)
         matches: list[dict[str, Any]] = []
@@ -778,10 +795,258 @@ class KnowledgeRegistry:
             if keyword_tier is not None:
                 match["keywordTier"] = keyword_tier
             matches.append(match)
+        if search is not None:
+            matches = self.rank_matches(matches, search, top)
         return {
             "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
             "count": len(matches),
             "claims": matches,
+        }
+
+    # Claim-graph edges used by --related traversal and the search corpus.
+    RELATION_EDGE_FIELDS = ("relatedClaims", "contradicts", "supersedes")
+
+    @classmethod
+    def claim_edges(cls, claim: dict[str, Any]) -> list[tuple[str, str]]:
+        edges: list[tuple[str, str]] = []
+        for field in cls.RELATION_EDGE_FIELDS:
+            for ref in claim.get(field) or []:
+                edges.append((field, str(ref)))
+        if claim.get("supersededBy"):
+            edges.append(("supersededBy", str(claim["supersededBy"])))
+        return edges
+
+    def related_query(
+        self, claim_id: str, depth: int, at: datetime | None = None
+    ) -> dict[str, Any]:
+        """Breadth-first neighborhood of a claim over its reconciliation/relation edges.
+
+        Unlike plain query this deliberately returns non-effective claims too — superseded,
+        contested, and rejected history is exactly what the graph exists to expose. Every match
+        carries `effective` plus `nonEffectiveReason` so a consumer can still fail closed.
+        """
+
+        if not 1 <= depth <= 5:
+            raise ContractError("query --depth must be between 1 and 5")
+        effective_at = self.at_time(at)
+        self.validate_all(effective_at, enforce_current=False)
+        claims_by_id: dict[str, dict[str, Any]] = {}
+        paths_by_id: dict[str, Path] = {}
+        for path, claim in self.records(self.claims):
+            claims_by_id[str(claim["claimId"])] = claim
+            paths_by_id[str(claim["claimId"])] = path
+        if claim_id not in claims_by_id:
+            raise ContractError(f"Knowledge claim does not exist: {claim_id}")
+        adjacency: dict[str, list[tuple[str, str]]] = {}
+        for source_id, claim in claims_by_id.items():
+            for edge, target in self.claim_edges(claim):
+                adjacency.setdefault(source_id, []).append((edge, target))
+                adjacency.setdefault(target, []).append((edge, source_id))
+        visited: dict[str, dict[str, Any]] = {claim_id: {"distance": 0}}
+        frontier = [claim_id]
+        for distance in range(1, depth + 1):
+            next_frontier: list[str] = []
+            for node in frontier:
+                for edge, neighbor in adjacency.get(node, []):
+                    if neighbor in visited:
+                        continue
+                    visited[neighbor] = {
+                        "distance": distance,
+                        "via": {"edge": edge, "from": node},
+                    }
+                    next_frontier.append(neighbor)
+            frontier = next_frontier
+        matches: list[dict[str, Any]] = []
+        for neighbor_id, info in sorted(
+            visited.items(), key=lambda item: (item[1]["distance"], item[0])
+        ):
+            claim = claims_by_id.get(neighbor_id)
+            if claim is None:
+                continue
+            path = paths_by_id[neighbor_id]
+            effective = self.claim_is_effective(claim, effective_at)
+            match: dict[str, Any] = {
+                "claim": copy.deepcopy(claim),
+                "sha256": file_sha256(path),
+                "path": path.relative_to(self.root).as_posix(),
+                "distance": info["distance"],
+                "effective": effective,
+            }
+            if "via" in info:
+                match["via"] = info["via"]
+            if not effective:
+                match["nonEffectiveReason"] = self.non_effective_reason(claim, effective_at)
+            matches.append(match)
+        return {
+            "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
+            "count": len(matches),
+            "claims": matches,
+        }
+
+    SEARCH_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+    @classmethod
+    def search_tokens(cls, value: str) -> list[str]:
+        return re.findall(r"[a-z0-9]+", cls.SEARCH_CAMEL_BOUNDARY.sub(" ", value).lower())
+
+    def search_corpus(
+        self, claim: dict[str, Any], claims_by_id: dict[str, dict[str, Any]]
+    ) -> list[str]:
+        """Token document for BM25: statement, description, keywords, subject, predicate,
+        usage-registry targets (objects, fields, invokes), and the subject identities of every
+        related/contradicting/superseding claim — so a search for an object name also surfaces
+        the claims connected to it."""
+
+        parts: list[str] = [str(claim["statement"])]
+        value = claim["assertion"]["value"]
+        if isinstance(value, dict) and isinstance(value.get("description"), str):
+            parts.append(value["description"])
+        parts.extend(str(term) for term in claim.get("keywords") or [])
+        parts.extend(str(term) for term in claim.get("candidateKeywords") or [])
+        parts.append(str(claim["subject"]["kind"]))
+        parts.append(str(claim["subject"]["identity"]))
+        parts.append(str(claim["assertion"]["predicate"]))
+        usage = self.claim_usage(claim)
+        parts.extend(usage["objects"] + usage["fields"] + usage["invokes"])
+        for _, target in self.claim_edges(claim):
+            neighbor = claims_by_id.get(target)
+            if neighbor is not None:
+                parts.append(str(neighbor["subject"]["identity"]))
+        tokens: list[str] = []
+        for part in parts:
+            tokens.extend(self.search_tokens(part))
+        return tokens
+
+    def rank_matches(
+        self, matches: list[dict[str, Any]], search: str, top: int
+    ) -> list[dict[str, Any]]:
+        """BM25 (k1=1.5, b=0.75) over the filtered survivors; zero-score matches drop out."""
+
+        query_tokens = self.search_tokens(search)
+        if not query_tokens or not matches:
+            return []
+        claims_by_id = {
+            str(claim["claimId"]): claim for _, claim in self.records(self.claims)
+        }
+        documents = [self.search_corpus(match["claim"], claims_by_id) for match in matches]
+        total = len(documents)
+        average_length = sum(len(doc) for doc in documents) / total
+        document_frequency: Counter[str] = Counter()
+        for doc in documents:
+            document_frequency.update(set(doc))
+        k1, b = 1.5, 0.75
+        ranked: list[tuple[float, dict[str, Any]]] = []
+        for match, doc in zip(matches, documents):
+            frequencies = Counter(doc)
+            score = 0.0
+            for term in query_tokens:
+                occurrences = frequencies.get(term, 0)
+                if not occurrences:
+                    continue
+                idf = math.log(
+                    (total - document_frequency[term] + 0.5)
+                    / (document_frequency[term] + 0.5)
+                    + 1
+                )
+                length_norm = 1 - b + b * (len(doc) / average_length if average_length else 1.0)
+                score += idf * occurrences * (k1 + 1) / (occurrences + k1 * length_norm)
+            if score > 0:
+                ranked.append((score, match))
+        ranked.sort(key=lambda item: (-item[0], item[1]["claim"]["claimId"]))
+        results = []
+        for score, match in ranked[:top]:
+            match["score"] = round(score, 6)
+            results.append(match)
+        return results
+
+    def explain(
+        self, identity: str, kind: str | None = None, at: datetime | None = None
+    ) -> dict[str, Any]:
+        """One-call composite view of a subject: its claims, what it uses, what uses it.
+
+        Aggregates only effective claims (same contract as query). `usedBy` matches the
+        usage registry in reverse: every effective claim whose objects/fields/invokes contain
+        the identity. `relations` lists the one-hop claim-graph edges of the subject's claims
+        with each neighbor's subject identity resolved for readability.
+        """
+
+        if not identity:
+            raise ContractError("explain requires a subject identity")
+        effective_at = self.at_time(at)
+        self.validate_all(effective_at, enforce_current=False)
+        needle = identity.casefold()
+        claims_by_id: dict[str, dict[str, Any]] = {}
+        effective_records: list[tuple[Path, dict[str, Any]]] = []
+        for path, claim in self.records(self.claims):
+            claims_by_id[str(claim["claimId"])] = claim
+            if self.claim_is_effective(claim, effective_at):
+                effective_records.append((path, claim))
+        subject_claims: list[dict[str, Any]] = []
+        used_by: list[dict[str, Any]] = []
+        usage_totals: dict[str, set[str]] = {"objects": set(), "fields": set(), "invokes": set()}
+        for path, claim in effective_records:
+            subject = claim["subject"]
+            is_subject = str(subject["identity"]).casefold() == needle and (
+                kind is None or subject["kind"] == kind
+            )
+            if is_subject:
+                subject_claims.append(
+                    {
+                        "claim": copy.deepcopy(claim),
+                        "sha256": file_sha256(path),
+                        "path": path.relative_to(self.root).as_posix(),
+                    }
+                )
+                usage = self.claim_usage(claim)
+                for category in usage_totals:
+                    usage_totals[category].update(usage[category])
+                continue
+            usage = self.claim_usage(claim)
+            via = [
+                category
+                for category in ("objects", "fields", "invokes")
+                if needle in {name.casefold() for name in usage[category]}
+            ]
+            if via:
+                used_by.append(
+                    {
+                        "claimId": claim["claimId"],
+                        "claimType": claim["claimType"],
+                        "subject": copy.deepcopy(claim["subject"]),
+                        "via": via,
+                    }
+                )
+        relations: list[dict[str, Any]] = []
+        for entry in subject_claims:
+            for edge, target in self.claim_edges(entry["claim"]):
+                neighbor = claims_by_id.get(target)
+                relations.append(
+                    {
+                        "claimId": entry["claim"]["claimId"],
+                        "edge": edge,
+                        "target": target,
+                        **(
+                            {
+                                "targetSubject": copy.deepcopy(neighbor["subject"]),
+                                "targetStatus": neighbor["status"],
+                            }
+                            if neighbor is not None
+                            else {}
+                        ),
+                    }
+                )
+        claims_by_type: dict[str, list[dict[str, Any]]] = {}
+        for entry in subject_claims:
+            claims_by_type.setdefault(entry["claim"]["claimType"], []).append(entry)
+        return {
+            "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
+            "identity": identity,
+            **({"kind": kind} if kind is not None else {}),
+            "claimCount": len(subject_claims),
+            "claims": claims_by_type,
+            "usage": {category: sorted(values) for category, values in usage_totals.items()},
+            "usedBy": sorted(used_by, key=lambda item: item["claimId"]),
+            "relations": relations,
         }
 
     TAXONOMY_TERM = re.compile(r"^[-*]\s+\**([^—:*]+?)\**\s*(?:[—:].*)?$")
@@ -1753,7 +2018,37 @@ def build_parser() -> argparse.ArgumentParser:
         "--invokes",
         help="match claims whose subject invokes this Apex class, subflow, or action",
     )
+    query.add_argument(
+        "--related",
+        help="traverse the claim graph (relatedClaims/contradicts/supersedes/supersededBy) "
+        "from this claim ID; includes non-effective claims, annotated",
+    )
+    query.add_argument(
+        "--depth",
+        type=int,
+        default=1,
+        help="graph hops for --related (1-5, default 1)",
+    )
+    query.add_argument(
+        "--search",
+        help="ranked full-text search (BM25) over statements, descriptions, keywords, "
+        "subject identities, and usage-registry targets",
+    )
+    query.add_argument(
+        "--top",
+        type=int,
+        default=10,
+        help="maximum ranked results for --search (default 10)",
+    )
     query.add_argument("--at")
+
+    explain = commands.add_parser(
+        "explain",
+        help="composite view of one subject: its effective claims, usage, reverse usage, and relations",
+    )
+    explain.add_argument("--identity", required=True)
+    explain.add_argument("--kind")
+    explain.add_argument("--at")
 
     render = commands.add_parser("render-indexes")
     render.add_argument("--check", action="store_true")
@@ -1857,7 +2152,17 @@ def main() -> int:
                 uses_object=args.uses_object,
                 uses_field=args.uses_field,
                 invokes=args.invokes,
+                related=args.related,
+                depth=args.depth,
+                search=args.search,
+                top=args.top,
                 at=parse_time(args.at, "query --at") if args.at else None,
+            )
+        elif args.command == "explain":
+            result = registry.explain(
+                args.identity,
+                kind=args.kind,
+                at=parse_time(args.at, "explain --at") if args.at else None,
             )
         elif args.command == "render-indexes":
             result = registry.render_indexes(args.check)
