@@ -60,7 +60,7 @@
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
           "line": { "type": "integer", "minimum": 1 },
           "facts": {
-            "description": "Source-derived structured facts, shape varies by metadataType. Automations/components additionally carry a usage registry: a Flow's referencedObjects/elementCounts, Apex soqlObjects/dmlOperations, validation-rule object/errorMessagePresent, permission-set object/field permission counts, layout object/fieldCount. Never contains credentials, record data, or business inference.",
+            "description": "Source-derived structured facts, shape varies by metadataType. Automations/components additionally carry a usage registry: a Flow's referencedObjects/elementCounts, Apex soqlObjects/dmlOperations, validation-rule object/errorMessagePresent, permission-set object/field permission counts, layout object/fieldCount. Flows and validation rules may carry errorCatalog: declared error surfaces (component, kind, author-written error message text, optional $Label-resolved text, and the decision paths guarding them). Never contains credentials, record data, or business inference.",
             "type": "object"
           },
           "references": {

@@ -546,8 +546,135 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         row = next(r for r in index["claims"] if r["claimId"] == "KCLM-FLOW-ROUTER-001")
         self.assertEqual(["Account", "Engagement__c"], row["usesObjects"])
         self.assertIn("Engagement__c.Status__c", row["usesFields"])
+        self.assertNotIn("emitsErrors", row)
         automation_map = (self.root / ".ai/knowledge/automation-map.md").read_text(encoding="utf-8")
         self.assertIn("## Automations by object", automation_map)
+
+    def test_error_catalog_claim_is_searchable_by_pasted_error_message(self) -> None:
+        # A Flow claim carrying facts.errorCatalog: a user-pasted error message must rank the
+        # emitting automation via --search, and the claims index must expose emitsErrors.
+        commit = "a" * 40
+        evidence = {
+            "schemaVersion": 3,
+            "evidenceId": "KEVD-FLOW-GUARD-001",
+            "sourceType": "metadata-repository",
+            "sourceLocator": f"git://{commit}/force-app/main/default/flows/DiscountGuard.flow-meta.xml",
+            "authorityFor": ["automation-inventory"],
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": commit,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "retrievedAt": "2026-07-10T11:00:00Z",
+            "collector": {"kind": "tool", "name": "force_app_knowledge.py", "version": "1.2.0"},
+            "completeness": {
+                "status": "complete",
+                "enumerationComplete": False,
+                "permissionsProven": False,
+                "missingSegments": [],
+            },
+            "sensitivity": "internal-sanitized",
+            "sanitization": {"rawDataCommitted": False, "redactions": []},
+            "contentDigest": f"sha256:{'c' * 64}",
+            "summary": "Sanitized source observation of Flow:DiscountGuard.",
+        }
+        claim = {
+            "schemaVersion": 3,
+            "claimId": "KCLM-FLOW-GUARD-001",
+            "revision": 1,
+            "domain": "automation-map",
+            "claimType": "automation-inventory",
+            "subject": {"kind": "automation", "identity": "DiscountGuard"},
+            "assertion": {
+                "predicate": "source-defined-automation",
+                "value": {
+                    "metadataType": "Flow",
+                    "facts": {
+                        "object": "Engagement__c",
+                        "errorCatalog": [
+                            {
+                                "component": "Block_Discount",
+                                "kind": "custom-error",
+                                "errorMessage": "Discount cannot exceed 20% for {!$Label.Tier_Name}.",
+                                "resolvedErrorMessage": "Discount cannot exceed 20% for Standard tier.",
+                                "fieldSelection": "Discount__c",
+                                "triggerContext": "Engagement__c / Update / RecordBeforeSave",
+                                "paths": [
+                                    [
+                                        {
+                                            "decision": "Check_Tier",
+                                            "outcome": "Standard_Tier",
+                                            "conditions": ["$Record.Tier__c EqualTo Standard"],
+                                        }
+                                    ]
+                                ],
+                            }
+                        ],
+                    },
+                    "references": [{"kind": "operates-on", "target": "Engagement__c"}],
+                },
+            },
+            "statement": "DiscountGuard is a source-defined Flow component at the repository commit"
+            ' that declares 1 error surface(s), including: "Discount cannot exceed 20% for'
+            ' {!$Label.Tier_Name}.".',
+            "status": "proposed",
+            "assurance": "observed",
+            "scope": {
+                "environment": "not-applicable",
+                "orgKey": None,
+                "packageNamespace": None,
+                "packageVersion": None,
+                "repositoryCommit": commit,
+            },
+            "evidenceRefs": ["KEVD-FLOW-GUARD-001"],
+            "reviewRef": None,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "verifiedAt": None,
+            "reviewBy": "2026-12-01T11:00:00Z",
+            "sensitivity": "internal-sanitized",
+            "keywords": [],
+            "candidateKeywords": [],
+            "limitations": ["Repository metadata establishes intended source only."],
+            "supersedes": [],
+            "supersededBy": None,
+            "contradicts": [],
+        }
+        (self.root / "inputs/guard-claim.yaml").write_text(
+            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
+        )
+        (self.root / "inputs/guard-evidence.yaml").write_text(
+            yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8"
+        )
+        self.registry.propose(
+            self.root / "inputs/guard-claim.yaml",
+            [self.root / "inputs/guard-evidence.yaml"],
+            expected_revision=0,
+        )
+        self.write_chat_reviewer()
+        self.assertEqual(
+            "verified", self.registry.approve_claim("KCLM-FLOW-GUARD-001", 1)["status"]
+        )
+
+        # Admin pastes the message the user saw (label already substituted by the platform).
+        pasted = self.registry.query(search="Discount cannot exceed 20% for Standard tier")
+        self.assertGreaterEqual(pasted["count"], 1)
+        self.assertEqual(
+            "KCLM-FLOW-GUARD-001", pasted["claims"][0]["claim"]["claimId"]
+        )
+        # The error component name is searchable too.
+        by_component = self.registry.query(search="block discount")
+        self.assertEqual("KCLM-FLOW-GUARD-001", by_component["claims"][0]["claim"]["claimId"])
+
+        index = load_json(self.root / ".ai/knowledge/claims-index.json")
+        row = next(r for r in index["claims"] if r["claimId"] == "KCLM-FLOW-GUARD-001")
+        self.assertEqual(
+            [
+                "Discount cannot exceed 20% for {!$Label.Tier_Name}.",
+                "Discount cannot exceed 20% for Standard tier.",
+            ],
+            row["emitsErrors"],
+        )
 
     def propose_variant(
         self, claim_id: str, identity: str, related: list[str] | None = None

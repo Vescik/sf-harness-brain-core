@@ -304,6 +304,205 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertIn(("reads-field", "Account.Name"), references)
         self.assertIn(("writes-field", "Engagement__c.Status__c"), references)
         self.assertIn(("invokes-apex", "EngagementNotifier"), references)
+        self.assertNotIn("errorCatalog", flow["facts"])
+
+    FLOW_ERROR_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>Discount Guard</label><status>Active</status><processType>AutoLaunchedFlow</processType>
+  <start>
+    <object>Engagement__c</object><triggerType>RecordBeforeSave</triggerType><recordTriggerType>Update</recordTriggerType>
+    <connector><targetReference>Check_Tier</targetReference></connector>
+  </start>
+  <decisions>
+    <name>Check_Tier</name><label>Check Tier</label>
+    <rules>
+      <name>Standard_Tier</name><label>Standard Tier</label>
+      <conditions>
+        <leftValueReference>$Record.Tier__c</leftValueReference>
+        <operator>EqualTo</operator>
+        <rightValue><stringValue>Standard</stringValue></rightValue>
+      </conditions>
+      <connector><targetReference>Block_Discount</targetReference></connector>
+    </rules>
+    <defaultConnector><targetReference>Set_Status</targetReference></defaultConnector>
+  </decisions>
+  <customErrors>
+    <name>Block_Discount</name><label>Block Discount</label>
+    <customErrorMessages>
+      <errorMessage>Discount cannot exceed 20% for {!$Label.Tier_Name}.</errorMessage>
+      <isFieldError>true</isFieldError>
+      <fieldSelection>Discount__c</fieldSelection>
+    </customErrorMessages>
+  </customErrors>
+  <recordUpdates>
+    <name>Set_Status</name><object>Engagement__c</object>
+    <inputAssignments><field>Status__c</field></inputAssignments>
+    <connector><targetReference>Confirm_Screen</targetReference></connector>
+    <faultConnector><targetReference>Confirm_Screen</targetReference></faultConnector>
+  </recordUpdates>
+  <screens>
+    <name>Confirm_Screen</name><label>Confirm</label>
+    <fields>
+      <name>Discount_Input</name>
+      <validationRule>
+        <errorMessage>Enter a discount below the tier cap.</errorMessage>
+        <formulaExpression>{!Discount_Input} &lt;= 0.2</formulaExpression>
+      </validationRule>
+    </fields>
+  </screens>
+</Flow>
+"""
+    CUSTOM_LABELS_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">
+  <labels><fullName>Tier_Name</fullName><value>Standard tier</value></labels>
+</CustomLabels>
+"""
+
+    def test_flow_error_catalog_captures_declared_error_surfaces(self) -> None:
+        write(
+            self.root / "force-app/main/default/flows/DiscountGuard.flow-meta.xml",
+            self.FLOW_ERROR_XML,
+        )
+        write(
+            self.root / "force-app/main/default/labels/CustomLabels.labels-meta.xml",
+            self.CUSTOM_LABELS_XML,
+        )
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "error-flow"], cwd=self.root, check=True)
+        inventory = self.builder.inventory()
+        flow = next(c for c in inventory["components"] if c["metadataType"] == "Flow")
+        facts = flow["facts"]
+        self.assertEqual(1, facts["elementCounts"]["customErrors"])
+        catalog = {entry["kind"]: entry for entry in facts["errorCatalog"]}
+        self.assertEqual({"custom-error", "fault-path", "screen-validation"}, set(catalog))
+
+        custom_error = catalog["custom-error"]
+        self.assertEqual("Block_Discount", custom_error["component"])
+        self.assertEqual("Block Discount", custom_error["componentLabel"])
+        self.assertEqual(
+            "Discount cannot exceed 20% for {!$Label.Tier_Name}.", custom_error["errorMessage"]
+        )
+        self.assertEqual(
+            "Discount cannot exceed 20% for Standard tier.",
+            custom_error["resolvedErrorMessage"],
+        )
+        self.assertTrue(custom_error["isFieldError"])
+        self.assertEqual("Discount__c", custom_error["fieldSelection"])
+        self.assertEqual(
+            "Engagement__c / Update / RecordBeforeSave", custom_error["triggerContext"]
+        )
+        self.assertEqual(
+            [[{
+                "decision": "Check_Tier",
+                "outcome": "Standard_Tier",
+                "outcomeLabel": "Standard Tier",
+                "conditions": ["$Record.Tier__c EqualTo Standard"],
+            }]],
+            custom_error["paths"],
+        )
+        self.assertNotIn("pathsTruncated", custom_error)
+
+        fault = catalog["fault-path"]
+        self.assertEqual("Set_Status", fault["component"])
+        self.assertEqual("Confirm_Screen", fault["faultTarget"])
+        self.assertEqual([[{"decision": "Check_Tier", "default": True}]], fault["paths"])
+
+        screen = catalog["screen-validation"]
+        self.assertEqual("Discount_Input", screen["component"])
+        self.assertEqual("Confirm", screen["componentLabel"])
+        self.assertEqual("Enter a discount below the tier cap.", screen["errorMessage"])
+        self.assertEqual("{!Discount_Input} <= 0.2", screen["condition"])
+        self.assertNotIn("resolvedErrorMessage", screen)
+        # Normal and fault connectors both reach the screen, but the decision scenario is one.
+        self.assertEqual([[{"decision": "Check_Tier", "default": True}]], screen["paths"])
+
+        references = {(ref["kind"], ref["target"]) for ref in flow["references"]}
+        self.assertIn(("references-field", "Engagement__c.Discount__c"), references)
+
+        claims = self.builder.candidate_claims(flow)
+        statement = next(
+            claim for claim in claims if claim["claimType"] == "automation-inventory"
+        )["statement"]
+        self.assertIn("3 error surface(s)", statement)
+        self.assertIn("Discount cannot exceed 20%", statement)
+
+    def test_flow_error_paths_survive_loops_and_report_every_route(self) -> None:
+        flow_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>Loop Guard</label><status>Draft</status><processType>AutoLaunchedFlow</processType>
+  <start><connector><targetReference>First_Gate</targetReference></connector></start>
+  <decisions>
+    <name>First_Gate</name>
+    <rules><name>Fast_Lane</name><connector><targetReference>Raise_Error</targetReference></connector></rules>
+    <defaultConnector><targetReference>Each_Item</targetReference></defaultConnector>
+  </decisions>
+  <loops>
+    <name>Each_Item</name>
+    <nextValueConnector><targetReference>Tag_Item</targetReference></nextValueConnector>
+    <noMoreValuesConnector><targetReference>Second_Gate</targetReference></noMoreValuesConnector>
+  </loops>
+  <assignments>
+    <name>Tag_Item</name>
+    <connector><targetReference>Each_Item</targetReference></connector>
+  </assignments>
+  <decisions>
+    <name>Second_Gate</name>
+    <rules><name>Slow_Lane</name><connector><targetReference>Raise_Error</targetReference></connector></rules>
+  </decisions>
+  <customErrors>
+    <name>Raise_Error</name>
+    <customErrorMessages><errorMessage>Blocked.</errorMessage></customErrorMessages>
+  </customErrors>
+</Flow>
+"""
+        path = self.root / "force-app/main/default/flows/LoopGuard.flow-meta.xml"
+        write(path, flow_xml)
+        flow = self.builder.parse_flow(path)
+        entry = flow["facts"]["errorCatalog"][0]
+        self.assertEqual("Blocked.", entry["errorMessage"])
+        self.assertEqual(
+            [
+                [{"decision": "First_Gate", "outcome": "Fast_Lane"}],
+                [
+                    {"decision": "First_Gate", "default": True},
+                    {"decision": "Second_Gate", "outcome": "Slow_Lane"},
+                ],
+            ],
+            entry["paths"],
+        )
+        self.assertNotIn("pathsTruncated", entry)
+
+    def test_error_surface_extraction_toggle_disables_the_catalog(self) -> None:
+        write(
+            self.root / "config/knowledge-extraction.json",
+            json.dumps({"$schema": "x", "schemaVersion": 1, "errorSurfaceExtraction": False}),
+        )
+        flow_path = self.root / "force-app/main/default/flows/DiscountGuard.flow-meta.xml"
+        write(flow_path, self.FLOW_ERROR_XML)
+        builder = ForceAppKnowledge(self.root)
+        flow = builder.parse_flow(flow_path)
+        self.assertNotIn("errorCatalog", flow["facts"])
+        self.assertNotIn(
+            ("references-field", "Engagement__c.Discount__c"),
+            {(ref["kind"], ref["target"]) for ref in flow["references"]},
+        )
+        vr_path = (
+            self.root
+            / "force-app/main/default/objects/Engagement__c/validationRules/Status_Required.validationRule-meta.xml"
+        )
+        write(
+            vr_path,
+            """<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+  <fullName>Status_Required</fullName><active>true</active>
+  <errorConditionFormula>ISBLANK(Status__c)</errorConditionFormula>
+  <errorMessage>Status is required</errorMessage><errorDisplayField>Status__c</errorDisplayField>
+</ValidationRule>
+""",
+        )
+        vr = builder.parse_validation_rule(vr_path)
+        self.assertTrue(vr["facts"]["errorMessagePresent"])
+        self.assertNotIn("errorCatalog", vr["facts"])
 
     def test_validation_rule_and_layout_get_dedicated_parsers(self) -> None:
         write(
@@ -335,6 +534,13 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         vr = by_type["ValidationRule"]
         self.assertEqual("Engagement__c", vr["facts"]["object"])
         self.assertTrue(vr["facts"]["errorMessagePresent"])
+        catalog_entry = vr["facts"]["errorCatalog"][0]
+        self.assertEqual("validation-rule", catalog_entry["kind"])
+        self.assertEqual("Status_Required", catalog_entry["component"])
+        self.assertEqual("Status is required", catalog_entry["errorMessage"])
+        self.assertEqual("ISBLANK(Status__c)", catalog_entry["condition"])
+        self.assertEqual("Status__c", catalog_entry["fieldSelection"])
+        self.assertNotIn("resolvedErrorMessage", catalog_entry)
         self.assertIn(
             ("references-field", "Engagement__c.Status__c"),
             {(ref["kind"], ref["target"]) for ref in vr["references"]},

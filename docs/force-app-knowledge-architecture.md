@@ -143,14 +143,19 @@ human re-approves it, and the model still cannot create any status other than `p
 
 ## Collector versioning and reference kinds
 
-The collector version (`COLLECTOR_VERSION`, currently 1.1.0) is recorded in every evidence
+The collector version (`COLLECTOR_VERSION`, currently 1.2.0) is recorded in every evidence
 record. 1.1.0 adds two Apex source-token heuristics, tunable via optional
 `config/knowledge-extraction.json`: `soql-field` (SELECT/WHERE field identifiers from inline
 SOQL, standard fields included) and `var-field-ref` (member accesses through locally declared
-sObject variables). Both stay `assurance: inferred`. Richer references change component facts and
-therefore component digests — after upgrading the collector, downstream repos with populated
-stores will see previously current claims flip to `verified-stale`; run the refresh workflow to
-re-draft and re-approve them.
+sObject variables). Both stay `assurance: inferred`. 1.2.0 adds the error catalog
+(`errorSurfaceExtraction` toggle, default on): Flow custom errors, screen validation messages,
+and fault paths — each with the author-written message text, an optional `$Label`-resolved
+variant, and the decision paths guarding it — plus validation-rule error message text. Error
+messages feed the BM25 search corpus and the claims-index `emitsErrors` column, so an
+admin-pasted error message resolves to the automation that declares it. Richer references change
+component facts and therefore component digests — after upgrading the collector, downstream
+repos with populated stores will see previously current claims flip to `verified-stale`; run the
+refresh workflow to re-draft and re-approve them.
 
 ## Prompts, agents, and skills
 

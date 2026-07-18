@@ -43,6 +43,7 @@
           "feature": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 80 } },
           "usesObjects": { "description": "Objects the claim's subject uses, derived from its component usage registry.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
           "usesFields": { "description": "Object.Field references the claim's subject uses, derived from its component usage registry.", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "emitsErrors": { "description": "Declared error-message texts the claim's subject can raise, derived from its facts.errorCatalog (each truncated to 160 characters).", "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 160 } },
           "statement": { "type": "string", "minLength": 1 },
           "descriptionExcerpt": { "type": "string", "minLength": 1, "maxLength": 240 },
           "evidenceRefs": {

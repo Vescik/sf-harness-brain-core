@@ -31,7 +31,7 @@ CACHE_ROOT = ROOT / ".cache/knowledge-proposals"
 INVENTORY_PATH = CACHE_ROOT / "force-app-inventory.json"
 DRAFT_ROOT = CACHE_ROOT / "force-app-drafts"
 SCHEMA_VERSION = 1
-COLLECTOR_VERSION = "1.1.0"
+COLLECTOR_VERSION = "1.2.0"
 CUSTOM_OBJECT_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*(?:__c|__mdt|__e|__x))\b")
 # Custom-field token inside a formula/expression (validation rules). Standard fields cannot be told
 # apart from function names by source alone, so the usage registry records custom fields only.
@@ -39,6 +39,14 @@ FORMULA_FIELD_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*__c)\b")
 # Upper bound on emitted usage references per component (permission sets and layouts can enumerate
 # hundreds of field grants). The total is always recorded in facts even when references are capped.
 MAX_USAGE_REFS = 300
+# $Label token inside an error-message template, in both formula ($Label.X) and flow-merge-field
+# ({!$Label.X}) spelling. Resolved against repo CustomLabels so a user-pasted message matches the
+# stored text even when the flow author routed it through a label.
+LABEL_TOKEN_RE = re.compile(r"\{!\$Label\.([A-Za-z][A-Za-z0-9_]*)\}|\$Label\.([A-Za-z][A-Za-z0-9_]*)")
+# Caps for the backward connector-path walk behind each error surface: enough to describe the
+# decision scenario without enumerating a combinatorial flow, with pathsTruncated recorded when hit.
+FLOW_ERROR_PATH_CAP = 5
+FLOW_ERROR_PATH_DEPTH = 20
 TRIGGER_RE = re.compile(
     r"\btrigger\s+([A-Za-z][A-Za-z0-9_]*)\s+on\s+([A-Za-z][A-Za-z0-9_]*)\s*\(([^)]+)\)",
     re.IGNORECASE | re.MULTILINE,
@@ -245,6 +253,8 @@ class ForceAppKnowledge:
         self.apex_system_types = APEX_SYSTEM_TYPES | set(extraction.get("additionalSystemTypes", []))
         self.soql_field_extraction = bool(extraction.get("soqlFieldExtraction", True))
         self.local_variable_resolution = bool(extraction.get("localVariableResolution", True))
+        self.error_surface_extraction = bool(extraction.get("errorSurfaceExtraction", True))
+        self._custom_labels: dict[str, str] | None = None
 
     def git(self, *args: str, check: bool = True) -> str:
         completed = subprocess.run(
@@ -358,6 +368,269 @@ class ForceAppKnowledge:
                 fields.add(child.text.strip())
         return fields
 
+    def custom_labels(self) -> dict[str, str]:
+        """Custom label values from force-app *.labels-meta.xml, loaded once per run.
+
+        Loaded independently of the per-parser inventory loop: flows may parse before the
+        labels file is reached, so $Label resolution cannot rely on scan order."""
+
+        if self._custom_labels is None:
+            labels: dict[str, str] = {}
+            if self.source_root.is_dir():
+                for path in sorted(self.source_root.rglob("*.labels-meta.xml")):
+                    try:
+                        root = self.parse_xml(path)
+                    except (ET.ParseError, OSError):
+                        continue
+                    for element in root.iter():
+                        if local_name(element.tag) != "labels":
+                            continue
+                        name = direct_text(element, "fullName")
+                        value = direct_text(element, "value")
+                        if name and value:
+                            labels[name] = value
+            self._custom_labels = labels
+        return self._custom_labels
+
+    def resolved_error_message(self, message: str) -> str | None:
+        """Message with $Label tokens substituted, or None when nothing resolved.
+
+        Tokens without a matching repo label stay raw, so a partially resolved template is
+        still returned as long as at least one label substituted."""
+
+        labels = self.custom_labels()
+
+        def substitute(match: re.Match[str]) -> str:
+            name = match.group(1) or match.group(2)
+            return labels.get(name, match.group(0))
+
+        resolved = LABEL_TOKEN_RE.sub(substitute, message)
+        return resolved if resolved != message else None
+
+    @staticmethod
+    def _flow_condition_text(condition: ET.Element) -> str:
+        """`leftValueReference operator right` for one decision-rule condition."""
+
+        right: str | None = None
+        for child in list(condition):
+            if local_name(child.tag) == "rightValue":
+                for value in list(child):
+                    if value.text and value.text.strip():
+                        right = value.text.strip()
+                        break
+        parts = [
+            part
+            for part in (
+                direct_text(condition, "leftValueReference"),
+                direct_text(condition, "operator"),
+                right,
+            )
+            if part
+        ]
+        return " ".join(parts)
+
+    @classmethod
+    def _flow_reverse_graph(cls, flow_root: ET.Element) -> dict[str, list[tuple[str, dict[str, Any]]]]:
+        """target element -> [(source element, edge metadata)] over declared connectors.
+
+        Decision-rule edges carry the outcome name/label and serialized conditions;
+        defaultConnector edges are marked default and faultConnector edges fault. The start
+        element is the pseudo-node "$start" (element names cannot contain "$")."""
+
+        reverse: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+
+        def add_edge(source: str, connector: ET.Element, meta: dict[str, Any]) -> None:
+            target = direct_text(connector, "targetReference")
+            if target:
+                reverse.setdefault(target, []).append((source, meta))
+
+        for element in list(flow_root):
+            tag = local_name(element.tag)
+            if tag == "start":
+                # Direct connector plus any scheduled-path connectors.
+                for connector in element.iter():
+                    if local_name(connector.tag) == "connector":
+                        add_edge("$start", connector, {})
+                continue
+            name = direct_text(element, "name")
+            if not name:
+                continue
+            if tag == "decisions":
+                for child in list(element):
+                    if local_name(child.tag) == "rules":
+                        meta: dict[str, Any] = {}
+                        outcome = direct_text(child, "name")
+                        if outcome:
+                            meta["outcome"] = outcome
+                        outcome_label = direct_text(child, "label")
+                        if outcome_label and outcome_label != outcome:
+                            meta["outcomeLabel"] = outcome_label
+                        conditions = [
+                            text
+                            for text in (
+                                cls._flow_condition_text(condition)
+                                for condition in list(child)
+                                if local_name(condition.tag) == "conditions"
+                            )
+                            if text
+                        ]
+                        if conditions:
+                            meta["conditions"] = conditions
+                        for connector in list(child):
+                            if local_name(connector.tag) == "connector":
+                                add_edge(name, connector, meta)
+                    elif local_name(child.tag) == "defaultConnector":
+                        add_edge(name, child, {"default": True})
+                continue
+            for connector in element.iter():
+                connector_tag = local_name(connector.tag)
+                if connector_tag in {"connector", "nextValueConnector", "noMoreValuesConnector"}:
+                    add_edge(name, connector, {})
+                elif connector_tag == "faultConnector":
+                    add_edge(name, connector, {"fault": True})
+        return reverse
+
+    @classmethod
+    def _flow_error_paths(
+        cls, reverse: dict[str, list[tuple[str, dict[str, Any]]]], element_name: str
+    ) -> tuple[list[list[dict[str, Any]]], bool]:
+        """Simple paths from the flow start to an error element, as decision hops only.
+
+        Backward DFS over the reverse graph; the per-path visited set makes loops safe. Caps:
+        FLOW_ERROR_PATH_CAP paths and FLOW_ERROR_PATH_DEPTH elements per path, with the
+        truncation flag set when either cap cut real exploration short."""
+
+        paths: list[list[dict[str, Any]]] = []
+        truncated = False
+
+        def visit(node: str, trail: tuple[str, ...], hops: tuple[dict[str, Any], ...]) -> None:
+            nonlocal truncated
+            if len(paths) > FLOW_ERROR_PATH_CAP:
+                return
+            if node == "$start":
+                paths.append(list(reversed(hops)))
+                return
+            if len(trail) >= FLOW_ERROR_PATH_DEPTH:
+                truncated = True
+                return
+            predecessors = sorted(
+                reverse.get(node, []), key=lambda item: (item[0], str(item[1]))
+            )
+            for source, meta in predecessors:
+                if source in trail:
+                    continue
+                hop: dict[str, Any] | None = None
+                if "outcome" in meta or meta.get("default"):
+                    hop = {"decision": source}
+                    for key in ("outcome", "outcomeLabel", "conditions", "default"):
+                        if key in meta:
+                            hop[key] = meta[key]
+                visit(source, trail + (source,), hops + ((hop,) if hop else ()))
+
+        visit(element_name, (element_name,), ())
+        if len(paths) > FLOW_ERROR_PATH_CAP:
+            paths = paths[:FLOW_ERROR_PATH_CAP]
+            truncated = True
+        paths.sort(key=lambda path: (len(path), json.dumps(path, sort_keys=True)))
+        # Distinct element routes can share the same decision hops (e.g. a normal and a fault
+        # connector into the same screen) — only the decision scenario is reported, once.
+        unique: list[list[dict[str, Any]]] = []
+        seen: set[str] = set()
+        for path in paths:
+            key = json.dumps(path, sort_keys=True)
+            if key not in seen:
+                seen.add(key)
+                unique.append(path)
+        return unique, truncated
+
+    def _flow_error_catalog(
+        self, flow_root: ET.Element, object_name: str | None, trigger_context: str | None
+    ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+        """Declared error surfaces: custom errors, screen validation messages, fault paths.
+
+        Source-declared author text and the decision outcomes that statically guard it —
+        never runtime values or record data."""
+
+        reverse = self._flow_reverse_graph(flow_root)
+        entries: list[dict[str, Any]] = []
+        references: list[dict[str, str]] = []
+        seen_references: set[tuple[str, str]] = set()
+
+        def entry(component: str, kind: str, node: str, **extra: Any) -> dict[str, Any]:
+            item: dict[str, Any] = {"component": component, "kind": kind, **extra}
+            message = item.get("errorMessage")
+            if isinstance(message, str):
+                resolved = self.resolved_error_message(message)
+                if resolved:
+                    item["resolvedErrorMessage"] = resolved
+            if trigger_context:
+                item["triggerContext"] = trigger_context
+            paths, paths_truncated = self._flow_error_paths(reverse, node)
+            if paths:
+                item["paths"] = paths
+            if paths_truncated:
+                item["pathsTruncated"] = True
+            return compact(item)
+
+        for element in list(flow_root):
+            tag = local_name(element.tag)
+            name = direct_text(element, "name")
+            if not name:
+                continue
+            if tag == "customErrors":
+                label = direct_text(element, "label")
+                for message_element in list(element):
+                    if local_name(message_element.tag) != "customErrorMessages":
+                        continue
+                    field_selection = direct_text(message_element, "fieldSelection")
+                    entries.append(
+                        entry(
+                            name,
+                            "custom-error",
+                            name,
+                            componentLabel=label,
+                            errorMessage=direct_text(message_element, "errorMessage"),
+                            isFieldError=boolean(direct_text(message_element, "isFieldError")),
+                            fieldSelection=field_selection,
+                        )
+                    )
+                    if field_selection and object_name:
+                        reference = ("references-field", f"{object_name}.{field_selection}")
+                        if reference not in seen_references:
+                            seen_references.add(reference)
+                            references.append({"kind": reference[0], "target": reference[1]})
+            elif tag == "screens":
+                screen_label = direct_text(element, "label")
+                for field in (item for item in element.iter() if local_name(item.tag) == "fields"):
+                    field_name = direct_text(field, "name")
+                    for rule in list(field):
+                        if local_name(rule.tag) != "validationRule":
+                            continue
+                        message = direct_text(rule, "errorMessage")
+                        if not message:
+                            continue
+                        entries.append(
+                            entry(
+                                field_name or name,
+                                "screen-validation",
+                                name,
+                                componentLabel=screen_label,
+                                errorMessage=message,
+                                condition=direct_text(rule, "formulaExpression"),
+                            )
+                        )
+            for connector in list(element):
+                if local_name(connector.tag) == "faultConnector":
+                    entries.append(
+                        entry(
+                            name,
+                            "fault-path",
+                            name,
+                            faultTarget=direct_text(connector, "targetReference"),
+                        )
+                    )
+        return entries, references
+
     def parse_flow(self, path: Path) -> dict[str, Any]:
         root = self.parse_xml(path)
         starts = [item for item in root.iter() if local_name(item.tag) == "start"]
@@ -392,6 +665,22 @@ class ForceAppKnowledge:
                 action = direct_text(element, "actionName")
                 if action:
                     references.append({"kind": "invokes-apex", "target": action})
+        trigger_type = direct_text(start, "triggerType")
+        record_trigger_type = direct_text(start, "recordTriggerType")
+        # Error catalog: declared error surfaces plus the decision paths that guard them, so a
+        # user-pasted error message can be traced back to this Flow and its triggering scenario.
+        error_catalog: list[dict[str, Any]] = []
+        if self.error_surface_extraction:
+            trigger_context = (
+                " / ".join(
+                    part for part in (object_name, record_trigger_type, trigger_type) if part
+                )
+                or None
+            )
+            error_catalog, error_references = self._flow_error_catalog(
+                root, object_name, trigger_context
+            )
+            references.extend(error_references)
         element_counts = {
             key: sum(1 for item in root.iter() if local_name(item.tag) == tag)
             for key, tag in (
@@ -404,6 +693,7 @@ class ForceAppKnowledge:
                 ("recordCreates", "recordCreates"),
                 ("recordUpdates", "recordUpdates"),
                 ("recordDeletes", "recordDeletes"),
+                ("customErrors", "customErrors"),
             )
         }
         name = path.name.removesuffix(".flow-meta.xml")
@@ -416,11 +706,12 @@ class ForceAppKnowledge:
                 "status": direct_text(root, "status"),
                 "processType": direct_text(root, "processType"),
                 "object": object_name,
-                "triggerType": direct_text(start, "triggerType"),
-                "recordTriggerType": direct_text(start, "recordTriggerType"),
+                "triggerType": trigger_type,
+                "recordTriggerType": record_trigger_type,
                 "referencedObjects": sorted(referenced_objects),
                 "elementCounts": {key: value for key, value in element_counts.items() if value}
                 or None,
+                "errorCatalog": error_catalog or None,
             },
             references,
             name,
@@ -630,6 +921,20 @@ class ForceAppKnowledge:
             references.append({"kind": "operates-on", "target": object_name})
             for field in sorted(set(FORMULA_FIELD_RE.findall(formula))):
                 references.append({"kind": "references-field", "target": f"{object_name}.{field}"})
+        error_message = direct_text(root, "errorMessage")
+        error_catalog: list[dict[str, Any]] | None = None
+        if self.error_surface_extraction and error_message:
+            catalog_entry: dict[str, Any] = {
+                "component": rule,
+                "kind": "validation-rule",
+                "errorMessage": error_message,
+                "fieldSelection": direct_text(root, "errorDisplayField"),
+                "condition": formula or None,
+            }
+            resolved = self.resolved_error_message(error_message)
+            if resolved:
+                catalog_entry["resolvedErrorMessage"] = resolved
+            error_catalog = [compact(catalog_entry)]
         return self.component(
             "ValidationRule",
             name,
@@ -638,7 +943,8 @@ class ForceAppKnowledge:
                 "object": object_name,
                 "active": boolean(direct_text(root, "active")),
                 "errorDisplayField": direct_text(root, "errorDisplayField"),
-                "errorMessagePresent": direct_text(root, "errorMessage") is not None,
+                "errorMessagePresent": error_message is not None,
+                "errorCatalog": error_catalog,
             },
             references,
             rule,
@@ -971,6 +1277,22 @@ class ForceAppKnowledge:
                     "Object/field usage is a source-token heuristic: dynamic references, standard-field "
                     "usage, and unresolved variable types may be missing or approximate."
                 )
+            statement = f"{component['name']} is a source-defined {metadata_type} component at the repository commit."
+            # Surface declared error messages in the statement so a search for user-pasted error
+            # text ranks the emitting automation even before the reader opens the facts payload.
+            error_catalog = facts.get("errorCatalog") or []
+            if error_catalog:
+                messages = [
+                    item["errorMessage"]
+                    for item in error_catalog
+                    if isinstance(item, dict) and item.get("errorMessage")
+                ]
+                statement = statement[:-1] + f" that declares {len(error_catalog)} error surface(s)."
+                if messages:
+                    first = messages[0]
+                    if len(first) > 120:
+                        first = first[:117] + "..."
+                    statement = statement[:-1] + f', including: "{first}".'
             candidates.append(
                 {
                     "domain": "automation-map",
@@ -980,7 +1302,7 @@ class ForceAppKnowledge:
                         "predicate": "source-defined-automation",
                         "value": {"metadataType": metadata_type, "facts": facts, "references": component["references"]},
                     },
-                    "statement": f"{component['name']} is a source-defined {metadata_type} component at the repository commit.",
+                    "statement": statement,
                     "limitations": automation_limits,
                 }
             )

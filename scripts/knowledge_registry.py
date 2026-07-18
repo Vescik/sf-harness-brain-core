@@ -394,6 +394,21 @@ class KnowledgeRegistry:
         }
 
     @staticmethod
+    def claim_error_catalog(claim: dict[str, Any]) -> list[dict[str, Any]]:
+        """errorCatalog entries carried in assertion.value.facts; empty when absent.
+
+        Powers the search corpus and the claims-index emitsErrors summary so a user-pasted
+        error message finds the automation that declares it."""
+
+        value = claim.get("assertion", {}).get("value")
+        if not isinstance(value, dict):
+            return []
+        facts = value.get("facts")
+        if not isinstance(facts, dict):
+            return []
+        return [entry for entry in facts.get("errorCatalog") or [] if isinstance(entry, dict)]
+
+    @staticmethod
     def structured_fact(claim: dict[str, Any]) -> str:
         identity = str(claim["subject"]["identity"])
         value = claim["assertion"]["value"]
@@ -904,9 +919,9 @@ class KnowledgeRegistry:
         self, claim: dict[str, Any], claims_by_id: dict[str, dict[str, Any]]
     ) -> list[str]:
         """Token document for BM25: statement, description, keywords, subject, predicate,
-        usage-registry targets (objects, fields, invokes), and the subject identities of every
-        related/contradicting/superseding claim — so a search for an object name also surfaces
-        the claims connected to it."""
+        usage-registry targets (objects, fields, invokes), declared error-catalog messages, and
+        the subject identities of every related/contradicting/superseding claim — so a search
+        for an object name or a pasted error message also surfaces the claims connected to it."""
 
         parts: list[str] = [str(claim["statement"])]
         value = claim["assertion"]["value"]
@@ -919,6 +934,10 @@ class KnowledgeRegistry:
         parts.append(str(claim["assertion"]["predicate"]))
         usage = self.claim_usage(claim)
         parts.extend(usage["objects"] + usage["fields"] + usage["invokes"])
+        for catalog_entry in self.claim_error_catalog(claim):
+            for key in ("errorMessage", "resolvedErrorMessage", "component"):
+                if isinstance(catalog_entry.get(key), str):
+                    parts.append(catalog_entry[key])
         for _, target in self.claim_edges(claim):
             neighbor = claims_by_id.get(target)
             if neighbor is not None:
@@ -1975,6 +1994,16 @@ class KnowledgeRegistry:
             row["usesObjects"] = usage["objects"]
         if usage["fields"]:
             row["usesFields"] = usage["fields"]
+        emits_errors: list[str] = []
+        for catalog_entry in self.claim_error_catalog(claim):
+            for key in ("errorMessage", "resolvedErrorMessage"):
+                message = catalog_entry.get(key)
+                if isinstance(message, str) and message:
+                    text = message[:160]
+                    if text not in emits_errors:
+                        emits_errors.append(text)
+        if emits_errors:
+            row["emitsErrors"] = emits_errors
         return row
 
     def rendered_feature_map(self, claims: list[dict[str, Any]], at: datetime) -> str:

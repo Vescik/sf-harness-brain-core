@@ -27,6 +27,10 @@
     "localVariableResolution": {
       "type": "boolean",
       "description": "Resolve locally declared sObject variables (Type var; ... var.Field) to var-field-ref references."
+    },
+    "errorSurfaceExtraction": {
+      "type": "boolean",
+      "description": "Extract declared error surfaces into facts.errorCatalog: Flow custom errors, screen validation messages, and fault paths (with the decision paths guarding them), plus validation-rule error message text."
     }
   }
 }
