@@ -27,8 +27,8 @@
     "postcss": "^8.5.10"
   },
   "devDependencies": {
-    "@emnapi/core": "1.11.1",
-    "@emnapi/runtime": "1.11.1",
+    "@emnapi/core": "1.11.2",
+    "@emnapi/runtime": "1.11.2",
     "@eslint/js": "^9.29.0",
     "@lwc/eslint-plugin-lwc": "^3.1.0",
     "@prettier/plugin-xml": "^3.4.1",
@@ -36,7 +36,7 @@
     "@salesforce/eslint-plugin-aura": "^3.0.0",
     "@salesforce/eslint-plugin-lightning": "^2.0.0",
     "@salesforce/sfdx-lwc-jest": "^7.0.2",
-    "eslint": "^9.29.0",
+    "eslint": "^9.39.5",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-jest": "^28.14.0",
     "globals": "^15.14.0",
