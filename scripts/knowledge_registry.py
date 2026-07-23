@@ -39,7 +39,10 @@ SCOPE_FIELDS = (
 
 # Reference-kind vocabulary for the component usage registry carried in assertion.value.references.
 # Field kinds name an `Object.Field`; object kinds name a bare object; invoke kinds name another
-# automation/method. Used to answer "which components use object/field X?" search queries.
+# automation/method; external kinds name things outside the repo component graph (related lists,
+# hosts, org principals) and are excluded from usage derivation. Every kind the extractor
+# (force_app_knowledge.ALL_REF_KINDS) can emit must be classified in exactly one of these sets —
+# tests/test_kind_contract.py pins that invariant.
 FIELD_REF_KINDS = frozenset(
     {
         "reads-field",
@@ -52,13 +55,101 @@ FIELD_REF_KINDS = frozenset(
         # local-variable member accesses. Same Object.Field target shape, assurance stays inferred.
         "soql-field",
         "var-field-ref",
+        # Filter/criteria fields (collector 1.3.0): fields an automation filters records by —
+        # reads used for selection, distinct from the reads-field retrieval polarity.
+        "filters-field",
+        # Dependent-picklist wiring (collector 1.3.0): target is the controlling field.
+        "picklist-dependency",
+        # Level-aware field grants (collector 1.4.0): edit implies read; one edge per field.
+        "grants-field-read",
+        "grants-field-edit",
     }
 )
 OBJECT_REF_KINDS = frozenset(
-    {"operates-on", "object-token", "relationship", "queries-object", "dml-object", "grants-object-permission"}
+    {
+        "operates-on",
+        "object-token",
+        "relationship",
+        "queries-object",
+        "dml-object",
+        "grants-object-permission",
+        # High-signal record-visibility grants (collector 1.4.0).
+        "grants-object-view-all",
+        "grants-object-modify-all",
+        # Queue routing (collector 1.5.0): target is the object the queue serves.
+        "serves-object",
+    }
 )
 INVOKE_REF_KINDS = frozenset(
-    {"invokes-apex", "invokes-class", "subflow", "action", "apex-method", "apex-controller"}
+    {
+        "invokes-apex",
+        "invokes-class",
+        "subflow",
+        "action",
+        "apex-method",
+        "apex-controller",
+        # Field/business-process → value-set dependency (collector 1.3.0): target names a
+        # GlobalValueSet or StandardValueSet component.
+        "uses-value-set",
+        # Workflow/approval notification wiring (collector 1.3.0): sends-alert targets an
+        # Object.AlertName workflow alert; uses-template targets an EmailTemplate folder/name.
+        "sends-alert",
+        "uses-template",
+        # Apex `callout:Name` literal (collector 1.3.0): target names a NamedCredential.
+        "uses-named-credential",
+        # Approval-process action wiring (collector 1.4.0): target is Object.ActionName inside
+        # the owning object's Workflow component (fieldUpdates/tasks/outboundMessages).
+        "uses-workflow-action",
+        # Record-type → business-process and duplicate-rule → matching-rule links (collector
+        # 1.4.0): targets are Object.Name component identities.
+        "uses-business-process",
+        "uses-matching-rule",
+        # UI/code text and composition wiring (collector 1.4.0): uses-label targets a
+        # CustomLabel name; embeds-component targets a child component bundle;
+        # displays-component targets a rendered component; launches-flow targets a Flow.
+        "uses-label",
+        "embeds-component",
+        "displays-component",
+        "launches-flow",
+        # App action override (collector 1.4.0): target names the FlexiPage assigned as the
+        # view/edit/new page for an object (optionally per profile/record type).
+        "overrides-view",
+        # Access-model grants (collector 1.4.0): targets name repo components (Apex class,
+        # CustomPermission, Object.RecordType, Flow, Layout).
+        "grants-class-access",
+        "grants-custom-permission",
+        "grants-record-type",
+        "grants-flow-access",
+        "assigns-layout",
+        # Routing rules (collector 1.5.0): target names a Queue component (user targets are
+        # suppressed at extraction).
+        "assigns-to",
+        # Integration topology (collector 1.5.0): credential chains and pre-authorizations.
+        "uses-external-credential",
+        "references-auth-provider",
+        "grants-to-profile",
+        "grants-to-permission-set",
+        # $Permission gates and permission-set-group composition (collector 1.5.0).
+        "references-custom-permission",
+        "includes-permission-set",
+        "mutes-permission-set",
+        # Role hierarchy (collector 1.6.0): target names the parent Role component.
+        "reports-to",
+    }
+)
+# Kinds whose targets are not repo components, objects, or fields (a layout's related-list name,
+# an Apex callout's endpoint hostname; org principals as the extractor grows). Deliberately
+# excluded from usesObjects/usesFields/invokes derivation so those query surfaces stay precise.
+EXTERNAL_REF_KINDS = frozenset(
+    {
+        "related-list",
+        "callout-endpoint",
+        # System permissions (ModifyAllData, AuthorApex, …) are platform capability strings,
+        # not repo components.
+        "grants-user-permission",
+        # Sharing grantees (collector 1.5.0): targets are org principals (role:X, group:Y).
+        "shares-with",
+    }
 )
 
 

@@ -31,6 +31,10 @@
     "errorSurfaceExtraction": {
       "type": "boolean",
       "description": "Extract declared error surfaces into facts.errorCatalog: Flow custom errors, screen validation messages, and fault paths (with the decision paths guarding them), plus validation-rule error message text."
+    },
+    "markupFieldExtraction": {
+      "type": "boolean",
+      "description": "Scan LWC HTML (and later VF/Aura markup) for record-form object/field literals, embedded child components, and Object.Field string literals in JS wire arrays. Literal attribute values only; field edges from string literals are per-reference heuristics."
     }
   }
 }

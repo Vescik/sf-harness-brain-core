@@ -69,10 +69,14 @@
               "type": "object", "additionalProperties": false, "required": ["kind", "target"],
               "properties": {
                 "kind": {
-                  "description": "Edge type. Object-relation/reference kinds: relationship, operates-on, object-token, schema. Usage-registry kinds (target is Object.Field for field kinds, a bare object for object kinds): reads-field, writes-field, references-field, places-field, grants-field-permission, queries-object, dml-object, grants-object-permission. Invocation kinds (target names another component): subflow, action, apex-method, apex-controller, invokes-apex, invokes-class, related-list.",
+                  "description": "Edge type. Object-relation/reference kinds: relationship, operates-on, object-token, schema. Usage-registry kinds (target is Object.Field for field kinds, a bare object for object kinds): reads-field, writes-field, references-field, places-field, grants-field-permission, grants-field-read, grants-field-edit, filters-field, picklist-dependency, queries-object, dml-object, grants-object-permission, grants-object-view-all, grants-object-modify-all, serves-object, soql-field, var-field-ref. Invocation kinds (target names another component): subflow, action, apex-method, apex-controller, invokes-apex, invokes-class, related-list, uses-value-set, sends-alert, uses-template, uses-named-credential, uses-workflow-action, uses-business-process, uses-matching-rule, uses-label, embeds-component, displays-component, launches-flow, overrides-view, grants-class-access, grants-custom-permission, grants-record-type, grants-flow-access, assigns-layout, assigns-to, uses-external-credential, references-auth-provider, grants-to-profile, grants-to-permission-set, references-custom-permission, includes-permission-set, mutes-permission-set, reports-to. External kinds also include grants-user-permission (system-permission string) and shares-with (org principal). External kinds (target outside the component graph): callout-endpoint (hostname). Canonical vocabulary: force_app_knowledge.ALL_REF_KINDS, classified for usage queries by knowledge_registry (pinned by tests/test_kind_contract.py).",
                   "type": "string", "minLength": 1
                 },
-                "target": { "type": "string", "minLength": 1 }
+                "target": { "type": "string", "minLength": 1 },
+                "heuristic": {
+                  "description": "True when this edge came from a source-token heuristic rather than structural parsing (for kinds emitted both ways); absent means the kind-level classification applies.",
+                  "type": "boolean"
+                }
               }
             }
           }

@@ -15,6 +15,7 @@ from scripts.force_app_knowledge import (
     KnowledgeBuildError,
     canonical,
     digest_bytes,
+    sanitize_literal,
     stable_id,
 )
 
@@ -227,8 +228,10 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertIn("ApexClass:EngagementService", ids)
         self.assertNotIn("Cls:EngagementService", ids)
         self.assertIn("StaticResource:Assets", ids)
-        self.assertIn("CustomMetadata:KC_Setting.Default_Limits", ids)
+        # Collector 1.5.0: cmdt record identity carries the __mdt type qualifier.
+        self.assertIn("CustomMetadata:KC_Setting__mdt.Default_Limits", ids)
         self.assertNotIn("Md:KC_Setting.Default_Limits", ids)
+        self.assertNotIn("CustomMetadata:KC_Setting.Default_Limits", ids)
         generic_paths = {item["path"] for item in inventory["genericFiles"]}
         self.assertNotIn(
             "force-app/main/default/staticresources/Assets.resource", generic_paths
@@ -893,6 +896,2439 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertFalse(inventory["workspaceStatus"]["clean"])
         with self.assertRaisesRegex(KnowledgeBuildError, "not clean at HEAD"):
             self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
+
+
+NEW_STYLE_NAMED_CREDENTIAL_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<NamedCredential xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>Billing API v2</label>
+  <namedCredentialType>SecuredEndpoint</namedCredentialType>
+  <namedCredentialParameters>
+    <parameterName>url</parameterName>
+    <parameterType>Url</parameterType>
+    <parameterValue>https://api.billing.example.test/v2/base?tenant=42</parameterValue>
+  </namedCredentialParameters>
+  <namedCredentialParameters>
+    <parameterName>X-Api-Key</parameterName>
+    <parameterType>HttpHeader</parameterType>
+    <parameterValue>never-export-this-secret</parameterValue>
+  </namedCredentialParameters>
+</NamedCredential>
+"""
+
+
+class DefectBatchTests(unittest.TestCase):
+    """Phase 1 defect fixes: type-name minting, Apex meta facts, tab gating, NC endpoints."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        (self.root / "force-app/main/default").mkdir(parents=True)
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_generic_token_type_names(self) -> None:
+        cases = {
+            "Home.flexipage-meta.xml": ("FlexiPage", "<FlexiPage><masterLabel>Home</masterLabel></FlexiPage>"),
+            "Billing.dataSource-meta.xml": ("ExternalDataSource", "<ExternalDataSource><label>Billing</label></ExternalDataSource>"),
+            "Ops.permissionsetgroup-meta.xml": ("PermissionSetGroup", "<PermissionSetGroup><label>Ops</label></PermissionSetGroup>"),
+            "Ops_Mute.mutingpermissionset-meta.xml": ("MutingPermissionSet", "<MutingPermissionSet><label>Ops Mute</label></MutingPermissionSet>"),
+            "Azure.authprovider-meta.xml": ("AuthProvider", "<AuthProvider><friendlyName>Azure</friendlyName></AuthProvider>"),
+        }
+        for filename, (expected_type, xml) in cases.items():
+            path = self.root / "force-app/main/default/misc" / filename
+            write(path, f'<?xml version="1.0" encoding="UTF-8"?>\n{xml}\n')
+            component = self.builder.parse_generic_meta(path)
+            self.assertEqual(expected_type, component["metadataType"], filename)
+
+    def test_apex_meta_api_version_status(self) -> None:
+        cls = self.root / "force-app/main/default/classes/BillingService.cls"
+        write(cls, "public with sharing class BillingService {}\n")
+        write(
+            cls.with_name("BillingService.cls-meta.xml"),
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<apiVersion>61.0</apiVersion><status>Active</status></ApexClass>\n",
+        )
+        component = self.builder.parse_apex(cls, "ApexClass")
+        self.assertEqual("61.0", component["facts"]["apiVersion"])
+        self.assertEqual("Active", component["facts"]["status"])
+
+    def test_apex_without_meta_sibling_still_parses(self) -> None:
+        cls = self.root / "force-app/main/default/classes/Plain.cls"
+        write(cls, "public class Plain {}\n")
+        component = self.builder.parse_apex(cls, "ApexClass")
+        self.assertNotIn("apiVersion", component["facts"])
+        self.assertNotIn("status", component["facts"])
+
+    def test_tab_crawl_requires_known_object(self) -> None:
+        tab = {
+            "metadataType": "CustomTab",
+            "name": "Engagement__c",
+            "path": "force-app/main/default/tabs/Engagement__c.tab-meta.xml",
+            "references": [],
+        }
+        self.assertEqual(
+            {"Engagement__c"},
+            ForceAppKnowledge.component_objects(tab, {"Engagement__c"}),
+        )
+        self.assertEqual(set(), ForceAppKnowledge.component_objects(tab, {"Other__c"}))
+        # Legacy behavior without a known-objects set: name-based association stands.
+        self.assertEqual({"Engagement__c"}, ForceAppKnowledge.component_objects(tab))
+
+    def test_named_credential_url_parameter_host(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/namedCredentials/BillingV2.namedCredential-meta.xml"
+        )
+        write(path, NEW_STYLE_NAMED_CREDENTIAL_XML)
+        component = self.builder.parse_integration(path, "NamedCredential")
+        self.assertEqual("api.billing.example.test", component["facts"]["endpointHost"])
+        serialized = canonical(component)
+        self.assertNotIn("never-export-this-secret", serialized)
+        self.assertNotIn("tenant=42", serialized)
+
+
+FLOW_DATA_MODEL_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<Flow xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>Escalation Router</label><status>Active</status><processType>AutoLaunchedFlow</processType>
+  <start>
+    <object>Case</object><triggerType>RecordAfterSave</triggerType><recordTriggerType>Update</recordTriggerType>
+    <doesRequireRecordChangedToMeetCriteria>true</doesRequireRecordChangedToMeetCriteria>
+    <filterLogic>and</filterLogic>
+    <filters><field>Priority</field><operator>EqualTo</operator><value><stringValue>High</stringValue></value></filters>
+    <scheduledPaths><name>DayLater</name><offsetNumber>1</offsetNumber><offsetUnit>Days</offsetUnit></scheduledPaths>
+  </start>
+  <variables><name>varAccount</name><dataType>SObject</dataType><objectType>Account</objectType>
+    <isCollection>false</isCollection><isInput>true</isInput><isOutput>false</isOutput></variables>
+  <recordLookups>
+    <name>GetAccount</name><object>Account</object>
+    <filters><field>Industry</field><operator>EqualTo</operator><value><stringValue>Energy</stringValue></value></filters>
+    <queriedFields>Name</queriedFields><queriedFields>OwnerId</queriedFields>
+    <outputReference>varAccount</outputReference>
+    <getFirstRecordOnly>true</getFirstRecordOnly><sortField>CreatedDate</sortField><sortOrder>Desc</sortOrder>
+  </recordLookups>
+  <recordUpdates>
+    <name>CloseStale</name><object>Case</object>
+    <filters><field>Status</field><operator>EqualTo</operator><value><stringValue>Stale</stringValue></value></filters>
+    <inputAssignments><field>Status</field><value><stringValue>Closed</stringValue></value></inputAssignments>
+  </recordUpdates>
+  <recordCreates><name>LogEntry</name><inputReference>varAccount</inputReference></recordCreates>
+  <decisions><name>IsVip</name><rules><name>Vip</name>
+    <conditions><leftValueReference>$Record.Tier__c</leftValueReference><operator>EqualTo</operator></conditions>
+    <conditions><leftValueReference>varAccount.Rating</leftValueReference><operator>EqualTo</operator></conditions>
+    <conditions><leftValueReference>$Record.Owner__r.Region__c</leftValueReference><operator>EqualTo</operator></conditions>
+  </rules></decisions>
+  <formulas><name>DaysOpen</name><dataType>Number</dataType>
+    <expression>TODAY() - {!$Record.CreatedDate__c}</expression></formulas>
+</Flow>
+"""
+
+
+class FlowReworkTests(unittest.TestCase):
+    """Phase 3: per-element data operations, entry conditions, polarity fix, dml-object."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.path = self.root / "force-app/main/default/flows/EscalationRouter.flow-meta.xml"
+        write(self.path, FLOW_DATA_MODEL_XML)
+        self.flow = ForceAppKnowledge(self.root).parse_flow(self.path)
+        self.references = {
+            (ref["kind"], ref["target"]) for ref in self.flow["references"]
+        }
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_start_facts_capture_entry_conditions_and_schedule(self) -> None:
+        start = self.flow["facts"]["start"]
+        self.assertEqual(
+            [{"field": "Priority", "operator": "EqualTo", "value": "High"}],
+            start["entryConditions"],
+        )
+        self.assertEqual("and", start["filterLogic"])
+        self.assertTrue(start["requiresRecordChanged"])
+        self.assertEqual(
+            [{"name": "DayLater", "offsetNumber": "1", "offsetUnit": "Days"}],
+            start["scheduledPaths"],
+        )
+        self.assertIn(("filters-field", "Case.Priority"), self.references)
+
+    def test_data_operations_record_object_fields_and_output_target(self) -> None:
+        operations = {item["element"]: item for item in self.flow["facts"]["dataOperations"]}
+        lookup = operations["GetAccount"]
+        self.assertEqual("lookup", lookup["kind"])
+        self.assertEqual("Account", lookup["object"])
+        self.assertEqual(["Industry"], lookup["filterFields"])
+        self.assertEqual(["Name", "OwnerId"], lookup["retrievedFields"])
+        self.assertEqual("varAccount", lookup["outputTarget"])
+        self.assertTrue(lookup["getFirstRecordOnly"])
+        self.assertEqual("CreatedDate", lookup["sortField"])
+
+    def test_update_filters_are_selection_criteria_not_writes(self) -> None:
+        self.assertIn(("filters-field", "Case.Status"), self.references)
+        self.assertIn(("writes-field", "Case.Status"), self.references)
+        operations = {item["element"]: item for item in self.flow["facts"]["dataOperations"]}
+        update = operations["CloseStale"]
+        self.assertEqual(["Status"], update["filterFields"])
+        self.assertEqual(["Status"], update["writtenFields"])
+
+    def test_dml_and_query_object_edges_emitted(self) -> None:
+        self.assertIn(("queries-object", "Account"), self.references)
+        self.assertIn(("dml-object", "Case"), self.references)
+        # inputReference-only create resolves its object through the variable's objectType.
+        self.assertIn(("dml-object", "Account"), self.references)
+        operations = {item["element"]: item for item in self.flow["facts"]["dataOperations"]}
+        self.assertEqual("Account", operations["LogEntry"]["object"])
+
+    def test_flow_queries_object_is_structural_not_heuristic(self) -> None:
+        for reference in self.flow["references"]:
+            if reference["kind"] == "queries-object":
+                self.assertNotIn("heuristic", reference)
+
+    def test_decision_and_formula_field_references(self) -> None:
+        self.assertIn(("references-field", "Case.Tier__c"), self.references)
+        self.assertIn(("references-field", "Account.Rating"), self.references)
+        self.assertIn(("references-field", "Case.CreatedDate__c"), self.references)
+        # Relationship paths are not resolved — never guessed across objects.
+        self.assertNotIn(
+            ("references-field", "Case.Owner__r.Region__c"), self.references
+        )
+        formulas = self.flow["facts"]["formulas"]
+        self.assertEqual(
+            [{"name": "DaysOpen", "dataType": "Number", "fieldRefs": ["Case.CreatedDate__c"]}],
+            formulas,
+        )
+
+    def test_variables_fact_records_subflow_contract(self) -> None:
+        self.assertEqual(
+            [
+                {
+                    "name": "varAccount",
+                    "dataType": "SObject",
+                    "objectType": "Account",
+                    "isCollection": False,
+                    "isInput": True,
+                    "isOutput": False,
+                }
+            ],
+            self.flow["facts"]["variables"],
+        )
+
+
+ROLLUP_FIELD_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+  <fullName>Total_Billed__c</fullName><label>Total Billed</label><type>Currency</type>
+  <summaryForeignKey>BillingEvent__c.Engagement__c</summaryForeignKey>
+  <summarizedField>BillingEvent__c.Amount__c</summarizedField>
+  <summaryOperation>sum</summaryOperation>
+  <summaryFilterItems><field>BillingEvent__c.Status__c</field><operation>equals</operation><value>Billed</value></summaryFilterItems>
+</CustomField>
+"""
+PICKLIST_FIELD_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+  <fullName>Stage__c</fullName><label>Stage</label><type>Picklist</type>
+  <trackHistory>true</trackHistory>
+  <valueSet>
+    <restricted>true</restricted>
+    <controllingField>Type__c</controllingField>
+    <valueSetDefinition>
+      <sorted>false</sorted>
+      <value><fullName>Draft</fullName><label>Draft</label><default>true</default><isActive>true</isActive></value>
+      <value><fullName>Won</fullName><label>Won</label><isActive>true</isActive></value>
+    </valueSetDefinition>
+  </valueSet>
+</CustomField>
+"""
+FORMULA_FIELD_META_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+  <fullName>Client_Region__c</fullName><label>Client Region</label><type>Text</type>
+  <formula>Engagement__r.Region__c &amp; TEXT(Status__c)</formula>
+  <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
+</CustomField>
+"""
+
+
+class ObjectFieldOverhaulTests(unittest.TestCase):
+    """Phase 4: objectKind discrimination, picklist vocabulary, roll-up and formula lineage."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.objects = self.root / "force-app/main/default/objects"
+        # Lookup fields that make relationship chains resolvable.
+        write(
+            self.objects / "Assignment__c/fields/Engagement__c.field-meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Engagement__c</fullName><type>Lookup</type>"
+            "<referenceTo>Engagement__c</referenceTo>"
+            "<relationshipName>Assignments</relationshipName></CustomField>\n",
+        )
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def parse(self, relative: str, xml: str) -> dict:
+        path = self.objects / relative
+        write(path, xml)
+        if relative.endswith(".object-meta.xml"):
+            return self.builder.parse_object(path)
+        return self.builder.parse_field(path)
+
+    def test_object_kind_discrimination(self) -> None:
+        cases = {
+            "Engagement__c/Engagement__c.object-meta.xml": ("customObject", "<CustomObject><label>E</label></CustomObject>"),
+            "FeatureFlag__mdt/FeatureFlag__mdt.object-meta.xml": ("customMetadataType", "<CustomObject><label>F</label></CustomObject>"),
+            "BillingRaised__e/BillingRaised__e.object-meta.xml": ("platformEvent", "<CustomObject><label>B</label><eventType>HighVolume</eventType></CustomObject>"),
+            "Archive__b/Archive__b.object-meta.xml": ("bigObject", "<CustomObject><label>A</label></CustomObject>"),
+            "Config__c/Config__c.object-meta.xml": ("customSetting", "<CustomObject><label>C</label><customSettingsType>Hierarchy</customSettingsType></CustomObject>"),
+            "Account/Account.object-meta.xml": ("standardObjectExtension", "<CustomObject><enableFeeds>true</enableFeeds></CustomObject>"),
+        }
+        for relative, (expected, xml) in cases.items():
+            component = self.parse(relative, f'<?xml version="1.0" encoding="UTF-8"?>\n{xml}\n')
+            self.assertEqual(expected, component["facts"]["objectKind"], relative)
+
+    def test_object_enrichment_facts(self) -> None:
+        component = self.parse(
+            "Engagement__c/Engagement__c.object-meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Engagement</label><description>Client engagement.</description>"
+            "<enableHistory>true</enableHistory>"
+            "<nameField><type>AutoNumber</type><label>Engagement No</label>"
+            "<displayFormat>ENG-{0000}</displayFormat></nameField>"
+            "<compactLayoutAssignment>Engagement_Compact</compactLayoutAssignment>"
+            "</CustomObject>\n",
+        )
+        facts = component["facts"]
+        self.assertEqual("Client engagement.", facts["description"])
+        self.assertTrue(facts["enableHistory"])
+        self.assertEqual(
+            {"type": "AutoNumber", "label": "Engagement No", "displayFormat": "ENG-{0000}"},
+            facts["nameField"],
+        )
+        self.assertEqual("Engagement_Compact", facts["compactLayoutAssignment"])
+
+    def test_field_picklist_values_and_dependency(self) -> None:
+        component = self.parse(
+            "Engagement__c/fields/Stage__c.field-meta.xml", PICKLIST_FIELD_XML
+        )
+        facts = component["facts"]
+        self.assertTrue(facts["picklistRestricted"])
+        self.assertFalse(facts["picklistSorted"])
+        self.assertEqual(2, facts["picklistValueCount"])
+        self.assertEqual(
+            {"fullName": "Draft", "label": "Draft", "default": True, "isActive": True},
+            facts["picklistValues"][0],
+        )
+        self.assertNotIn("picklistValuesTruncated", facts)
+        self.assertTrue(facts["trackHistory"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("picklist-dependency", "Engagement__c.Type__c"), references)
+
+    def test_field_global_value_set_edge(self) -> None:
+        component = self.parse(
+            "Engagement__c/fields/Region__c.field-meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Region__c</fullName><type>Picklist</type>"
+            "<valueSet><valueSetName>Regions</valueSetName></valueSet></CustomField>\n",
+        )
+        self.assertEqual("Regions", component["facts"]["valueSetName"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("uses-value-set", "Regions"), references)
+
+    def test_field_rollup_deterministic_refs(self) -> None:
+        component = self.parse(
+            "Engagement__c/fields/Total_Billed__c.field-meta.xml", ROLLUP_FIELD_XML
+        )
+        facts = component["facts"]
+        self.assertEqual("sum", facts["summaryOperation"])
+        self.assertEqual(["BillingEvent__c.Status__c"], facts["summaryFilterFields"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("references-field", "BillingEvent__c.Engagement__c"), references)
+        self.assertIn(("references-field", "BillingEvent__c.Amount__c"), references)
+        self.assertIn(("references-field", "BillingEvent__c.Status__c"), references)
+        self.assertIn(("operates-on", "BillingEvent__c"), references)
+        for reference in component["references"]:
+            self.assertNotIn("heuristic", reference, reference)
+
+    def test_field_formula_relationship_chain_resolution(self) -> None:
+        component = self.parse(
+            "Assignment__c/fields/Client_Region__c.field-meta.xml", FORMULA_FIELD_META_XML
+        )
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        # Engagement__r resolves via Assignment__c.Engagement__c lookup → Engagement__c.
+        self.assertIn(("references-field", "Engagement__c.Region__c"), references)
+        # Bare token attributed to the owning object; the chained token must NOT be.
+        self.assertIn(("references-field", "Assignment__c.Status__c"), references)
+        self.assertNotIn(("references-field", "Assignment__c.Region__c"), references)
+        for reference in component["references"]:
+            if reference["kind"] == "references-field":
+                self.assertTrue(reference.get("heuristic"), reference)
+
+    def test_field_lookup_filter_fields(self) -> None:
+        component = self.parse(
+            "Assignment__c/fields/Resource__c.field-meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Resource__c</fullName><type>Lookup</type><referenceTo>Resource__c</referenceTo>"
+            "<lookupFilter><active>true</active>"
+            "<filterItems><field>Resource__c.Active__c</field><operation>equals</operation><value>true</value></filterItems>"
+            "<filterItems><field>$Source.Status__c</field><operation>equals</operation><value>Open</value></filterItems>"
+            "</lookupFilter></CustomField>\n",
+        )
+        facts = component["facts"]
+        self.assertTrue(facts["lookupFilterPresent"])
+        self.assertEqual(
+            ["$Source.Status__c", "Resource__c.Active__c"], facts["lookupFilterFields"]
+        )
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("filters-field", "Resource__c.Active__c"), references)
+        self.assertNotIn(("filters-field", "$Source.Status__c"), references)
+
+
+WORKFLOW_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<Workflow xmlns="http://soap.sforce.com/2006/04/metadata">
+  <alerts>
+    <fullName>Escalation_Alert</fullName>
+    <template>unfiled$public/EscalationNotice</template>
+    <recipients><type>owner</type></recipients>
+    <recipients><recipient>Support_Team</recipient><type>group</type></recipients>
+    <ccEmails>ops@example.test</ccEmails>
+    <senderType>CurrentUser</senderType>
+  </alerts>
+  <fieldUpdates>
+    <fullName>Close_Case</fullName><field>Status</field><operation>Literal</operation>
+    <literalValue>Closed</literalValue><reevaluateOnChange>false</reevaluateOnChange>
+  </fieldUpdates>
+  <fieldUpdates>
+    <fullName>Stamp_Account</fullName><field>Last_Case_Closed__c</field>
+    <operation>Formula</operation><formula>NOW()</formula>
+    <targetObject>Account</targetObject>
+  </fieldUpdates>
+  <outboundMessages>
+    <fullName>Notify_ERP</fullName>
+    <endpointUrl>https://erp.example.test/hooks/case</endpointUrl>
+    <integrationUser>integration@example.test</integrationUser>
+    <fields>Id</fields><fields>Status</fields>
+    <includeSessionId>false</includeSessionId>
+  </outboundMessages>
+  <rules>
+    <fullName>Escalate_High_Priority</fullName>
+    <active>true</active>
+    <triggerType>onCreateOrTriggeringUpdate</triggerType>
+    <criteriaItems><field>Case.Priority</field><operation>equals</operation><value>High</value></criteriaItems>
+    <booleanFilter>1</booleanFilter>
+    <actions><name>Close_Case</name><type>FieldUpdate</type></actions>
+    <workflowTimeTriggers>
+      <timeLength>1</timeLength><workflowTimeTriggerUnit>Days</workflowTimeTriggerUnit>
+      <offsetFromField>Case.CreatedDate</offsetFromField>
+      <actions><name>Escalation_Alert</name><type>Alert</type></actions>
+    </workflowTimeTriggers>
+  </rules>
+  <tasks>
+    <fullName>Follow_Up</fullName><assignedToType>role</assignedToType>
+    <subject>Follow up with customer</subject><status>Not Started</status>
+    <priority>Normal</priority><dueDateOffset>3</dueDateOffset>
+  </tasks>
+</Workflow>
+"""
+
+
+class WorkflowParserTests(unittest.TestCase):
+    """Phase 5: the legacy workflow engine becomes a first-class automation component."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.path = self.root / "force-app/main/default/workflows/Case.workflow-meta.xml"
+        write(self.path, WORKFLOW_XML)
+        self.builder = ForceAppKnowledge(self.root)
+        self.workflow = self.builder.parse_workflow(self.path)
+        self.references = {
+            (ref["kind"], ref["target"]) for ref in self.workflow["references"]
+        }
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_workflow_component_identity_and_rules(self) -> None:
+        self.assertEqual("Workflow:Case", self.workflow["id"])
+        facts = self.workflow["facts"]
+        self.assertEqual(1, facts["ruleCount"])
+        self.assertEqual(1, facts["activeRuleCount"])
+        rule = facts["rules"][0]
+        self.assertEqual("Escalate_High_Priority", rule["name"])
+        self.assertEqual(
+            [{"field": "Case.Priority", "operator": "equals", "value": "High"}],
+            rule["criteria"],
+        )
+        self.assertEqual(
+            [{"offset": "1", "unit": "Days", "offsetFromField": "Case.CreatedDate"}],
+            rule["timeTriggers"],
+        )
+        self.assertIn(("filters-field", "Case.Priority"), self.references)
+
+    def test_workflow_field_update_cross_object_write(self) -> None:
+        self.assertIn(("writes-field", "Case.Status"), self.references)
+        self.assertIn(("writes-field", "Account.Last_Case_Closed__c"), self.references)
+        updates = {item["name"]: item for item in self.workflow["facts"]["fieldUpdates"]}
+        self.assertEqual("Closed", updates["Close_Case"]["literalValue"])
+        self.assertEqual("Account", updates["Stamp_Account"]["targetObject"])
+
+    def test_workflow_alert_omits_email_addresses(self) -> None:
+        alert = self.workflow["facts"]["alerts"][0]
+        self.assertEqual("unfiled$public/EscalationNotice", alert["template"])
+        self.assertEqual(["group", "owner"], alert["recipientTypes"])
+        serialized = canonical(self.workflow)
+        self.assertNotIn("ops@example.test", serialized)
+        self.assertNotIn("integration@example.test", serialized)
+        self.assertIn(
+            ("uses-template", "unfiled$public/EscalationNotice"), self.references
+        )
+        self.assertIn(("sends-alert", "Case.Escalation_Alert"), self.references)
+
+    def test_workflow_outbound_message_host_and_payload(self) -> None:
+        message = self.workflow["facts"]["outboundMessages"][0]
+        self.assertEqual("erp.example.test", message["endpointHost"])
+        self.assertEqual(["Id", "Status"], message["fields"])
+        self.assertIn(("reads-field", "Case.Status"), self.references)
+
+    def test_workflow_routes_to_automation_claim_with_stub(self) -> None:
+        claims = self.builder.candidate_claims(self.workflow)
+        claim_types = [claim["claimType"] for claim in claims]
+        self.assertIn("automation-inventory", claim_types)
+        self.assertIn("component-description", claim_types)
+        automation = next(
+            claim for claim in claims if claim["claimType"] == "automation-inventory"
+        )
+        self.assertEqual("automation-map", automation["domain"])
+
+
+APEX_SERVICE_SOURCE = """public with sharing class BillingService implements Queueable, Database.AllowsCallouts {
+    @AuraEnabled
+    public static void bill(Id engagementId) {
+        Engagement__c engagement = [SELECT Id, Status__c FROM Engagement__c WHERE Id = :engagementId];
+        engagement.Status__c = 'Billed';
+        update engagement;
+        insert new LogEntry__c(Message__c = 'billed');
+        Database.upsert(engagement, false);
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint('callout:Billing_API/v1/invoices');
+        HttpRequest raw = new HttpRequest();
+        raw.setEndpoint('https://legacy.example.test/api?key=abc');
+    }
+}
+"""
+APEX_TRIGGER_SOURCE = """trigger CaseTrigger on Case (before update) {
+    for (Case record : Trigger.new) {
+        record.Priority = 'High';
+    }
+    update Trigger.new;
+}
+"""
+
+
+class ApexExtractionTests(unittest.TestCase):
+    """Phase 6: declaration facts, DML targets, callout edges, dynamic SOQL toggle."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        (self.root / "force-app/main/default").mkdir(parents=True)
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def parse_source(self, name: str, source: str, metadata_type: str = "ApexClass") -> dict:
+        folder = "triggers" if metadata_type == "ApexTrigger" else "classes"
+        suffix = ".trigger" if metadata_type == "ApexTrigger" else ".cls"
+        path = self.root / f"force-app/main/default/{folder}/{name}{suffix}"
+        write(path, source)
+        return self.builder.parse_apex(path, metadata_type)
+
+    def test_apex_declaration_facts(self) -> None:
+        component = self.parse_source("BillingService", APEX_SERVICE_SOURCE)
+        facts = component["facts"]
+        self.assertEqual("with", facts["sharingModel"])
+        self.assertEqual(["Database.AllowsCallouts", "Queueable"], facts["interfaces"])
+        self.assertIn("AuraEnabled", facts["annotations"])
+        self.assertNotIn("isTest", facts)
+
+    def test_apex_dml_targets_via_var_map_and_new(self) -> None:
+        component = self.parse_source("BillingService", APEX_SERVICE_SOURCE)
+        facts = component["facts"]
+        self.assertEqual(
+            {"Engagement__c": ["update", "upsert"], "LogEntry__c": ["insert"]},
+            facts["dmlTargets"],
+        )
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("dml-object", "Engagement__c"), references)
+        self.assertIn(("dml-object", "LogEntry__c"), references)
+        for reference in component["references"]:
+            if reference["kind"] == "dml-object":
+                self.assertTrue(reference.get("heuristic"))
+
+    def test_trigger_context_variable_seeding(self) -> None:
+        component = self.parse_source("CaseTrigger", APEX_TRIGGER_SOURCE, "ApexTrigger")
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("var-field-ref", "Case.Priority"), references)
+
+    def test_apex_callout_edges(self) -> None:
+        component = self.parse_source("BillingService", APEX_SERVICE_SOURCE)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("uses-named-credential", "Billing_API"), references)
+        self.assertIn(("callout-endpoint", "legacy.example.test"), references)
+        serialized = canonical(component)
+        self.assertNotIn("key=abc", serialized)
+
+    def test_dynamic_soql_from_objects_covered_by_baseline_scan(self) -> None:
+        # SOQL_FROM_RE runs over the whole source, so Database.query string literals yield the
+        # same heuristic queries-object edge as inline SOQL — no separate toggle needed.
+        source = (
+            "public class Finder { public void run() { "
+            "List<SObject> rows = Database.query('SELECT Id FROM ScheduleConflict__c'); } }\n"
+        )
+        component = self.parse_source("Finder", source)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("queries-object", "ScheduleConflict__c"), references)
+
+
+DEEP_APPROVAL_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
+  <active>true</active><label>Discount Approval</label>
+  <recordEditability>AdminOnly</recordEditability>
+  <allowRecall>true</allowRecall>
+  <finalApprovalRecordLock>true</finalApprovalRecordLock>
+  <entryCriteria>
+    <criteriaItems><field>Engagement__c.Discount__c</field><operation>greaterThan</operation><value>20</value></criteriaItems>
+    <booleanFilter>1</booleanFilter>
+  </entryCriteria>
+  <approvalStep>
+    <name>Manager_Review</name><label>Manager Review</label>
+    <assignedApprover>
+      <approver><type>relatedUserField</type><name>Manager__c</name></approver>
+      <approver><type>user</type><name>jane.doe@example.test</name></approver>
+      <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
+    </assignedApprover>
+    <rejectBehavior><type>RejectRequest</type></rejectBehavior>
+    <approvalActions><action><name>Flag_Review</name><type>FieldUpdate</type></action></approvalActions>
+  </approvalStep>
+  <finalApprovalActions>
+    <action><name>Set_Approved</name><type>FieldUpdate</type></action>
+    <action><name>Approval_Notice</name><type>Alert</type></action>
+  </finalApprovalActions>
+  <approvalPageFields><field>Name</field><field>Discount__c</field></approvalPageFields>
+  <emailTemplate>unfiled$public/ApprovalRequest</emailTemplate>
+  <allowedSubmitters><type>owner</type></allowedSubmitters>
+  <allowedSubmitters><submitter>ops.user@example.test</submitter><type>user</type></allowedSubmitters>
+</ApprovalProcess>
+"""
+
+
+class ApprovalProcessDeepeningTests(unittest.TestCase):
+    """Phase 7: criteria, approver routing, and the cross-file workflow-action chain."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.path = (
+            self.root
+            / "force-app/main/default/approvalProcesses/Engagement__c.Discount_Approval.approvalProcess-meta.xml"
+        )
+        write(self.path, DEEP_APPROVAL_XML)
+        self.process = ForceAppKnowledge(self.root).parse_approval_process(self.path)
+        self.references = {
+            (ref["kind"], ref["target"]) for ref in self.process["references"]
+        }
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_entry_criteria_filters(self) -> None:
+        facts = self.process["facts"]
+        self.assertEqual(
+            [
+                {
+                    "field": "Engagement__c.Discount__c",
+                    "operator": "greaterThan",
+                    "value": "20",
+                }
+            ],
+            facts["entryCriteria"]["criteria"],
+        )
+        self.assertIn(("filters-field", "Engagement__c.Discount__c"), self.references)
+
+    def test_step_approvers_omit_usernames(self) -> None:
+        step = self.process["facts"]["steps"][0]
+        self.assertEqual("FirstResponse", step["whenMultipleApprovers"])
+        self.assertEqual("RejectRequest", step["rejectBehavior"])
+        self.assertEqual(
+            [{"type": "relatedUserField", "field": "Manager__c"}, {"type": "user"}],
+            step["approvers"],
+        )
+        serialized = canonical(self.process)
+        self.assertNotIn("jane.doe@example.test", serialized)
+        self.assertNotIn("ops.user@example.test", serialized)
+        self.assertIn(("references-field", "Engagement__c.Manager__c"), self.references)
+
+    def test_action_sets_link_workflow_components(self) -> None:
+        action_sets = self.process["facts"]["actionSets"]
+        self.assertEqual(
+            [
+                {"name": "Set_Approved", "type": "FieldUpdate"},
+                {"name": "Approval_Notice", "type": "Alert"},
+            ],
+            action_sets["finalApproval"],
+        )
+        self.assertIn(
+            ("uses-workflow-action", "Engagement__c.Set_Approved"), self.references
+        )
+        self.assertIn(
+            ("uses-workflow-action", "Engagement__c.Flag_Review"), self.references
+        )
+        self.assertIn(("sends-alert", "Engagement__c.Approval_Notice"), self.references)
+        self.assertIn(
+            ("uses-template", "unfiled$public/ApprovalRequest"), self.references
+        )
+
+    def test_lock_and_page_field_facts(self) -> None:
+        facts = self.process["facts"]
+        self.assertEqual("AdminOnly", facts["recordEditability"])
+        self.assertTrue(facts["allowRecall"])
+        self.assertTrue(facts["finalApprovalRecordLock"])
+        self.assertEqual(["Discount__c", "Name"], sorted(facts["approvalPageFields"]))
+        self.assertEqual(["owner", "user"], facts["allowedSubmitterTypes"])
+        self.assertIn(("references-field", "Engagement__c.Discount__c"), self.references)
+        self.assertIn(("references-field", "Engagement__c.Name"), self.references)
+
+
+class RecordDataModelTests(unittest.TestCase):
+    """Phase 8: RecordType, value sets, BusinessProcess, DuplicateRule."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        (self.root / "force-app/main/default").mkdir(parents=True)
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_record_type_scoping_and_business_process_edge(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/objects/Case/recordTypes/Support.recordType-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Support</fullName><label>Support</label><active>true</active>"
+            "<businessProcess>Support_Process</businessProcess>"
+            "<picklistValues><picklist>Priority</picklist>"
+            "<values><fullName>High</fullName><default>true</default></values>"
+            "<values><fullName>Low</fullName></values></picklistValues>"
+            "</RecordType>\n",
+        )
+        component = self.builder.parse_record_type(path)
+        self.assertEqual("RecordType:Case.Support", component["id"])
+        facts = component["facts"]
+        self.assertTrue(facts["active"])
+        self.assertEqual(
+            [{"picklist": "Priority", "valueCount": 2, "defaults": ["High"]}],
+            facts["picklistScopes"],
+        )
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("operates-on", "Case"), references)
+        self.assertIn(("references-field", "Case.Priority"), references)
+        self.assertIn(("uses-business-process", "Case.Support_Process"), references)
+
+    def test_standard_value_set_lifecycle_flags(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/standardValueSets/OpportunityStage.standardValueSet-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<StandardValueSet xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<sorted>false</sorted>"
+            "<standardValue><fullName>Prospecting</fullName><default>true</default>"
+            "<probability>10</probability><forecastCategory>Pipeline</forecastCategory></standardValue>"
+            "<standardValue><fullName>Closed Won</fullName><closed>true</closed><won>true</won>"
+            "<probability>100</probability></standardValue>"
+            "</StandardValueSet>\n",
+        )
+        component = self.builder.parse_value_set(path, "StandardValueSet")
+        self.assertEqual("StandardValueSet:OpportunityStage", component["id"])
+        won = component["facts"]["values"][1]
+        self.assertTrue(won["closed"])
+        self.assertTrue(won["won"])
+        self.assertEqual("100", won["probability"])
+
+    def test_business_process_ordered_values_and_value_set_link(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/objects/Opportunity/businessProcesses/Sales.businessProcess-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<BusinessProcess xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Sales</fullName><isActive>true</isActive>"
+            "<values><fullName>Qualify</fullName><default>true</default></values>"
+            "<values><fullName>Close</fullName></values>"
+            "</BusinessProcess>\n",
+        )
+        component = self.builder.parse_business_process(path)
+        facts = component["facts"]
+        self.assertEqual("StageName", facts["lifecycleField"])
+        self.assertEqual(["Qualify", "Close"], [v["fullName"] for v in facts["values"]])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("references-field", "Opportunity.StageName"), references)
+        self.assertIn(("uses-value-set", "OpportunityStage"), references)
+
+    def test_duplicate_rule_error_catalog_and_matching_rule_edge(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/duplicateRules/Lead.Standard_Lead_Duplicate_Rule.duplicateRule-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<DuplicateRule xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<masterLabel>Standard Lead Duplicate Rule</masterLabel><isActive>true</isActive>"
+            "<actionOnInsert>Block</actionOnInsert><actionOnUpdate>Allow</actionOnUpdate>"
+            "<alertText>You're creating a duplicate lead.</alertText>"
+            "<securityOption>EnforceSharingRules</securityOption>"
+            "<duplicateRuleMatchRules>"
+            "<matchingRule>Standard_Lead_Match</matchingRule>"
+            "<matchingRuleObjectType>Contact</matchingRuleObjectType>"
+            "<objectMapping><inputObject>Lead</inputObject><outputObject>Contact</outputObject>"
+            "<mappingFields><inputField>Email</inputField><outputField>Email</outputField></mappingFields>"
+            "</objectMapping>"
+            "</duplicateRuleMatchRules>"
+            "</DuplicateRule>\n",
+        )
+        component = self.builder.parse_duplicate_rule(path)
+        facts = component["facts"]
+        self.assertEqual("Block", facts["actionOnInsert"])
+        entry = facts["errorCatalog"][0]
+        self.assertEqual("duplicate-alert", entry["kind"])
+        self.assertEqual("You're creating a duplicate lead.", entry["errorMessage"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("uses-matching-rule", "Contact.Standard_Lead_Match"), references)
+        self.assertIn(("references-field", "Lead.Email"), references)
+        self.assertIn(("references-field", "Contact.Email"), references)
+        claims = self.builder.candidate_claims(component)
+        automation = next(
+            claim for claim in claims if claim["claimType"] == "automation-inventory"
+        )
+        self.assertIn("duplicate lead", automation["statement"])
+
+
+class LwcDeepeningTests(unittest.TestCase):
+    """Phase 9: targetConfigs placement, markup literals, labels, composition."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        bundle = self.root / "force-app/main/default/lwc/engagementPanel"
+        write(
+            bundle / "engagementPanel.js-meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<isExposed>true</isExposed><masterLabel>Engagement Panel</masterLabel>"
+            "<targets><target>lightning__RecordPage</target></targets>"
+            "<targetConfigs>"
+            '<targetConfig targets="lightning__RecordPage">'
+            "<objects><object>Engagement__c</object><object>Account</object></objects>"
+            "</targetConfig>"
+            "</targetConfigs>"
+            "</LightningComponentBundle>\n",
+        )
+        write(
+            bundle / "engagementPanel.js",
+            "import { LightningElement, api, wire } from 'lwc';\n"
+            "import getSummary from '@salesforce/apex/EngagementController.getSummary';\n"
+            "import HEADER_LABEL from '@salesforce/label/c.Engagement_Header';\n"
+            "import { getRecord } from 'lightning/uiRecordApi';\n"
+            "const FIELDS = ['Engagement__c.Status__c', 'Engagement__c.Name'];\n"
+            "export default class EngagementPanel extends LightningElement {\n"
+            "  @api recordId;\n"
+            "  @wire(getRecord, { recordId: '$recordId', fields: FIELDS }) record;\n"
+            "}\n",
+        )
+        write(
+            bundle / "engagementPanel.html",
+            "<template>\n"
+            '  <lightning-record-form object-api-name="Engagement__c" field-name="Owner__c">\n'
+            "  </lightning-record-form>\n"
+            "  <c-status-badge></c-status-badge>\n"
+            "</template>\n",
+        )
+        self.bundle = bundle
+        self.component = ForceAppKnowledge(self.root).parse_lwc(bundle)
+        self.references = {
+            (ref["kind"], ref["target"]) for ref in self.component["references"]
+        }
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_target_config_objects_are_placement_edges(self) -> None:
+        self.assertEqual(
+            [{"targets": "lightning__RecordPage", "objects": ["Account", "Engagement__c"]}],
+            self.component["facts"]["targetConfigs"],
+        )
+        self.assertIn(("operates-on", "Engagement__c"), self.references)
+        self.assertIn(("operates-on", "Account"), self.references)
+
+    def test_js_wire_field_literals_are_heuristic_refs(self) -> None:
+        self.assertIn(("references-field", "Engagement__c.Status__c"), self.references)
+        for reference in self.component["references"]:
+            if reference["target"] == "Engagement__c.Status__c":
+                self.assertTrue(reference.get("heuristic"))
+
+    def test_label_import_and_embedded_component(self) -> None:
+        self.assertIn(("uses-label", "Engagement_Header"), self.references)
+        self.assertIn(("embeds-component", "statusBadge"), self.references)
+        self.assertIn(("apex-method", "EngagementController.getSummary"), self.references)
+        self.assertEqual(["recordId"], self.component["facts"]["apiProperties"])
+        self.assertEqual(["getRecord"], self.component["facts"]["wiredAdapters"])
+
+    def test_html_field_literal_qualified_by_unambiguous_object(self) -> None:
+        self.assertIn(("references-field", "Engagement__c.Owner__c"), self.references)
+
+    def test_markup_toggle_disables_html_scanning(self) -> None:
+        write(
+            self.root / "config/knowledge-extraction.json",
+            '{"schemaVersion": 1, "markupFieldExtraction": false}\n',
+        )
+        component = ForceAppKnowledge(self.root).parse_lwc(self.bundle)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertNotIn(("embeds-component", "statusBadge"), references)
+        self.assertNotIn(("references-field", "Engagement__c.Status__c"), references)
+        # Deterministic imports and targetConfigs stay on regardless of the toggle.
+        self.assertIn(("uses-label", "Engagement_Header"), references)
+        self.assertIn(("operates-on", "Engagement__c"), references)
+
+
+FLEXIPAGE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<FlexiPage xmlns="http://soap.sforce.com/2006/04/metadata">
+  <masterLabel>Engagement Record Page</masterLabel>
+  <type>RecordPage</type>
+  <sobjectType>Engagement__c</sobjectType>
+  <template><name>flexipage:recordHomeTemplateDesktop</name></template>
+  <flexiPageRegions>
+    <name>main</name><type>Region</type>
+    <itemInstances>
+      <componentInstance>
+        <componentName>c:engagementPanel</componentName>
+        <componentInstanceProperties><name>flowName</name><value>Escalation_Router</value></componentInstanceProperties>
+        <visibilityRule>
+          <criteria><leftValue>{!Record.Status__c}</leftValue><operator>EQUAL</operator><rightValue>Open</rightValue></criteria>
+        </visibilityRule>
+      </componentInstance>
+    </itemInstances>
+    <itemInstances>
+      <componentInstance><componentName>flexipage:reportChart</componentName></componentInstance>
+    </itemInstances>
+    <itemInstances>
+      <fieldInstance><fieldItem>Record.Discount__c</fieldItem></fieldInstance>
+    </itemInstances>
+  </flexiPageRegions>
+</FlexiPage>
+"""
+
+
+class FlexiPageParserTests(unittest.TestCase):
+    """Phase 10: the record page's component/field wiring becomes visible."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        path = (
+            self.root
+            / "force-app/main/default/flexipages/Engagement_Record_Page.flexipage-meta.xml"
+        )
+        write(path, FLEXIPAGE_XML)
+        self.page = ForceAppKnowledge(self.root).parse_flexipage(path)
+        self.references = {
+            (ref["kind"], ref["target"]) for ref in self.page["references"]
+        }
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_flexipage_identity_and_facts(self) -> None:
+        self.assertEqual("FlexiPage:Engagement_Record_Page", self.page["id"])
+        facts = self.page["facts"]
+        self.assertEqual("RecordPage", facts["pageType"])
+        self.assertEqual("Engagement__c", facts["object"])
+        self.assertEqual("flexipage:recordHomeTemplateDesktop", facts["template"])
+        self.assertEqual(2, facts["componentCount"])
+        self.assertEqual(1, facts["fieldInstanceCount"])
+        self.assertEqual(["Engagement__c.Status__c"], facts["visibilityRuleFields"])
+
+    def test_flexipage_edges(self) -> None:
+        self.assertIn(("operates-on", "Engagement__c"), self.references)
+        self.assertIn(("places-field", "Engagement__c.Discount__c"), self.references)
+        self.assertIn(("references-field", "Engagement__c.Status__c"), self.references)
+        self.assertIn(("displays-component", "engagementPanel"), self.references)
+        self.assertIn(("displays-component", "flexipage:reportChart"), self.references)
+        self.assertIn(("launches-flow", "Escalation_Router"), self.references)
+
+
+DEEP_LAYOUT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<Layout xmlns="http://soap.sforce.com/2006/04/metadata">
+  <layoutSections>
+    <label>Engagement Details</label>
+    <layoutColumns>
+      <layoutItems><behavior>Required</behavior><field>Status__c</field></layoutItems>
+      <layoutItems><behavior>Readonly</behavior><field>Total_Billed__c</field></layoutItems>
+      <layoutItems><behavior>Edit</behavior><field>Name</field></layoutItems>
+      <layoutItems><page>EngagementSummary</page></layoutItems>
+    </layoutColumns>
+  </layoutSections>
+  <platformActionList>
+    <actionListContext>Record</actionListContext>
+    <platformActionListItems><actionName>Engagement__c.New_Milestone</actionName><actionType>QuickAction</actionType></platformActionListItems>
+  </platformActionList>
+  <relatedLists>
+    <fields>NAME</fields><fields>STATUS</fields>
+    <relatedList>Milestones__r</relatedList>
+  </relatedLists>
+</Layout>
+"""
+QUICK_ACTION_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<QuickAction xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>New Milestone</label>
+  <type>Create</type>
+  <targetObject>Milestone__c</targetObject>
+  <targetParentField>Engagement__c</targetParentField>
+  <quickActionLayout>
+    <layoutSectionStyle>TwoColumnsLeftToRight</layoutSectionStyle>
+    <quickActionLayoutColumns>
+      <quickActionLayoutItems><field>Name</field><uiBehavior>Edit</uiBehavior></quickActionLayoutItems>
+      <quickActionLayoutItems><field>Due_Date__c</field><uiBehavior>Required</uiBehavior></quickActionLayoutItems>
+    </quickActionLayoutColumns>
+  </quickActionLayout>
+  <fieldOverrides><field>Status__c</field><formula>"Planned"</formula></fieldOverrides>
+  <successMessage>Milestone created.</successMessage>
+</QuickAction>
+"""
+
+
+class LayoutQuickActionTests(unittest.TestCase):
+    """Phase 11: layout field behavior + quick-action entry points."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_layout_field_behavior_sections_and_actions(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/layouts/Engagement__c-Engagement Layout.layout-meta.xml"
+        )
+        write(path, DEEP_LAYOUT_XML)
+        layout = self.builder.parse_layout(path)
+        facts = layout["facts"]
+        self.assertEqual(["Engagement__c.Status__c"], facts["requiredOnLayout"])
+        self.assertEqual(["Engagement__c.Total_Billed__c"], facts["readonlyOnLayout"])
+        self.assertEqual(["Engagement Details"], facts["sections"])
+        self.assertEqual(
+            [{"name": "Milestones__r", "fields": ["NAME", "STATUS"]}],
+            facts["relatedLists"],
+        )
+        references = {(ref["kind"], ref["target"]) for ref in layout["references"]}
+        self.assertIn(("action", "Engagement__c.New_Milestone"), references)
+        self.assertIn(("displays-component", "EngagementSummary"), references)
+        self.assertIn(("related-list", "Milestones__r"), references)
+
+    def test_quick_action_target_fields_and_parent(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/quickActions/Engagement__c.New_Milestone.quickAction-meta.xml"
+        )
+        write(path, QUICK_ACTION_XML)
+        action = self.builder.parse_quick_action(path)
+        facts = action["facts"]
+        self.assertEqual("Create", facts["actionType"])
+        self.assertEqual("Milestone__c", facts["object"])
+        self.assertEqual(2, facts["fieldCount"])
+        self.assertEqual("Milestone created.", facts["successMessage"])
+        references = {(ref["kind"], ref["target"]) for ref in action["references"]}
+        self.assertIn(("operates-on", "Milestone__c"), references)
+        self.assertIn(("places-field", "Milestone__c.Due_Date__c"), references)
+        self.assertIn(("references-field", "Milestone__c.Status__c"), references)
+        self.assertIn(("references-field", "Milestone__c.Engagement__c"), references)
+
+    def test_quick_action_flow_variant(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/quickActions/Run_Escalation.quickAction-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<QuickAction xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Run Escalation</label><type>Flow</type>"
+            "<flowDefinition>Escalation_Router</flowDefinition></QuickAction>\n",
+        )
+        action = self.builder.parse_quick_action(path)
+        references = {(ref["kind"], ref["target"]) for ref in action["references"]}
+        self.assertIn(("launches-flow", "Escalation_Router"), references)
+
+
+class CustomApplicationTests(unittest.TestCase):
+    """Phase 12: app navigation scope and per-profile page assignment."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        path = self.root / "force-app/main/default/applications/Service.app-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomApplication xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Service Console</label><navType>Console</navType><uiType>Lightning</uiType>"
+            "<formFactors>Large</formFactors>"
+            "<tabs>standard-Account</tabs><tabs>Engagement__c</tabs>"
+            "<utilityBar>Service_UtilityBar</utilityBar>"
+            "<profileActionOverrides>"
+            "<actionName>View</actionName><content>Engagement_Record_Page</content>"
+            "<formFactor>Large</formFactor><pageOrSobjectType>Engagement__c</pageOrSobjectType>"
+            "<recordType>Engagement__c.Support</recordType><type>Flexipage</type>"
+            "<profile>Support Agent</profile>"
+            "</profileActionOverrides>"
+            "</CustomApplication>\n",
+        )
+        self.app = ForceAppKnowledge(self.root).parse_custom_application(path)
+        self.references = {(ref["kind"], ref["target"]) for ref in self.app["references"]}
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_application_tabs_and_utility_bar(self) -> None:
+        facts = self.app["facts"]
+        self.assertEqual("Console", facts["navType"])
+        self.assertEqual(["standard-Account", "Engagement__c"], facts["tabs"])
+        self.assertTrue(facts["hasUtilityBar"])
+        self.assertIn(("operates-on", "Account"), self.references)
+        self.assertIn(("displays-component", "Engagement__c"), self.references)
+        self.assertIn(("displays-component", "Service_UtilityBar"), self.references)
+
+    def test_application_profile_override_assignment(self) -> None:
+        override = self.app["facts"]["overrides"][0]
+        self.assertEqual(
+            {
+                "action": "View",
+                "content": "Engagement_Record_Page",
+                "type": "Flexipage",
+                "object": "Engagement__c",
+                "recordType": "Engagement__c.Support",
+                "profile": "Support Agent",
+                "formFactor": "Large",
+            },
+            override,
+        )
+        self.assertIn(("overrides-view", "Engagement_Record_Page"), self.references)
+
+
+DEEP_PERMISSION_SET_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+  <label>Engagement Manager</label>
+  <license>Salesforce</license>
+  <hasActivationRequired>false</hasActivationRequired>
+  <objectPermissions>
+    <object>Engagement__c</object>
+    <allowCreate>true</allowCreate><allowRead>true</allowRead><allowEdit>true</allowEdit>
+    <allowDelete>false</allowDelete><viewAllRecords>true</viewAllRecords><modifyAllRecords>false</modifyAllRecords>
+  </objectPermissions>
+  <fieldPermissions><field>Engagement__c.Status__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+  <fieldPermissions><field>Engagement__c.Margin__c</field><readable>true</readable><editable>false</editable></fieldPermissions>
+  <fieldPermissions><field>Engagement__c.Secret__c</field><readable>false</readable><editable>false</editable></fieldPermissions>
+  <classAccesses><apexClass>BillingService</apexClass><enabled>true</enabled></classAccesses>
+  <customPermissions><name>Can_Override_Price</name><enabled>true</enabled></customPermissions>
+  <recordTypeVisibilities><recordType>Engagement__c.Standard</recordType><visible>true</visible></recordTypeVisibilities>
+  <flowAccesses><flow>Escalation_Router</flow><enabled>true</enabled></flowAccesses>
+  <userPermissions><name>ModifyAllData</name><enabled>true</enabled></userPermissions>
+</PermissionSet>
+"""
+PROFILE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+  <custom>true</custom>
+  <userLicense>Salesforce</userLicense>
+  <fieldPermissions><field>Engagement__c.Status__c</field><readable>true</readable><editable>false</editable></fieldPermissions>
+  <layoutAssignments><layout>Engagement__c-Engagement Layout</layout><recordType>Engagement__c.Standard</recordType></layoutAssignments>
+  <recordTypeVisibilities><recordType>Engagement__c.Standard</recordType><visible>true</visible><default>true</default></recordTypeVisibilities>
+  <applicationVisibilities><application>Service</application><visible>true</visible><default>true</default></applicationVisibilities>
+  <loginIpRanges><startAddress>10.0.0.1</startAddress><endAddress>10.0.0.255</endAddress></loginIpRanges>
+  <loginHours><mondayStart>420</mondayStart><mondayEnd>1140</mondayEnd></loginHours>
+</Profile>
+"""
+
+
+class AccessModelTests(unittest.TestCase):
+    """Phase 13: level-aware grants, CRUD map, Profile parsing, cap priorities."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def parse_permission_set(self, xml: str) -> dict:
+        path = (
+            self.root
+            / "force-app/main/default/permissionsets/Engagement_Manager.permissionset-meta.xml"
+        )
+        write(path, xml)
+        return self.builder.parse_permission_set(path)
+
+    def test_field_grants_carry_levels(self) -> None:
+        component = self.parse_permission_set(DEEP_PERMISSION_SET_XML)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("grants-field-edit", "Engagement__c.Status__c"), references)
+        self.assertIn(("grants-field-read", "Engagement__c.Margin__c"), references)
+        # No grant at all → no edge; the legacy level-blind kind is no longer emitted.
+        self.assertNotIn(
+            ("grants-field-read", "Engagement__c.Secret__c"), references
+        )
+        self.assertFalse(
+            any(ref["kind"] == "grants-field-permission" for ref in component["references"])
+        )
+
+    def test_object_access_map_and_grant_edges(self) -> None:
+        component = self.parse_permission_set(DEEP_PERMISSION_SET_XML)
+        facts = component["facts"]
+        self.assertEqual({"Engagement__c": "CRE+VA"}, facts["objectAccess"])
+        self.assertEqual(["ModifyAllData"], facts["systemPermissions"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("grants-object-permission", "Engagement__c"), references)
+        self.assertIn(("grants-object-view-all", "Engagement__c"), references)
+        self.assertNotIn(("grants-object-modify-all", "Engagement__c"), references)
+        self.assertIn(("grants-class-access", "BillingService"), references)
+        self.assertIn(("grants-custom-permission", "Can_Override_Price"), references)
+        self.assertIn(("grants-record-type", "Engagement__c.Standard"), references)
+        self.assertIn(("grants-flow-access", "Escalation_Router"), references)
+        self.assertIn(("grants-user-permission", "ModifyAllData"), references)
+
+    def test_cap_priority_cuts_field_grants_first(self) -> None:
+        rows = "".join(
+            f"<fieldPermissions><field>Engagement__c.F{i}__c</field>"
+            "<readable>true</readable><editable>false</editable></fieldPermissions>"
+            for i in range(400)
+        )
+        xml = DEEP_PERMISSION_SET_XML.replace("</PermissionSet>", rows + "</PermissionSet>")
+        component = self.parse_permission_set(xml)
+        facts = component["facts"]
+        self.assertTrue(facts["referencesTruncated"])
+        self.assertEqual(["grants-field-read"], facts["truncatedFamilies"])
+        kinds = {ref["kind"] for ref in component["references"]}
+        # High-priority families survive the cap intact.
+        self.assertIn("grants-user-permission", kinds)
+        self.assertIn("grants-object-permission", kinds)
+        self.assertIn("grants-class-access", kinds)
+        self.assertEqual(403, facts["fieldPermissionCount"])
+
+    def test_profile_layout_assignment_and_posture(self) -> None:
+        path = self.root / "force-app/main/default/profiles/Support Agent.profile-meta.xml"
+        write(path, PROFILE_XML)
+        component = self.builder.parse_profile(path)
+        self.assertEqual("Profile:Support Agent", component["id"])
+        facts = component["facts"]
+        self.assertTrue(facts["custom"])
+        self.assertEqual(
+            {"Engagement__c": "Engagement__c.Standard"}, facts["defaultRecordTypes"]
+        )
+        self.assertEqual("Service", facts["defaultApplication"])
+        self.assertTrue(facts["loginIpRangesPresent"])
+        self.assertEqual(1, facts["loginIpRangeCount"])
+        self.assertTrue(facts["loginHoursPresent"])
+        serialized = canonical(component)
+        self.assertNotIn("10.0.0.1", serialized)
+        self.assertNotIn("420", serialized)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(
+            ("assigns-layout", "Engagement__c-Engagement Layout"), references
+        )
+        self.assertIn(("grants-field-read", "Engagement__c.Status__c"), references)
+
+
+class ListSharingQueueTests(unittest.TestCase):
+    """Phase 14: list views, field sets, sharing rules, queues."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_list_view_columns_and_filters(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/objects/Engagement__c/listViews/Open.listView-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ListView xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Open</fullName><label>Open Engagements</label>"
+            "<filterScope>Everything</filterScope>"
+            "<columns>NAME</columns><columns>Status__c</columns>"
+            "<filters><field>Status__c</field><operation>equals</operation><value>Open</value></filters>"
+            "</ListView>\n",
+        )
+        component = self.builder.parse_list_view(path)
+        facts = component["facts"]
+        self.assertEqual("Everything", facts["filterScope"])
+        self.assertEqual(
+            [{"field": "Status__c", "operator": "equals", "value": "Open"}],
+            facts["filters"],
+        )
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("references-field", "Engagement__c.NAME"), references)
+        self.assertIn(("filters-field", "Engagement__c.Status__c"), references)
+
+    def test_field_set_displayed_vs_available(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/objects/Engagement__c/fieldSets/Billing.fieldSet-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<FieldSet xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Billing</fullName><label>Billing Fields</label>"
+            "<displayedFields><field>Amount__c</field></displayedFields>"
+            "<availableFields><field>Margin__c</field></availableFields>"
+            "</FieldSet>\n",
+        )
+        component = self.builder.parse_field_set(path)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("places-field", "Engagement__c.Amount__c"), references)
+        self.assertIn(("references-field", "Engagement__c.Margin__c"), references)
+
+    def test_sharing_rules_criteria_and_grantees(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/sharingRules/Engagement__c.sharingRules-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<SharingRules xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<sharingCriteriaRules>"
+            "<fullName>EMEA_Read</fullName><accessLevel>Read</accessLevel>"
+            "<criteriaItems><field>Region__c</field><operation>equals</operation><value>EMEA</value></criteriaItems>"
+            "<sharedTo><roleAndSubordinates>EMEA_Sales</roleAndSubordinates></sharedTo>"
+            "</sharingCriteriaRules>"
+            "<sharingOwnerRules>"
+            "<fullName>Ops_Full</fullName><accessLevel>Edit</accessLevel>"
+            "<sharedFrom><group>Field_Ops</group></sharedFrom>"
+            "<sharedTo><group>HQ_Ops</group></sharedTo>"
+            "</sharingOwnerRules>"
+            "</SharingRules>\n",
+        )
+        component = self.builder.parse_sharing_rules(path)
+        facts = component["facts"]
+        rule = facts["criteriaRules"][0]
+        self.assertEqual("Read", rule["accessLevel"])
+        self.assertEqual(
+            [{"field": "Region__c", "operator": "equals", "value": "EMEA"}],
+            rule["criteria"],
+        )
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("filters-field", "Engagement__c.Region__c"), references)
+        self.assertIn(
+            ("shares-with", "roleAndSubordinates:EMEA_Sales"), references
+        )
+        self.assertIn(("shares-with", "group:HQ_Ops"), references)
+        # sharedFrom parties are ownership scoping, not grants.
+        self.assertNotIn(("shares-with", "group:Field_Ops"), references)
+
+    def test_queue_serves_objects_with_member_counts_only(self) -> None:
+        path = self.root / "force-app/main/default/queues/Tier1_Support.queue-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Queue xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<name>Tier1_Support</name><doesSendEmailToMembers>true</doesSendEmailToMembers>"
+            "<email>tier1@example.test</email>"
+            "<queueSobject><sobjectType>Case</sobjectType></queueSobject>"
+            "<queueSobject><sobjectType>Lead</sobjectType></queueSobject>"
+            "<queueMembers><users><user>agent.one@example.test</user><user>agent.two@example.test</user></users></queueMembers>"
+            "</Queue>\n",
+        )
+        component = self.builder.parse_queue(path)
+        facts = component["facts"]
+        self.assertEqual(["Case", "Lead"], facts["servesObjects"])
+        self.assertEqual({"users": 2}, facts["memberCounts"])
+        serialized = canonical(component)
+        self.assertNotIn("tier1@example.test", serialized)
+        self.assertNotIn("agent.one@example.test", serialized)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("serves-object", "Case"), references)
+        self.assertIn(("serves-object", "Lead"), references)
+
+
+class RuleFileTests(unittest.TestCase):
+    """Phase 15: shared assignment/auto-response/escalation rule parsing."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_assignment_rules_queue_targets_never_users(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/assignmentRules/Case.assignmentRules-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<AssignmentRules xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<assignmentRule><fullName>Standard</fullName><active>true</active>"
+            "<ruleEntry>"
+            "<criteriaItems><field>Case.Priority</field><operation>equals</operation><value>High</value></criteriaItems>"
+            "<assignedTo>Tier1_Support</assignedTo><assignedToType>Queue</assignedToType>"
+            "<template>unfiled$public/CaseAck</template>"
+            "</ruleEntry>"
+            "<ruleEntry>"
+            "<criteriaItems><field>Case.Priority</field><operation>equals</operation><value>Low</value></criteriaItems>"
+            "<assignedTo>jane.doe@example.test</assignedTo><assignedToType>User</assignedToType>"
+            "</ruleEntry>"
+            "</assignmentRule>"
+            "</AssignmentRules>\n",
+        )
+        component = self.builder.parse_rule_file(path, token="assignmentRules")
+        self.assertEqual("AssignmentRules:Case", component["id"])
+        rule = component["facts"]["rules"][0]
+        self.assertTrue(rule["active"])
+        self.assertEqual(2, len(rule["entries"]))
+        self.assertEqual(
+            {"assignedToType": "User"},
+            {
+                key: value
+                for key, value in rule["entries"][1].items()
+                if key.startswith("assigned")
+            },
+        )
+        serialized = canonical(component)
+        self.assertNotIn("jane.doe@example.test", serialized)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("filters-field", "Case.Priority"), references)
+        self.assertIn(("assigns-to", "Tier1_Support"), references)
+        self.assertIn(("uses-template", "unfiled$public/CaseAck"), references)
+        claims = self.builder.candidate_claims(component)
+        self.assertIn("automation-inventory", [claim["claimType"] for claim in claims])
+
+    def test_escalation_rules_actions(self) -> None:
+        path = (
+            self.root
+            / "force-app/main/default/escalationRules/Case.escalationRules-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<EscalationRules xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<escalationRule><fullName>SLA</fullName><active>true</active>"
+            "<ruleEntry>"
+            "<criteriaItems><field>Case.Status</field><operation>equals</operation><value>New</value></criteriaItems>"
+            "<escalationAction><minutesToEscalation>60</minutesToEscalation>"
+            "<assignedTo>Tier2_Support</assignedTo><assignedToType>Queue</assignedToType>"
+            "<notifyCaseOwner>true</notifyCaseOwner></escalationAction>"
+            "</ruleEntry>"
+            "</escalationRule>"
+            "</EscalationRules>\n",
+        )
+        component = self.builder.parse_rule_file(path, token="escalationRules")
+        action = component["facts"]["rules"][0]["entries"][0]["escalationActions"][0]
+        self.assertEqual("60", action["minutesToEscalation"])
+        self.assertTrue(action["notifyCaseOwner"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("assigns-to", "Tier2_Support"), references)
+
+
+class IntegrationFamilyTests(unittest.TestCase):
+    """Phase 16: credential chains, posture facts, connected-app grants."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.base = self.root / "force-app/main/default"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_named_credential_external_credential_chain(self) -> None:
+        path = self.base / "namedCredentials/BillingV2.namedCredential-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<NamedCredential xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Billing v2</label><namedCredentialType>SecuredEndpoint</namedCredentialType>"
+            "<namedCredentialParameters><parameterName>url</parameterName><parameterType>Url</parameterType>"
+            "<parameterValue>https://api.billing.example.test/v2</parameterValue></namedCredentialParameters>"
+            "<namedCredentialParameters><parameterType>Authentication</parameterType>"
+            "<externalCredential>Billing_OAuth</externalCredential></namedCredentialParameters>"
+            "</NamedCredential>\n",
+        )
+        component = self.builder.parse_integration(path, "NamedCredential")
+        self.assertEqual("api.billing.example.test", component["facts"]["endpointHost"])
+        self.assertEqual("Billing_OAuth", component["facts"]["externalCredential"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("uses-external-credential", "Billing_OAuth"), references)
+
+    def test_external_credential_principals_no_secrets(self) -> None:
+        path = self.base / "externalCredentials/Billing_OAuth.externalCredential-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ExternalCredential xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Billing OAuth</label>"
+            "<authenticationProtocol>OAuth</authenticationProtocol>"
+            "<authenticationProtocolVariant>ClientCredentialsClientSecretBasic</authenticationProtocolVariant>"
+            "<externalCredentialParameters><parameterName>BillingPrincipal</parameterName>"
+            "<parameterType>NamedPrincipal</parameterType><sequenceNumber>1</sequenceNumber></externalCredentialParameters>"
+            "<externalCredentialParameters><parameterName>clientSecret</parameterName>"
+            "<parameterType>AuthParameter</parameterType><parameterValue>super-secret-value</parameterValue></externalCredentialParameters>"
+            "<externalCredentialParameters><parameterType>AuthProvider</parameterType>"
+            "<authProvider>AzureAD</authProvider></externalCredentialParameters>"
+            "</ExternalCredential>\n",
+        )
+        component = self.builder.parse_integration(path, "ExternalCredential")
+        facts = component["facts"]
+        self.assertEqual("OAuth", facts["authenticationProtocol"])
+        self.assertEqual(
+            [{"name": "BillingPrincipal", "type": "NamedPrincipal", "sequence": "1"}],
+            facts["principals"],
+        )
+        self.assertNotIn("super-secret-value", canonical(component))
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("references-auth-provider", "AzureAD"), references)
+
+    def test_remote_site_posture_facts(self) -> None:
+        path = self.base / "remoteSiteSettings/Legacy.remoteSite-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<RemoteSiteSetting xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Legacy</fullName><url>http://legacy.example.test/api</url>"
+            "<isActive>true</isActive><disableProtocolSecurity>true</disableProtocolSecurity>"
+            "</RemoteSiteSetting>\n",
+        )
+        component = self.builder.parse_integration(path, "RemoteSiteSetting")
+        facts = component["facts"]
+        self.assertTrue(facts["isActive"])
+        self.assertTrue(facts["disableProtocolSecurity"])
+        self.assertEqual("legacy.example.test", facts["endpointHost"])
+
+    def test_external_service_registration_credential_reuse(self) -> None:
+        path = (
+            self.base
+            / "externalServiceRegistrations/BillingAPI.externalServiceRegistration-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ExternalServiceRegistration xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Billing API</label><namedCredential>BillingV2</namedCredential>"
+            "<registrationProviderType>Custom</registrationProviderType>"
+            "<schema>{&quot;openapi&quot;: &quot;3.0.0&quot;}</schema>"
+            "<status>Complete</status></ExternalServiceRegistration>\n",
+        )
+        component = self.builder.parse_integration(path, "ExternalServiceRegistration")
+        facts = component["facts"]
+        self.assertTrue(facts["schemaPresent"])
+        self.assertNotIn("openapi", canonical(component["facts"].get("schema", "")))
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("uses-named-credential", "BillingV2"), references)
+
+    def test_connected_app_scopes_and_grants_no_secrets(self) -> None:
+        path = self.base / "connectedApps/Partner_Portal.connectedApp-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ConnectedApp xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Partner Portal</label><contactEmail>owner@example.test</contactEmail>"
+            "<oauthConfig>"
+            "<callbackUrl>https://portal.example.test/oauth/callback?tenant=9</callbackUrl>"
+            "<consumerKey>3MVG9-never-export</consumerKey>"
+            "<scopes>Api</scopes><scopes>RefreshToken</scopes>"
+            "<isAdminApproved>true</isAdminApproved>"
+            "</oauthConfig>"
+            "<ipRelaxation>ENFORCE</ipRelaxation>"
+            "<profileName>Partner User</profileName>"
+            "<permissionsetName>Portal_Access</permissionsetName>"
+            "</ConnectedApp>\n",
+        )
+        component = self.builder.parse_integration(path, "ConnectedApp")
+        facts = component["facts"]
+        self.assertEqual(["Api", "RefreshToken"], facts["oauthScopes"])
+        self.assertTrue(facts["isAdminApproved"])
+        self.assertEqual("ENFORCE", facts["ipRelaxation"])
+        self.assertEqual("portal.example.test", facts["callbackHost"])
+        serialized = canonical(component)
+        self.assertNotIn("3MVG9-never-export", serialized)
+        self.assertNotIn("owner@example.test", serialized)
+        self.assertNotIn("tenant=9", serialized)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("grants-to-profile", "Partner User"), references)
+        self.assertIn(("grants-to-permission-set", "Portal_Access"), references)
+
+    def test_external_data_source_typing_and_claim_routing(self) -> None:
+        path = self.base / "dataSources/ERP.dataSource-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ExternalDataSource xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>ERP</label><type>OData4</type>"
+            "<endpoint>https://erp.example.test/odata</endpoint>"
+            "<principalType>NamedUser</principalType><protocol>Password</protocol>"
+            "<isWritable>true</isWritable></ExternalDataSource>\n",
+        )
+        component = self.builder.parse_integration(path, "ExternalDataSource")
+        facts = component["facts"]
+        self.assertEqual("OData4", facts["sourceType"])
+        self.assertEqual("erp.example.test", facts["endpointHost"])
+        self.assertTrue(facts["isWritable"])
+        claims = self.builder.candidate_claims(component)
+        self.assertIn("integration", [claim["claimType"] for claim in claims])
+
+
+class VfAuraLabelsTests(unittest.TestCase):
+    """Phase 17: Visualforce parsing, Aura deepening, per-label components."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.base = self.root / "force-app/main/default"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_visualforce_controller_and_field_io(self) -> None:
+        path = self.base / "pages/EngagementEdit.page"
+        write(
+            path,
+            '<apex:page standardController="Engagement__c" extensions="EngagementExt,AuditExt">\n'
+            '  <apex:inputField value="{!Engagement__c.Status__c}"/>\n'
+            '  <apex:outputField value="{!Engagement__c.Total_Billed__c}"/>\n'
+            '  <apex:outputText value="{!$Label.Engagement_Header}"/>\n'
+            '  <apex:commandButton action="{!save}" value="Save"/>\n'
+            "  <c:statusBadge/>\n"
+            "</apex:page>\n",
+        )
+        write(
+            path.with_name("EngagementEdit.page-meta.xml"),
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ApexPage xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<apiVersion>61.0</apiVersion><label>Engagement Edit</label></ApexPage>\n",
+        )
+        component = self.builder.parse_visualforce(path, "ApexPage")
+        facts = component["facts"]
+        self.assertEqual("Engagement__c", facts["standardController"])
+        self.assertEqual(["EngagementExt", "AuditExt"], facts["extensions"])
+        self.assertEqual(["save"], facts["actionMethods"])
+        self.assertEqual("61.0", facts["apiVersion"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("operates-on", "Engagement__c"), references)
+        self.assertIn(("apex-controller", "EngagementExt"), references)
+        self.assertIn(("writes-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("reads-field", "Engagement__c.Total_Billed__c"), references)
+        self.assertIn(("uses-label", "Engagement_Header"), references)
+        self.assertIn(("embeds-component", "statusBadge"), references)
+
+    def test_aura_record_data_and_implements(self) -> None:
+        bundle = self.base / "aura/engagementCard"
+        write(
+            bundle / "engagementCard.cmp",
+            '<aura:component controller="EngagementController" '
+            'implements="flexipage:availableForAllPageTypes,force:hasRecordId">\n'
+            '  <aura:attribute name="row" type="Engagement__c"/>\n'
+            '  <force:recordData sObjectName="Engagement__c" fields="Name,Status__c"/>\n'
+            "  <c:statusBadge/>\n"
+            "  <div>{!$Label.c.Engagement_Header}</div>\n"
+            "</aura:component>\n",
+        )
+        component = self.builder.parse_aura(bundle)
+        facts = component["facts"]
+        self.assertIn("flexipage:availableForAllPageTypes", facts["implements"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("apex-controller", "EngagementController"), references)
+        self.assertIn(("operates-on", "Engagement__c"), references)
+        self.assertIn(("references-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("uses-label", "Engagement_Header"), references)
+        self.assertIn(("embeds-component", "statusBadge"), references)
+
+    def test_custom_labels_promoted_with_searchable_statement(self) -> None:
+        path = self.base / "labels/CustomLabels.labels-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<labels><fullName>Engagement_Header</fullName>"
+            "<value>Engagement overview</value><language>en_US</language>"
+            "<protected>false</protected><categories>UI</categories>"
+            "<shortDescription>Header text</shortDescription></labels>"
+            "<labels><fullName>Blocked_Message</fullName>"
+            "<value>This engagement is blocked by finance.</value><language>en_US</language>"
+            "<protected>true</protected><shortDescription>Blocked banner</shortDescription></labels>"
+            "</CustomLabels>\n",
+        )
+        components = self.builder.parse_custom_labels(path)
+        self.assertEqual(3, len(components))
+        by_id = {component["id"]: component for component in components}
+        label = by_id["CustomLabel:Blocked_Message"]
+        self.assertEqual(
+            "This engagement is blocked by finance.", label["facts"]["value"]
+        )
+        self.assertEqual(2, by_id["CustomLabels:CustomLabels"]["facts"]["labelCount"])
+        claims = self.builder.candidate_claims(label)
+        self.assertIn("blocked by finance", claims[0]["statement"])
+
+    def test_label_consumers_emit_uses_label(self) -> None:
+        apex = self.base / "classes/Banner.cls"
+        write(
+            apex,
+            "public class Banner { String text = System.Label.Blocked_Message; }\n",
+        )
+        component = self.builder.parse_apex(apex, "ApexClass")
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("uses-label", "Blocked_Message"), references)
+
+
+class CmdtPermissionTabTests(unittest.TestCase):
+    """Phase 18: cmdt records, $Permission gates, PSG composition, tab kinds."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.base = self.root / "force-app/main/default"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_cmdt_record_identity_and_redaction(self) -> None:
+        path = self.base / "customMetadata/ServiceBinding.Billing.md-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" '
+            'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
+            "<label>Billing</label><protected>false</protected>"
+            "<values><field>Endpoint__c</field>"
+            '<value xsi:type="xsd:string">https://api.example.test/billing?key=1</value></values>'
+            "<values><field>ApiKey__c</field>"
+            '<value xsi:type="xsd:string">password=super-secret</value></values>'
+            "<values><field>Active__c</field><value xsi:type=\"xsd:boolean\">true</value></values>"
+            "</CustomMetadata>\n",
+        )
+        component = self.builder.parse_custom_metadata_record(path)
+        self.assertEqual("CustomMetadata:ServiceBinding__mdt.Billing", component["id"])
+        facts = component["facts"]
+        self.assertEqual(
+            ["Active__c", "ApiKey__c", "Endpoint__c"], facts["fieldsPopulated"]
+        )
+        values = {item["field"]: item.get("value") for item in facts["values"]}
+        self.assertEqual("api.example.test", values["Endpoint__c"])
+        self.assertNotIn("value", [k for k in values if values.get("ApiKey__c")])
+        serialized = canonical(component)
+        self.assertNotIn("super-secret", serialized)
+        self.assertNotIn("key=1", serialized)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("operates-on", "ServiceBinding__mdt"), references)
+        self.assertIn(
+            ("references-field", "ServiceBinding__mdt.Endpoint__c"), references
+        )
+
+    def test_cmdt_protected_record_drops_values(self) -> None:
+        path = self.base / "customMetadata/ServiceBinding.Secret.md-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" '
+            'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
+            "<label>Secret</label><protected>true</protected>"
+            "<values><field>Token__c</field>"
+            '<value xsi:type="xsd:string">plain-but-protected</value></values>'
+            "</CustomMetadata>\n",
+        )
+        component = self.builder.parse_custom_metadata_record(path)
+        self.assertEqual(["Token__c"], component["facts"]["fieldsPopulated"])
+        self.assertNotIn("values", component["facts"])
+        self.assertNotIn("plain-but-protected", canonical(component))
+
+    def test_permission_token_edges_from_validation_rule_and_flow(self) -> None:
+        rule_path = (
+            self.base
+            / "objects/Engagement__c/validationRules/Price_Guard.validationRule-meta.xml"
+        )
+        write(
+            rule_path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Price_Guard</fullName><active>true</active>"
+            "<errorConditionFormula>NOT($Permission.Can_Override_Price)</errorConditionFormula>"
+            "<errorMessage>You cannot override the price.</errorMessage>"
+            "</ValidationRule>\n",
+        )
+        rule = self.builder.parse_validation_rule(rule_path)
+        references = {(ref["kind"], ref["target"]) for ref in rule["references"]}
+        self.assertIn(
+            ("references-custom-permission", "Can_Override_Price"), references
+        )
+        flow_path = self.base / "flows/Override_Gate.flow-meta.xml"
+        write(
+            flow_path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Flow xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Override Gate</label><status>Active</status>"
+            "<formulas><name>CanOverride</name><dataType>Boolean</dataType>"
+            "<expression>{!$Permission.Can_Override_Price}</expression></formulas>"
+            "</Flow>\n",
+        )
+        flow = self.builder.parse_flow(flow_path)
+        flow_references = {(ref["kind"], ref["target"]) for ref in flow["references"]}
+        self.assertIn(
+            ("references-custom-permission", "Can_Override_Price"), flow_references
+        )
+
+    def test_permission_set_group_composition(self) -> None:
+        path = self.base / "permissionsetgroups/Ops.permissionsetgroup-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<PermissionSetGroup xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Ops</label><status>Updated</status>"
+            "<permissionSets>Engagement_Manager</permissionSets>"
+            "<permissionSets>Billing_Reader</permissionSets>"
+            "<mutingPermissionSets>Ops_Mute</mutingPermissionSets>"
+            "</PermissionSetGroup>\n",
+        )
+        component = self.builder.parse_permission_set_group(path)
+        self.assertEqual(2, component["facts"]["permissionSetCount"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("includes-permission-set", "Engagement_Manager"), references)
+        self.assertIn(("mutes-permission-set", "Ops_Mute"), references)
+
+    def test_tab_kind_variants(self) -> None:
+        object_tab = self.base / "tabs/Engagement__c.tab-meta.xml"
+        write(
+            object_tab,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<customObject>true</customObject><label>Engagements</label>"
+            "<motif>Custom54</motif></CustomTab>\n",
+        )
+        component = self.builder.parse_custom_tab(object_tab)
+        self.assertEqual("object", component["facts"]["tabKind"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("operates-on", "Engagement__c"), references)
+        web_tab = self.base / "tabs/Portal.tab-meta.xml"
+        write(
+            web_tab,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Portal</label><url>https://portal.example.test/home?x=1</url>"
+            "</CustomTab>\n",
+        )
+        component = self.builder.parse_custom_tab(web_tab)
+        self.assertEqual("web", component["facts"]["tabKind"])
+        self.assertEqual("portal.example.test", component["facts"]["urlHost"])
+        self.assertNotIn("x=1", canonical(component))
+        self.assertEqual([], component["references"])
+
+
+class AnalyticsPathTests(unittest.TestCase):
+    """Phase 19: report types, reports, dashboards, path guidance."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.base = self.root / "force-app/main/default"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_report_type_base_object_and_columns(self) -> None:
+        path = self.base / "reportTypes/Engagements_with_Milestones.reportType-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ReportType xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Engagements with Milestones</label><baseObject>Engagement__c</baseObject>"
+            "<category>other</category><deployed>true</deployed>"
+            "<sections><masterLabel>Fields</masterLabel>"
+            "<columns><field>Status__c</field><table>Engagement__c</table><checkedByDefault>true</checkedByDefault></columns>"
+            "<columns><field>Due_Date__c</field><table>Engagement__c.Milestones__r</table><checkedByDefault>false</checkedByDefault></columns>"
+            "</sections></ReportType>\n",
+        )
+        component = self.builder.parse_report_type(path)
+        facts = component["facts"]
+        self.assertEqual("Engagement__c", facts["baseObject"])
+        self.assertEqual(
+            ["Engagement__c", "Engagement__c.Milestones__r"], facts["tables"]
+        )
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("operates-on", "Engagement__c"), references)
+        self.assertIn(("references-field", "Engagement__c.Status__c"), references)
+        # Join-path fields stay facts-only; the child object is not resolvable.
+        self.assertNotIn(
+            ("references-field", "Engagement__c.Milestones__r.Due_Date__c"), references
+        )
+
+    def test_report_bounded_refs_with_values(self) -> None:
+        path = self.base / "reports/Sales/Open_Engagements.report-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Report xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<name>Open Engagements</name><format>Summary</format>"
+            "<reportType>Engagements_with_Milestones</reportType>"
+            "<columns><field>Engagement__c.Status__c</field></columns>"
+            "<filter><criteriaItems><column>Engagement__c.Region__c</column>"
+            "<operator>equals</operator><value>EMEA</value></criteriaItems></filter>"
+            "<groupingsDown><field>Engagement__c.Owner__c</field></groupingsDown>"
+            "<timeFrameFilter><dateColumn>Engagement__c.CreatedDate</dateColumn>"
+            "<interval>INTERVAL_CURRENT</interval></timeFrameFilter>"
+            "</Report>\n",
+        )
+        component = self.builder.parse_report(path)
+        facts = component["facts"]
+        self.assertEqual("Sales", facts["folder"])
+        self.assertEqual(
+            [{"column": "Engagement__c.Region__c", "operator": "equals", "value": "EMEA"}],
+            facts["filters"],
+        )
+        self.assertEqual(
+            {"dateColumn": "Engagement__c.CreatedDate", "interval": "INTERVAL_CURRENT"},
+            facts["timeFrame"],
+        )
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("references-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("filters-field", "Engagement__c.Region__c"), references)
+        for reference in component["references"]:
+            self.assertTrue(reference.get("heuristic"), reference)
+
+    def test_dashboard_report_links_without_running_user(self) -> None:
+        path = self.base / "dashboards/Sales/Pipeline.dashboard-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Dashboard xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<title>Pipeline</title><runningUser>ops.admin@example.test</runningUser>"
+            "<leftSection><dashboardComponent><report>Sales/Open_Engagements</report></dashboardComponent></leftSection>"
+            "</Dashboard>\n",
+        )
+        component = self.builder.parse_dashboard(path)
+        facts = component["facts"]
+        self.assertEqual("SpecifiedUser", facts["runningUserPolicy"])
+        self.assertNotIn("ops.admin@example.test", canonical(component))
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("displays-component", "Sales/Open_Engagements"), references)
+
+    def test_path_assistant_guidance_and_step_fields(self) -> None:
+        path = self.base / "pathAssistants/Engagement_Path.pathAssistant-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<PathAssistant xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<masterLabel>Engagement Path</masterLabel><active>true</active>"
+            "<entityName>Engagement__c</entityName><fieldName>Status__c</fieldName>"
+            "<pathAssistantSteps>"
+            "<picklistValueName>Kickoff</picklistValueName>"
+            "<fieldNames>Owner__c</fieldNames><fieldNames>Start_Date__c</fieldNames>"
+            "<info>&lt;p&gt;Confirm the &lt;b&gt;start date&lt;/b&gt; with the client.&lt;/p&gt;</info>"
+            "</pathAssistantSteps>"
+            "</PathAssistant>\n",
+        )
+        component = self.builder.parse_path_assistant(path)
+        facts = component["facts"]
+        self.assertEqual("Engagement__c.Status__c", facts["drivingField"])
+        step = facts["steps"][0]
+        self.assertEqual("Kickoff", step["value"])
+        self.assertIn("start date", step["guidance"])
+        self.assertNotIn("<b>", step["guidance"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("references-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("places-field", "Engagement__c.Start_Date__c"), references)
+
+
+class MatchingFlowDefinitionTests(unittest.TestCase):
+    """Phase 20: matching-rule components resolve dedupe links; flow activation pointer."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.base = self.root / "force-app/main/default"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_matching_rules_per_rule_components_resolve_duplicate_link(self) -> None:
+        path = self.base / "matchingRules/Contact.matchingRule-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<MatchingRules xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<matchingRules><fullName>Standard_Lead_Match</fullName>"
+            "<label>Standard Lead Match</label><ruleStatus>Active</ruleStatus>"
+            "<matchingRuleItems><fieldName>Email</fieldName><matchingMethod>Exact</matchingMethod>"
+            "<blankValueBehavior>NullNotAllowed</blankValueBehavior></matchingRuleItems>"
+            "</matchingRules>"
+            "<matchingRules><fullName>Fuzzy_Name</fullName><ruleStatus>Inactive</ruleStatus>"
+            "<matchingRuleItems><fieldName>LastName</fieldName><matchingMethod>LastName</matchingMethod>"
+            "<blankValueBehavior>MatchBlanks</blankValueBehavior></matchingRuleItems>"
+            "</matchingRules>"
+            "</MatchingRules>\n",
+        )
+        components = self.builder.parse_matching_rules(path)
+        self.assertEqual(2, len(components))
+        by_id = {component["id"]: component for component in components}
+        # Identity matches the uses-matching-rule target Phase 8's DuplicateRule emits.
+        rule = by_id["MatchingRule:Contact.Standard_Lead_Match"]
+        self.assertEqual("Active", rule["facts"]["ruleStatus"])
+        self.assertEqual(
+            [{"field": "Email", "matchingMethod": "Exact", "blankValueBehavior": "NullNotAllowed"}],
+            rule["facts"]["items"],
+        )
+        references = {(ref["kind"], ref["target"]) for ref in rule["references"]}
+        self.assertIn(("operates-on", "Contact"), references)
+        self.assertIn(("references-field", "Contact.Email"), references)
+
+    def test_flow_definition_active_override_relationship(self) -> None:
+        path = self.base / "flowDefinitions/Escalation_Router.flowDefinition-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<FlowDefinition xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<activeVersionNumber>0</activeVersionNumber>"
+            "<description>Deactivated pending rework.</description>"
+            "</FlowDefinition>\n",
+        )
+        component = self.builder.parse_flow_definition(path)
+        facts = component["facts"]
+        self.assertEqual("0", facts["activeVersionNumber"])
+        self.assertFalse(facts["active"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("relationship", "Flow.Escalation_Router"), references)
+
+
+class CompactLayoutWebLinkTests(unittest.TestCase):
+    """Phase 21: highlight fields and legacy button surfaces."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.objects = self.root / "force-app/main/default/objects"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_compact_layout_places_fields(self) -> None:
+        path = (
+            self.objects
+            / "Engagement__c/compactLayouts/Engagement_Compact.compactLayout-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CompactLayout xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Engagement_Compact</fullName><label>Engagement Compact</label>"
+            "<fields>Name</fields><fields>Status__c</fields></CompactLayout>\n",
+        )
+        component = self.builder.parse_compact_layout(path)
+        self.assertEqual(["Name", "Status__c"], component["facts"]["fields"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("places-field", "Engagement__c.Status__c"), references)
+
+    def test_web_link_kinds_host_only_no_js_body(self) -> None:
+        url_link = self.objects / "Engagement__c/webLinks/Open_Portal.webLink-meta.xml"
+        write(
+            url_link,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<WebLink xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Open_Portal</fullName><masterLabel>Open Portal</masterLabel>"
+            "<displayType>button</displayType><linkType>url</linkType><openType>newWindow</openType>"
+            "<url>https://portal.example.test/view?id={!Engagement__c.External_Id__c}</url>"
+            "</WebLink>\n",
+        )
+        component = self.builder.parse_web_link(url_link)
+        facts = component["facts"]
+        self.assertEqual("portal.example.test", facts["targetHost"])
+        self.assertNotIn("isJavascript", facts)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(
+            ("references-field", "Engagement__c.External_Id__c"), references
+        )
+        js_link = self.objects / "Engagement__c/webLinks/Legacy_JS.webLink-meta.xml"
+        write(
+            js_link,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<WebLink xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Legacy_JS</fullName><masterLabel>Legacy JS</masterLabel>"
+            "<displayType>button</displayType><linkType>javascript</linkType>"
+            "<url>alert('secret-internal-logic');</url></WebLink>\n",
+        )
+        component = self.builder.parse_web_link(js_link)
+        self.assertTrue(component["facts"]["isJavascript"])
+        self.assertNotIn("secret-internal-logic", canonical(component))
+        page_link = self.objects / "Engagement__c/webLinks/Summary.webLink-meta.xml"
+        write(
+            page_link,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<WebLink xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<fullName>Summary</fullName><linkType>page</linkType>"
+            "<page>EngagementSummary</page></WebLink>\n",
+        )
+        component = self.builder.parse_web_link(page_link)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("displays-component", "EngagementSummary"), references)
+
+
+class EmailStaticResourceTests(unittest.TestCase):
+    """Phase 22: template targets, merge-field diet, resource cache posture."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.base = self.root / "force-app/main/default"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_email_template_merge_fields_and_target_format(self) -> None:
+        path = self.base / "email/unfiled$public/EscalationNotice.email"
+        write(
+            path,
+            "Dear {!Contact.FirstName},\n"
+            "Case {!Case.CaseNumber} for {!Engagement__c.Name} was escalated.\n"
+            "{!$Label.Escalation_Footer}\n"
+            "Regards, {!ignored.lowerHead}\n",
+        )
+        write(
+            path.with_name("EscalationNotice.email-meta.xml"),
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<EmailTemplate xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<type>text</type><subject>Your case was escalated</subject>"
+            "<available>true</available><encodingKey>UTF-8</encodingKey>"
+            "</EmailTemplate>\n",
+        )
+        component = self.builder.parse_email_template(path)
+        # Identity matches the uses-template target format emitted by Workflow/approvals.
+        self.assertEqual("EmailTemplate:unfiled$public/EscalationNotice", component["id"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("references-field", "Contact.FirstName"), references)
+        self.assertIn(("references-field", "Case.CaseNumber"), references)
+        self.assertIn(("references-field", "Engagement__c.Name"), references)
+        self.assertNotIn(("references-field", "ignored.lowerHead"), references)
+        self.assertIn(("uses-label", "Escalation_Footer"), references)
+
+    def test_email_template_subject_searchable_statement(self) -> None:
+        path = self.base / "email/unfiled$public/EscalationNotice.email"
+        write(path, "body\n")
+        write(
+            path.with_name("EscalationNotice.email-meta.xml"),
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<EmailTemplate xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<type>text</type><subject>Your case was escalated</subject></EmailTemplate>\n",
+        )
+        component = self.builder.parse_email_template(path)
+        claims = self.builder.candidate_claims(component)
+        self.assertIn("Your case was escalated", claims[0]["statement"])
+
+    def test_static_resource_cache_posture(self) -> None:
+        path = self.base / "staticresources/Assets.resource-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<contentType>application/zip</contentType><cacheControl>Public</cacheControl>"
+            "<description>Vendor charting bundle.</description></StaticResource>\n",
+        )
+        component = self.builder.parse_static_resource(path)
+        facts = component["facts"]
+        self.assertEqual("application/zip", facts["contentType"])
+        self.assertEqual("Public", facts["cacheControl"])
+
+
+class RoleMutingDelegateTests(unittest.TestCase):
+    """Phase 23: role hierarchy, negative grants, delegated-admin blast radius."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.base = self.root / "force-app/main/default"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_role_hierarchy_reports_to(self) -> None:
+        path = self.base / "roles/EMEA_Sales.role-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<Role xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<name>EMEA Sales</name><parentRole>Global_Sales</parentRole>"
+            "<caseAccessLevel>Edit</caseAccessLevel>"
+            "<opportunityAccessLevel>Read</opportunityAccessLevel>"
+            "</Role>\n",
+        )
+        component = self.builder.parse_role(path)
+        self.assertEqual("Edit", component["facts"]["caseAccessLevel"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("reports-to", "Global_Sales"), references)
+
+    def test_muting_permission_set_facts_only_no_grant_edges(self) -> None:
+        path = self.base / "mutingpermissionsets/Ops_Mute.mutingpermissionset-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<MutingPermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Ops Mute</label>"
+            "<objectPermissions><object>Engagement__c</object>"
+            "<allowDelete>true</allowDelete></objectPermissions>"
+            "<fieldPermissions><field>Engagement__c.Margin__c</field>"
+            "<readable>true</readable><editable>true</editable></fieldPermissions>"
+            "<userPermissions><name>ModifyAllData</name><enabled>true</enabled></userPermissions>"
+            "</MutingPermissionSet>\n",
+        )
+        component = self.builder.parse_muting_permission_set(path)
+        facts = component["facts"]
+        self.assertEqual({"Engagement__c": "D"}, facts["mutedObjectAccess"])
+        self.assertEqual(["ModifyAllData"], facts["mutedSystemPermissions"])
+        # Negative grants never enter the positive usage graph.
+        self.assertEqual([], component["references"])
+
+    def test_delegate_group_assignables(self) -> None:
+        path = self.base / "delegateGroups/Regional_Admins.delegateGroup-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<DelegateGroup xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<label>Regional Admins</label><loginAccess>true</loginAccess>"
+            "<roles>EMEA_Sales</roles>"
+            "<permissionSets>Engagement_Manager</permissionSets>"
+            "<profiles>Support Agent</profiles>"
+            "</DelegateGroup>\n",
+        )
+        component = self.builder.parse_delegate_group(path)
+        facts = component["facts"]
+        self.assertTrue(facts["loginAccess"])
+        self.assertEqual(["EMEA_Sales"], facts["administersRoles"])
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("grants-to-permission-set", "Engagement_Manager"), references)
+        self.assertIn(("grants-to-profile", "Support Agent"), references)
+
+
+class AuthCspEventChannelTests(unittest.TestCase):
+    """Phase 24: identity providers, browser egress, event streaming."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        self.base = self.root / "force-app/main/default"
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_auth_provider_hosts_and_handler_no_username(self) -> None:
+        path = self.base / "authproviders/AzureAD.authprovider-meta.xml"
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<AuthProvider xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<friendlyName>Azure AD</friendlyName><providerType>OpenIdConnect</providerType>"
+            "<authorizeUrl>https://login.microsoftonline.com/tenant-guid/authorize</authorizeUrl>"
+            "<tokenUrl>https://login.microsoftonline.com/tenant-guid/token</tokenUrl>"
+            "<consumerKey>never-export-consumer</consumerKey>"
+            "<executionUser>integration@example.test</executionUser>"
+            "<registrationHandler>AzureRegistrationHandler</registrationHandler>"
+            "</AuthProvider>\n",
+        )
+        component = self.builder.parse_integration(path, "AuthProvider")
+        facts = component["facts"]
+        self.assertEqual("OpenIdConnect", facts["providerType"])
+        self.assertEqual("login.microsoftonline.com", facts["authorizeHost"])
+        self.assertTrue(facts["executionUserPresent"])
+        serialized = canonical(component)
+        self.assertNotIn("integration@example.test", serialized)
+        self.assertNotIn("never-export-consumer", serialized)
+        self.assertNotIn("tenant-guid", serialized)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("invokes-class", "AzureRegistrationHandler"), references)
+
+    def test_csp_and_cors_host_facts(self) -> None:
+        csp = self.base / "cspTrustedSites/Maps.cspTrustedSite-meta.xml"
+        write(
+            csp,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CspTrustedSite xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<endpointUrl>https://maps.example.test</endpointUrl><isActive>true</isActive>"
+            "<context>LEX</context>"
+            "<isApplicableToImgSrc>true</isApplicableToImgSrc>"
+            "<isApplicableToConnectSrc>false</isApplicableToConnectSrc>"
+            "</CspTrustedSite>\n",
+        )
+        component = self.builder.parse_integration(csp, "CspTrustedSite")
+        facts = component["facts"]
+        self.assertEqual("maps.example.test", facts["endpointHost"])
+        self.assertEqual(["ImgSrc"], facts["directives"])
+        cors = self.base / "corsWhitelistOrigins/Portal.corsWhitelistOrigin-meta.xml"
+        write(
+            cors,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CorsWhitelistOrigin xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<urlPattern>https://portal.example.test</urlPattern>"
+            "</CorsWhitelistOrigin>\n",
+        )
+        component = self.builder.parse_integration(cors, "CorsWhitelistOrigin")
+        self.assertEqual("portal.example.test", component["facts"]["endpointHost"])
+        claims = self.builder.candidate_claims(component)
+        self.assertIn("integration", [claim["claimType"] for claim in claims])
+
+    def test_event_channel_member_cdc_base_object_heuristic(self) -> None:
+        path = (
+            self.base
+            / "platformEventChannelMembers/Orders_AccountChangeEvent.platformEventChannelMember-meta.xml"
+        )
+        write(
+            path,
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<PlatformEventChannelMember xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<eventChannel>Orders__chn</eventChannel>"
+            "<selectedEntity>AccountChangeEvent</selectedEntity>"
+            "<enrichedFields><name>Industry</name></enrichedFields>"
+            "</PlatformEventChannelMember>\n",
+        )
+        component = self.builder.parse_platform_event_channel_member(path)
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("operates-on", "AccountChangeEvent"), references)
+        self.assertIn(("operates-on", "Account"), references)
+        self.assertIn(("relationship", "Orders__chn"), references)
+        self.assertIn(("references-field", "AccountChangeEvent.Industry"), references)
+        for reference in component["references"]:
+            if reference["target"] == "Account":
+                self.assertTrue(reference.get("heuristic"))
+
+
+class CriteriaInfrastructureTests(unittest.TestCase):
+    """Phase 2: sanitize_literal, shared criteria parsing, per-reference heuristic flag."""
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
+        self.root = Path(self.temporary.name)
+        (self.root / "force-app/main/default").mkdir(parents=True)
+        self.builder = ForceAppKnowledge(self.root)
+
+    def tearDown(self) -> None:
+        self.temporary.cleanup()
+
+    def test_sanitize_literal_keeps_plain_config_values(self) -> None:
+        self.assertEqual("Active", sanitize_literal("Active"))
+        self.assertEqual("EMEA — Tier 1", sanitize_literal("  EMEA — Tier 1 "))
+        self.assertIsNone(sanitize_literal(None))
+        self.assertIsNone(sanitize_literal("   "))
+
+    def test_sanitize_literal_urls_collapse_to_host(self) -> None:
+        self.assertEqual(
+            "api.example.test", sanitize_literal("https://api.example.test/v1?tenant=42")
+        )
+
+    def test_sanitize_literal_drops_secrets_emails_ips(self) -> None:
+        self.assertIsNone(sanitize_literal("password=hunter2"))
+        self.assertIsNone(sanitize_literal("A" * 44))
+        self.assertIsNone(sanitize_literal("ops@example.test"))
+        self.assertIsNone(sanitize_literal("10.20.30.40"))
+
+    def test_sanitize_literal_truncates_long_values(self) -> None:
+        value = "word " * 60
+        sanitized = sanitize_literal(value)
+        self.assertIsNotNone(sanitized)
+        self.assertLessEqual(len(sanitized), 200)
+        self.assertTrue(sanitized.endswith("…"))
+
+    def test_criteria_entries_flow_and_workflow_shapes(self) -> None:
+        import xml.etree.ElementTree as ET
+
+        flow_style = ET.fromstring(
+            "<start>"
+            "<filters><field>Status__c</field><operator>EqualTo</operator>"
+            "<value><stringValue>Active</stringValue></value></filters>"
+            "<filters><field>Owner__c</field><operator>EqualTo</operator>"
+            "<value><elementReference>varOwner</elementReference></value></filters>"
+            "</start>"
+        )
+        entries = ForceAppKnowledge._criteria_entries(flow_style)
+        self.assertEqual(
+            [
+                {"field": "Status__c", "operator": "EqualTo", "value": "Active"},
+                {"field": "Owner__c", "operator": "EqualTo", "elementReference": "varOwner"},
+            ],
+            entries,
+        )
+        rule_style = ET.fromstring(
+            "<rule><criteriaItems><field>Case.Status</field><operation>equals</operation>"
+            "<value>New</value></criteriaItems></rule>"
+        )
+        self.assertEqual(
+            [{"field": "Case.Status", "operator": "equals", "value": "New"}],
+            ForceAppKnowledge._criteria_entries(rule_style),
+        )
+
+    def test_relation_candidates_per_reference_heuristic(self) -> None:
+        component = {
+            "id": "Flow:Demo",
+            "metadataType": "Flow",
+            "name": "Demo",
+            "path": "force-app/main/default/flows/Demo.flow-meta.xml",
+            "references": [
+                {"kind": "references-field", "target": "Engagement__c.Status__c"},
+                {
+                    "kind": "references-field",
+                    "target": "Engagement__c.Guess__c",
+                    "heuristic": True,
+                },
+            ],
+        }
+        first, second = self.builder.relation_candidates(component)
+        self.assertEqual("observed", first["assurance"])
+        self.assertFalse(first["assertion"]["value"]["heuristic"])
+        self.assertEqual("inferred", second["assurance"])
+        self.assertTrue(second["assertion"]["value"]["heuristic"])
 
 
 if __name__ == "__main__":
