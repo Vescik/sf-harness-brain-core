@@ -30,6 +30,52 @@ are not durable.
 ---
 
 <!-- Entries are appended below this line as they occur — never fabricated at build time. -->
+## 2026-07-23 - Ad-hoc fix express lane: bounded defect fixes without an accepted design record
+
+- Context: a diagnosed Flow defect could not be corrected by any agent — config-investigator has
+  no write authority and development-assistant's entry gate requires an accepted design record,
+  so an ad-hoc bugfix had no lane. The write plumbing already existed (development-assistant may
+  edit force-app/, `sf project retrieve start` is role-guard-allowed with
+  `autoApproveRetrieveWithReceipt` enabled); only the ceremony blocked the edit.
+- Finding / decision: add the `adhoc-fix` prompt + skill for development-assistant only. Entry:
+  a written diagnosis and a small bounded fix (one defect, smallest coherent component set, no
+  new automation, no schema/permission changes). Procedure: retrieve current org state, confirm
+  the diagnosis, minimal force-app edit, local verification, fix note under
+  `output/documentation/adhoc-fixes/` (diagnosis, before/after, human deploy step, rollback),
+  after-the-fact guardrail review recommended. Deploys remain human; the 2026-07-14 "org
+  mutation is not an agent capability" decision stands. The review allowlist stays
+  `allowedObjectApiNames: ["*"]` by owner choice.
+- Impact: no guard/hook/script changes — the note path reuses development-assistant's existing
+  `output/documentation/` write prefix and the retrieve permission already existed.
+  `validate_harness.py` expected counts moved to 23 prompts / 24 skills; repo map regenerated.
+  Scope growth escalates to the normal design lane; the accepted-design gate stays normative for
+  everything else.
+- Approved by: workspace owner directive of 2026-07-23 (chat decision: local edit + human
+  deploy, light ceremony with after-the-fact review, development-assistant only).
+- Related: `.github/skills/adhoc-fix/SKILL.md`, the 2026-07-14 "MCP is read-only" entry (still
+  in force), `.ai/contracts/workflow-state-machine.md` (unchanged; ad-hoc fixes are standalone
+  and do not create work records).
+
+
+## 2026-07-23 - Record-held package configuration enters Knowledge via investigate-config-records
+
+- Context: part of the managed package's configuration lives in org data records (config tables
+  holding statuses and settings), which the metadata-file-only collector (1.6.0) can never
+  observe. The evidence schema already reserved `org-soql-sample`, the claim schema already has
+  `reference-data`, and `scripts/salesforce_read.py records` already provides the guarded bounded
+  read — the capability existed but no governed workflow used it.
+- Finding / decision: add the `investigate-config-records` prompt + skill (config-investigator
+  role). One human-provided allowlisted object per invocation; snapshot granularity is one
+  `reference-data` claim per object (ordered sanitized record list in facts, `sha256` digest),
+  not per-record claims. The allowlist stays human-edited per use; no batch collector mode in
+  this iteration. Ids, URLs, `attributes` payloads, audit fields, and free text are stripped;
+  claims scope to `orgKey` with `repositoryCommit: null` and drift only via re-observation.
+- Impact: no schema, guard, policy, or Python-script changes — the role guard, `reference-data`
+  policy entry (180-day ceiling), and propose/reconcile/promote lifecycle already cover the flow.
+  `validate_harness.py` expected counts moved to 22 prompts / 23 skills; repo map regenerated.
+- Approved by: workspace owner plan approval of 2026-07-23.
+- Related: `docs/grounding-architecture.md` (Knowledge boundary, reference-data snapshot bullet),
+  `.github/skills/investigate-config-records/SKILL.md`.
 
 ## 2026-07-16 - Templates are normative or removed; two script-shadow templates deleted
 

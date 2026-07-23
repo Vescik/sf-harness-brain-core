@@ -34,8 +34,8 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 ## Roles (`.github/agents/`)
 
-- **config-investigator** — Read-only evidence collector for allowlisted …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority, tool-capabilities; skills: feature-documentor, inventory-force-app, investigate-object, propose-force-app-knowledge, update-knowledge-base.
-- **development-assistant** — Implement a human-accepted Salesforce design …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: execution-contract, tool-capabilities, workflow-state-machine. Hands off to: guardrail-reviewer, solution-designer.
+- **config-investigator** — Read-only evidence collector for allowlisted …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority, tool-capabilities; skills: feature-documentor, inventory-force-app, investigate-config-records, investigate-object, propose-force-app-knowledge, update-knowledge-base.
+- **development-assistant** — Implement a human-accepted Salesforce design …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: execution-contract, tool-capabilities, workflow-state-machine; skills: adhoc-fix. Hands off to: guardrail-reviewer, solution-designer.
 - **guardrail-reviewer** — Independently review a design or …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, tool-capabilities, workflow-state-machine; skills: check-against-principles. Hands off to: development-assistant, solution-designer.
 - **knowledge-curator** — Maintains governed Knowledge from repository …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority, workflow-state-machine; skills: batch-knowledge, curate-knowledge-keywords, propose-force-app-knowledge, search-knowledge.
 - **solution-designer** — Design the change before implementation, …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, tool-capabilities, workflow-state-machine; skills: check-against-principles, solution-design. Hands off to: development-assistant, guardrail-reviewer.
@@ -43,6 +43,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 ## Skills (`.github/skills/`)
 
+- `adhoc-fix` — Express lane for a small …
 - `batch-knowledge` — Five-phase batch conversion of one …
 - `check-against-principles` — Evaluate a scoped design or …
 - `check-feature-coverage` — Compare a current Azure DevOps …
@@ -54,6 +55,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `generate-release-handover` — Compose a current, sourced monthly …
 - `generate-technical-documentation` — Generate a sourced technical-documentation draft …
 - `inventory-force-app` — Inventory the repository-root Salesforce force-app …
+- `investigate-config-records` — Take a bounded, sanitized snapshot …
 - `investigate-object` — Collect bounded, sanitized, reconciled evidence …
 - `propose-force-app-knowledge` — Draft schema-v3 Knowledge claims and …
 - `relation-health` — Read-only report of verified object-relation/component-relation …
@@ -68,6 +70,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 ## Commands (`.github/prompts/`, public)
 
+- `/adhoc-fix` → development-assistant
 - `/batch-knowledge` → config-investigator
 - `/check-against-principles` → guardrail-reviewer
 - `/curate-knowledge` → knowledge-curator
@@ -77,6 +80,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `/fetch-ado-item` → solution-designer
 - `/generate-playwright-test` → test-strategist
 - `/inventory-force-app` → config-investigator
+- `/investigate-config-records` → config-investigator
 - `/investigate-object` → config-investigator
 - `/propose-force-app-knowledge` → config-investigator
 - `/refresh-force-app-knowledge` → config-investigator

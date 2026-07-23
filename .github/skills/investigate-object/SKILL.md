@@ -43,7 +43,9 @@ outside the configured review allowlist.
   flag, broad record retrieval, or an unguarded Salesforce MCP tool.
 - Never infer inaccessible package internals or treat no returned row/component as proof of absence.
 - Never return or persist credentials, usernames, raw org/package/record IDs, URLs, raw vendor
-  payloads, labels/help text, picklist values, or unnecessary business data.
+  payloads, labels/help text, picklist values, or unnecessary business data. For configuration
+  values held as records in a reference-data table, use the governed exception
+  [investigate-config-records](../investigate-config-records/SKILL.md) instead.
 - Never call a proposed observation `confirmed` or `verified`.
 
 ## Return
