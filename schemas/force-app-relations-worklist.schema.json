@@ -48,6 +48,7 @@
             "enum": ["missing", "proposed", "verified-current", "verified-stale", "blocked"]
           },
           "revision": { "type": "integer", "minimum": 1 },
+          "reviewBy": { "type": "string", "format": "date-time" },
           "reason": { "type": "string", "minLength": 1 }
         },
         "allOf": [

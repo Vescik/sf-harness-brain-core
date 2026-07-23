@@ -28,6 +28,18 @@ Optional narrowing: domain, claim type, environment/org scope.
      `--uses-field <Object.Field>` | `--invokes <name>` — finds every automation/component whose
      source-declared usage registry touches that object/field or invokes that Apex/subflow/action
      (e.g. "which automations write `Claim__c.Status__c`?").
+   - ranked search: `python scripts/knowledge_registry.py query --search "<terms>" [--top N]` —
+     BM25 over statements, descriptions, keywords, subject identities, and usage-registry
+     targets (object/field/invoke names are searchable, camel/underscore-split). Results carry a
+     `score`; still effective-claims-only, and it composes with the structured filters above.
+   - graph: `python scripts/knowledge_registry.py query --related <KCLM-id> [--depth 1-5]` —
+     breadth-first over relatedClaims/contradicts/supersedes/supersededBy edges. Unlike every
+     other query mode this ALSO returns non-effective claims (that history is the point);
+     each match is annotated `effective` + `nonEffectiveReason` — never cite a non-effective
+     match as fact. Standalone: combine only with `--depth`/`--at`.
+   - one subject, one call: `python scripts/knowledge_registry.py explain --identity <ApiName>
+     [--kind <subject-kind>]` — effective claims grouped by type, aggregated usage, reverse
+     usage (`usedBy`: what touches this identity), and one-hop claim-graph relations.
    - combine with `--domain`, `--claim-type`, `--environment`, `--org-key` as needed.
 2. For a broad scan, read the generated `.ai/knowledge/claims-index.json` — one row per claim
    with status, keywords, description excerpt, and `usesObjects`/`usesFields` dependency summary.

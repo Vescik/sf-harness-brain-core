@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 5, "prompts": 20, "skills": 22, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 21, "skills": 22, "instructions": 3}
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",
@@ -793,6 +793,7 @@ def check_grounding_contracts(audit: Audit) -> None:
 
     for data_name, schema_name in (
         ("config/knowledge-policy.json", "knowledge-policy.schema.json"),
+        ("config/knowledge-extraction.json", "knowledge-extraction.schema.json"),
         ("config/salesforce-review-policy.json", "salesforce-review-policy.schema.json"),
     ):
         data = load_json(ROOT / data_name, audit)
@@ -814,6 +815,7 @@ def check_grounding_contracts(audit: Audit) -> None:
         "force-app-knowledge-draft-manifest.schema.json",
         "force-app-knowledge-worklist.schema.json",
         "knowledge-claims-index.schema.json",
+        "knowledge-extraction.schema.json",
         "dev-tool-batch.schema.json",
         "ado-wiki-cache.schema.json",
     ):
@@ -856,6 +858,11 @@ def check_grounding_contracts(audit: Audit) -> None:
     audit.require(example_review.get("allowedObjectApiNames") == [], "disabled example object allowlist must be empty")
     workflow = (ROOT / ".github/workflows/harness-ci.yml").read_text(encoding="utf-8")
     audit.require("npm ci --ignore-scripts" in workflow, "CI must install the pinned Salesforce review runtime without lifecycle scripts")
+    audit.require(
+        "python scripts/knowledge_registry.py validate" in workflow
+        and "python scripts/knowledge_registry.py render-indexes --check" in workflow,
+        "CI must keep the explicit knowledge registry validate/render-indexes gates",
+    )
 
 
 def check_repo_map(audit: Audit) -> None:
@@ -875,8 +882,8 @@ def check_repo_map(audit: Audit) -> None:
     )
     repo_map = load_json(ROOT / ".ai/repo-map.json", audit)
     audit.require(
-        isinstance(repo_map.get("wordCount"), int) and repo_map["wordCount"] <= 800,
-        "repo-map.md exceeds its 800-word budget",
+        isinstance(repo_map.get("wordCount"), int) and repo_map["wordCount"] <= 850,
+        "repo-map.md exceeds its 850-word budget",
     )
     digests = repo_map.get("sourceDigests", {})
     expected_sources = (

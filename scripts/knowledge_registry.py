@@ -7,6 +7,7 @@ import argparse
 import copy
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
@@ -38,15 +39,117 @@ SCOPE_FIELDS = (
 
 # Reference-kind vocabulary for the component usage registry carried in assertion.value.references.
 # Field kinds name an `Object.Field`; object kinds name a bare object; invoke kinds name another
-# automation/method. Used to answer "which components use object/field X?" search queries.
+# automation/method; external kinds name things outside the repo component graph (related lists,
+# hosts, org principals) and are excluded from usage derivation. Every kind the extractor
+# (force_app_knowledge.ALL_REF_KINDS) can emit must be classified in exactly one of these sets —
+# tests/test_kind_contract.py pins that invariant.
 FIELD_REF_KINDS = frozenset(
-    {"reads-field", "writes-field", "references-field", "places-field", "grants-field-permission", "schema"}
+    {
+        "reads-field",
+        "writes-field",
+        "references-field",
+        "places-field",
+        "grants-field-permission",
+        "schema",
+        # Apex source-token heuristics (collector 1.1.0): SOQL SELECT/WHERE fields and
+        # local-variable member accesses. Same Object.Field target shape, assurance stays inferred.
+        "soql-field",
+        "var-field-ref",
+        # Filter/criteria fields (collector 1.3.0): fields an automation filters records by —
+        # reads used for selection, distinct from the reads-field retrieval polarity.
+        "filters-field",
+        # Dependent-picklist wiring (collector 1.3.0): target is the controlling field.
+        "picklist-dependency",
+        # Level-aware field grants (collector 1.4.0): edit implies read; one edge per field.
+        "grants-field-read",
+        "grants-field-edit",
+    }
 )
 OBJECT_REF_KINDS = frozenset(
-    {"operates-on", "object-token", "relationship", "queries-object", "dml-object", "grants-object-permission"}
+    {
+        "operates-on",
+        "object-token",
+        "relationship",
+        "queries-object",
+        "dml-object",
+        "grants-object-permission",
+        # High-signal record-visibility grants (collector 1.4.0).
+        "grants-object-view-all",
+        "grants-object-modify-all",
+        # Queue routing (collector 1.5.0): target is the object the queue serves.
+        "serves-object",
+    }
 )
 INVOKE_REF_KINDS = frozenset(
-    {"invokes-apex", "invokes-class", "subflow", "action", "apex-method", "apex-controller"}
+    {
+        "invokes-apex",
+        "invokes-class",
+        "subflow",
+        "action",
+        "apex-method",
+        "apex-controller",
+        # Field/business-process → value-set dependency (collector 1.3.0): target names a
+        # GlobalValueSet or StandardValueSet component.
+        "uses-value-set",
+        # Workflow/approval notification wiring (collector 1.3.0): sends-alert targets an
+        # Object.AlertName workflow alert; uses-template targets an EmailTemplate folder/name.
+        "sends-alert",
+        "uses-template",
+        # Apex `callout:Name` literal (collector 1.3.0): target names a NamedCredential.
+        "uses-named-credential",
+        # Approval-process action wiring (collector 1.4.0): target is Object.ActionName inside
+        # the owning object's Workflow component (fieldUpdates/tasks/outboundMessages).
+        "uses-workflow-action",
+        # Record-type → business-process and duplicate-rule → matching-rule links (collector
+        # 1.4.0): targets are Object.Name component identities.
+        "uses-business-process",
+        "uses-matching-rule",
+        # UI/code text and composition wiring (collector 1.4.0): uses-label targets a
+        # CustomLabel name; embeds-component targets a child component bundle;
+        # displays-component targets a rendered component; launches-flow targets a Flow.
+        "uses-label",
+        "embeds-component",
+        "displays-component",
+        "launches-flow",
+        # App action override (collector 1.4.0): target names the FlexiPage assigned as the
+        # view/edit/new page for an object (optionally per profile/record type).
+        "overrides-view",
+        # Access-model grants (collector 1.4.0): targets name repo components (Apex class,
+        # CustomPermission, Object.RecordType, Flow, Layout).
+        "grants-class-access",
+        "grants-custom-permission",
+        "grants-record-type",
+        "grants-flow-access",
+        "assigns-layout",
+        # Routing rules (collector 1.5.0): target names a Queue component (user targets are
+        # suppressed at extraction).
+        "assigns-to",
+        # Integration topology (collector 1.5.0): credential chains and pre-authorizations.
+        "uses-external-credential",
+        "references-auth-provider",
+        "grants-to-profile",
+        "grants-to-permission-set",
+        # $Permission gates and permission-set-group composition (collector 1.5.0).
+        "references-custom-permission",
+        "includes-permission-set",
+        "mutes-permission-set",
+        # Role hierarchy (collector 1.6.0): target names the parent Role component.
+        "reports-to",
+    }
+)
+# Kinds whose targets are not repo components, objects, or fields (a layout's related-list name,
+# an Apex callout's endpoint hostname; org principals as the extractor grows). Deliberately
+# excluded from usesObjects/usesFields/invokes derivation so those query surfaces stay precise.
+EXTERNAL_REF_KINDS = frozenset(
+    {
+        "related-list",
+        "callout-endpoint",
+        # System permissions (ModifyAllData, AuthorApex, …) are platform capability strings,
+        # not repo components.
+        "grants-user-permission",
+        # Sharing grantees (collector 1.5.0): targets are org principals (role:X, group:Y).
+        "shares-with",
+    }
 )
 
 
@@ -382,6 +485,21 @@ class KnowledgeRegistry:
         }
 
     @staticmethod
+    def claim_error_catalog(claim: dict[str, Any]) -> list[dict[str, Any]]:
+        """errorCatalog entries carried in assertion.value.facts; empty when absent.
+
+        Powers the search corpus and the claims-index emitsErrors summary so a user-pasted
+        error message finds the automation that declares it."""
+
+        value = claim.get("assertion", {}).get("value")
+        if not isinstance(value, dict):
+            return []
+        facts = value.get("facts")
+        if not isinstance(facts, dict):
+            return []
+        return [entry for entry in facts.get("errorCatalog") or [] if isinstance(entry, dict)]
+
+    @staticmethod
     def structured_fact(claim: dict[str, Any]) -> str:
         identity = str(claim["subject"]["identity"])
         value = claim["assertion"]["value"]
@@ -687,6 +805,10 @@ class KnowledgeRegistry:
         uses_object: str | None = None,
         uses_field: str | None = None,
         invokes: str | None = None,
+        related: str | None = None,
+        depth: int = 1,
+        search: str | None = None,
+        top: int = 10,
         at: datetime | None = None,
     ) -> dict[str, Any]:
         filters = {
@@ -704,9 +826,21 @@ class KnowledgeRegistry:
             "uses_object": uses_object,
             "uses_field": uses_field,
             "invokes": invokes,
+            "related": related,
+            "search": search,
         }
         if not any(value is not None for value in filters.values()):
             raise ContractError("query requires at least one Knowledge filter")
+        if related is not None:
+            others = {name for name, value in filters.items() if value is not None} - {"related"}
+            if others:
+                raise ContractError(
+                    "--related traverses the claim graph on its own; combine it only with "
+                    "--depth/--at"
+                )
+            return self.related_query(related, depth, at)
+        if not 1 <= top:
+            raise ContractError("query --top must be at least 1")
         effective_at = self.at_time(at)
         self.validate_all(effective_at, enforce_current=False)
         matches: list[dict[str, Any]] = []
@@ -778,10 +912,262 @@ class KnowledgeRegistry:
             if keyword_tier is not None:
                 match["keywordTier"] = keyword_tier
             matches.append(match)
+        if search is not None:
+            matches = self.rank_matches(matches, search, top)
         return {
             "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
             "count": len(matches),
             "claims": matches,
+        }
+
+    # Claim-graph edges used by --related traversal and the search corpus.
+    RELATION_EDGE_FIELDS = ("relatedClaims", "contradicts", "supersedes")
+
+    @classmethod
+    def claim_edges(cls, claim: dict[str, Any]) -> list[tuple[str, str]]:
+        edges: list[tuple[str, str]] = []
+        for field in cls.RELATION_EDGE_FIELDS:
+            for ref in claim.get(field) or []:
+                edges.append((field, str(ref)))
+        if claim.get("supersededBy"):
+            edges.append(("supersededBy", str(claim["supersededBy"])))
+        return edges
+
+    def related_query(
+        self, claim_id: str, depth: int, at: datetime | None = None
+    ) -> dict[str, Any]:
+        """Breadth-first neighborhood of a claim over its reconciliation/relation edges.
+
+        Unlike plain query this deliberately returns non-effective claims too — superseded,
+        contested, and rejected history is exactly what the graph exists to expose. Every match
+        carries `effective` plus `nonEffectiveReason` so a consumer can still fail closed.
+        """
+
+        if not 1 <= depth <= 5:
+            raise ContractError("query --depth must be between 1 and 5")
+        effective_at = self.at_time(at)
+        self.validate_all(effective_at, enforce_current=False)
+        claims_by_id: dict[str, dict[str, Any]] = {}
+        paths_by_id: dict[str, Path] = {}
+        for path, claim in self.records(self.claims):
+            claims_by_id[str(claim["claimId"])] = claim
+            paths_by_id[str(claim["claimId"])] = path
+        if claim_id not in claims_by_id:
+            raise ContractError(f"Knowledge claim does not exist: {claim_id}")
+        adjacency: dict[str, list[tuple[str, str]]] = {}
+        for source_id, claim in claims_by_id.items():
+            for edge, target in self.claim_edges(claim):
+                adjacency.setdefault(source_id, []).append((edge, target))
+                adjacency.setdefault(target, []).append((edge, source_id))
+        visited: dict[str, dict[str, Any]] = {claim_id: {"distance": 0}}
+        frontier = [claim_id]
+        for distance in range(1, depth + 1):
+            next_frontier: list[str] = []
+            for node in frontier:
+                for edge, neighbor in adjacency.get(node, []):
+                    if neighbor in visited:
+                        continue
+                    visited[neighbor] = {
+                        "distance": distance,
+                        "via": {"edge": edge, "from": node},
+                    }
+                    next_frontier.append(neighbor)
+            frontier = next_frontier
+        matches: list[dict[str, Any]] = []
+        for neighbor_id, info in sorted(
+            visited.items(), key=lambda item: (item[1]["distance"], item[0])
+        ):
+            claim = claims_by_id.get(neighbor_id)
+            if claim is None:
+                continue
+            path = paths_by_id[neighbor_id]
+            effective = self.claim_is_effective(claim, effective_at)
+            match: dict[str, Any] = {
+                "claim": copy.deepcopy(claim),
+                "sha256": file_sha256(path),
+                "path": path.relative_to(self.root).as_posix(),
+                "distance": info["distance"],
+                "effective": effective,
+            }
+            if "via" in info:
+                match["via"] = info["via"]
+            if not effective:
+                match["nonEffectiveReason"] = self.non_effective_reason(claim, effective_at)
+            matches.append(match)
+        return {
+            "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
+            "count": len(matches),
+            "claims": matches,
+        }
+
+    SEARCH_CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+
+    @classmethod
+    def search_tokens(cls, value: str) -> list[str]:
+        return re.findall(r"[a-z0-9]+", cls.SEARCH_CAMEL_BOUNDARY.sub(" ", value).lower())
+
+    def search_corpus(
+        self, claim: dict[str, Any], claims_by_id: dict[str, dict[str, Any]]
+    ) -> list[str]:
+        """Token document for BM25: statement, description, keywords, subject, predicate,
+        usage-registry targets (objects, fields, invokes), declared error-catalog messages, and
+        the subject identities of every related/contradicting/superseding claim — so a search
+        for an object name or a pasted error message also surfaces the claims connected to it."""
+
+        parts: list[str] = [str(claim["statement"])]
+        value = claim["assertion"]["value"]
+        if isinstance(value, dict) and isinstance(value.get("description"), str):
+            parts.append(value["description"])
+        parts.extend(str(term) for term in claim.get("keywords") or [])
+        parts.extend(str(term) for term in claim.get("candidateKeywords") or [])
+        parts.append(str(claim["subject"]["kind"]))
+        parts.append(str(claim["subject"]["identity"]))
+        parts.append(str(claim["assertion"]["predicate"]))
+        usage = self.claim_usage(claim)
+        parts.extend(usage["objects"] + usage["fields"] + usage["invokes"])
+        for catalog_entry in self.claim_error_catalog(claim):
+            for key in ("errorMessage", "resolvedErrorMessage", "component"):
+                if isinstance(catalog_entry.get(key), str):
+                    parts.append(catalog_entry[key])
+        for _, target in self.claim_edges(claim):
+            neighbor = claims_by_id.get(target)
+            if neighbor is not None:
+                parts.append(str(neighbor["subject"]["identity"]))
+        tokens: list[str] = []
+        for part in parts:
+            tokens.extend(self.search_tokens(part))
+        return tokens
+
+    def rank_matches(
+        self, matches: list[dict[str, Any]], search: str, top: int
+    ) -> list[dict[str, Any]]:
+        """BM25 (k1=1.5, b=0.75) over the filtered survivors; zero-score matches drop out."""
+
+        query_tokens = self.search_tokens(search)
+        if not query_tokens or not matches:
+            return []
+        claims_by_id = {
+            str(claim["claimId"]): claim for _, claim in self.records(self.claims)
+        }
+        documents = [self.search_corpus(match["claim"], claims_by_id) for match in matches]
+        total = len(documents)
+        average_length = sum(len(doc) for doc in documents) / total
+        document_frequency: Counter[str] = Counter()
+        for doc in documents:
+            document_frequency.update(set(doc))
+        k1, b = 1.5, 0.75
+        ranked: list[tuple[float, dict[str, Any]]] = []
+        for match, doc in zip(matches, documents):
+            frequencies = Counter(doc)
+            score = 0.0
+            for term in query_tokens:
+                occurrences = frequencies.get(term, 0)
+                if not occurrences:
+                    continue
+                idf = math.log(
+                    (total - document_frequency[term] + 0.5)
+                    / (document_frequency[term] + 0.5)
+                    + 1
+                )
+                length_norm = 1 - b + b * (len(doc) / average_length if average_length else 1.0)
+                score += idf * occurrences * (k1 + 1) / (occurrences + k1 * length_norm)
+            if score > 0:
+                ranked.append((score, match))
+        ranked.sort(key=lambda item: (-item[0], item[1]["claim"]["claimId"]))
+        results = []
+        for score, match in ranked[:top]:
+            match["score"] = round(score, 6)
+            results.append(match)
+        return results
+
+    def explain(
+        self, identity: str, kind: str | None = None, at: datetime | None = None
+    ) -> dict[str, Any]:
+        """One-call composite view of a subject: its claims, what it uses, what uses it.
+
+        Aggregates only effective claims (same contract as query). `usedBy` matches the
+        usage registry in reverse: every effective claim whose objects/fields/invokes contain
+        the identity. `relations` lists the one-hop claim-graph edges of the subject's claims
+        with each neighbor's subject identity resolved for readability.
+        """
+
+        if not identity:
+            raise ContractError("explain requires a subject identity")
+        effective_at = self.at_time(at)
+        self.validate_all(effective_at, enforce_current=False)
+        needle = identity.casefold()
+        claims_by_id: dict[str, dict[str, Any]] = {}
+        effective_records: list[tuple[Path, dict[str, Any]]] = []
+        for path, claim in self.records(self.claims):
+            claims_by_id[str(claim["claimId"])] = claim
+            if self.claim_is_effective(claim, effective_at):
+                effective_records.append((path, claim))
+        subject_claims: list[dict[str, Any]] = []
+        used_by: list[dict[str, Any]] = []
+        usage_totals: dict[str, set[str]] = {"objects": set(), "fields": set(), "invokes": set()}
+        for path, claim in effective_records:
+            subject = claim["subject"]
+            is_subject = str(subject["identity"]).casefold() == needle and (
+                kind is None or subject["kind"] == kind
+            )
+            if is_subject:
+                subject_claims.append(
+                    {
+                        "claim": copy.deepcopy(claim),
+                        "sha256": file_sha256(path),
+                        "path": path.relative_to(self.root).as_posix(),
+                    }
+                )
+                usage = self.claim_usage(claim)
+                for category in usage_totals:
+                    usage_totals[category].update(usage[category])
+                continue
+            usage = self.claim_usage(claim)
+            via = [
+                category
+                for category in ("objects", "fields", "invokes")
+                if needle in {name.casefold() for name in usage[category]}
+            ]
+            if via:
+                used_by.append(
+                    {
+                        "claimId": claim["claimId"],
+                        "claimType": claim["claimType"],
+                        "subject": copy.deepcopy(claim["subject"]),
+                        "via": via,
+                    }
+                )
+        relations: list[dict[str, Any]] = []
+        for entry in subject_claims:
+            for edge, target in self.claim_edges(entry["claim"]):
+                neighbor = claims_by_id.get(target)
+                relations.append(
+                    {
+                        "claimId": entry["claim"]["claimId"],
+                        "edge": edge,
+                        "target": target,
+                        **(
+                            {
+                                "targetSubject": copy.deepcopy(neighbor["subject"]),
+                                "targetStatus": neighbor["status"],
+                            }
+                            if neighbor is not None
+                            else {}
+                        ),
+                    }
+                )
+        claims_by_type: dict[str, list[dict[str, Any]]] = {}
+        for entry in subject_claims:
+            claims_by_type.setdefault(entry["claim"]["claimType"], []).append(entry)
+        return {
+            "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
+            "identity": identity,
+            **({"kind": kind} if kind is not None else {}),
+            "claimCount": len(subject_claims),
+            "claims": claims_by_type,
+            "usage": {category: sorted(values) for category, values in usage_totals.items()},
+            "usedBy": sorted(used_by, key=lambda item: item["claimId"]),
+            "relations": relations,
         }
 
     TAXONOMY_TERM = re.compile(r"^[-*]\s+\**([^—:*]+?)\**\s*(?:[—:].*)?$")
@@ -867,7 +1253,9 @@ class KnowledgeRegistry:
             return
         atomic_yaml_write(path, record)
 
-    def write_proposed_claim(self, record: dict[str, Any], expected_revision: int) -> None:
+    def write_proposed_claim(
+        self, record: dict[str, Any], expected_revision: int, refresh_verified: bool = False
+    ) -> None:
         self.validate_data(record, "knowledge-claim.schema.json", "proposed claim")
         self.validate_temporal_claim(record)
         if record["status"] != "proposed":
@@ -876,7 +1264,9 @@ class KnowledgeRegistry:
         if path.exists():
             current = load_yaml(path)
             self.validate_data(current, "knowledge-claim.schema.json", str(path))
-            if current["status"] != "proposed":
+            if current["status"] != "proposed" and not (
+                refresh_verified and current["status"] in {"verified", "stale"}
+            ):
                 raise ContractError("propose may not replace a non-proposed claim")
             if current["revision"] != expected_revision:
                 raise ContractError(
@@ -893,7 +1283,11 @@ class KnowledgeRegistry:
         atomic_yaml_write(path, record)
 
     def propose(
-        self, claim_file: Path, evidence_files: list[Path], expected_revision: int
+        self,
+        claim_file: Path,
+        evidence_files: list[Path],
+        expected_revision: int,
+        refresh_verified: bool = False,
     ) -> dict[str, Any]:
         claim = load_yaml(claim_file)
         proposed_evidence = [load_yaml(path) for path in evidence_files]
@@ -960,7 +1354,14 @@ class KnowledgeRegistry:
             if expected_revision != 0 or claim["revision"] != 1:
                 raise ContractError("new proposal requires expected revision 0 and revision 1")
         else:
-            if current["status"] != "proposed":
+            if current["status"] != "proposed" and not (
+                refresh_verified and current["status"] in {"verified", "stale"}
+            ):
+                # A verified claim whose source drifted or whose reviewBy passed has no other
+                # lifecycle route back through review. --refresh-verified demotes it to a new
+                # proposed revision against fresh evidence — fail-safe by construction: the
+                # claim stops being effective until a human re-approves it, and the model
+                # still cannot create any status other than proposed.
                 raise ContractError("propose may not replace a non-proposed claim")
             if current["revision"] != expected_revision:
                 raise ContractError(
@@ -973,7 +1374,7 @@ class KnowledgeRegistry:
 
         for record in proposed_evidence:
             self.write_evidence_immutable(record)
-        self.write_proposed_claim(claim, expected_revision)
+        self.write_proposed_claim(claim, expected_revision, refresh_verified)
         return {
             "claimId": claim["claimId"],
             "status": "proposed",
@@ -1158,6 +1559,8 @@ class KnowledgeRegistry:
         expected_revision: int,
         decision: str = "verify",
         rationale: str | None = None,
+        manifest_sha: str | None = None,
+        render: bool = True,
     ) -> dict[str, Any]:
         """One-command chat-approval review: build the immutable review record (all digests
         computed here), record it, and — for verify — promote the claim and refresh the
@@ -1173,6 +1576,8 @@ class KnowledgeRegistry:
 
         if decision not in {"verify", "reject"}:
             raise ContractError("approve-claim decision must be verify or reject")
+        if manifest_sha is not None and decision != "verify":
+            raise ContractError("manifest approval supports only the verify decision")
         local_config_path = self.root / "config" / "harness.local.json"
         try:
             local_config = json.loads(local_config_path.read_text(encoding="utf-8"))
@@ -1205,11 +1610,21 @@ class KnowledgeRegistry:
             evidence_records.append(load_yaml(evidence_path))
         at = self.at_time()
         reviewed_at = at.strftime("%Y-%m-%dT%H:%M:%SZ")
-        suffix = "CHAT-VERIFY" if decision == "verify" else "CHAT-REJECT"
+        if manifest_sha is not None:
+            suffix = "MANIFEST-VERIFY"
+            mechanism = "copilot-chat-manifest-confirmation"
+            reference = (
+                f"vscode-chat://approve-claim/manifest/sha256:{manifest_sha}/"
+                f"{claim_id}/r{expected_revision}"
+            )
+        else:
+            suffix = "CHAT-VERIFY" if decision == "verify" else "CHAT-REJECT"
+            mechanism = "copilot-chat-confirmation"
+            reference = f"vscode-chat://approve-claim/{claim_id}/r{expected_revision}"
         review_id = f"KREV-{claim_id[5:61]}-R{expected_revision}-{suffix}"
         receipt = {
-            "mechanism": "copilot-chat-confirmation",
-            "reference": f"vscode-chat://approve-claim/{claim_id}/r{expected_revision}",
+            "mechanism": mechanism,
+            "reference": reference,
             "verifiedAt": reviewed_at,
         }
         receipt["receiptDigest"] = canonical_digest(receipt)
@@ -1244,14 +1659,15 @@ class KnowledgeRegistry:
         self.record_review_data(review)
         if decision == "verify":
             promoted = self.promote(claim_id, review_id, expected_revision)
-            self.render_indexes(check=False)
+            if render:
+                self.render_indexes(check=False)
             return {
                 "claimId": claim_id,
                 "reviewId": review_id,
                 "status": "verified",
                 "revision": promoted["revision"],
                 "reviewer": reviewer,
-                "mechanism": "copilot-chat-confirmation",
+                "mechanism": mechanism,
             }
         rejected = copy.deepcopy(claim)
         rejected["revision"] = expected_revision + 1
@@ -1262,14 +1678,120 @@ class KnowledgeRegistry:
         if current["revision"] != expected_revision:
             raise ContractError("claim changed after validation; rejection aborted")
         atomic_yaml_write(claim_path, rejected)
-        self.render_indexes(check=False)
+        if render:
+            self.render_indexes(check=False)
         return {
             "claimId": claim_id,
             "reviewId": review_id,
             "status": "rejected",
             "revision": rejected["revision"],
             "reviewer": reviewer,
-            "mechanism": "copilot-chat-confirmation",
+            "mechanism": mechanism,
+        }
+
+    def approve_manifest(
+        self, manifest_path: Path, rationale: str | None = None
+    ) -> dict[str, Any]:
+        """One human confirmation approves a draft manifest's low-risk claims.
+
+        Owner decision 2026-07-17: only the claim types named in
+        `promotion.manifestApproval.allowedClaimTypes` (component-inventory — generic existence
+        records) qualify; everything else in the manifest is skipped with a reason and keeps the
+        per-claim/25-spec approval path. Each promoted claim still gets its own immutable review,
+        but every audit receipt carries the manifest's content digest under the
+        `copilot-chat-manifest-confirmation` mechanism, so the one confirmation is the recorded
+        approval for exactly the enumerated content. A claim whose canonical record drifted from
+        the drafted file (revision or digest) is skipped, never approved.
+        """
+
+        policy = load_json(self.policy_path)
+        manifest_policy = policy.get("promotion", {}).get("manifestApproval")
+        if not isinstance(manifest_policy, dict):
+            raise ContractError(
+                "knowledge policy does not enable manifest approval "
+                "(promotion.manifestApproval is absent)"
+            )
+        allowed_types = set(manifest_policy.get("allowedClaimTypes") or [])
+        max_claims = int(manifest_policy.get("maxClaims", 0))
+        if not allowed_types or max_claims < 1:
+            raise ContractError("promotion.manifestApproval must name claim types and a cap")
+        manifest = load_json(manifest_path)
+        self.validate_data(
+            manifest, "force-app-knowledge-draft-manifest.schema.json", "draft manifest"
+        )
+        manifest_sha = file_sha256(manifest_path)
+
+        approvable: list[tuple[str, int]] = []
+        skipped: list[dict[str, str]] = []
+
+        def skip(claim_id: str, reason: str) -> None:
+            skipped.append({"claimId": claim_id, "reason": reason})
+
+        for bundle in manifest["bundles"]:
+            claim_id = str(bundle["claimId"])
+            claim_file = bundle.get("claimFile")
+            if not claim_file:
+                skip(claim_id, f"bundle has no drafted claim ({bundle.get('disposition')})")
+                continue
+            draft_path = self.root / claim_file
+            if not draft_path.is_file():
+                skip(claim_id, "drafted claim file is missing")
+                continue
+            draft = load_yaml(draft_path)
+            claim_type = str(draft.get("claimType", ""))
+            if claim_type not in allowed_types:
+                skip(
+                    claim_id,
+                    f"claim type {claim_type} requires per-claim approval "
+                    "(not in promotion.manifestApproval.allowedClaimTypes)",
+                )
+                continue
+            canonical_path = self.claim_path(claim_id)
+            if not canonical_path.is_file():
+                skip(claim_id, "claim has not been proposed")
+                continue
+            canonical_claim = load_yaml(canonical_path)
+            if canonical_claim.get("status") != "proposed":
+                skip(claim_id, f"canonical status is {canonical_claim.get('status')}")
+                continue
+            if canonical_claim.get("revision") != draft.get("revision"):
+                skip(claim_id, "canonical revision drifted from the drafted revision")
+                continue
+            if canonical_digest(canonical_claim) != canonical_digest(draft):
+                skip(claim_id, "canonical claim content drifted from the drafted content")
+                continue
+            approvable.append((claim_id, int(canonical_claim["revision"])))
+
+        if len(approvable) > max_claims:
+            raise ContractError(
+                f"manifest holds {len(approvable)} approvable claims, above the "
+                f"promotion.manifestApproval.maxClaims cap of {max_claims}"
+            )
+        approved: list[dict[str, Any]] = []
+        for claim_id, revision in approvable:
+            result = self.approve_claim(
+                claim_id,
+                revision,
+                decision="verify",
+                rationale=rationale,
+                manifest_sha=manifest_sha,
+                render=False,
+            )
+            approved.append(
+                {
+                    "claimId": claim_id,
+                    "reviewId": result["reviewId"],
+                    "revision": result["revision"],
+                }
+            )
+        if approved:
+            self.render_indexes(check=False)
+        return {
+            "manifestSha256": manifest_sha,
+            "approved": approved,
+            "skipped": skipped,
+            "counts": {"approved": len(approved), "skipped": len(skipped)},
+            "mechanism": "copilot-chat-manifest-confirmation",
         }
 
     @staticmethod
@@ -1563,6 +2085,16 @@ class KnowledgeRegistry:
             row["usesObjects"] = usage["objects"]
         if usage["fields"]:
             row["usesFields"] = usage["fields"]
+        emits_errors: list[str] = []
+        for catalog_entry in self.claim_error_catalog(claim):
+            for key in ("errorMessage", "resolvedErrorMessage"):
+                message = catalog_entry.get(key)
+                if isinstance(message, str) and message:
+                    text = message[:160]
+                    if text not in emits_errors:
+                        emits_errors.append(text)
+        if emits_errors:
+            row["emitsErrors"] = emits_errors
         return row
 
     def rendered_feature_map(self, claims: list[dict[str, Any]], at: datetime) -> str:
@@ -1676,6 +2208,11 @@ def build_parser() -> argparse.ArgumentParser:
     propose.add_argument("--claim-file", required=True)
     propose.add_argument("--evidence-file", action="append", default=[])
     propose.add_argument("--expected-revision", required=True, type=int)
+    propose.add_argument(
+        "--refresh-verified",
+        action="store_true",
+        help="allow replacing a verified/stale claim with a new proposed revision (refresh workflow)",
+    )
 
     review = commands.add_parser("review")
     review.add_argument("--review-file", required=True)
@@ -1696,6 +2233,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     approve.add_argument("--decision", choices=("verify", "reject"), default="verify")
     approve.add_argument("--rationale")
+    approve.add_argument(
+        "--manifest",
+        help="approve a draft manifest's component-inventory claims in one confirmation "
+        "(policy promotion.manifestApproval; other claim types are skipped with reasons)",
+    )
 
     reconcile = commands.add_parser("reconcile")
     reconcile.add_argument("--claim-file", required=True)
@@ -1733,7 +2275,37 @@ def build_parser() -> argparse.ArgumentParser:
         "--invokes",
         help="match claims whose subject invokes this Apex class, subflow, or action",
     )
+    query.add_argument(
+        "--related",
+        help="traverse the claim graph (relatedClaims/contradicts/supersedes/supersededBy) "
+        "from this claim ID; includes non-effective claims, annotated",
+    )
+    query.add_argument(
+        "--depth",
+        type=int,
+        default=1,
+        help="graph hops for --related (1-5, default 1)",
+    )
+    query.add_argument(
+        "--search",
+        help="ranked full-text search (BM25) over statements, descriptions, keywords, "
+        "subject identities, and usage-registry targets",
+    )
+    query.add_argument(
+        "--top",
+        type=int,
+        default=10,
+        help="maximum ranked results for --search (default 10)",
+    )
     query.add_argument("--at")
+
+    explain = commands.add_parser(
+        "explain",
+        help="composite view of one subject: its effective claims, usage, reverse usage, and relations",
+    )
+    explain.add_argument("--identity", required=True)
+    explain.add_argument("--kind")
+    explain.add_argument("--at")
 
     render = commands.add_parser("render-indexes")
     render.add_argument("--check", action="store_true")
@@ -1784,13 +2356,28 @@ def main() -> int:
                 registry.contained_input(args.claim_file),
                 [registry.contained_input(path) for path in args.evidence_file],
                 args.expected_revision,
+                refresh_verified=args.refresh_verified,
             )
         elif args.command == "review":
             result = registry.record_review(registry.contained_input(args.review_file))
         elif args.command == "promote":
             result = registry.promote(args.claim_id, args.review_id, args.expected_revision)
         elif args.command == "approve-claim":
-            if args.claim_spec:
+            if args.manifest is not None:
+                if (
+                    args.claim_id is not None
+                    or args.expected_revision is not None
+                    or args.claim_spec
+                ):
+                    raise ContractError(
+                        "--manifest cannot be combined with --claim-id/--expected-revision/--claim-spec"
+                    )
+                if args.decision != "verify":
+                    raise ContractError("manifest approval supports only the verify decision")
+                result = registry.approve_manifest(
+                    registry.contained_input(args.manifest), args.rationale
+                )
+            elif args.claim_spec:
                 if args.claim_id is not None or args.expected_revision is not None:
                     raise ContractError(
                         "use either --claim-id/--expected-revision or repeatable --claim-spec, not both"
@@ -1836,7 +2423,17 @@ def main() -> int:
                 uses_object=args.uses_object,
                 uses_field=args.uses_field,
                 invokes=args.invokes,
+                related=args.related,
+                depth=args.depth,
+                search=args.search,
+                top=args.top,
                 at=parse_time(args.at, "query --at") if args.at else None,
+            )
+        elif args.command == "explain":
+            result = registry.explain(
+                args.identity,
+                kind=args.kind,
+                at=parse_time(args.at, "explain --at") if args.at else None,
             )
         elif args.command == "render-indexes":
             result = registry.render_indexes(args.check)

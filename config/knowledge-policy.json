@@ -225,7 +225,13 @@
     "safeVerdictAllowedStatuses": [
       "verified"
     ],
-    "verifiedRequiresHumanReview": true
+    "verifiedRequiresHumanReview": true,
+    "manifestApproval": {
+      "allowedClaimTypes": [
+        "component-inventory"
+      ],
+      "maxClaims": 500
+    }
   },
   "schemaVersion": 1
 }

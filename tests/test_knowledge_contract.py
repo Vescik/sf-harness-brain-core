@@ -31,6 +31,7 @@ SCHEMA_FILES = (
     "knowledge-claims-index.schema.json",
     "principle-registry.schema.json",
     "knowledge-policy.schema.json",
+    "force-app-knowledge-draft-manifest.schema.json",
 )
 DOMAIN_FILES = (
     "current-implementation.md",
@@ -545,8 +546,508 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         row = next(r for r in index["claims"] if r["claimId"] == "KCLM-FLOW-ROUTER-001")
         self.assertEqual(["Account", "Engagement__c"], row["usesObjects"])
         self.assertIn("Engagement__c.Status__c", row["usesFields"])
+        self.assertNotIn("emitsErrors", row)
         automation_map = (self.root / ".ai/knowledge/automation-map.md").read_text(encoding="utf-8")
         self.assertIn("## Automations by object", automation_map)
+
+    def test_error_catalog_claim_is_searchable_by_pasted_error_message(self) -> None:
+        # A Flow claim carrying facts.errorCatalog: a user-pasted error message must rank the
+        # emitting automation via --search, and the claims index must expose emitsErrors.
+        commit = "a" * 40
+        evidence = {
+            "schemaVersion": 3,
+            "evidenceId": "KEVD-FLOW-GUARD-001",
+            "sourceType": "metadata-repository",
+            "sourceLocator": f"git://{commit}/force-app/main/default/flows/DiscountGuard.flow-meta.xml",
+            "authorityFor": ["automation-inventory"],
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": commit,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "retrievedAt": "2026-07-10T11:00:00Z",
+            "collector": {"kind": "tool", "name": "force_app_knowledge.py", "version": "1.2.0"},
+            "completeness": {
+                "status": "complete",
+                "enumerationComplete": False,
+                "permissionsProven": False,
+                "missingSegments": [],
+            },
+            "sensitivity": "internal-sanitized",
+            "sanitization": {"rawDataCommitted": False, "redactions": []},
+            "contentDigest": f"sha256:{'c' * 64}",
+            "summary": "Sanitized source observation of Flow:DiscountGuard.",
+        }
+        claim = {
+            "schemaVersion": 3,
+            "claimId": "KCLM-FLOW-GUARD-001",
+            "revision": 1,
+            "domain": "automation-map",
+            "claimType": "automation-inventory",
+            "subject": {"kind": "automation", "identity": "DiscountGuard"},
+            "assertion": {
+                "predicate": "source-defined-automation",
+                "value": {
+                    "metadataType": "Flow",
+                    "facts": {
+                        "object": "Engagement__c",
+                        "errorCatalog": [
+                            {
+                                "component": "Block_Discount",
+                                "kind": "custom-error",
+                                "errorMessage": "Discount cannot exceed 20% for {!$Label.Tier_Name}.",
+                                "resolvedErrorMessage": "Discount cannot exceed 20% for Standard tier.",
+                                "fieldSelection": "Discount__c",
+                                "triggerContext": "Engagement__c / Update / RecordBeforeSave",
+                                "paths": [
+                                    [
+                                        {
+                                            "decision": "Check_Tier",
+                                            "outcome": "Standard_Tier",
+                                            "conditions": ["$Record.Tier__c EqualTo Standard"],
+                                        }
+                                    ]
+                                ],
+                            }
+                        ],
+                    },
+                    "references": [{"kind": "operates-on", "target": "Engagement__c"}],
+                },
+            },
+            "statement": "DiscountGuard is a source-defined Flow component at the repository commit"
+            ' that declares 1 error surface(s), including: "Discount cannot exceed 20% for'
+            ' {!$Label.Tier_Name}.".',
+            "status": "proposed",
+            "assurance": "observed",
+            "scope": {
+                "environment": "not-applicable",
+                "orgKey": None,
+                "packageNamespace": None,
+                "packageVersion": None,
+                "repositoryCommit": commit,
+            },
+            "evidenceRefs": ["KEVD-FLOW-GUARD-001"],
+            "reviewRef": None,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "verifiedAt": None,
+            "reviewBy": "2026-12-01T11:00:00Z",
+            "sensitivity": "internal-sanitized",
+            "keywords": [],
+            "candidateKeywords": [],
+            "limitations": ["Repository metadata establishes intended source only."],
+            "supersedes": [],
+            "supersededBy": None,
+            "contradicts": [],
+        }
+        (self.root / "inputs/guard-claim.yaml").write_text(
+            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
+        )
+        (self.root / "inputs/guard-evidence.yaml").write_text(
+            yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8"
+        )
+        self.registry.propose(
+            self.root / "inputs/guard-claim.yaml",
+            [self.root / "inputs/guard-evidence.yaml"],
+            expected_revision=0,
+        )
+        self.write_chat_reviewer()
+        self.assertEqual(
+            "verified", self.registry.approve_claim("KCLM-FLOW-GUARD-001", 1)["status"]
+        )
+
+        # Admin pastes the message the user saw (label already substituted by the platform).
+        pasted = self.registry.query(search="Discount cannot exceed 20% for Standard tier")
+        self.assertGreaterEqual(pasted["count"], 1)
+        self.assertEqual(
+            "KCLM-FLOW-GUARD-001", pasted["claims"][0]["claim"]["claimId"]
+        )
+        # The error component name is searchable too.
+        by_component = self.registry.query(search="block discount")
+        self.assertEqual("KCLM-FLOW-GUARD-001", by_component["claims"][0]["claim"]["claimId"])
+
+        index = load_json(self.root / ".ai/knowledge/claims-index.json")
+        row = next(r for r in index["claims"] if r["claimId"] == "KCLM-FLOW-GUARD-001")
+        self.assertEqual(
+            [
+                "Discount cannot exceed 20% for {!$Label.Tier_Name}.",
+                "Discount cannot exceed 20% for Standard tier.",
+            ],
+            row["emitsErrors"],
+        )
+
+    def propose_variant(
+        self, claim_id: str, identity: str, related: list[str] | None = None
+    ) -> None:
+        base = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        variant = copy.deepcopy(base)
+        variant["claimId"] = claim_id
+        variant["subject"]["identity"] = identity
+        variant["statement"] = f"{identity} exists in the accessible schema."
+        if related is not None:
+            variant["relatedClaims"] = related
+        path = self.root / f"inputs/{claim_id}.yaml"
+        path.write_text(yaml.safe_dump(variant, sort_keys=False), encoding="utf-8")
+        self.registry.propose(
+            path,
+            [self.root / "inputs/knowledge-evidence.complete.yaml"],
+            expected_revision=0,
+        )
+
+    def test_query_related_traverses_the_claim_graph_with_annotations(self) -> None:
+        self.promote()  # KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001 verified
+        anchor = "KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001"
+        self.propose_variant("KCLM-EXAMPLE-RELATED-001", "RelatedOne__c", [anchor])
+        self.propose_variant(
+            "KCLM-EXAMPLE-RELATED-002", "RelatedTwo__c", ["KCLM-EXAMPLE-RELATED-001"]
+        )
+
+        one_hop = self.registry.query(related=anchor)
+        self.assertEqual(2, one_hop["count"])
+        by_id = {match["claim"]["claimId"]: match for match in one_hop["claims"]}
+        self.assertEqual(0, by_id[anchor]["distance"])
+        self.assertTrue(by_id[anchor]["effective"])
+        neighbor = by_id["KCLM-EXAMPLE-RELATED-001"]
+        self.assertEqual(1, neighbor["distance"])
+        self.assertFalse(neighbor["effective"])
+        self.assertEqual("status is proposed", neighbor["nonEffectiveReason"])
+        self.assertEqual({"edge": "relatedClaims", "from": anchor}, neighbor["via"])
+
+        two_hops = self.registry.query(related=anchor, depth=2)
+        self.assertEqual(3, two_hops["count"])
+        self.assertIn(
+            "KCLM-EXAMPLE-RELATED-002",
+            {match["claim"]["claimId"] for match in two_hops["claims"]},
+        )
+
+        with self.assertRaisesRegex(ContractError, "--depth"):
+            self.registry.query(related=anchor, depth=9)
+        with self.assertRaisesRegex(ContractError, "--related"):
+            self.registry.query(related=anchor, domain="object-descriptions")
+        with self.assertRaisesRegex(ContractError, "does not exist"):
+            self.registry.query(related="KCLM-NOPE-000")
+
+    def promote_usage_claim(self) -> None:
+        commit = "a" * 40
+        evidence = {
+            "schemaVersion": 3,
+            "evidenceId": "KEVD-FLOW-ROUTER-002",
+            "sourceType": "metadata-repository",
+            "sourceLocator": f"git://{commit}/force-app/main/default/flows/EngagementRouter.flow-meta.xml",
+            "authorityFor": ["automation-inventory"],
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": commit,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "retrievedAt": "2026-07-10T11:00:00Z",
+            "sourceRevision": f"sha256:{'b' * 64}",
+            "collector": {"kind": "tool", "name": "force_app_knowledge.py", "version": "2"},
+            "completeness": {
+                "status": "complete",
+                "enumerationComplete": False,
+                "permissionsProven": False,
+                "missingSegments": [],
+            },
+            "sensitivity": "internal-sanitized",
+            "sanitization": {"rawDataCommitted": False, "redactions": []},
+            "contentDigest": f"sha256:{'c' * 64}",
+            "summary": "Sanitized source observation of Flow:EngagementRouter.",
+        }
+        claim = {
+            "schemaVersion": 3,
+            "claimId": "KCLM-FLOW-ROUTER-002",
+            "revision": 1,
+            "domain": "automation-map",
+            "claimType": "automation-inventory",
+            "subject": {"kind": "automation", "identity": "EngagementRouter"},
+            "assertion": {
+                "predicate": "source-defined-automation",
+                "value": {
+                    "metadataType": "Flow",
+                    "facts": {"object": "Engagement__c", "referencedObjects": ["Account"]},
+                    "references": [
+                        {"kind": "operates-on", "target": "Engagement__c"},
+                        {"kind": "reads-field", "target": "Account.Name"},
+                        {"kind": "invokes-apex", "target": "EngagementNotifier"},
+                    ],
+                },
+            },
+            "statement": "EngagementRouter is a source-defined Flow that routes engagements.",
+            "status": "proposed",
+            "assurance": "observed",
+            "scope": {
+                "environment": "not-applicable",
+                "orgKey": None,
+                "packageNamespace": None,
+                "packageVersion": None,
+                "repositoryCommit": commit,
+            },
+            "evidenceRefs": ["KEVD-FLOW-ROUTER-002"],
+            "reviewRef": None,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "verifiedAt": None,
+            "reviewBy": "2026-12-01T11:00:00Z",
+            "sensitivity": "internal-sanitized",
+            "keywords": [],
+            "candidateKeywords": [],
+            "limitations": ["Repository metadata establishes intended source only."],
+            "supersedes": [],
+            "supersededBy": None,
+            "contradicts": [],
+        }
+        (self.root / "inputs/flow-claim-2.yaml").write_text(
+            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
+        )
+        (self.root / "inputs/flow-evidence-2.yaml").write_text(
+            yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8"
+        )
+        self.registry.propose(
+            self.root / "inputs/flow-claim-2.yaml",
+            [self.root / "inputs/flow-evidence-2.yaml"],
+            expected_revision=0,
+        )
+        self.write_chat_reviewer()
+        self.registry.approve_claim("KCLM-FLOW-ROUTER-002", 1)
+
+    def test_query_search_ranks_over_subject_and_usage_tokens(self) -> None:
+        self.promote()
+        self.promote_usage_claim()
+
+        # Subject-identity tokens (camel-split) rank the flow claim first.
+        routed = self.registry.query(search="engagement router")
+        self.assertGreaterEqual(routed["count"], 1)
+        self.assertEqual("KCLM-FLOW-ROUTER-002", routed["claims"][0]["claim"]["claimId"])
+        self.assertGreater(routed["claims"][0]["score"], 0)
+
+        # Usage-registry targets are searchable: Account.Name reaches the flow claim even
+        # though "account" appears nowhere in its statement.
+        by_usage = self.registry.query(search="account")
+        self.assertEqual(1, by_usage["count"])
+        self.assertEqual("KCLM-FLOW-ROUTER-002", by_usage["claims"][0]["claim"]["claimId"])
+
+        # Zero-score results drop out entirely and --top caps the list.
+        self.assertEqual(0, self.registry.query(search="zzzunknownterm")["count"])
+        self.assertEqual(1, self.registry.query(search="the", top=1)["count"])
+        with self.assertRaisesRegex(ContractError, "--top"):
+            self.registry.query(search="engagement", top=0)
+
+        # Search composes with structured filters: rank only the survivors.
+        composed = self.registry.query(search="engagement", claim_type="object-existence")
+        self.assertTrue(
+            all(m["claim"]["claimType"] == "object-existence" for m in composed["claims"])
+        )
+
+    def test_explain_aggregates_subject_usage_and_reverse_usage(self) -> None:
+        self.promote()
+        self.promote_usage_claim()
+
+        subject = self.registry.explain("EngagementRouter")
+        self.assertEqual(1, subject["claimCount"])
+        self.assertIn("automation-inventory", subject["claims"])
+        self.assertEqual(
+            ["Account", "Engagement__c"], subject["usage"]["objects"]
+        )
+        self.assertEqual(["Account.Name"], subject["usage"]["fields"])
+        self.assertEqual(["EngagementNotifier"], subject["usage"]["invokes"])
+
+        reverse = self.registry.explain("Engagement__c")
+        self.assertEqual(0, reverse["claimCount"])
+        self.assertEqual(1, len(reverse["usedBy"]))
+        self.assertEqual("KCLM-FLOW-ROUTER-002", reverse["usedBy"][0]["claimId"])
+        self.assertEqual(["objects"], reverse["usedBy"][0]["via"])
+
+        with self.assertRaisesRegex(ContractError, "identity"):
+            self.registry.explain("")
+
+    MANIFEST_COMMIT = "a" * 40
+
+    def manifest_bundle_evidence(self, identity: str) -> dict:
+        return {
+            "schemaVersion": 3,
+            "evidenceId": f"KEVD-MANIFEST-{identity.upper()}-001",
+            "sourceType": "metadata-repository",
+            "sourceLocator": f"git://{self.MANIFEST_COMMIT}/force-app/main/default/tabs/{identity}.tab-meta.xml",
+            "authorityFor": ["component-inventory", "object-existence"],
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": self.MANIFEST_COMMIT,
+            "observedAt": "2026-07-10T11:00:00Z",
+            "retrievedAt": "2026-07-10T11:00:00Z",
+            "sourceRevision": f"sha256:{'b' * 64}",
+            "collector": {"kind": "tool", "name": "force_app_knowledge.py", "version": "2"},
+            "completeness": {
+                "status": "complete",
+                "enumerationComplete": False,
+                "permissionsProven": False,
+                "missingSegments": [],
+            },
+            "sensitivity": "internal-sanitized",
+            "sanitization": {"rawDataCommitted": False, "redactions": []},
+            "contentDigest": f"sha256:{'c' * 64}",
+            "summary": f"Sanitized source observation of {identity}.",
+        }
+
+    def manifest_bundle_claim(self, claim_id: str, identity: str) -> dict:
+        base = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        claim = copy.deepcopy(base)
+        claim["claimId"] = claim_id
+        claim["subject"] = {"kind": "component", "identity": identity}
+        claim["domain"] = "component-inventory"
+        claim["claimType"] = "component-inventory"
+        claim["assertion"] = {
+            "predicate": "source-defined-component",
+            "value": {"metadataType": "CustomTab"},
+        }
+        claim["statement"] = f"{identity} is defined in force-app source."
+        claim["scope"] = {
+            "environment": "not-applicable",
+            "orgKey": None,
+            "packageNamespace": None,
+            "packageVersion": None,
+            "repositoryCommit": self.MANIFEST_COMMIT,
+        }
+        claim["evidenceRefs"] = [f"KEVD-MANIFEST-{identity.upper()}-001"]
+        return claim
+
+    def propose_manifest_bundle(self, claim_id: str, identity: str, drafts: Path) -> dict:
+        claim = self.manifest_bundle_claim(claim_id, identity)
+        evidence = self.manifest_bundle_evidence(identity)
+        draft_path = drafts / f"{claim_id}.yaml"
+        draft_path.write_text(yaml.safe_dump(claim, sort_keys=False), encoding="utf-8")
+        evidence_path = drafts / f"{evidence['evidenceId']}.yaml"
+        evidence_path.write_text(yaml.safe_dump(evidence, sort_keys=False), encoding="utf-8")
+        self.registry.propose(draft_path, [evidence_path], expected_revision=0)
+        return {
+            "claimId": claim_id,
+            "evidenceId": evidence["evidenceId"],
+            "claimFile": f".cache/knowledge-proposals/force-app-drafts/{claim_id}.yaml",
+            "evidenceFile": f".cache/knowledge-proposals/force-app-drafts/{evidence['evidenceId']}.yaml",
+            "expectedRevision": 0,
+            "disposition": "new",
+            "command": "python scripts/knowledge_registry.py propose ...",
+        }
+
+    def write_manifest(self, bundles: list[dict]) -> Path:
+        drafts = self.root / ".cache/knowledge-proposals/force-app-drafts"
+        drafts.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "schemaVersion": 1,
+            "kind": "force-app-knowledge-draft-manifest",
+            "generatedAt": "2026-07-10T11:00:00Z",
+            "repositoryCommit": "a" * 40,
+            "sourceTreeDigest": f"sha256:{'d' * 64}",
+            "reviewStatus": "draft",
+            "claimCount": sum("claimFile" in bundle for bundle in bundles),
+            "bundles": bundles,
+            "limitations": ["Drafts are proposed claims only and are not verified Knowledge."],
+        }
+        path = drafts / "manifest.json"
+        path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        return path
+
+    def test_approve_manifest_promotes_inventory_claims_and_skips_the_rest(self) -> None:
+        self.write_chat_reviewer()
+        drafts = self.root / ".cache/knowledge-proposals/force-app-drafts"
+        drafts.mkdir(parents=True, exist_ok=True)
+
+        bundles: list[dict] = []
+        # Two proposable component-inventory claims.
+        for index, identity in enumerate(("ComponentOne", "ComponentTwo"), start=1):
+            bundles.append(
+                self.propose_manifest_bundle(f"KCLM-MANIFEST-INV-00{index}", identity, drafts)
+            )
+        # An object-existence claim: proposed, but NOT manifest-approvable.
+        guarded = self.manifest_bundle_claim("KCLM-MANIFEST-OBJ-001", "GuardedObject")
+        guarded["domain"] = "object-descriptions"
+        guarded["claimType"] = "object-existence"
+        guarded["subject"] = {"kind": "object", "identity": "GuardedObject__c"}
+        guarded["assertion"] = {"predicate": "exists-in-accessible-schema", "value": True}
+        guarded_evidence = self.manifest_bundle_evidence("GuardedObject")
+        guarded_path = drafts / "KCLM-MANIFEST-OBJ-001.yaml"
+        guarded_path.write_text(yaml.safe_dump(guarded, sort_keys=False), encoding="utf-8")
+        guarded_evidence_path = drafts / f"{guarded_evidence['evidenceId']}.yaml"
+        guarded_evidence_path.write_text(
+            yaml.safe_dump(guarded_evidence, sort_keys=False), encoding="utf-8"
+        )
+        self.registry.propose(guarded_path, [guarded_evidence_path], expected_revision=0)
+        bundles.append(
+            {
+                "claimId": "KCLM-MANIFEST-OBJ-001",
+                "evidenceId": guarded_evidence["evidenceId"],
+                "claimFile": ".cache/knowledge-proposals/force-app-drafts/KCLM-MANIFEST-OBJ-001.yaml",
+                "evidenceFile": f".cache/knowledge-proposals/force-app-drafts/{guarded_evidence['evidenceId']}.yaml",
+                "expectedRevision": 0,
+                "disposition": "new",
+                "command": "python scripts/knowledge_registry.py propose ...",
+            }
+        )
+        # A skipped bundle without a claim file (existing-non-proposed).
+        bundles.append(
+            {
+                "claimId": "KCLM-MANIFEST-SKIPPED-001",
+                "disposition": "existing-non-proposed",
+                "reason": "existing status is verified",
+            }
+        )
+        manifest_path = self.write_manifest(bundles)
+
+        result = self.registry.approve_manifest(manifest_path)
+        self.assertEqual(2, result["counts"]["approved"])
+        self.assertEqual(2, result["counts"]["skipped"])
+        self.assertEqual("copilot-chat-manifest-confirmation", result["mechanism"])
+        skip_reasons = {entry["claimId"]: entry["reason"] for entry in result["skipped"]}
+        self.assertIn("per-claim approval", skip_reasons["KCLM-MANIFEST-OBJ-001"])
+        self.assertIn("no drafted claim", skip_reasons["KCLM-MANIFEST-SKIPPED-001"])
+
+        for approved in result["approved"]:
+            claim = load_yaml(self.root / f".ai/knowledge/claims/{approved['claimId']}.yaml")
+            self.assertEqual("verified", claim["status"])
+            review = load_yaml(self.root / f".ai/knowledge/reviews/{approved['reviewId']}.yaml")
+            self.assertEqual(
+                "copilot-chat-manifest-confirmation", review["auditReceipt"]["mechanism"]
+            )
+            self.assertIn(
+                f"manifest/sha256:{result['manifestSha256']}",
+                review["auditReceipt"]["reference"],
+            )
+            self.registry.verify_audit_receipt(review)
+        # Full registry still validates after the batch (reviews bind correctly).
+        self.registry.validate_all()
+        # The untouched object claim is still proposed.
+        self.assertEqual(
+            "proposed",
+            load_yaml(self.root / ".ai/knowledge/claims/KCLM-MANIFEST-OBJ-001.yaml")["status"],
+        )
+
+    def test_approve_manifest_skips_drifted_content_and_fails_closed_without_policy(self) -> None:
+        self.write_chat_reviewer()
+        drafts = self.root / ".cache/knowledge-proposals/force-app-drafts"
+        drafts.mkdir(parents=True, exist_ok=True)
+        claim_id = "KCLM-MANIFEST-DRIFT-001"
+        bundle = self.propose_manifest_bundle(claim_id, "DriftingComponent", drafts)
+        # Draft file drifts after propose: the human would approve unseen content — skip.
+        claim = self.manifest_bundle_claim(claim_id, "DriftingComponent")
+        drifted = dict(claim, statement="Changed after proposal.")
+        (drafts / f"{claim_id}.yaml").write_text(
+            yaml.safe_dump(drifted, sort_keys=False), encoding="utf-8"
+        )
+        manifest_path = self.write_manifest([bundle])
+        result = self.registry.approve_manifest(manifest_path)
+        self.assertEqual(0, result["counts"]["approved"])
+        self.assertIn("drifted", result["skipped"][0]["reason"])
+
+        # Policy knob absent -> manifest approval is disabled entirely.
+        policy = load_json(self.root / "config/knowledge-policy.json")
+        del policy["promotion"]["manifestApproval"]
+        (self.root / "config/knowledge-policy.json").write_text(
+            json.dumps(policy, indent=2), encoding="utf-8"
+        )
+        with self.assertRaisesRegex(ContractError, "manifestApproval"):
+            self.registry.approve_manifest(manifest_path)
 
     def test_stale_report_flags_expired_and_expiring_verified_claims(self) -> None:
         # promote() yields a verified claim with reviewBy 2026-08-08 (29 days after the 2026-07-10 now).
@@ -732,6 +1233,31 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
                 [self.root / "inputs/knowledge-evidence.complete.yaml"],
                 expected_revision=0,
             )
+
+    def test_refresh_verified_repropose_requires_the_explicit_flag(self) -> None:
+        # Refresh workflow: a verified claim may be demoted to a new proposed revision only
+        # under the explicit --refresh-verified acknowledgement; the plain propose path keeps
+        # rejecting any replacement of non-proposed claims.
+        self.promote()
+        refreshed = load_yaml(self.root / "inputs/knowledge-claim.proposed.yaml")
+        refreshed["revision"] = 3
+        path = self.root / "inputs/knowledge-claim.refresh.yaml"
+        path.write_text(yaml.safe_dump(refreshed, sort_keys=False), encoding="utf-8")
+        evidence = [self.root / "inputs/knowledge-evidence.complete.yaml"]
+        with self.assertRaisesRegex(ContractError, "non-proposed claim"):
+            self.registry.propose(path, evidence, expected_revision=2)
+        result = self.registry.propose(
+            path, evidence, expected_revision=2, refresh_verified=True
+        )
+        self.assertEqual({"claimId": "KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001", "status": "proposed", "revision": 3, "reconciliation": "new"}, result)
+        canonical_claim = load_yaml(
+            self.root / ".ai/knowledge/claims/KCLM-EXAMPLEMANAGEDOBJECT-EXISTS-001.yaml"
+        )
+        self.assertEqual("proposed", canonical_claim["status"])
+        self.assertEqual(3, canonical_claim["revision"])
+        # The refresh flag never lets revision optimism slip.
+        with self.assertRaisesRegex(ContractError, "expected revision"):
+            self.registry.propose(path, evidence, expected_revision=5, refresh_verified=True)
 
     def test_reconcile_distinguishes_duplicate_conflict_and_parallel_scope(self) -> None:
         self.propose()

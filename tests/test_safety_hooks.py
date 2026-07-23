@@ -426,6 +426,17 @@ class RoleGuardTests(unittest.TestCase):
         )
         self.assertEqual(hook_decision(allowed), "continue")
         self.assertEqual(hook_decision(denied), "deny")
+        refreshed = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "execute/runInTerminal",
+                "tool_input": {"command": command + " --refresh-verified"},
+            },
+            "--role",
+            "config-investigator",
+        )
+        self.assertEqual(hook_decision(refreshed), "continue")
 
     def test_investigator_force_app_knowledge_commands_are_narrowly_allowlisted(self) -> None:
         from scripts import copilot_role_guard as role_guard
@@ -503,6 +514,38 @@ class RoleGuardTests(unittest.TestCase):
         self.assertFalse(
             role_guard.force_app_knowledge_command_allowed(
                 ["relations-draft"], "development-assistant"
+            )
+        )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                [
+                    "refresh",
+                    "--observed-at",
+                    "2026-07-10T12:00:00Z",
+                    "--metadata-type",
+                    "Flow",
+                    "--warn-days",
+                    "30",
+                    "--limit",
+                    "50",
+                    "--dry-run",
+                ],
+                "config-investigator",
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["refresh", "--warn-days", "9999"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["refresh", "--unknown"], "config-investigator"
+            )
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["refresh"], "development-assistant"
             )
         )
 
@@ -707,6 +750,30 @@ class RoleGuardTests(unittest.TestCase):
             "python scripts/knowledge_registry.py approve-claim --claim-spec KCLM-A-1:1 --claim-id KCLM-B-2 --expected-revision 1",  # mixed forms
         ):
             with self.subTest(command=bad[:60]):
+                self.assertFalse(role_guard.allowed_role_command(bad, ROOT, "config-investigator"))
+
+    def test_investigator_manifest_approval_is_contained_and_verify_only(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        good = (
+            "python scripts/knowledge_registry.py approve-claim "
+            "--manifest .cache/knowledge-proposals/force-app-drafts/manifest.json"
+        )
+        self.assertTrue(role_guard.allowed_role_command(good, ROOT, "config-investigator"))
+        self.assertFalse(role_guard.allowed_role_command(good, ROOT, "solution-designer"))
+        for bad in (
+            # Outside the ignored proposal workspace.
+            "python scripts/knowledge_registry.py approve-claim --manifest /etc/manifest.json",
+            "python scripts/knowledge_registry.py approve-claim --manifest output/manifest.json",
+            # Not the manifest JSON.
+            "python scripts/knowledge_registry.py approve-claim --manifest .cache/knowledge-proposals/force-app-drafts/claim.yaml",
+            # Mixed with the other approval forms.
+            good + " --claim-spec KCLM-A-1:1",
+            good + " --claim-id KCLM-A-1 --expected-revision 1",
+            # Reject is per-claim only.
+            good + " --decision reject",
+        ):
+            with self.subTest(command=bad[:70]):
                 self.assertFalse(role_guard.allowed_role_command(bad, ROOT, "config-investigator"))
 
     def test_designer_and_developer_may_use_guarded_salesforce_read(self) -> None:
