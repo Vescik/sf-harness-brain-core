@@ -24,7 +24,10 @@
   "overrides": {
     "@babel/core": "^7.29.6",
     "protobufjs": "^7.6.3",
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.10",
+    "fast-uri": "^3.1.4",
+    "fast-xml-parser@^5.0.0": "^5.10.1",
+    "@hono/node-server": "^2.0.5"
   },
   "devDependencies": {
     "@emnapi/core": "1.11.1",
