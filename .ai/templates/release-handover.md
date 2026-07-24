@@ -35,6 +35,13 @@ extension (Markdown PDF / vscode-pandoc) — never a script generated or run by 
 
 ## <User Story ID> - <Title>
 
+<!--
+Single metadata line only. The full work-item metadata table (State, Story Points, BA,
+Functional Consultant, Tags, ADO Revision) is intentionally NOT part of this document.
+-->
+
+Category: `<ADO Category field value>`
+
 ### Summary
 
 <!-- AI-generated, 2-3 sentences, from the item's Description + Acceptance Criteria. -->
@@ -55,10 +62,14 @@ documentation" — never regenerate or guess the content.
 ### Tests
 
 <!--
-Names of formally linked Test Cases (via fetch-ado-item includeTestCases=true — confirmed
-coverage, NOT the unconfirmed suggestions from technical-documentation.md section 9).
-If there are no linked Test Cases, use exactly the fallback text below instead of leaving
-the section empty.
+Every formally linked Test Case (via fetch-ado-item includeTestCases=true — confirmed
+coverage, NOT the unconfirmed suggestions from technical-documentation.md section 9),
+listed regardless of execution status, Test Runs, or test environment.
+One bullet per Test Case: the Test Case title only — no description, steps, outcome, or
+any other detail. If there are no linked Test Cases, replace the bullet list with exactly
+the fallback text below.
 -->
+
+- `<Test Case title>`
 
 Tested based on acceptance criteria
