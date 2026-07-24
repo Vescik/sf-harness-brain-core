@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-customobject.schema.json",
+  "title": "Knowledge Entry profile \u2014 salesforce.custom-object v1 (custom objects, platform events, custom settings, custom metadata types)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "objectKind"
+      ],
+      "properties": {
+        "objectKind": {
+          "type": "string",
+          "description": "Collector routing fact: custom object, platform event, custom setting, big object, custom metadata type, or standard-object extension."
+        },
+        "label": {
+          "type": "string"
+        },
+        "pluralLabel": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "sharingModel": {
+          "type": "string"
+        },
+        "deploymentStatus": {
+          "type": "string"
+        },
+        "nameField": {
+          "type": "object"
+        },
+        "customSettingsType": {
+          "type": "string"
+        },
+        "eventType": {
+          "type": "string"
+        },
+        "publishBehavior": {
+          "type": "string"
+        },
+        "enableActivities": {
+          "type": "boolean"
+        },
+        "enableFeeds": {
+          "type": "boolean"
+        },
+        "enableHistory": {
+          "type": "boolean"
+        },
+        "enableReports": {
+          "type": "boolean"
+        },
+        "enableSearch": {
+          "type": "boolean"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

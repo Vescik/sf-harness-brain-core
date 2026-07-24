@@ -3408,6 +3408,36 @@ class NestedSourceLayoutTests(unittest.TestCase):
         component = ForceAppKnowledge(root).parse_apex(classes / "Documented.cls", "ApexClass")
         self.assertEqual(["IsTest", "TestVisible"], component["facts"]["annotations"])
 
+    def test_declarations_are_not_read_out_of_comments(self) -> None:
+        """Regression from real package source: a header comment reading "Base class for all
+        trigger handlers" made CLASS_RE name the class `for`. Two real classes then shared one
+        identity and one silently overwrote the other in the entry store."""
+        temporary = tempfile.TemporaryDirectory(prefix="apex-comment-names-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        classes = root / "force-app/main/default/classes"
+        classes.mkdir(parents=True)
+        (classes / "TriggerHandler.cls").write_text(
+            "/**\n"
+            " * @description Base class for all trigger handlers in the package.\n"
+            " * One trigger per object dispatches to a single subclass of this handler.\n"
+            " */\n"
+            "public virtual class TriggerHandler {\n}\n",
+            encoding="utf-8",
+        )
+        triggers = root / "force-app/main/default/triggers"
+        triggers.mkdir(parents=True)
+        (triggers / "OrderTrigger.trigger").write_text(
+            "// This trigger on legacy notes used to be handled elsewhere\n"
+            "trigger OrderTrigger on Order__c (before insert) {}\n",
+            encoding="utf-8",
+        )
+        builder = ForceAppKnowledge(root)
+        klass = builder.parse_apex(classes / "TriggerHandler.cls", "ApexClass")
+        trigger = builder.parse_apex(triggers / "OrderTrigger.trigger", "ApexTrigger")
+        self.assertEqual("ApexClass:TriggerHandler", klass["id"])
+        self.assertEqual("ApexTrigger:OrderTrigger", trigger["id"])
+
     def test_flat_and_domain_grouped_layouts_extract_the_same_types(self) -> None:
         for layout in ("main/default", "main/default/billing"):
             with self.subTest(layout=layout):

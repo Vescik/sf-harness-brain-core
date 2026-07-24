@@ -124,6 +124,25 @@ PROFILE_FACETS = {
         "permissionSet.fieldPermissionCount": "number",
         "permissionSet.referencesTruncated": "boolean",
     },
+    "CustomObject": {
+        "object.kind": "string",
+        "object.sharingModel": "string",
+        "object.deploymentStatus": "string",
+        "object.eventType": "string",
+        "object.customSettingsType": "string",
+    },
+    "RecordType": {
+        "recordType.object": "string",
+        "recordType.active": "boolean",
+    },
+    "CustomMetadata": {
+        "customMetadata.type": "string",
+        "customMetadata.protected": "boolean",
+    },
+    "LightningComponentBundle": {
+        "lwc.isExposed": "boolean",
+        "lwc.targets": "string",
+    },
     "CustomField": {
         "field.object": "string",
         "field.type": "string",
@@ -253,6 +272,33 @@ def _permission_set_facets(front: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
+def _custom_object_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "object.kind": facts.get("objectKind"),
+        "object.sharingModel": facts.get("sharingModel"),
+        "object.deploymentStatus": facts.get("deploymentStatus"),
+        "object.eventType": facts.get("eventType"),
+        "object.customSettingsType": facts.get("customSettingsType"),
+    }
+
+
+def _record_type_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {"recordType.object": facts.get("object"), "recordType.active": facts.get("active")}
+
+
+def _custom_metadata_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {"customMetadata.type": facts.get("type"), "customMetadata.protected": facts.get("protected")}
+
+
+def _lwc_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {"lwc.isExposed": facts.get("isExposed"), "lwc.targets": facts.get("targets")}
+
+
 PROFILE_PROJECTORS = {
     "Flow": _flow_facets,
     "CustomField": _custom_field_facets,
@@ -260,6 +306,10 @@ PROFILE_PROJECTORS = {
     "ApexTrigger": _apex_facets,
     "ValidationRule": _validation_rule_facets,
     "PermissionSet": _permission_set_facets,
+    "CustomObject": _custom_object_facets,
+    "RecordType": _record_type_facets,
+    "CustomMetadata": _custom_metadata_facets,
+    "LightningComponentBundle": _lwc_facets,
 }
 
 

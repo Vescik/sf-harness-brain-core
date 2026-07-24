@@ -73,6 +73,26 @@ PROFILES = {
         "version": "1.0.0",
         "schema": "knowledge-profile-permissionset.schema.json",
     },
+    "CustomObject": {
+        "id": "salesforce.custom-object",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-customobject.schema.json",
+    },
+    "RecordType": {
+        "id": "salesforce.record-type",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-recordtype.schema.json",
+    },
+    "CustomMetadata": {
+        "id": "salesforce.custom-metadata",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-custommetadata.schema.json",
+    },
+    "LightningComponentBundle": {
+        "id": "salesforce.lightning-component",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-lwc.schema.json",
+    },
 }
 
 
@@ -660,6 +680,40 @@ def permission_set_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any]
     return type_facts, [], coverage
 
 
+
+def _passthrough_adapter(keys: tuple[str, ...]):
+    """Adapter for types whose collector facts map one-to-one onto the profile.
+
+    The fact vocabulary is the collector's; the profile schema is what pins it. Keeping the
+    mapping declarative avoids six near-identical hand-written adapters drifting apart."""
+
+    def adapter(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
+        facts = component.get("facts", {})
+        edges = _edges(component)
+        type_facts = _compact({key: facts.get(key) for key in keys})
+        if edges:
+            type_facts["references"] = edges
+        return type_facts, [], _assurance_for(edges)
+
+    return adapter
+
+
+custom_object_type_facts = _passthrough_adapter(
+    (
+        "objectKind", "label", "pluralLabel", "description", "sharingModel", "deploymentStatus",
+        "nameField", "customSettingsType", "eventType", "publishBehavior", "enableActivities",
+        "enableFeeds", "enableHistory", "enableReports", "enableSearch",
+    )
+)
+record_type_facts = _passthrough_adapter(("object", "fullName", "label", "active", "description"))
+custom_metadata_type_facts = _passthrough_adapter(
+    ("type", "record", "label", "protected", "fieldsPopulated", "values")
+)
+lwc_type_facts = _passthrough_adapter(
+    ("isExposed", "targets", "targetConfigs", "apiProperties", "wiredAdapters")
+)
+
+
 ADAPTERS = {
     "Flow": flow_type_facts,
     "CustomField": custom_field_type_facts,
@@ -667,6 +721,10 @@ ADAPTERS = {
     "ApexTrigger": apex_type_facts,
     "ValidationRule": validation_rule_type_facts,
     "PermissionSet": permission_set_type_facts,
+    "CustomObject": custom_object_type_facts,
+    "RecordType": record_type_facts,
+    "CustomMetadata": custom_metadata_type_facts,
+    "LightningComponentBundle": lwc_type_facts,
 }
 
 

@@ -300,6 +300,20 @@ UI_TYPES = frozenset(
 )
 
 
+def code_lines(source: str) -> str:
+    """Source with comment-only lines removed, for declaration and annotation scanning.
+
+    Apex regexes that scan raw source read prose as code: a header comment reading
+    "Base class for all trigger handlers" made CLASS_RE report the class name as `for`, and
+    two real classes then collided on one identity — one silently overwrote the other.
+    Only whole comment lines are dropped; comments are never stripped mid-line because
+    string literals legitimately contain `//` (endpoint URLs)."""
+
+    return "\n".join(
+        line for line in source.splitlines() if not APEX_COMMENT_LINE_RE.match(line)
+    )
+
+
 class KnowledgeBuildError(RuntimeError):
     pass
 
@@ -1563,7 +1577,7 @@ class ForceAppKnowledge:
         ]
         trigger_object: str | None = None
         if metadata_type == "ApexTrigger":
-            match = TRIGGER_RE.search(source)
+            match = TRIGGER_RE.search(code_lines(source))
             name = match.group(1) if match else path.stem
             facts: dict[str, Any] = {}
             if match:
@@ -1574,7 +1588,7 @@ class ForceAppKnowledge:
                 }
                 references.append({"kind": "operates-on", "target": trigger_object})
         else:
-            match = CLASS_RE.search(source)
+            match = CLASS_RE.search(code_lines(source))
             name = match.group(2) if match else path.stem
             facts = {"declarationKind": match.group(1).lower() if match else "unknown"}
             # Header facts: sharing posture, inheritance, and the file-level annotation set.

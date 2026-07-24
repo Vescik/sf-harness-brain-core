@@ -188,6 +188,10 @@ def check_required_files(audit: Audit) -> None:
         "schemas/knowledge-profile-apex.schema.json",
         "schemas/knowledge-profile-validationrule.schema.json",
         "schemas/knowledge-profile-permissionset.schema.json",
+        "schemas/knowledge-profile-lwc.schema.json",
+        "schemas/knowledge-profile-custommetadata.schema.json",
+        "schemas/knowledge-profile-recordtype.schema.json",
+        "schemas/knowledge-profile-customobject.schema.json",
         "scripts/knowledge_store.py",
         "scripts/knowledge_search.py",
         "docs/knowledge-one-file-contract.md",
@@ -849,6 +853,10 @@ def check_grounding_contracts(audit: Audit) -> None:
         "knowledge-profile-apex.schema.json",
         "knowledge-profile-validationrule.schema.json",
         "knowledge-profile-permissionset.schema.json",
+        "knowledge-profile-lwc.schema.json",
+        "knowledge-profile-custommetadata.schema.json",
+        "knowledge-profile-recordtype.schema.json",
+        "knowledge-profile-customobject.schema.json",
     ):
         schema = load_json(ROOT / "schemas" / schema_name, audit)
         try:

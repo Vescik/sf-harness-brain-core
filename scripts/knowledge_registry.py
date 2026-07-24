@@ -51,7 +51,18 @@ ENTRY_HOME_CLAIM_TYPES = frozenset(
 # Metadata types with an implemented entry profile (scripts/knowledge_store.py PROFILES).
 # The freeze below applies only to these: a type without a profile has no other home yet.
 ENTRY_PROFILED_METADATA_TYPES = frozenset(
-    {"Flow", "CustomField", "ApexClass", "ApexTrigger", "ValidationRule", "PermissionSet"}
+    {
+        "Flow",
+        "CustomField",
+        "ApexClass",
+        "ApexTrigger",
+        "ValidationRule",
+        "PermissionSet",
+        "CustomObject",
+        "RecordType",
+        "CustomMetadata",
+        "LightningComponentBundle",
+    }
 )
 
 ACTIVE_CLAIM_STATUSES = {"proposed", "verified", "stale", "contested"}

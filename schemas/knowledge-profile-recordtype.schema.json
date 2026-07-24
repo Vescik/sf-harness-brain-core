@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-recordtype.schema.json",
+  "title": "Knowledge Entry profile \u2014 salesforce.record-type v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object"
+      ],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "fullName": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}
