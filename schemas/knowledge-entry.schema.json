@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-entry.schema.json",
+  "title": "Knowledge One-File Entry frontmatter (DRAFT — T07 Phase 0, not wired)",
+  "description": "Envelope schema for the YAML frontmatter of one canonical Knowledge Entry per logical Salesforce artifact. typeFacts content is validated by the metadata-type profile schema referenced in profile.id/profile.version, not here. Contract: docs/knowledge-one-file-contract.md. This schema is a Phase 0 design draft and is intentionally NOT registered in validate_harness.py or CI.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "subject",
+    "profile",
+    "scope",
+    "source",
+    "lifecycle",
+    "typeFacts",
+    "extractionCoverage",
+    "assurance",
+    "limitations",
+    "keywords",
+    "candidateKeywords",
+    "sensitivity",
+    "approval"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metadataType", "fullName", "namespace"],
+      "properties": {
+        "metadataType": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]{1,79}$" },
+        "fullName": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "namespace": {
+          "type": ["string", "null"],
+          "pattern": "^[A-Za-z][A-Za-z0-9_]{0,14}$",
+          "description": "Package namespace; null for subscriber-owned (canonical id segment 'c')."
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "digest"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^salesforce\\.[a-z][a-z0-9-]{1,60}$" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "digest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceApiVersion", "sourceTreeDigest", "packageVersionId"],
+      "properties": {
+        "sourceApiVersion": { "type": "string", "pattern": "^[0-9]{2,3}\\.[0-9]$" },
+        "sourceTreeDigest": {
+          "$ref": "#/$defs/sha256",
+          "description": "Digest of the analysed source scope content. Never a commit SHA and never derived from the containing commit (contract §5.4)."
+        },
+        "packageVersionId": {
+          "type": ["string", "null"],
+          "pattern": "^04t[A-Za-z0-9]{12,15}$",
+          "description": "Exact package version when applicable; null means unversioned-source scope."
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fragments"],
+      "properties": {
+        "fragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sourceDigest"],
+            "properties": {
+              "path": { "type": "string", "pattern": "^force-app/", "maxLength": 400 },
+              "sourceDigest": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "contentDigest"],
+      "properties": {
+        "state": {
+          "enum": ["draft", "approved"],
+          "description": "User-facing state only. Effectiveness lanes (approved-current, approved-drifted, scope-mismatch, ...) are computed at read time and never stored (contract §4)."
+        },
+        "contentDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "typeFacts": {
+      "type": "object",
+      "description": "Profile-validated structured facts. The envelope only requires an object; the profile schema for profile.id/profile.version defines and constrains its shape. A generic/unknown profile must yield extractionCoverage partial|generic, never a seemingly complete typeFacts.",
+      "minProperties": 1
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "description": "Flow only; validated in detail by the Flow profile schema. kind is pinned here so no other error class can enter the envelope.",
+      "items": {
+        "type": "object",
+        "required": ["kind"],
+        "properties": { "kind": { "const": "flow-custom-error" } }
+      }
+    },
+    "extractionCoverage": {
+      "type": "object",
+      "additionalProperties": { "enum": ["full", "partial", "generic"] },
+      "minProperties": 1,
+      "description": "Per-section parser coverage keyed by frontmatter section name (e.g. typeFacts, intentionalErrors)."
+    },
+    "assurance": {
+      "type": "object",
+      "additionalProperties": { "enum": ["source-exact", "source-derived-heuristic"] },
+      "minProperties": 1,
+      "description": "Per-section assurance markers. Heuristic output must never be presented as observed or complete."
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    },
+    "keywords": {
+      "type": "array",
+      "maxItems": 10,
+      "items": { "type": "string", "minLength": 1, "maxLength": 60 },
+      "description": "Approved-taxonomy terms only; membership is validated by the executor against .ai/knowledge/keyword-taxonomy.md at draft time (not expressible in JSON Schema)."
+    },
+    "candidateKeywords": {
+      "type": "array",
+      "maxItems": 5,
+      "items": { "type": "string", "minLength": 1, "maxLength": 60 },
+      "description": "Advisory suggestions; excluded from established search ranking."
+    },
+    "sensitivity": { "enum": ["public", "internal-sanitized"] },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewedContentDigest", "reviewedBy", "reviewedAt", "mechanism"],
+      "properties": {
+        "reviewedContentDigest": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }],
+          "description": "canonical_digest({identity, profileMajor, factsDigest, semanticsDigest}) captured at approval; null while draft. Serving as approved-current requires this to equal the recomputation (contract §5.3, §5.5)."
+        },
+        "reviewedBy": { "type": ["string", "null"], "minLength": 3, "maxLength": 120 },
+        "reviewedAt": { "type": ["string", "null"], "format": "date-time" },
+        "mechanism": {
+          "oneOf": [{ "const": "copilot-chat-entry-confirmation" }, { "type": "null" }]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "reviewedContentDigest": { "type": "string" } } },
+          "then": {
+            "properties": {
+              "reviewedBy": { "type": "string" },
+              "reviewedAt": { "type": "string" },
+              "mechanism": { "const": "copilot-chat-entry-confirmation" }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "lifecycle": { "properties": { "state": { "const": "approved" } } } }
+      },
+      "then": {
+        "properties": {
+          "approval": {
+            "properties": { "reviewedContentDigest": { "type": "string" } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "subject": { "properties": { "metadataType": { "not": { "const": "Flow" } } } } }
+      },
+      "then": {
+        "properties": { "intentionalErrors": { "maxItems": 0 } }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

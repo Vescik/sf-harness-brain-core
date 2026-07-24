@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-customfield.schema.json",
+  "title": "Knowledge Entry profile — salesforce.custom-field v1 (DRAFT — T07 Phase 0, not wired)",
+  "description": "Validates typeFacts of a Knowledge Entry whose subject.metadataType is CustomField (fullName = Object.Field). Contract: docs/knowledge-one-file-contract.md. CustomField entries carry no intentionalErrors.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["typeFacts"],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object", "type"],
+      "properties": {
+        "object": { "type": "string", "minLength": 1 },
+        "type": {
+          "type": "string",
+          "description": "Source-declared field type (Text, Picklist, Lookup, MasterDetail, Formula, Number, Checkbox, ...)."
+        },
+        "label": { "type": "string" },
+        "required": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "externalId": { "type": "boolean" },
+        "encrypted": { "type": "boolean" },
+        "trackHistory": { "type": "boolean" },
+        "length": { "type": "integer", "minimum": 0 },
+        "precision": { "type": "integer", "minimum": 0 },
+        "scale": { "type": "integer", "minimum": 0 },
+        "referenceTo": {
+          "type": "string",
+          "description": "Target object for Lookup/MasterDetail."
+        },
+        "relationshipName": { "type": "string" },
+        "deleteConstraint": { "enum": ["SetNull", "Restrict", "Cascade"] },
+        "controllingField": { "type": "string" },
+        "formula": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "returnType": { "type": "string" },
+            "referencedFields": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "blankHandling": { "enum": ["BlankAsBlank", "BlankAsZero"] }
+          }
+        },
+        "valueSet": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "restricted": { "type": "boolean" },
+            "globalValueSet": { "type": ["string", "null"] },
+            "values": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["fullName"],
+                "properties": {
+                  "fullName": { "type": "string" },
+                  "label": { "type": "string" },
+                  "default": { "type": "boolean" },
+                  "active": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "lookupFilter": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "active": { "type": "boolean" },
+            "isOptional": { "type": "boolean" },
+            "errorMessage": { "type": "string" }
+          }
+        },
+        "defaultValue": { "type": ["string", "number", "boolean", "null"] },
+        "description": { "type": "string" },
+        "inlineHelpText": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "enum": ["Lookup", "MasterDetail"] } } },
+          "then": { "required": ["object", "type", "referenceTo"] }
+        }
+      ]
+    },
+    "intentionalErrors": { "type": "array", "maxItems": 0 }
+  }
+}

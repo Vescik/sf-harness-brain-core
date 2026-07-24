@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-flow.schema.json",
+  "title": "Knowledge Entry profile — salesforce.flow v1 (DRAFT — T07 Phase 0, not wired)",
+  "description": "Validates typeFacts and intentionalErrors of a Knowledge Entry whose subject.metadataType is Flow. Contract: docs/knowledge-one-file-contract.md §7. intentionalErrors admits ONLY author-declared FlowCustomError elements; screen-validation and fault-path content from the v1 errorCatalog is excluded by construction.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["typeFacts"],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["processType", "status"],
+      "properties": {
+        "processType": {
+          "type": "string",
+          "description": "Source-declared processType (e.g. AutoLaunchedFlow, Flow, CustomEvent)."
+        },
+        "status": { "enum": ["Active", "Draft", "Obsolete", "InvalidDraft"] },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "object": { "type": "string" },
+            "type": { "type": "string", "description": "e.g. RecordAfterSave, RecordBeforeSave, PlatformEvent, Scheduled" },
+            "recordTriggerType": { "type": "string", "description": "e.g. Create, Update, CreateAndUpdate, Delete" }
+          }
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["apiName", "dataType"],
+            "properties": {
+              "apiName": { "type": "string" },
+              "dataType": { "type": "string" },
+              "objectType": { "type": "string" },
+              "isInput": { "type": "boolean" },
+              "isOutput": { "type": "boolean" },
+              "isCollection": { "type": "boolean" }
+            }
+          }
+        },
+        "operations": {
+          "type": "array",
+          "description": "Data operations in source order (lookup/create/update/delete per object).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "object"],
+            "properties": {
+              "kind": { "enum": ["recordLookup", "recordCreate", "recordUpdate", "recordDelete"] },
+              "object": { "type": "string" },
+              "elementApiName": { "type": "string" }
+            }
+          }
+        },
+        "references": {
+          "type": "array",
+          "description": "Typed relation edges reusing the existing collector kind vocabulary (reads-field, writes-field, filters-field, invokes-apex, uses-label, calls-subflow, ...).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "target"],
+            "properties": {
+              "kind": { "type": "string", "pattern": "^[a-z][a-z-]{2,40}$" },
+              "target": { "type": "string", "minLength": 1 },
+              "assurance": { "enum": ["source-exact", "source-derived-heuristic"] }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "elementApiName",
+          "messageTemplate",
+          "presentation",
+          "reachability",
+          "basis",
+          "limitations"
+        ],
+        "properties": {
+          "kind": { "const": "flow-custom-error" },
+          "elementApiName": { "type": "string", "minLength": 1 },
+          "elementLabel": { "type": "string" },
+          "messageTemplate": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact source-declared message text (may contain merge fields)."
+          },
+          "resolvedDefaultText": {
+            "type": ["string", "null"],
+            "description": "Custom Label default translation ONLY if actually read from source; never inferred."
+          },
+          "customLabelRefs": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^\\$Label\\." }
+          },
+          "presentation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mode"],
+            "properties": {
+              "mode": { "enum": ["record", "field"] },
+              "field": { "type": "string" }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "mode": { "const": "field" } } },
+                "then": { "required": ["mode", "field"] }
+              }
+            ]
+          },
+          "reachability": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["triggerContext", "decisionGuards", "truncated"],
+            "properties": {
+              "triggerContext": {
+                "type": "string",
+                "description": "Source-derived context (object / operation / save phase). Static reachability, never runtime execution proof."
+              },
+              "decisionGuards": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "truncated": { "type": "boolean" }
+            }
+          },
+          "basis": { "const": "source-declared" },
+          "limitations": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
