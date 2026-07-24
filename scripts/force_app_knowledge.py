@@ -132,7 +132,7 @@ SOQL_OPERATOR_FIELD_RE = re.compile(
     r"(?<!\.)\b([A-Za-z][A-Za-z0-9_]*)\s+(?:LIKE|IN|NOT\s+IN|INCLUDES|EXCLUDES)\b", re.IGNORECASE
 )
 SOQL_IDENTIFIER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
-# Local sObject variable declarations (`Account record;` / `Engagement__c row = ...`). Only types that
+# Local sObject variable declarations (`Account record;` / `ParentObject__c row = ...`). Only types that
 # are custom-object tokens or SOQL FROM targets in the same file are treated as objects, so an
 # ordinary class instance never masquerades as an sObject.
 APEX_VAR_DECL_RE = re.compile(
@@ -587,7 +587,7 @@ class ForceAppKnowledge:
 
         Chains resolve hop by hop through relationship_targets(); an unresolvable hop drops the
         span entirely — the extractor never guesses the owning object. Matched spans are removed
-        before the bare-token pass so `Status__c` inside `Engagement__r.Status__c` is not also
+        before the bare-token pass so `Status__c` inside `ParentObject__r.Status__c` is not also
         misattributed to the formula's own object. All edges are regex-derived → per-ref heuristic."""
 
         references: list[dict[str, Any]] = []
@@ -2833,7 +2833,7 @@ class ForceAppKnowledge:
             references.append({"kind": "operates-on", "target": object_name})
             # Cross-object chains resolve through repo lookups; bare tokens attribute to the
             # owning object only after matched chains are removed (no more misattributing
-            # `Status__c` inside `Engagement__r.Status__c` to the rule's own object).
+            # `Status__c` inside `ParentObject__r.Status__c` to the rule's own object).
             references.extend(self.formula_field_references(object_name, formula))
         error_message = direct_text(root, "errorMessage")
         for match in LABEL_TOKEN_RE.finditer(f"{formula} {error_message or ''}"):

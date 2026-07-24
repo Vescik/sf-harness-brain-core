@@ -23,6 +23,22 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_COUNTS = {"agents": 6, "prompts": 23, "skills": 24, "instructions": 3}
+# Reserved, deliberately synthetic identifiers owned by this harness's test fixtures.
+# They may appear only under tests/ and evals/fixtures; runtime authority surfaces
+# (.github, .ai, config, schemas, scripts) must never depend on or mention them.
+# Legal Salesforce names (e.g. a real team's Invoice__c) are NOT screened here —
+# provenance and lifecycle rules, not name denylists, govern real metadata.
+RESERVED_FIXTURE_TOKENS = (
+    "HarnessEngagement",
+    "HarnessInvoice",
+    "HarnessBilling",
+    "ExampleManagedObject__c",
+)
+
+
+def reserved_fixture_leaks(text: str) -> list[str]:
+    """Return the reserved test-fixture tokens present in runtime-authority text."""
+    return [token for token in RESERVED_FIXTURE_TOKENS if token in text]
 BUILT_IN_AGENTS = {"agent", "ask", "plan", "edit"}
 ALLOWED_TOOLS = {
     "read",
@@ -842,7 +858,8 @@ def check_grounding_contracts(audit: Audit) -> None:
                     text = path.read_text(encoding="utf-8")
                 except UnicodeDecodeError:
                     continue
-                audit.require("Invoice__c" not in text and "MP-INV-" not in text, f"{relative(path)}: dummy package example leaked into runtime authority")
+                leaks = reserved_fixture_leaks(text)
+                audit.require(not leaks, f"{relative(path)}: reserved test-fixture identifier leaked into runtime authority: {', '.join(leaks)}")
 
     package = load_json(ROOT / "package.json", audit)
     audit.require(package.get("private") is True, "package.json must remain private")

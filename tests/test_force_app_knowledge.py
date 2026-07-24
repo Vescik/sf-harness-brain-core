@@ -25,33 +25,33 @@ ROOT = Path(__file__).resolve().parents[1]
 
 OBJECT_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
-  <label>Engagement</label><pluralLabel>Engagements</pluralLabel>
+  <label>HarnessEngagement</label><pluralLabel>HarnessEngagements</pluralLabel>
   <deploymentStatus>Deployed</deploymentStatus><sharingModel>ReadWrite</sharingModel>
 </CustomObject>
 """
 FIELD_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
   <fullName>Account__c</fullName><label>Account</label><type>Lookup</type>
-  <referenceTo>Account</referenceTo><relationshipName>Engagements</relationshipName>
+  <referenceTo>Account</referenceTo><relationshipName>HarnessEngagements</relationshipName>
 </CustomField>
 """
 NAMED_CREDENTIAL_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <NamedCredential xmlns="http://soap.sforce.com/2006/04/metadata">
-  <label>Billing API</label><endpoint>https://billing.example.test/v1</endpoint>
+  <label>HarnessBilling API</label><endpoint>https://billing.example.test/v1</endpoint>
   <password>never-export-this-secret</password>
 </NamedCredential>
 """
 APPROVAL_PROCESS_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
-  <active>true</active><label>Engagement Approval v2</label>
-  <entryCriteria><criteriaItems><field>Engagement__c.Status__c</field></criteriaItems></entryCriteria>
+  <active>true</active><label>HarnessEngagement Approval v2</label>
+  <entryCriteria><criteriaItems><field>HarnessEngagement__c.Status__c</field></criteriaItems></entryCriteria>
   <approvalStep><name>Step_1</name></approvalStep>
   <approvalStep><name>Step_2</name></approvalStep>
 </ApprovalProcess>
 """
 PERMISSION_SET_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
-  <label>Engagement Manager</label><hasActivationRequired>false</hasActivationRequired>
+  <label>HarnessEngagement Manager</label><hasActivationRequired>false</hasActivationRequired>
 </PermissionSet>
 """
 
@@ -66,36 +66,36 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
         self.root = Path(self.temporary.name)
         write(
-            self.root / "force-app/main/default/objects/Engagement__c/Engagement__c.object-meta.xml",
+            self.root / "force-app/main/default/objects/HarnessEngagement__c/HarnessEngagement__c.object-meta.xml",
             OBJECT_XML,
         )
         write(
-            self.root / "force-app/main/default/objects/Engagement__c/fields/Account__c.field-meta.xml",
+            self.root / "force-app/main/default/objects/HarnessEngagement__c/fields/Account__c.field-meta.xml",
             FIELD_XML,
         )
         write(
-            self.root / "force-app/main/default/triggers/EngagementTrigger.trigger",
-            "trigger EngagementTrigger on Engagement__c (before insert, after update) {}\n",
+            self.root / "force-app/main/default/triggers/HarnessEngagementTrigger.trigger",
+            "trigger HarnessEngagementTrigger on HarnessEngagement__c (before insert, after update) {}\n",
         )
         write(
-            self.root / "force-app/main/default/namedCredentials/Billing.namedCredential-meta.xml",
+            self.root / "force-app/main/default/namedCredentials/HarnessBilling.namedCredential-meta.xml",
             NAMED_CREDENTIAL_XML,
         )
         write(
-            self.root / "force-app/main/default/lwc/engagementCard/engagementCard.js-meta.xml",
+            self.root / "force-app/main/default/lwc/harnessEngagementCard/harnessEngagementCard.js-meta.xml",
             """<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata"><isExposed>true</isExposed><targets><target>lightning__RecordPage</target></targets></LightningComponentBundle>""",
         )
         write(
-            self.root / "force-app/main/default/lwc/engagementCard/engagementCard.js",
-            "import NAME from '@salesforce/schema/Engagement__c.Name';\n",
+            self.root / "force-app/main/default/lwc/harnessEngagementCard/harnessEngagementCard.js",
+            "import NAME from '@salesforce/schema/HarnessEngagement__c.Name';\n",
         )
         write(
             self.root
-            / "force-app/main/default/approvalProcesses/Engagement__c.Engagement_Approval_v2.approvalProcess-meta.xml",
+            / "force-app/main/default/approvalProcesses/HarnessEngagement__c.HarnessEngagement_Approval_v2.approvalProcess-meta.xml",
             APPROVAL_PROCESS_XML,
         )
         write(
-            self.root / "force-app/main/default/permissionsets/Engagement_Manager.permissionset-meta.xml",
+            self.root / "force-app/main/default/permissionsets/HarnessEngagement_Manager.permissionset-meta.xml",
             PERMISSION_SET_XML,
         )
         (self.root / "schemas").mkdir()
@@ -167,17 +167,17 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         approval = next(
             claim
             for claim in claims
-            if claim["subject"]["identity"] == "Engagement__c.Engagement_Approval_v2"
+            if claim["subject"]["identity"] == "HarnessEngagement__c.HarnessEngagement_Approval_v2"
         )
         self.assertEqual("automation-inventory", approval["claimType"])
         facts = approval["assertion"]["value"]["facts"]
-        self.assertEqual("Engagement__c", facts["object"])
+        self.assertEqual("HarnessEngagement__c", facts["object"])
         self.assertTrue(facts["active"])
         self.assertEqual(2, facts["stepCount"])
         permission_set = next(
             claim
             for claim in claims
-            if claim["subject"]["identity"] == "PermissionSet:Engagement_Manager"
+            if claim["subject"]["identity"] == "PermissionSet:HarnessEngagement_Manager"
         )
         self.assertEqual("component-inventory", permission_set["domain"])
         for bundle in manifest["bundles"]:
@@ -198,11 +198,11 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         # X.cls-meta.xml describes X.cls (already parsed as ApexClass) — no "Cls:X" duplicate.
         # X.resource-meta.xml IS the component when the content file has no dedicated parser.
         write(
-            self.root / "force-app/main/default/classes/EngagementService.cls",
-            "public with sharing class EngagementService {}\n",
+            self.root / "force-app/main/default/classes/HarnessEngagementService.cls",
+            "public with sharing class HarnessEngagementService {}\n",
         )
         write(
-            self.root / "force-app/main/default/classes/EngagementService.cls-meta.xml",
+            self.root / "force-app/main/default/classes/HarnessEngagementService.cls-meta.xml",
             """<?xml version="1.0" encoding="UTF-8"?>
 <ApexClass xmlns="http://soap.sforce.com/2006/04/metadata"><apiVersion>67.0</apiVersion><status>Active</status></ApexClass>
 """,
@@ -225,8 +225,8 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         subprocess.run(["git", "commit", "-qm", "companions"], cwd=self.root, check=True)
         inventory = self.builder.inventory()
         ids = [component["id"] for component in inventory["components"]]
-        self.assertIn("ApexClass:EngagementService", ids)
-        self.assertNotIn("Cls:EngagementService", ids)
+        self.assertIn("ApexClass:HarnessEngagementService", ids)
+        self.assertNotIn("Cls:HarnessEngagementService", ids)
         self.assertIn("StaticResource:Assets", ids)
         # Collector 1.5.0: cmdt record identity carries the __mdt type qualifier.
         self.assertIn("CustomMetadata:KC_Setting__mdt.Default_Limits", ids)
@@ -251,7 +251,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             if "claimFile" in bundle
         ]
         self.assertTrue(
-            all("Engagement_Approval_v2" in claim["subject"]["identity"] for claim in claims)
+            all("HarnessEngagement_Approval_v2" in claim["subject"]["identity"] for claim in claims)
         )
         with self.assertRaisesRegex(KnowledgeBuildError, "available types"):
             self.builder.draft(
@@ -271,29 +271,29 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             self.assertEqual([], claim["keywords"])
             # candidateKeywords is advisory and never exceeds the schema's cap of five.
             self.assertLessEqual(len(claim["candidateKeywords"]), 5)
-        # The trigger's usage registry (operates on Engagement__c) seeds an advisory candidate term.
+        # The trigger's usage registry (operates on HarnessEngagement__c) seeds an advisory candidate term.
         trigger = next(
             claim
             for claim in claims
             if claim["claimType"] == "automation-inventory"
-            and claim["subject"]["identity"] == "EngagementTrigger"
+            and claim["subject"]["identity"] == "HarnessEngagementTrigger"
         )
-        self.assertIn("engagement", trigger["candidateKeywords"])
+        self.assertIn("harnessengagement", trigger["candidateKeywords"])
 
     def test_flow_usage_registry_records_objects_and_fields(self) -> None:
         flow_xml = """<?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
-  <label>Engagement Router</label><status>Active</status><processType>AutoLaunchedFlow</processType>
-  <start><object>Engagement__c</object><triggerType>RecordAfterSave</triggerType><recordTriggerType>Create</recordTriggerType></start>
+  <label>HarnessEngagement Router</label><status>Active</status><processType>AutoLaunchedFlow</processType>
+  <start><object>HarnessEngagement__c</object><triggerType>RecordAfterSave</triggerType><recordTriggerType>Create</recordTriggerType></start>
   <recordLookups><name>GetAccount</name><object>Account</object><queriedFields>Name</queriedFields></recordLookups>
-  <recordUpdates><name>SetStatus</name><object>Engagement__c</object>
+  <recordUpdates><name>SetStatus</name><object>HarnessEngagement__c</object>
     <inputAssignments><field>Status__c</field></inputAssignments></recordUpdates>
-  <actionCalls><name>Notify</name><actionType>apex</actionType><actionName>EngagementNotifier</actionName></actionCalls>
+  <actionCalls><name>Notify</name><actionType>apex</actionType><actionName>HarnessEngagementNotifier</actionName></actionCalls>
   <decisions><name>IsActive</name></decisions>
 </Flow>
 """
         write(
-            self.root / "force-app/main/default/flows/EngagementRouter.flow-meta.xml",
+            self.root / "force-app/main/default/flows/HarnessEngagementRouter.flow-meta.xml",
             flow_xml,
         )
         subprocess.run(["git", "add", "."], cwd=self.root, check=True)
@@ -301,19 +301,19 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         inventory = self.builder.inventory()
         flow = next(c for c in inventory["components"] if c["metadataType"] == "Flow")
         facts = flow["facts"]
-        self.assertEqual(["Account", "Engagement__c"], facts["referencedObjects"])
+        self.assertEqual(["Account", "HarnessEngagement__c"], facts["referencedObjects"])
         self.assertEqual(1, facts["elementCounts"]["decisions"])
         references = {(ref["kind"], ref["target"]) for ref in flow["references"]}
         self.assertIn(("reads-field", "Account.Name"), references)
-        self.assertIn(("writes-field", "Engagement__c.Status__c"), references)
-        self.assertIn(("invokes-apex", "EngagementNotifier"), references)
+        self.assertIn(("writes-field", "HarnessEngagement__c.Status__c"), references)
+        self.assertIn(("invokes-apex", "HarnessEngagementNotifier"), references)
         self.assertNotIn("errorCatalog", flow["facts"])
 
     FLOW_ERROR_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
   <label>Discount Guard</label><status>Active</status><processType>AutoLaunchedFlow</processType>
   <start>
-    <object>Engagement__c</object><triggerType>RecordBeforeSave</triggerType><recordTriggerType>Update</recordTriggerType>
+    <object>HarnessEngagement__c</object><triggerType>RecordBeforeSave</triggerType><recordTriggerType>Update</recordTriggerType>
     <connector><targetReference>Check_Tier</targetReference></connector>
   </start>
   <decisions>
@@ -338,7 +338,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
     </customErrorMessages>
   </customErrors>
   <recordUpdates>
-    <name>Set_Status</name><object>Engagement__c</object>
+    <name>Set_Status</name><object>HarnessEngagement__c</object>
     <inputAssignments><field>Status__c</field></inputAssignments>
     <connector><targetReference>Confirm_Screen</targetReference></connector>
     <faultConnector><targetReference>Confirm_Screen</targetReference></faultConnector>
@@ -392,7 +392,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertTrue(custom_error["isFieldError"])
         self.assertEqual("Discount__c", custom_error["fieldSelection"])
         self.assertEqual(
-            "Engagement__c / Update / RecordBeforeSave", custom_error["triggerContext"]
+            "HarnessEngagement__c / Update / RecordBeforeSave", custom_error["triggerContext"]
         )
         self.assertEqual(
             [[{
@@ -420,7 +420,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertEqual([[{"decision": "Check_Tier", "default": True}]], screen["paths"])
 
         references = {(ref["kind"], ref["target"]) for ref in flow["references"]}
-        self.assertIn(("references-field", "Engagement__c.Discount__c"), references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Discount__c"), references)
 
         claims = self.builder.candidate_claims(flow)
         statement = next(
@@ -486,12 +486,12 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         flow = builder.parse_flow(flow_path)
         self.assertNotIn("errorCatalog", flow["facts"])
         self.assertNotIn(
-            ("references-field", "Engagement__c.Discount__c"),
+            ("references-field", "HarnessEngagement__c.Discount__c"),
             {(ref["kind"], ref["target"]) for ref in flow["references"]},
         )
         vr_path = (
             self.root
-            / "force-app/main/default/objects/Engagement__c/validationRules/Status_Required.validationRule-meta.xml"
+            / "force-app/main/default/objects/HarnessEngagement__c/validationRules/Status_Required.validationRule-meta.xml"
         )
         write(
             vr_path,
@@ -510,7 +510,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
     def test_validation_rule_and_layout_get_dedicated_parsers(self) -> None:
         write(
             self.root
-            / "force-app/main/default/objects/Engagement__c/validationRules/Status_Required.validationRule-meta.xml",
+            / "force-app/main/default/objects/HarnessEngagement__c/validationRules/Status_Required.validationRule-meta.xml",
             """<?xml version="1.0" encoding="UTF-8"?>
 <ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
   <fullName>Status_Required</fullName><active>true</active>
@@ -520,7 +520,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
 """,
         )
         write(
-            self.root / "force-app/main/default/layouts/Engagement__c-Engagement Layout.layout-meta.xml",
+            self.root / "force-app/main/default/layouts/HarnessEngagement__c-HarnessEngagement Layout.layout-meta.xml",
             """<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
   <layoutSections><layoutColumns><layoutItems><field>Status__c</field></layoutItems></layoutColumns></layoutSections>
@@ -535,7 +535,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertIn("ValidationRule", by_type)
         self.assertIn("Layout", by_type)
         vr = by_type["ValidationRule"]
-        self.assertEqual("Engagement__c", vr["facts"]["object"])
+        self.assertEqual("HarnessEngagement__c", vr["facts"]["object"])
         self.assertTrue(vr["facts"]["errorMessagePresent"])
         catalog_entry = vr["facts"]["errorCatalog"][0]
         self.assertEqual("validation-rule", catalog_entry["kind"])
@@ -545,13 +545,13 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertEqual("Status__c", catalog_entry["fieldSelection"])
         self.assertNotIn("resolvedErrorMessage", catalog_entry)
         self.assertIn(
-            ("references-field", "Engagement__c.Status__c"),
+            ("references-field", "HarnessEngagement__c.Status__c"),
             {(ref["kind"], ref["target"]) for ref in vr["references"]},
         )
         layout = by_type["Layout"]
-        self.assertEqual("Engagement__c", layout["facts"]["object"])
+        self.assertEqual("HarnessEngagement__c", layout["facts"]["object"])
         self.assertIn(
-            ("places-field", "Engagement__c.Status__c"),
+            ("places-field", "HarnessEngagement__c.Status__c"),
             {(ref["kind"], ref["target"]) for ref in layout["references"]},
         )
 
@@ -578,7 +578,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             and yaml.safe_load((self.root / item["claimFile"]).read_text(encoding="utf-8"))[
                 "subject"
             ]["identity"]
-            == "PermissionSet:Engagement_Manager"
+            == "PermissionSet:HarnessEngagement_Manager"
         )
         claim = yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
         canonical_path = self.root / ".ai/knowledge/claims" / f"{claim['claimId']}.yaml"
@@ -606,58 +606,58 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertEqual("blocked", worklist["items"][0]["status"])
         self.assertIn("rejected", worklist["items"][0]["reason"])
 
-    APEX_SERVICE = """public with sharing class EngagementService {
+    APEX_SERVICE = """public with sharing class HarnessEngagementService {
     public void run() {
-        List<Engagement__c> rows = [
+        List<HarnessEngagement__c> rows = [
             SELECT Id, Name, Status__c, (SELECT Id FROM Contacts)
-            FROM Engagement__c
+            FROM HarnessEngagement__c
             WHERE Status__c = 'Open' AND OwnerId != null AND Name LIKE :prefix
             ORDER BY CreatedDate DESC
             LIMIT 10
         ];
-        Engagement__c current = rows[0];
+        HarnessEngagement__c current = rows[0];
         current.Status__c = 'Closed';
         Account related = [SELECT Id FROM Account WHERE Id = :current.Account__c];
         System.debug(related.Industry);
         related.clone();
         update current;
-        EngagementNotifier.notifyOwner(current);
+        HarnessEngagementNotifier.notifyOwner(current);
     }
 }
 """
 
     def apex_component(self, builder=None):
         write(
-            self.root / "force-app/main/default/classes/EngagementService.cls",
+            self.root / "force-app/main/default/classes/HarnessEngagementService.cls",
             self.APEX_SERVICE,
         )
         target = builder or self.builder
         return target.parse_apex(
-            self.root / "force-app/main/default/classes/EngagementService.cls", "ApexClass"
+            self.root / "force-app/main/default/classes/HarnessEngagementService.cls", "ApexClass"
         )
 
     def test_apex_soql_field_and_variable_heuristics(self) -> None:
         component = self.apex_component()
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
         # SELECT-list fields, standard fields included; subquery content dropped.
-        self.assertIn(("soql-field", "Engagement__c.Name"), references)
-        self.assertIn(("soql-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("soql-field", "HarnessEngagement__c.Name"), references)
+        self.assertIn(("soql-field", "HarnessEngagement__c.Status__c"), references)
         self.assertIn(("soql-field", "Account.Id"), references)
-        self.assertNotIn(("soql-field", "Engagement__c.Contacts"), references)
+        self.assertNotIn(("soql-field", "HarnessEngagement__c.Contacts"), references)
         # WHERE-clause fields via comparison and LIKE operators; bind vars/keywords excluded.
-        self.assertIn(("soql-field", "Engagement__c.OwnerId"), references)
+        self.assertIn(("soql-field", "HarnessEngagement__c.OwnerId"), references)
         no_keywords = {
             target for kind, target in references if kind == "soql-field"
         }
         self.assertFalse({t for t in no_keywords if t.endswith((".LIMIT", ".ORDER", ".null"))})
         # Local variable resolution: declared sObject vars map member reads to Object.Field;
         # method calls are excluded.
-        self.assertIn(("var-field-ref", "Engagement__c.Status__c"), references)
+        self.assertIn(("var-field-ref", "HarnessEngagement__c.Status__c"), references)
         self.assertIn(("var-field-ref", "Account.Industry"), references)
         self.assertNotIn(("var-field-ref", "Account.clone"), references)
         # The invokes-class heuristic still excludes system types.
         invoked = {target for kind, target in references if kind == "invokes-class"}
-        self.assertIn("EngagementNotifier", invoked)
+        self.assertIn("HarnessEngagementNotifier", invoked)
         self.assertNotIn("System", invoked)
 
     def test_extraction_config_overrides_and_defaults(self) -> None:
@@ -671,7 +671,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
                 {
                     "schemaVersion": 1,
                     "maxUsageRefs": 5,
-                    "additionalSystemTypes": ["EngagementNotifier"],
+                    "additionalSystemTypes": ["HarnessEngagementNotifier"],
                     "soqlFieldExtraction": False,
                     "localVariableResolution": False,
                 }
@@ -685,7 +685,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertNotIn("soql-field", kinds)
         self.assertNotIn("var-field-ref", kinds)
         self.assertNotIn(
-            "EngagementNotifier",
+            "HarnessEngagementNotifier",
             {ref["target"] for ref in component["references"] if ref["kind"] == "invokes-class"},
         )
 
@@ -880,14 +880,14 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         with self.assertRaisesRegex(KnowledgeBuildError, "run inventory first"):
             self.builder.worklist()
         self.builder.inventory()
-        field = self.root / "force-app/main/default/objects/Engagement__c/fields/Account__c.field-meta.xml"
+        field = self.root / "force-app/main/default/objects/HarnessEngagement__c/fields/Account__c.field-meta.xml"
         field.write_text(FIELD_XML.replace("Account</label>", "Client Account</label>"), encoding="utf-8")
         with self.assertRaisesRegex(KnowledgeBuildError, "changed after inventory"):
             self.builder.worklist()
 
     def test_dirty_or_changed_source_cannot_be_commit_bound_evidence(self) -> None:
         self.builder.inventory()
-        field = self.root / "force-app/main/default/objects/Engagement__c/fields/Account__c.field-meta.xml"
+        field = self.root / "force-app/main/default/objects/HarnessEngagement__c/fields/Account__c.field-meta.xml"
         field.write_text(FIELD_XML.replace("Account</label>", "Client Account</label>"), encoding="utf-8")
         with self.assertRaisesRegex(KnowledgeBuildError, "changed after inventory"):
             self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
@@ -900,7 +900,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
 
 NEW_STYLE_NAMED_CREDENTIAL_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <NamedCredential xmlns="http://soap.sforce.com/2006/04/metadata">
-  <label>Billing API v2</label>
+  <label>HarnessBilling API v2</label>
   <namedCredentialType>SecuredEndpoint</namedCredentialType>
   <namedCredentialParameters>
     <parameterName>url</parameterName>
@@ -931,7 +931,7 @@ class DefectBatchTests(unittest.TestCase):
     def test_generic_token_type_names(self) -> None:
         cases = {
             "Home.flexipage-meta.xml": ("FlexiPage", "<FlexiPage><masterLabel>Home</masterLabel></FlexiPage>"),
-            "Billing.dataSource-meta.xml": ("ExternalDataSource", "<ExternalDataSource><label>Billing</label></ExternalDataSource>"),
+            "HarnessBilling.dataSource-meta.xml": ("ExternalDataSource", "<ExternalDataSource><label>HarnessBilling</label></ExternalDataSource>"),
             "Ops.permissionsetgroup-meta.xml": ("PermissionSetGroup", "<PermissionSetGroup><label>Ops</label></PermissionSetGroup>"),
             "Ops_Mute.mutingpermissionset-meta.xml": ("MutingPermissionSet", "<MutingPermissionSet><label>Ops Mute</label></MutingPermissionSet>"),
             "Azure.authprovider-meta.xml": ("AuthProvider", "<AuthProvider><friendlyName>Azure</friendlyName></AuthProvider>"),
@@ -943,10 +943,10 @@ class DefectBatchTests(unittest.TestCase):
             self.assertEqual(expected_type, component["metadataType"], filename)
 
     def test_apex_meta_api_version_status(self) -> None:
-        cls = self.root / "force-app/main/default/classes/BillingService.cls"
-        write(cls, "public with sharing class BillingService {}\n")
+        cls = self.root / "force-app/main/default/classes/HarnessBillingService.cls"
+        write(cls, "public with sharing class HarnessBillingService {}\n")
         write(
-            cls.with_name("BillingService.cls-meta.xml"),
+            cls.with_name("HarnessBillingService.cls-meta.xml"),
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<apiVersion>61.0</apiVersion><status>Active</status></ApexClass>\n",
@@ -965,22 +965,22 @@ class DefectBatchTests(unittest.TestCase):
     def test_tab_crawl_requires_known_object(self) -> None:
         tab = {
             "metadataType": "CustomTab",
-            "name": "Engagement__c",
-            "path": "force-app/main/default/tabs/Engagement__c.tab-meta.xml",
+            "name": "HarnessEngagement__c",
+            "path": "force-app/main/default/tabs/HarnessEngagement__c.tab-meta.xml",
             "references": [],
         }
         self.assertEqual(
-            {"Engagement__c"},
-            ForceAppKnowledge.component_objects(tab, {"Engagement__c"}),
+            {"HarnessEngagement__c"},
+            ForceAppKnowledge.component_objects(tab, {"HarnessEngagement__c"}),
         )
         self.assertEqual(set(), ForceAppKnowledge.component_objects(tab, {"Other__c"}))
         # Legacy behavior without a known-objects set: name-based association stands.
-        self.assertEqual({"Engagement__c"}, ForceAppKnowledge.component_objects(tab))
+        self.assertEqual({"HarnessEngagement__c"}, ForceAppKnowledge.component_objects(tab))
 
     def test_named_credential_url_parameter_host(self) -> None:
         path = (
             self.root
-            / "force-app/main/default/namedCredentials/BillingV2.namedCredential-meta.xml"
+            / "force-app/main/default/namedCredentials/HarnessBillingV2.namedCredential-meta.xml"
         )
         write(path, NEW_STYLE_NAMED_CREDENTIAL_XML)
         component = self.builder.parse_integration(path, "NamedCredential")
@@ -1121,10 +1121,10 @@ class FlowReworkTests(unittest.TestCase):
 ROLLUP_FIELD_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
   <fullName>Total_Billed__c</fullName><label>Total Billed</label><type>Currency</type>
-  <summaryForeignKey>BillingEvent__c.Engagement__c</summaryForeignKey>
-  <summarizedField>BillingEvent__c.Amount__c</summarizedField>
+  <summaryForeignKey>HarnessBillingEvent__c.HarnessEngagement__c</summaryForeignKey>
+  <summarizedField>HarnessBillingEvent__c.Amount__c</summarizedField>
   <summaryOperation>sum</summaryOperation>
-  <summaryFilterItems><field>BillingEvent__c.Status__c</field><operation>equals</operation><value>Billed</value></summaryFilterItems>
+  <summaryFilterItems><field>HarnessBillingEvent__c.Status__c</field><operation>equals</operation><value>Billed</value></summaryFilterItems>
 </CustomField>
 """
 PICKLIST_FIELD_XML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -1145,7 +1145,7 @@ PICKLIST_FIELD_XML = """<?xml version="1.0" encoding="UTF-8"?>
 FORMULA_FIELD_META_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
   <fullName>Client_Region__c</fullName><label>Client Region</label><type>Text</type>
-  <formula>Engagement__r.Region__c &amp; TEXT(Status__c)</formula>
+  <formula>HarnessEngagement__r.Region__c &amp; TEXT(Status__c)</formula>
   <formulaTreatBlanksAs>BlankAsBlank</formulaTreatBlanksAs>
 </CustomField>
 """
@@ -1160,11 +1160,11 @@ class ObjectFieldOverhaulTests(unittest.TestCase):
         self.objects = self.root / "force-app/main/default/objects"
         # Lookup fields that make relationship chains resolvable.
         write(
-            self.objects / "Assignment__c/fields/Engagement__c.field-meta.xml",
+            self.objects / "Assignment__c/fields/HarnessEngagement__c.field-meta.xml",
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<fullName>Engagement__c</fullName><type>Lookup</type>"
-            "<referenceTo>Engagement__c</referenceTo>"
+            "<fullName>HarnessEngagement__c</fullName><type>Lookup</type>"
+            "<referenceTo>HarnessEngagement__c</referenceTo>"
             "<relationshipName>Assignments</relationshipName></CustomField>\n",
         )
         self.builder = ForceAppKnowledge(self.root)
@@ -1181,9 +1181,9 @@ class ObjectFieldOverhaulTests(unittest.TestCase):
 
     def test_object_kind_discrimination(self) -> None:
         cases = {
-            "Engagement__c/Engagement__c.object-meta.xml": ("customObject", "<CustomObject><label>E</label></CustomObject>"),
+            "HarnessEngagement__c/HarnessEngagement__c.object-meta.xml": ("customObject", "<CustomObject><label>E</label></CustomObject>"),
             "FeatureFlag__mdt/FeatureFlag__mdt.object-meta.xml": ("customMetadataType", "<CustomObject><label>F</label></CustomObject>"),
-            "BillingRaised__e/BillingRaised__e.object-meta.xml": ("platformEvent", "<CustomObject><label>B</label><eventType>HighVolume</eventType></CustomObject>"),
+            "HarnessBillingRaised__e/HarnessBillingRaised__e.object-meta.xml": ("platformEvent", "<CustomObject><label>B</label><eventType>HighVolume</eventType></CustomObject>"),
             "Archive__b/Archive__b.object-meta.xml": ("bigObject", "<CustomObject><label>A</label></CustomObject>"),
             "Config__c/Config__c.object-meta.xml": ("customSetting", "<CustomObject><label>C</label><customSettingsType>Hierarchy</customSettingsType></CustomObject>"),
             "Account/Account.object-meta.xml": ("standardObjectExtension", "<CustomObject><enableFeeds>true</enableFeeds></CustomObject>"),
@@ -1194,28 +1194,28 @@ class ObjectFieldOverhaulTests(unittest.TestCase):
 
     def test_object_enrichment_facts(self) -> None:
         component = self.parse(
-            "Engagement__c/Engagement__c.object-meta.xml",
+            "HarnessEngagement__c/HarnessEngagement__c.object-meta.xml",
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<label>Engagement</label><description>Client engagement.</description>"
+            "<label>HarnessEngagement</label><description>Client harnessEngagement.</description>"
             "<enableHistory>true</enableHistory>"
-            "<nameField><type>AutoNumber</type><label>Engagement No</label>"
+            "<nameField><type>AutoNumber</type><label>HarnessEngagement No</label>"
             "<displayFormat>ENG-{0000}</displayFormat></nameField>"
-            "<compactLayoutAssignment>Engagement_Compact</compactLayoutAssignment>"
+            "<compactLayoutAssignment>HarnessEngagement_Compact</compactLayoutAssignment>"
             "</CustomObject>\n",
         )
         facts = component["facts"]
-        self.assertEqual("Client engagement.", facts["description"])
+        self.assertEqual("Client harnessEngagement.", facts["description"])
         self.assertTrue(facts["enableHistory"])
         self.assertEqual(
-            {"type": "AutoNumber", "label": "Engagement No", "displayFormat": "ENG-{0000}"},
+            {"type": "AutoNumber", "label": "HarnessEngagement No", "displayFormat": "ENG-{0000}"},
             facts["nameField"],
         )
-        self.assertEqual("Engagement_Compact", facts["compactLayoutAssignment"])
+        self.assertEqual("HarnessEngagement_Compact", facts["compactLayoutAssignment"])
 
     def test_field_picklist_values_and_dependency(self) -> None:
         component = self.parse(
-            "Engagement__c/fields/Stage__c.field-meta.xml", PICKLIST_FIELD_XML
+            "HarnessEngagement__c/fields/Stage__c.field-meta.xml", PICKLIST_FIELD_XML
         )
         facts = component["facts"]
         self.assertTrue(facts["picklistRestricted"])
@@ -1228,11 +1228,11 @@ class ObjectFieldOverhaulTests(unittest.TestCase):
         self.assertNotIn("picklistValuesTruncated", facts)
         self.assertTrue(facts["trackHistory"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("picklist-dependency", "Engagement__c.Type__c"), references)
+        self.assertIn(("picklist-dependency", "HarnessEngagement__c.Type__c"), references)
 
     def test_field_global_value_set_edge(self) -> None:
         component = self.parse(
-            "Engagement__c/fields/Region__c.field-meta.xml",
+            "HarnessEngagement__c/fields/Region__c.field-meta.xml",
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<fullName>Region__c</fullName><type>Picklist</type>"
@@ -1244,16 +1244,16 @@ class ObjectFieldOverhaulTests(unittest.TestCase):
 
     def test_field_rollup_deterministic_refs(self) -> None:
         component = self.parse(
-            "Engagement__c/fields/Total_Billed__c.field-meta.xml", ROLLUP_FIELD_XML
+            "HarnessEngagement__c/fields/Total_Billed__c.field-meta.xml", ROLLUP_FIELD_XML
         )
         facts = component["facts"]
         self.assertEqual("sum", facts["summaryOperation"])
-        self.assertEqual(["BillingEvent__c.Status__c"], facts["summaryFilterFields"])
+        self.assertEqual(["HarnessBillingEvent__c.Status__c"], facts["summaryFilterFields"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("references-field", "BillingEvent__c.Engagement__c"), references)
-        self.assertIn(("references-field", "BillingEvent__c.Amount__c"), references)
-        self.assertIn(("references-field", "BillingEvent__c.Status__c"), references)
-        self.assertIn(("operates-on", "BillingEvent__c"), references)
+        self.assertIn(("references-field", "HarnessBillingEvent__c.HarnessEngagement__c"), references)
+        self.assertIn(("references-field", "HarnessBillingEvent__c.Amount__c"), references)
+        self.assertIn(("references-field", "HarnessBillingEvent__c.Status__c"), references)
+        self.assertIn(("operates-on", "HarnessBillingEvent__c"), references)
         for reference in component["references"]:
             self.assertNotIn("heuristic", reference, reference)
 
@@ -1262,8 +1262,8 @@ class ObjectFieldOverhaulTests(unittest.TestCase):
             "Assignment__c/fields/Client_Region__c.field-meta.xml", FORMULA_FIELD_META_XML
         )
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        # Engagement__r resolves via Assignment__c.Engagement__c lookup → Engagement__c.
-        self.assertIn(("references-field", "Engagement__c.Region__c"), references)
+        # HarnessEngagement__r resolves via Assignment__c.HarnessEngagement__c lookup → HarnessEngagement__c.
+        self.assertIn(("references-field", "HarnessEngagement__c.Region__c"), references)
         # Bare token attributed to the owning object; the chained token must NOT be.
         self.assertIn(("references-field", "Assignment__c.Status__c"), references)
         self.assertNotIn(("references-field", "Assignment__c.Region__c"), references)
@@ -1410,16 +1410,16 @@ class WorkflowParserTests(unittest.TestCase):
         self.assertEqual("automation-map", automation["domain"])
 
 
-APEX_SERVICE_SOURCE = """public with sharing class BillingService implements Queueable, Database.AllowsCallouts {
+APEX_SERVICE_SOURCE = """public with sharing class HarnessBillingService implements Queueable, Database.AllowsCallouts {
     @AuraEnabled
-    public static void bill(Id engagementId) {
-        Engagement__c engagement = [SELECT Id, Status__c FROM Engagement__c WHERE Id = :engagementId];
-        engagement.Status__c = 'Billed';
-        update engagement;
+    public static void bill(Id harnessEngagementId) {
+        HarnessEngagement__c harnessEngagement = [SELECT Id, Status__c FROM HarnessEngagement__c WHERE Id = :harnessEngagementId];
+        harnessEngagement.Status__c = 'Billed';
+        update harnessEngagement;
         insert new LogEntry__c(Message__c = 'billed');
-        Database.upsert(engagement, false);
+        Database.upsert(harnessEngagement, false);
         HttpRequest request = new HttpRequest();
-        request.setEndpoint('callout:Billing_API/v1/invoices');
+        request.setEndpoint('callout:HarnessBilling_API/v1/invoices');
         HttpRequest raw = new HttpRequest();
         raw.setEndpoint('https://legacy.example.test/api?key=abc');
     }
@@ -1454,7 +1454,7 @@ class ApexExtractionTests(unittest.TestCase):
         return self.builder.parse_apex(path, metadata_type)
 
     def test_apex_declaration_facts(self) -> None:
-        component = self.parse_source("BillingService", APEX_SERVICE_SOURCE)
+        component = self.parse_source("HarnessBillingService", APEX_SERVICE_SOURCE)
         facts = component["facts"]
         self.assertEqual("with", facts["sharingModel"])
         self.assertEqual(["Database.AllowsCallouts", "Queueable"], facts["interfaces"])
@@ -1462,14 +1462,14 @@ class ApexExtractionTests(unittest.TestCase):
         self.assertNotIn("isTest", facts)
 
     def test_apex_dml_targets_via_var_map_and_new(self) -> None:
-        component = self.parse_source("BillingService", APEX_SERVICE_SOURCE)
+        component = self.parse_source("HarnessBillingService", APEX_SERVICE_SOURCE)
         facts = component["facts"]
         self.assertEqual(
-            {"Engagement__c": ["update", "upsert"], "LogEntry__c": ["insert"]},
+            {"HarnessEngagement__c": ["update", "upsert"], "LogEntry__c": ["insert"]},
             facts["dmlTargets"],
         )
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("dml-object", "Engagement__c"), references)
+        self.assertIn(("dml-object", "HarnessEngagement__c"), references)
         self.assertIn(("dml-object", "LogEntry__c"), references)
         for reference in component["references"]:
             if reference["kind"] == "dml-object":
@@ -1481,9 +1481,9 @@ class ApexExtractionTests(unittest.TestCase):
         self.assertIn(("var-field-ref", "Case.Priority"), references)
 
     def test_apex_callout_edges(self) -> None:
-        component = self.parse_source("BillingService", APEX_SERVICE_SOURCE)
+        component = self.parse_source("HarnessBillingService", APEX_SERVICE_SOURCE)
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("uses-named-credential", "Billing_API"), references)
+        self.assertIn(("uses-named-credential", "HarnessBilling_API"), references)
         self.assertIn(("callout-endpoint", "legacy.example.test"), references)
         serialized = canonical(component)
         self.assertNotIn("key=abc", serialized)
@@ -1507,7 +1507,7 @@ DEEP_APPROVAL_XML = """<?xml version="1.0" encoding="UTF-8"?>
   <allowRecall>true</allowRecall>
   <finalApprovalRecordLock>true</finalApprovalRecordLock>
   <entryCriteria>
-    <criteriaItems><field>Engagement__c.Discount__c</field><operation>greaterThan</operation><value>20</value></criteriaItems>
+    <criteriaItems><field>HarnessEngagement__c.Discount__c</field><operation>greaterThan</operation><value>20</value></criteriaItems>
     <booleanFilter>1</booleanFilter>
   </entryCriteria>
   <approvalStep>
@@ -1540,7 +1540,7 @@ class ApprovalProcessDeepeningTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.path = (
             self.root
-            / "force-app/main/default/approvalProcesses/Engagement__c.Discount_Approval.approvalProcess-meta.xml"
+            / "force-app/main/default/approvalProcesses/HarnessEngagement__c.Discount_Approval.approvalProcess-meta.xml"
         )
         write(self.path, DEEP_APPROVAL_XML)
         self.process = ForceAppKnowledge(self.root).parse_approval_process(self.path)
@@ -1556,14 +1556,14 @@ class ApprovalProcessDeepeningTests(unittest.TestCase):
         self.assertEqual(
             [
                 {
-                    "field": "Engagement__c.Discount__c",
+                    "field": "HarnessEngagement__c.Discount__c",
                     "operator": "greaterThan",
                     "value": "20",
                 }
             ],
             facts["entryCriteria"]["criteria"],
         )
-        self.assertIn(("filters-field", "Engagement__c.Discount__c"), self.references)
+        self.assertIn(("filters-field", "HarnessEngagement__c.Discount__c"), self.references)
 
     def test_step_approvers_omit_usernames(self) -> None:
         step = self.process["facts"]["steps"][0]
@@ -1576,7 +1576,7 @@ class ApprovalProcessDeepeningTests(unittest.TestCase):
         serialized = canonical(self.process)
         self.assertNotIn("jane.doe@example.test", serialized)
         self.assertNotIn("ops.user@example.test", serialized)
-        self.assertIn(("references-field", "Engagement__c.Manager__c"), self.references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Manager__c"), self.references)
 
     def test_action_sets_link_workflow_components(self) -> None:
         action_sets = self.process["facts"]["actionSets"]
@@ -1588,12 +1588,12 @@ class ApprovalProcessDeepeningTests(unittest.TestCase):
             action_sets["finalApproval"],
         )
         self.assertIn(
-            ("uses-workflow-action", "Engagement__c.Set_Approved"), self.references
+            ("uses-workflow-action", "HarnessEngagement__c.Set_Approved"), self.references
         )
         self.assertIn(
-            ("uses-workflow-action", "Engagement__c.Flag_Review"), self.references
+            ("uses-workflow-action", "HarnessEngagement__c.Flag_Review"), self.references
         )
-        self.assertIn(("sends-alert", "Engagement__c.Approval_Notice"), self.references)
+        self.assertIn(("sends-alert", "HarnessEngagement__c.Approval_Notice"), self.references)
         self.assertIn(
             ("uses-template", "unfiled$public/ApprovalRequest"), self.references
         )
@@ -1605,8 +1605,8 @@ class ApprovalProcessDeepeningTests(unittest.TestCase):
         self.assertTrue(facts["finalApprovalRecordLock"])
         self.assertEqual(["Discount__c", "Name"], sorted(facts["approvalPageFields"]))
         self.assertEqual(["owner", "user"], facts["allowedSubmitterTypes"])
-        self.assertIn(("references-field", "Engagement__c.Discount__c"), self.references)
-        self.assertIn(("references-field", "Engagement__c.Name"), self.references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Discount__c"), self.references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Name"), self.references)
 
 
 class RecordDataModelTests(unittest.TestCase):
@@ -1740,36 +1740,36 @@ class LwcDeepeningTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
         self.root = Path(self.temporary.name)
-        bundle = self.root / "force-app/main/default/lwc/engagementPanel"
+        bundle = self.root / "force-app/main/default/lwc/harnessEngagementPanel"
         write(
-            bundle / "engagementPanel.js-meta.xml",
+            bundle / "harnessEngagementPanel.js-meta.xml",
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<isExposed>true</isExposed><masterLabel>Engagement Panel</masterLabel>"
+            "<isExposed>true</isExposed><masterLabel>HarnessEngagement Panel</masterLabel>"
             "<targets><target>lightning__RecordPage</target></targets>"
             "<targetConfigs>"
             '<targetConfig targets="lightning__RecordPage">'
-            "<objects><object>Engagement__c</object><object>Account</object></objects>"
+            "<objects><object>HarnessEngagement__c</object><object>Account</object></objects>"
             "</targetConfig>"
             "</targetConfigs>"
             "</LightningComponentBundle>\n",
         )
         write(
-            bundle / "engagementPanel.js",
+            bundle / "harnessEngagementPanel.js",
             "import { LightningElement, api, wire } from 'lwc';\n"
-            "import getSummary from '@salesforce/apex/EngagementController.getSummary';\n"
-            "import HEADER_LABEL from '@salesforce/label/c.Engagement_Header';\n"
+            "import getSummary from '@salesforce/apex/HarnessEngagementController.getSummary';\n"
+            "import HEADER_LABEL from '@salesforce/label/c.HarnessEngagement_Header';\n"
             "import { getRecord } from 'lightning/uiRecordApi';\n"
-            "const FIELDS = ['Engagement__c.Status__c', 'Engagement__c.Name'];\n"
-            "export default class EngagementPanel extends LightningElement {\n"
+            "const FIELDS = ['HarnessEngagement__c.Status__c', 'HarnessEngagement__c.Name'];\n"
+            "export default class HarnessEngagementPanel extends LightningElement {\n"
             "  @api recordId;\n"
             "  @wire(getRecord, { recordId: '$recordId', fields: FIELDS }) record;\n"
             "}\n",
         )
         write(
-            bundle / "engagementPanel.html",
+            bundle / "harnessEngagementPanel.html",
             "<template>\n"
-            '  <lightning-record-form object-api-name="Engagement__c" field-name="Owner__c">\n'
+            '  <lightning-record-form object-api-name="HarnessEngagement__c" field-name="Owner__c">\n'
             "  </lightning-record-form>\n"
             "  <c-status-badge></c-status-badge>\n"
             "</template>\n",
@@ -1785,27 +1785,27 @@ class LwcDeepeningTests(unittest.TestCase):
 
     def test_target_config_objects_are_placement_edges(self) -> None:
         self.assertEqual(
-            [{"targets": "lightning__RecordPage", "objects": ["Account", "Engagement__c"]}],
+            [{"targets": "lightning__RecordPage", "objects": ["Account", "HarnessEngagement__c"]}],
             self.component["facts"]["targetConfigs"],
         )
-        self.assertIn(("operates-on", "Engagement__c"), self.references)
+        self.assertIn(("operates-on", "HarnessEngagement__c"), self.references)
         self.assertIn(("operates-on", "Account"), self.references)
 
     def test_js_wire_field_literals_are_heuristic_refs(self) -> None:
-        self.assertIn(("references-field", "Engagement__c.Status__c"), self.references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Status__c"), self.references)
         for reference in self.component["references"]:
-            if reference["target"] == "Engagement__c.Status__c":
+            if reference["target"] == "HarnessEngagement__c.Status__c":
                 self.assertTrue(reference.get("heuristic"))
 
     def test_label_import_and_embedded_component(self) -> None:
-        self.assertIn(("uses-label", "Engagement_Header"), self.references)
+        self.assertIn(("uses-label", "HarnessEngagement_Header"), self.references)
         self.assertIn(("embeds-component", "statusBadge"), self.references)
-        self.assertIn(("apex-method", "EngagementController.getSummary"), self.references)
+        self.assertIn(("apex-method", "HarnessEngagementController.getSummary"), self.references)
         self.assertEqual(["recordId"], self.component["facts"]["apiProperties"])
         self.assertEqual(["getRecord"], self.component["facts"]["wiredAdapters"])
 
     def test_html_field_literal_qualified_by_unambiguous_object(self) -> None:
-        self.assertIn(("references-field", "Engagement__c.Owner__c"), self.references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Owner__c"), self.references)
 
     def test_markup_toggle_disables_html_scanning(self) -> None:
         write(
@@ -1815,23 +1815,23 @@ class LwcDeepeningTests(unittest.TestCase):
         component = ForceAppKnowledge(self.root).parse_lwc(self.bundle)
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
         self.assertNotIn(("embeds-component", "statusBadge"), references)
-        self.assertNotIn(("references-field", "Engagement__c.Status__c"), references)
+        self.assertNotIn(("references-field", "HarnessEngagement__c.Status__c"), references)
         # Deterministic imports and targetConfigs stay on regardless of the toggle.
-        self.assertIn(("uses-label", "Engagement_Header"), references)
-        self.assertIn(("operates-on", "Engagement__c"), references)
+        self.assertIn(("uses-label", "HarnessEngagement_Header"), references)
+        self.assertIn(("operates-on", "HarnessEngagement__c"), references)
 
 
 FLEXIPAGE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <FlexiPage xmlns="http://soap.sforce.com/2006/04/metadata">
-  <masterLabel>Engagement Record Page</masterLabel>
+  <masterLabel>HarnessEngagement Record Page</masterLabel>
   <type>RecordPage</type>
-  <sobjectType>Engagement__c</sobjectType>
+  <sobjectType>HarnessEngagement__c</sobjectType>
   <template><name>flexipage:recordHomeTemplateDesktop</name></template>
   <flexiPageRegions>
     <name>main</name><type>Region</type>
     <itemInstances>
       <componentInstance>
-        <componentName>c:engagementPanel</componentName>
+        <componentName>c:harnessEngagementPanel</componentName>
         <componentInstanceProperties><name>flowName</name><value>Escalation_Router</value></componentInstanceProperties>
         <visibilityRule>
           <criteria><leftValue>{!Record.Status__c}</leftValue><operator>EQUAL</operator><rightValue>Open</rightValue></criteria>
@@ -1857,7 +1857,7 @@ class FlexiPageParserTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         path = (
             self.root
-            / "force-app/main/default/flexipages/Engagement_Record_Page.flexipage-meta.xml"
+            / "force-app/main/default/flexipages/HarnessEngagement_Record_Page.flexipage-meta.xml"
         )
         write(path, FLEXIPAGE_XML)
         self.page = ForceAppKnowledge(self.root).parse_flexipage(path)
@@ -1869,20 +1869,20 @@ class FlexiPageParserTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_flexipage_identity_and_facts(self) -> None:
-        self.assertEqual("FlexiPage:Engagement_Record_Page", self.page["id"])
+        self.assertEqual("FlexiPage:HarnessEngagement_Record_Page", self.page["id"])
         facts = self.page["facts"]
         self.assertEqual("RecordPage", facts["pageType"])
-        self.assertEqual("Engagement__c", facts["object"])
+        self.assertEqual("HarnessEngagement__c", facts["object"])
         self.assertEqual("flexipage:recordHomeTemplateDesktop", facts["template"])
         self.assertEqual(2, facts["componentCount"])
         self.assertEqual(1, facts["fieldInstanceCount"])
-        self.assertEqual(["Engagement__c.Status__c"], facts["visibilityRuleFields"])
+        self.assertEqual(["HarnessEngagement__c.Status__c"], facts["visibilityRuleFields"])
 
     def test_flexipage_edges(self) -> None:
-        self.assertIn(("operates-on", "Engagement__c"), self.references)
-        self.assertIn(("places-field", "Engagement__c.Discount__c"), self.references)
-        self.assertIn(("references-field", "Engagement__c.Status__c"), self.references)
-        self.assertIn(("displays-component", "engagementPanel"), self.references)
+        self.assertIn(("operates-on", "HarnessEngagement__c"), self.references)
+        self.assertIn(("places-field", "HarnessEngagement__c.Discount__c"), self.references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Status__c"), self.references)
+        self.assertIn(("displays-component", "harnessEngagementPanel"), self.references)
         self.assertIn(("displays-component", "flexipage:reportChart"), self.references)
         self.assertIn(("launches-flow", "Escalation_Router"), self.references)
 
@@ -1890,17 +1890,17 @@ class FlexiPageParserTests(unittest.TestCase):
 DEEP_LAYOUT_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <Layout xmlns="http://soap.sforce.com/2006/04/metadata">
   <layoutSections>
-    <label>Engagement Details</label>
+    <label>HarnessEngagement Details</label>
     <layoutColumns>
       <layoutItems><behavior>Required</behavior><field>Status__c</field></layoutItems>
       <layoutItems><behavior>Readonly</behavior><field>Total_Billed__c</field></layoutItems>
       <layoutItems><behavior>Edit</behavior><field>Name</field></layoutItems>
-      <layoutItems><page>EngagementSummary</page></layoutItems>
+      <layoutItems><page>HarnessEngagementSummary</page></layoutItems>
     </layoutColumns>
   </layoutSections>
   <platformActionList>
     <actionListContext>Record</actionListContext>
-    <platformActionListItems><actionName>Engagement__c.New_Milestone</actionName><actionType>QuickAction</actionType></platformActionListItems>
+    <platformActionListItems><actionName>HarnessEngagement__c.New_Milestone</actionName><actionType>QuickAction</actionType></platformActionListItems>
   </platformActionList>
   <relatedLists>
     <fields>NAME</fields><fields>STATUS</fields>
@@ -1913,7 +1913,7 @@ QUICK_ACTION_XML = """<?xml version="1.0" encoding="UTF-8"?>
   <label>New Milestone</label>
   <type>Create</type>
   <targetObject>Milestone__c</targetObject>
-  <targetParentField>Engagement__c</targetParentField>
+  <targetParentField>HarnessEngagement__c</targetParentField>
   <quickActionLayout>
     <layoutSectionStyle>TwoColumnsLeftToRight</layoutSectionStyle>
     <quickActionLayoutColumns>
@@ -1941,27 +1941,27 @@ class LayoutQuickActionTests(unittest.TestCase):
     def test_layout_field_behavior_sections_and_actions(self) -> None:
         path = (
             self.root
-            / "force-app/main/default/layouts/Engagement__c-Engagement Layout.layout-meta.xml"
+            / "force-app/main/default/layouts/HarnessEngagement__c-HarnessEngagement Layout.layout-meta.xml"
         )
         write(path, DEEP_LAYOUT_XML)
         layout = self.builder.parse_layout(path)
         facts = layout["facts"]
-        self.assertEqual(["Engagement__c.Status__c"], facts["requiredOnLayout"])
-        self.assertEqual(["Engagement__c.Total_Billed__c"], facts["readonlyOnLayout"])
-        self.assertEqual(["Engagement Details"], facts["sections"])
+        self.assertEqual(["HarnessEngagement__c.Status__c"], facts["requiredOnLayout"])
+        self.assertEqual(["HarnessEngagement__c.Total_Billed__c"], facts["readonlyOnLayout"])
+        self.assertEqual(["HarnessEngagement Details"], facts["sections"])
         self.assertEqual(
             [{"name": "Milestones__r", "fields": ["NAME", "STATUS"]}],
             facts["relatedLists"],
         )
         references = {(ref["kind"], ref["target"]) for ref in layout["references"]}
-        self.assertIn(("action", "Engagement__c.New_Milestone"), references)
-        self.assertIn(("displays-component", "EngagementSummary"), references)
+        self.assertIn(("action", "HarnessEngagement__c.New_Milestone"), references)
+        self.assertIn(("displays-component", "HarnessEngagementSummary"), references)
         self.assertIn(("related-list", "Milestones__r"), references)
 
     def test_quick_action_target_fields_and_parent(self) -> None:
         path = (
             self.root
-            / "force-app/main/default/quickActions/Engagement__c.New_Milestone.quickAction-meta.xml"
+            / "force-app/main/default/quickActions/HarnessEngagement__c.New_Milestone.quickAction-meta.xml"
         )
         write(path, QUICK_ACTION_XML)
         action = self.builder.parse_quick_action(path)
@@ -1974,7 +1974,7 @@ class LayoutQuickActionTests(unittest.TestCase):
         self.assertIn(("operates-on", "Milestone__c"), references)
         self.assertIn(("places-field", "Milestone__c.Due_Date__c"), references)
         self.assertIn(("references-field", "Milestone__c.Status__c"), references)
-        self.assertIn(("references-field", "Milestone__c.Engagement__c"), references)
+        self.assertIn(("references-field", "Milestone__c.HarnessEngagement__c"), references)
 
     def test_quick_action_flow_variant(self) -> None:
         path = (
@@ -2006,12 +2006,12 @@ class CustomApplicationTests(unittest.TestCase):
             '<CustomApplication xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<label>Service Console</label><navType>Console</navType><uiType>Lightning</uiType>"
             "<formFactors>Large</formFactors>"
-            "<tabs>standard-Account</tabs><tabs>Engagement__c</tabs>"
+            "<tabs>standard-Account</tabs><tabs>HarnessEngagement__c</tabs>"
             "<utilityBar>Service_UtilityBar</utilityBar>"
             "<profileActionOverrides>"
-            "<actionName>View</actionName><content>Engagement_Record_Page</content>"
-            "<formFactor>Large</formFactor><pageOrSobjectType>Engagement__c</pageOrSobjectType>"
-            "<recordType>Engagement__c.Support</recordType><type>Flexipage</type>"
+            "<actionName>View</actionName><content>HarnessEngagement_Record_Page</content>"
+            "<formFactor>Large</formFactor><pageOrSobjectType>HarnessEngagement__c</pageOrSobjectType>"
+            "<recordType>HarnessEngagement__c.Support</recordType><type>Flexipage</type>"
             "<profile>Support Agent</profile>"
             "</profileActionOverrides>"
             "</CustomApplication>\n",
@@ -2025,10 +2025,10 @@ class CustomApplicationTests(unittest.TestCase):
     def test_application_tabs_and_utility_bar(self) -> None:
         facts = self.app["facts"]
         self.assertEqual("Console", facts["navType"])
-        self.assertEqual(["standard-Account", "Engagement__c"], facts["tabs"])
+        self.assertEqual(["standard-Account", "HarnessEngagement__c"], facts["tabs"])
         self.assertTrue(facts["hasUtilityBar"])
         self.assertIn(("operates-on", "Account"), self.references)
-        self.assertIn(("displays-component", "Engagement__c"), self.references)
+        self.assertIn(("displays-component", "HarnessEngagement__c"), self.references)
         self.assertIn(("displays-component", "Service_UtilityBar"), self.references)
 
     def test_application_profile_override_assignment(self) -> None:
@@ -2036,34 +2036,34 @@ class CustomApplicationTests(unittest.TestCase):
         self.assertEqual(
             {
                 "action": "View",
-                "content": "Engagement_Record_Page",
+                "content": "HarnessEngagement_Record_Page",
                 "type": "Flexipage",
-                "object": "Engagement__c",
-                "recordType": "Engagement__c.Support",
+                "object": "HarnessEngagement__c",
+                "recordType": "HarnessEngagement__c.Support",
                 "profile": "Support Agent",
                 "formFactor": "Large",
             },
             override,
         )
-        self.assertIn(("overrides-view", "Engagement_Record_Page"), self.references)
+        self.assertIn(("overrides-view", "HarnessEngagement_Record_Page"), self.references)
 
 
 DEEP_PERMISSION_SET_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
-  <label>Engagement Manager</label>
+  <label>HarnessEngagement Manager</label>
   <license>Salesforce</license>
   <hasActivationRequired>false</hasActivationRequired>
   <objectPermissions>
-    <object>Engagement__c</object>
+    <object>HarnessEngagement__c</object>
     <allowCreate>true</allowCreate><allowRead>true</allowRead><allowEdit>true</allowEdit>
     <allowDelete>false</allowDelete><viewAllRecords>true</viewAllRecords><modifyAllRecords>false</modifyAllRecords>
   </objectPermissions>
-  <fieldPermissions><field>Engagement__c.Status__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
-  <fieldPermissions><field>Engagement__c.Margin__c</field><readable>true</readable><editable>false</editable></fieldPermissions>
-  <fieldPermissions><field>Engagement__c.Secret__c</field><readable>false</readable><editable>false</editable></fieldPermissions>
-  <classAccesses><apexClass>BillingService</apexClass><enabled>true</enabled></classAccesses>
+  <fieldPermissions><field>HarnessEngagement__c.Status__c</field><readable>true</readable><editable>true</editable></fieldPermissions>
+  <fieldPermissions><field>HarnessEngagement__c.Margin__c</field><readable>true</readable><editable>false</editable></fieldPermissions>
+  <fieldPermissions><field>HarnessEngagement__c.Secret__c</field><readable>false</readable><editable>false</editable></fieldPermissions>
+  <classAccesses><apexClass>HarnessBillingService</apexClass><enabled>true</enabled></classAccesses>
   <customPermissions><name>Can_Override_Price</name><enabled>true</enabled></customPermissions>
-  <recordTypeVisibilities><recordType>Engagement__c.Standard</recordType><visible>true</visible></recordTypeVisibilities>
+  <recordTypeVisibilities><recordType>HarnessEngagement__c.Standard</recordType><visible>true</visible></recordTypeVisibilities>
   <flowAccesses><flow>Escalation_Router</flow><enabled>true</enabled></flowAccesses>
   <userPermissions><name>ModifyAllData</name><enabled>true</enabled></userPermissions>
 </PermissionSet>
@@ -2072,9 +2072,9 @@ PROFILE_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <Profile xmlns="http://soap.sforce.com/2006/04/metadata">
   <custom>true</custom>
   <userLicense>Salesforce</userLicense>
-  <fieldPermissions><field>Engagement__c.Status__c</field><readable>true</readable><editable>false</editable></fieldPermissions>
-  <layoutAssignments><layout>Engagement__c-Engagement Layout</layout><recordType>Engagement__c.Standard</recordType></layoutAssignments>
-  <recordTypeVisibilities><recordType>Engagement__c.Standard</recordType><visible>true</visible><default>true</default></recordTypeVisibilities>
+  <fieldPermissions><field>HarnessEngagement__c.Status__c</field><readable>true</readable><editable>false</editable></fieldPermissions>
+  <layoutAssignments><layout>HarnessEngagement__c-HarnessEngagement Layout</layout><recordType>HarnessEngagement__c.Standard</recordType></layoutAssignments>
+  <recordTypeVisibilities><recordType>HarnessEngagement__c.Standard</recordType><visible>true</visible><default>true</default></recordTypeVisibilities>
   <applicationVisibilities><application>Service</application><visible>true</visible><default>true</default></applicationVisibilities>
   <loginIpRanges><startAddress>10.0.0.1</startAddress><endAddress>10.0.0.255</endAddress></loginIpRanges>
   <loginHours><mondayStart>420</mondayStart><mondayEnd>1140</mondayEnd></loginHours>
@@ -2096,7 +2096,7 @@ class AccessModelTests(unittest.TestCase):
     def parse_permission_set(self, xml: str) -> dict:
         path = (
             self.root
-            / "force-app/main/default/permissionsets/Engagement_Manager.permissionset-meta.xml"
+            / "force-app/main/default/permissionsets/HarnessEngagement_Manager.permissionset-meta.xml"
         )
         write(path, xml)
         return self.builder.parse_permission_set(path)
@@ -2104,11 +2104,11 @@ class AccessModelTests(unittest.TestCase):
     def test_field_grants_carry_levels(self) -> None:
         component = self.parse_permission_set(DEEP_PERMISSION_SET_XML)
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("grants-field-edit", "Engagement__c.Status__c"), references)
-        self.assertIn(("grants-field-read", "Engagement__c.Margin__c"), references)
+        self.assertIn(("grants-field-edit", "HarnessEngagement__c.Status__c"), references)
+        self.assertIn(("grants-field-read", "HarnessEngagement__c.Margin__c"), references)
         # No grant at all → no edge; the legacy level-blind kind is no longer emitted.
         self.assertNotIn(
-            ("grants-field-read", "Engagement__c.Secret__c"), references
+            ("grants-field-read", "HarnessEngagement__c.Secret__c"), references
         )
         self.assertFalse(
             any(ref["kind"] == "grants-field-permission" for ref in component["references"])
@@ -2117,21 +2117,21 @@ class AccessModelTests(unittest.TestCase):
     def test_object_access_map_and_grant_edges(self) -> None:
         component = self.parse_permission_set(DEEP_PERMISSION_SET_XML)
         facts = component["facts"]
-        self.assertEqual({"Engagement__c": "CRE+VA"}, facts["objectAccess"])
+        self.assertEqual({"HarnessEngagement__c": "CRE+VA"}, facts["objectAccess"])
         self.assertEqual(["ModifyAllData"], facts["systemPermissions"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("grants-object-permission", "Engagement__c"), references)
-        self.assertIn(("grants-object-view-all", "Engagement__c"), references)
-        self.assertNotIn(("grants-object-modify-all", "Engagement__c"), references)
-        self.assertIn(("grants-class-access", "BillingService"), references)
+        self.assertIn(("grants-object-permission", "HarnessEngagement__c"), references)
+        self.assertIn(("grants-object-view-all", "HarnessEngagement__c"), references)
+        self.assertNotIn(("grants-object-modify-all", "HarnessEngagement__c"), references)
+        self.assertIn(("grants-class-access", "HarnessBillingService"), references)
         self.assertIn(("grants-custom-permission", "Can_Override_Price"), references)
-        self.assertIn(("grants-record-type", "Engagement__c.Standard"), references)
+        self.assertIn(("grants-record-type", "HarnessEngagement__c.Standard"), references)
         self.assertIn(("grants-flow-access", "Escalation_Router"), references)
         self.assertIn(("grants-user-permission", "ModifyAllData"), references)
 
     def test_cap_priority_cuts_field_grants_first(self) -> None:
         rows = "".join(
-            f"<fieldPermissions><field>Engagement__c.F{i}__c</field>"
+            f"<fieldPermissions><field>HarnessEngagement__c.F{i}__c</field>"
             "<readable>true</readable><editable>false</editable></fieldPermissions>"
             for i in range(400)
         )
@@ -2155,7 +2155,7 @@ class AccessModelTests(unittest.TestCase):
         facts = component["facts"]
         self.assertTrue(facts["custom"])
         self.assertEqual(
-            {"Engagement__c": "Engagement__c.Standard"}, facts["defaultRecordTypes"]
+            {"HarnessEngagement__c": "HarnessEngagement__c.Standard"}, facts["defaultRecordTypes"]
         )
         self.assertEqual("Service", facts["defaultApplication"])
         self.assertTrue(facts["loginIpRangesPresent"])
@@ -2166,9 +2166,9 @@ class AccessModelTests(unittest.TestCase):
         self.assertNotIn("420", serialized)
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
         self.assertIn(
-            ("assigns-layout", "Engagement__c-Engagement Layout"), references
+            ("assigns-layout", "HarnessEngagement__c-HarnessEngagement Layout"), references
         )
-        self.assertIn(("grants-field-read", "Engagement__c.Status__c"), references)
+        self.assertIn(("grants-field-read", "HarnessEngagement__c.Status__c"), references)
 
 
 class ListSharingQueueTests(unittest.TestCase):
@@ -2185,13 +2185,13 @@ class ListSharingQueueTests(unittest.TestCase):
     def test_list_view_columns_and_filters(self) -> None:
         path = (
             self.root
-            / "force-app/main/default/objects/Engagement__c/listViews/Open.listView-meta.xml"
+            / "force-app/main/default/objects/HarnessEngagement__c/listViews/Open.listView-meta.xml"
         )
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<ListView xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<fullName>Open</fullName><label>Open Engagements</label>"
+            "<fullName>Open</fullName><label>Open HarnessEngagements</label>"
             "<filterScope>Everything</filterScope>"
             "<columns>NAME</columns><columns>Status__c</columns>"
             "<filters><field>Status__c</field><operation>equals</operation><value>Open</value></filters>"
@@ -2205,32 +2205,32 @@ class ListSharingQueueTests(unittest.TestCase):
             facts["filters"],
         )
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("references-field", "Engagement__c.NAME"), references)
-        self.assertIn(("filters-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("references-field", "HarnessEngagement__c.NAME"), references)
+        self.assertIn(("filters-field", "HarnessEngagement__c.Status__c"), references)
 
     def test_field_set_displayed_vs_available(self) -> None:
         path = (
             self.root
-            / "force-app/main/default/objects/Engagement__c/fieldSets/Billing.fieldSet-meta.xml"
+            / "force-app/main/default/objects/HarnessEngagement__c/fieldSets/HarnessBilling.fieldSet-meta.xml"
         )
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<FieldSet xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<fullName>Billing</fullName><label>Billing Fields</label>"
+            "<fullName>HarnessBilling</fullName><label>HarnessBilling Fields</label>"
             "<displayedFields><field>Amount__c</field></displayedFields>"
             "<availableFields><field>Margin__c</field></availableFields>"
             "</FieldSet>\n",
         )
         component = self.builder.parse_field_set(path)
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("places-field", "Engagement__c.Amount__c"), references)
-        self.assertIn(("references-field", "Engagement__c.Margin__c"), references)
+        self.assertIn(("places-field", "HarnessEngagement__c.Amount__c"), references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Margin__c"), references)
 
     def test_sharing_rules_criteria_and_grantees(self) -> None:
         path = (
             self.root
-            / "force-app/main/default/sharingRules/Engagement__c.sharingRules-meta.xml"
+            / "force-app/main/default/sharingRules/HarnessEngagement__c.sharingRules-meta.xml"
         )
         write(
             path,
@@ -2257,7 +2257,7 @@ class ListSharingQueueTests(unittest.TestCase):
             rule["criteria"],
         )
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("filters-field", "Engagement__c.Region__c"), references)
+        self.assertIn(("filters-field", "HarnessEngagement__c.Region__c"), references)
         self.assertIn(
             ("shares-with", "roleAndSubordinates:EMEA_Sales"), references
         )
@@ -2385,34 +2385,34 @@ class IntegrationFamilyTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_named_credential_external_credential_chain(self) -> None:
-        path = self.base / "namedCredentials/BillingV2.namedCredential-meta.xml"
+        path = self.base / "namedCredentials/HarnessBillingV2.namedCredential-meta.xml"
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<NamedCredential xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<label>Billing v2</label><namedCredentialType>SecuredEndpoint</namedCredentialType>"
+            "<label>HarnessBilling v2</label><namedCredentialType>SecuredEndpoint</namedCredentialType>"
             "<namedCredentialParameters><parameterName>url</parameterName><parameterType>Url</parameterType>"
             "<parameterValue>https://api.billing.example.test/v2</parameterValue></namedCredentialParameters>"
             "<namedCredentialParameters><parameterType>Authentication</parameterType>"
-            "<externalCredential>Billing_OAuth</externalCredential></namedCredentialParameters>"
+            "<externalCredential>HarnessBilling_OAuth</externalCredential></namedCredentialParameters>"
             "</NamedCredential>\n",
         )
         component = self.builder.parse_integration(path, "NamedCredential")
         self.assertEqual("api.billing.example.test", component["facts"]["endpointHost"])
-        self.assertEqual("Billing_OAuth", component["facts"]["externalCredential"])
+        self.assertEqual("HarnessBilling_OAuth", component["facts"]["externalCredential"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("uses-external-credential", "Billing_OAuth"), references)
+        self.assertIn(("uses-external-credential", "HarnessBilling_OAuth"), references)
 
     def test_external_credential_principals_no_secrets(self) -> None:
-        path = self.base / "externalCredentials/Billing_OAuth.externalCredential-meta.xml"
+        path = self.base / "externalCredentials/HarnessBilling_OAuth.externalCredential-meta.xml"
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<ExternalCredential xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<label>Billing OAuth</label>"
+            "<label>HarnessBilling OAuth</label>"
             "<authenticationProtocol>OAuth</authenticationProtocol>"
             "<authenticationProtocolVariant>ClientCredentialsClientSecretBasic</authenticationProtocolVariant>"
-            "<externalCredentialParameters><parameterName>BillingPrincipal</parameterName>"
+            "<externalCredentialParameters><parameterName>HarnessBillingPrincipal</parameterName>"
             "<parameterType>NamedPrincipal</parameterType><sequenceNumber>1</sequenceNumber></externalCredentialParameters>"
             "<externalCredentialParameters><parameterName>clientSecret</parameterName>"
             "<parameterType>AuthParameter</parameterType><parameterValue>super-secret-value</parameterValue></externalCredentialParameters>"
@@ -2424,7 +2424,7 @@ class IntegrationFamilyTests(unittest.TestCase):
         facts = component["facts"]
         self.assertEqual("OAuth", facts["authenticationProtocol"])
         self.assertEqual(
-            [{"name": "BillingPrincipal", "type": "NamedPrincipal", "sequence": "1"}],
+            [{"name": "HarnessBillingPrincipal", "type": "NamedPrincipal", "sequence": "1"}],
             facts["principals"],
         )
         self.assertNotIn("super-secret-value", canonical(component))
@@ -2450,13 +2450,13 @@ class IntegrationFamilyTests(unittest.TestCase):
     def test_external_service_registration_credential_reuse(self) -> None:
         path = (
             self.base
-            / "externalServiceRegistrations/BillingAPI.externalServiceRegistration-meta.xml"
+            / "externalServiceRegistrations/HarnessBillingAPI.externalServiceRegistration-meta.xml"
         )
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<ExternalServiceRegistration xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<label>Billing API</label><namedCredential>BillingV2</namedCredential>"
+            "<label>HarnessBilling API</label><namedCredential>HarnessBillingV2</namedCredential>"
             "<registrationProviderType>Custom</registrationProviderType>"
             "<schema>{&quot;openapi&quot;: &quot;3.0.0&quot;}</schema>"
             "<status>Complete</status></ExternalServiceRegistration>\n",
@@ -2466,7 +2466,7 @@ class IntegrationFamilyTests(unittest.TestCase):
         self.assertTrue(facts["schemaPresent"])
         self.assertNotIn("openapi", canonical(component["facts"].get("schema", "")))
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("uses-named-credential", "BillingV2"), references)
+        self.assertIn(("uses-named-credential", "HarnessBillingV2"), references)
 
     def test_connected_app_scopes_and_grants_no_secrets(self) -> None:
         path = self.base / "connectedApps/Partner_Portal.connectedApp-meta.xml"
@@ -2533,57 +2533,57 @@ class VfAuraLabelsTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_visualforce_controller_and_field_io(self) -> None:
-        path = self.base / "pages/EngagementEdit.page"
+        path = self.base / "pages/HarnessEngagementEdit.page"
         write(
             path,
-            '<apex:page standardController="Engagement__c" extensions="EngagementExt,AuditExt">\n'
-            '  <apex:inputField value="{!Engagement__c.Status__c}"/>\n'
-            '  <apex:outputField value="{!Engagement__c.Total_Billed__c}"/>\n'
-            '  <apex:outputText value="{!$Label.Engagement_Header}"/>\n'
+            '<apex:page standardController="HarnessEngagement__c" extensions="HarnessEngagementExt,AuditExt">\n'
+            '  <apex:inputField value="{!HarnessEngagement__c.Status__c}"/>\n'
+            '  <apex:outputField value="{!HarnessEngagement__c.Total_Billed__c}"/>\n'
+            '  <apex:outputText value="{!$Label.HarnessEngagement_Header}"/>\n'
             '  <apex:commandButton action="{!save}" value="Save"/>\n'
             "  <c:statusBadge/>\n"
             "</apex:page>\n",
         )
         write(
-            path.with_name("EngagementEdit.page-meta.xml"),
+            path.with_name("HarnessEngagementEdit.page-meta.xml"),
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<ApexPage xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<apiVersion>61.0</apiVersion><label>Engagement Edit</label></ApexPage>\n",
+            "<apiVersion>61.0</apiVersion><label>HarnessEngagement Edit</label></ApexPage>\n",
         )
         component = self.builder.parse_visualforce(path, "ApexPage")
         facts = component["facts"]
-        self.assertEqual("Engagement__c", facts["standardController"])
-        self.assertEqual(["EngagementExt", "AuditExt"], facts["extensions"])
+        self.assertEqual("HarnessEngagement__c", facts["standardController"])
+        self.assertEqual(["HarnessEngagementExt", "AuditExt"], facts["extensions"])
         self.assertEqual(["save"], facts["actionMethods"])
         self.assertEqual("61.0", facts["apiVersion"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("operates-on", "Engagement__c"), references)
-        self.assertIn(("apex-controller", "EngagementExt"), references)
-        self.assertIn(("writes-field", "Engagement__c.Status__c"), references)
-        self.assertIn(("reads-field", "Engagement__c.Total_Billed__c"), references)
-        self.assertIn(("uses-label", "Engagement_Header"), references)
+        self.assertIn(("operates-on", "HarnessEngagement__c"), references)
+        self.assertIn(("apex-controller", "HarnessEngagementExt"), references)
+        self.assertIn(("writes-field", "HarnessEngagement__c.Status__c"), references)
+        self.assertIn(("reads-field", "HarnessEngagement__c.Total_Billed__c"), references)
+        self.assertIn(("uses-label", "HarnessEngagement_Header"), references)
         self.assertIn(("embeds-component", "statusBadge"), references)
 
     def test_aura_record_data_and_implements(self) -> None:
-        bundle = self.base / "aura/engagementCard"
+        bundle = self.base / "aura/harnessEngagementCard"
         write(
-            bundle / "engagementCard.cmp",
-            '<aura:component controller="EngagementController" '
+            bundle / "harnessEngagementCard.cmp",
+            '<aura:component controller="HarnessEngagementController" '
             'implements="flexipage:availableForAllPageTypes,force:hasRecordId">\n'
-            '  <aura:attribute name="row" type="Engagement__c"/>\n'
-            '  <force:recordData sObjectName="Engagement__c" fields="Name,Status__c"/>\n'
+            '  <aura:attribute name="row" type="HarnessEngagement__c"/>\n'
+            '  <force:recordData sObjectName="HarnessEngagement__c" fields="Name,Status__c"/>\n'
             "  <c:statusBadge/>\n"
-            "  <div>{!$Label.c.Engagement_Header}</div>\n"
+            "  <div>{!$Label.c.HarnessEngagement_Header}</div>\n"
             "</aura:component>\n",
         )
         component = self.builder.parse_aura(bundle)
         facts = component["facts"]
         self.assertIn("flexipage:availableForAllPageTypes", facts["implements"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("apex-controller", "EngagementController"), references)
-        self.assertIn(("operates-on", "Engagement__c"), references)
-        self.assertIn(("references-field", "Engagement__c.Status__c"), references)
-        self.assertIn(("uses-label", "Engagement_Header"), references)
+        self.assertIn(("apex-controller", "HarnessEngagementController"), references)
+        self.assertIn(("operates-on", "HarnessEngagement__c"), references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Status__c"), references)
+        self.assertIn(("uses-label", "HarnessEngagement_Header"), references)
         self.assertIn(("embeds-component", "statusBadge"), references)
 
     def test_custom_labels_promoted_with_searchable_statement(self) -> None:
@@ -2592,12 +2592,12 @@ class VfAuraLabelsTests(unittest.TestCase):
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<labels><fullName>Engagement_Header</fullName>"
-            "<value>Engagement overview</value><language>en_US</language>"
+            "<labels><fullName>HarnessEngagement_Header</fullName>"
+            "<value>HarnessEngagement overview</value><language>en_US</language>"
             "<protected>false</protected><categories>UI</categories>"
             "<shortDescription>Header text</shortDescription></labels>"
             "<labels><fullName>Blocked_Message</fullName>"
-            "<value>This engagement is blocked by finance.</value><language>en_US</language>"
+            "<value>This harnessEngagement is blocked by finance.</value><language>en_US</language>"
             "<protected>true</protected><shortDescription>Blocked banner</shortDescription></labels>"
             "</CustomLabels>\n",
         )
@@ -2606,7 +2606,7 @@ class VfAuraLabelsTests(unittest.TestCase):
         by_id = {component["id"]: component for component in components}
         label = by_id["CustomLabel:Blocked_Message"]
         self.assertEqual(
-            "This engagement is blocked by finance.", label["facts"]["value"]
+            "This harnessEngagement is blocked by finance.", label["facts"]["value"]
         )
         self.assertEqual(2, by_id["CustomLabels:CustomLabels"]["facts"]["labelCount"])
         claims = self.builder.candidate_claims(label)
@@ -2636,13 +2636,13 @@ class CmdtPermissionTabTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_cmdt_record_identity_and_redaction(self) -> None:
-        path = self.base / "customMetadata/ServiceBinding.Billing.md-meta.xml"
+        path = self.base / "customMetadata/ServiceBinding.HarnessBilling.md-meta.xml"
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<CustomMetadata xmlns="http://soap.sforce.com/2006/04/metadata" '
             'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
-            "<label>Billing</label><protected>false</protected>"
+            "<label>HarnessBilling</label><protected>false</protected>"
             "<values><field>Endpoint__c</field>"
             '<value xsi:type="xsd:string">https://api.example.test/billing?key=1</value></values>'
             "<values><field>ApiKey__c</field>"
@@ -2651,7 +2651,7 @@ class CmdtPermissionTabTests(unittest.TestCase):
             "</CustomMetadata>\n",
         )
         component = self.builder.parse_custom_metadata_record(path)
-        self.assertEqual("CustomMetadata:ServiceBinding__mdt.Billing", component["id"])
+        self.assertEqual("CustomMetadata:ServiceBinding__mdt.HarnessBilling", component["id"])
         facts = component["facts"]
         self.assertEqual(
             ["Active__c", "ApiKey__c", "Endpoint__c"], facts["fieldsPopulated"]
@@ -2688,7 +2688,7 @@ class CmdtPermissionTabTests(unittest.TestCase):
     def test_permission_token_edges_from_validation_rule_and_flow(self) -> None:
         rule_path = (
             self.base
-            / "objects/Engagement__c/validationRules/Price_Guard.validationRule-meta.xml"
+            / "objects/HarnessEngagement__c/validationRules/Price_Guard.validationRule-meta.xml"
         )
         write(
             rule_path,
@@ -2727,30 +2727,30 @@ class CmdtPermissionTabTests(unittest.TestCase):
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<PermissionSetGroup xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<label>Ops</label><status>Updated</status>"
-            "<permissionSets>Engagement_Manager</permissionSets>"
-            "<permissionSets>Billing_Reader</permissionSets>"
+            "<permissionSets>HarnessEngagement_Manager</permissionSets>"
+            "<permissionSets>HarnessBilling_Reader</permissionSets>"
             "<mutingPermissionSets>Ops_Mute</mutingPermissionSets>"
             "</PermissionSetGroup>\n",
         )
         component = self.builder.parse_permission_set_group(path)
         self.assertEqual(2, component["facts"]["permissionSetCount"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("includes-permission-set", "Engagement_Manager"), references)
+        self.assertIn(("includes-permission-set", "HarnessEngagement_Manager"), references)
         self.assertIn(("mutes-permission-set", "Ops_Mute"), references)
 
     def test_tab_kind_variants(self) -> None:
-        object_tab = self.base / "tabs/Engagement__c.tab-meta.xml"
+        object_tab = self.base / "tabs/HarnessEngagement__c.tab-meta.xml"
         write(
             object_tab,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<CustomTab xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<customObject>true</customObject><label>Engagements</label>"
+            "<customObject>true</customObject><label>HarnessEngagements</label>"
             "<motif>Custom54</motif></CustomTab>\n",
         )
         component = self.builder.parse_custom_tab(object_tab)
         self.assertEqual("object", component["facts"]["tabKind"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("operates-on", "Engagement__c"), references)
+        self.assertIn(("operates-on", "HarnessEngagement__c"), references)
         web_tab = self.base / "tabs/Portal.tab-meta.xml"
         write(
             web_tab,
@@ -2779,45 +2779,45 @@ class AnalyticsPathTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_report_type_base_object_and_columns(self) -> None:
-        path = self.base / "reportTypes/Engagements_with_Milestones.reportType-meta.xml"
+        path = self.base / "reportTypes/HarnessEngagements_with_Milestones.reportType-meta.xml"
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<ReportType xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<label>Engagements with Milestones</label><baseObject>Engagement__c</baseObject>"
+            "<label>HarnessEngagements with Milestones</label><baseObject>HarnessEngagement__c</baseObject>"
             "<category>other</category><deployed>true</deployed>"
             "<sections><masterLabel>Fields</masterLabel>"
-            "<columns><field>Status__c</field><table>Engagement__c</table><checkedByDefault>true</checkedByDefault></columns>"
-            "<columns><field>Due_Date__c</field><table>Engagement__c.Milestones__r</table><checkedByDefault>false</checkedByDefault></columns>"
+            "<columns><field>Status__c</field><table>HarnessEngagement__c</table><checkedByDefault>true</checkedByDefault></columns>"
+            "<columns><field>Due_Date__c</field><table>HarnessEngagement__c.Milestones__r</table><checkedByDefault>false</checkedByDefault></columns>"
             "</sections></ReportType>\n",
         )
         component = self.builder.parse_report_type(path)
         facts = component["facts"]
-        self.assertEqual("Engagement__c", facts["baseObject"])
+        self.assertEqual("HarnessEngagement__c", facts["baseObject"])
         self.assertEqual(
-            ["Engagement__c", "Engagement__c.Milestones__r"], facts["tables"]
+            ["HarnessEngagement__c", "HarnessEngagement__c.Milestones__r"], facts["tables"]
         )
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("operates-on", "Engagement__c"), references)
-        self.assertIn(("references-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("operates-on", "HarnessEngagement__c"), references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Status__c"), references)
         # Join-path fields stay facts-only; the child object is not resolvable.
         self.assertNotIn(
-            ("references-field", "Engagement__c.Milestones__r.Due_Date__c"), references
+            ("references-field", "HarnessEngagement__c.Milestones__r.Due_Date__c"), references
         )
 
     def test_report_bounded_refs_with_values(self) -> None:
-        path = self.base / "reports/Sales/Open_Engagements.report-meta.xml"
+        path = self.base / "reports/Sales/Open_HarnessEngagements.report-meta.xml"
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<Report xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<name>Open Engagements</name><format>Summary</format>"
-            "<reportType>Engagements_with_Milestones</reportType>"
-            "<columns><field>Engagement__c.Status__c</field></columns>"
-            "<filter><criteriaItems><column>Engagement__c.Region__c</column>"
+            "<name>Open HarnessEngagements</name><format>Summary</format>"
+            "<reportType>HarnessEngagements_with_Milestones</reportType>"
+            "<columns><field>HarnessEngagement__c.Status__c</field></columns>"
+            "<filter><criteriaItems><column>HarnessEngagement__c.Region__c</column>"
             "<operator>equals</operator><value>EMEA</value></criteriaItems></filter>"
-            "<groupingsDown><field>Engagement__c.Owner__c</field></groupingsDown>"
-            "<timeFrameFilter><dateColumn>Engagement__c.CreatedDate</dateColumn>"
+            "<groupingsDown><field>HarnessEngagement__c.Owner__c</field></groupingsDown>"
+            "<timeFrameFilter><dateColumn>HarnessEngagement__c.CreatedDate</dateColumn>"
             "<interval>INTERVAL_CURRENT</interval></timeFrameFilter>"
             "</Report>\n",
         )
@@ -2825,16 +2825,16 @@ class AnalyticsPathTests(unittest.TestCase):
         facts = component["facts"]
         self.assertEqual("Sales", facts["folder"])
         self.assertEqual(
-            [{"column": "Engagement__c.Region__c", "operator": "equals", "value": "EMEA"}],
+            [{"column": "HarnessEngagement__c.Region__c", "operator": "equals", "value": "EMEA"}],
             facts["filters"],
         )
         self.assertEqual(
-            {"dateColumn": "Engagement__c.CreatedDate", "interval": "INTERVAL_CURRENT"},
+            {"dateColumn": "HarnessEngagement__c.CreatedDate", "interval": "INTERVAL_CURRENT"},
             facts["timeFrame"],
         )
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("references-field", "Engagement__c.Status__c"), references)
-        self.assertIn(("filters-field", "Engagement__c.Region__c"), references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Status__c"), references)
+        self.assertIn(("filters-field", "HarnessEngagement__c.Region__c"), references)
         for reference in component["references"]:
             self.assertTrue(reference.get("heuristic"), reference)
 
@@ -2845,7 +2845,7 @@ class AnalyticsPathTests(unittest.TestCase):
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<Dashboard xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<title>Pipeline</title><runningUser>ops.admin@example.test</runningUser>"
-            "<leftSection><dashboardComponent><report>Sales/Open_Engagements</report></dashboardComponent></leftSection>"
+            "<leftSection><dashboardComponent><report>Sales/Open_HarnessEngagements</report></dashboardComponent></leftSection>"
             "</Dashboard>\n",
         )
         component = self.builder.parse_dashboard(path)
@@ -2853,16 +2853,16 @@ class AnalyticsPathTests(unittest.TestCase):
         self.assertEqual("SpecifiedUser", facts["runningUserPolicy"])
         self.assertNotIn("ops.admin@example.test", canonical(component))
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("displays-component", "Sales/Open_Engagements"), references)
+        self.assertIn(("displays-component", "Sales/Open_HarnessEngagements"), references)
 
     def test_path_assistant_guidance_and_step_fields(self) -> None:
-        path = self.base / "pathAssistants/Engagement_Path.pathAssistant-meta.xml"
+        path = self.base / "pathAssistants/HarnessEngagement_Path.pathAssistant-meta.xml"
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<PathAssistant xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<masterLabel>Engagement Path</masterLabel><active>true</active>"
-            "<entityName>Engagement__c</entityName><fieldName>Status__c</fieldName>"
+            "<masterLabel>HarnessEngagement Path</masterLabel><active>true</active>"
+            "<entityName>HarnessEngagement__c</entityName><fieldName>Status__c</fieldName>"
             "<pathAssistantSteps>"
             "<picklistValueName>Kickoff</picklistValueName>"
             "<fieldNames>Owner__c</fieldNames><fieldNames>Start_Date__c</fieldNames>"
@@ -2872,14 +2872,14 @@ class AnalyticsPathTests(unittest.TestCase):
         )
         component = self.builder.parse_path_assistant(path)
         facts = component["facts"]
-        self.assertEqual("Engagement__c.Status__c", facts["drivingField"])
+        self.assertEqual("HarnessEngagement__c.Status__c", facts["drivingField"])
         step = facts["steps"][0]
         self.assertEqual("Kickoff", step["value"])
         self.assertIn("start date", step["guidance"])
         self.assertNotIn("<b>", step["guidance"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("references-field", "Engagement__c.Status__c"), references)
-        self.assertIn(("places-field", "Engagement__c.Start_Date__c"), references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Status__c"), references)
+        self.assertIn(("places-field", "HarnessEngagement__c.Start_Date__c"), references)
 
 
 class MatchingFlowDefinitionTests(unittest.TestCase):
@@ -2958,29 +2958,29 @@ class CompactLayoutWebLinkTests(unittest.TestCase):
     def test_compact_layout_places_fields(self) -> None:
         path = (
             self.objects
-            / "Engagement__c/compactLayouts/Engagement_Compact.compactLayout-meta.xml"
+            / "HarnessEngagement__c/compactLayouts/HarnessEngagement_Compact.compactLayout-meta.xml"
         )
         write(
             path,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<CompactLayout xmlns="http://soap.sforce.com/2006/04/metadata">'
-            "<fullName>Engagement_Compact</fullName><label>Engagement Compact</label>"
+            "<fullName>HarnessEngagement_Compact</fullName><label>HarnessEngagement Compact</label>"
             "<fields>Name</fields><fields>Status__c</fields></CompactLayout>\n",
         )
         component = self.builder.parse_compact_layout(path)
         self.assertEqual(["Name", "Status__c"], component["facts"]["fields"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("places-field", "Engagement__c.Status__c"), references)
+        self.assertIn(("places-field", "HarnessEngagement__c.Status__c"), references)
 
     def test_web_link_kinds_host_only_no_js_body(self) -> None:
-        url_link = self.objects / "Engagement__c/webLinks/Open_Portal.webLink-meta.xml"
+        url_link = self.objects / "HarnessEngagement__c/webLinks/Open_Portal.webLink-meta.xml"
         write(
             url_link,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<WebLink xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<fullName>Open_Portal</fullName><masterLabel>Open Portal</masterLabel>"
             "<displayType>button</displayType><linkType>url</linkType><openType>newWindow</openType>"
-            "<url>https://portal.example.test/view?id={!Engagement__c.External_Id__c}</url>"
+            "<url>https://portal.example.test/view?id={!HarnessEngagement__c.External_Id__c}</url>"
             "</WebLink>\n",
         )
         component = self.builder.parse_web_link(url_link)
@@ -2989,9 +2989,9 @@ class CompactLayoutWebLinkTests(unittest.TestCase):
         self.assertNotIn("isJavascript", facts)
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
         self.assertIn(
-            ("references-field", "Engagement__c.External_Id__c"), references
+            ("references-field", "HarnessEngagement__c.External_Id__c"), references
         )
-        js_link = self.objects / "Engagement__c/webLinks/Legacy_JS.webLink-meta.xml"
+        js_link = self.objects / "HarnessEngagement__c/webLinks/Legacy_JS.webLink-meta.xml"
         write(
             js_link,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -3003,17 +3003,17 @@ class CompactLayoutWebLinkTests(unittest.TestCase):
         component = self.builder.parse_web_link(js_link)
         self.assertTrue(component["facts"]["isJavascript"])
         self.assertNotIn("secret-internal-logic", canonical(component))
-        page_link = self.objects / "Engagement__c/webLinks/Summary.webLink-meta.xml"
+        page_link = self.objects / "HarnessEngagement__c/webLinks/Summary.webLink-meta.xml"
         write(
             page_link,
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<WebLink xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<fullName>Summary</fullName><linkType>page</linkType>"
-            "<page>EngagementSummary</page></WebLink>\n",
+            "<page>HarnessEngagementSummary</page></WebLink>\n",
         )
         component = self.builder.parse_web_link(page_link)
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("displays-component", "EngagementSummary"), references)
+        self.assertIn(("displays-component", "HarnessEngagementSummary"), references)
 
 
 class EmailStaticResourceTests(unittest.TestCase):
@@ -3033,7 +3033,7 @@ class EmailStaticResourceTests(unittest.TestCase):
         write(
             path,
             "Dear {!Contact.FirstName},\n"
-            "Case {!Case.CaseNumber} for {!Engagement__c.Name} was escalated.\n"
+            "Case {!Case.CaseNumber} for {!HarnessEngagement__c.Name} was escalated.\n"
             "{!$Label.Escalation_Footer}\n"
             "Regards, {!ignored.lowerHead}\n",
         )
@@ -3051,7 +3051,7 @@ class EmailStaticResourceTests(unittest.TestCase):
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
         self.assertIn(("references-field", "Contact.FirstName"), references)
         self.assertIn(("references-field", "Case.CaseNumber"), references)
-        self.assertIn(("references-field", "Engagement__c.Name"), references)
+        self.assertIn(("references-field", "HarnessEngagement__c.Name"), references)
         self.assertNotIn(("references-field", "ignored.lowerHead"), references)
         self.assertIn(("uses-label", "Escalation_Footer"), references)
 
@@ -3118,16 +3118,16 @@ class RoleMutingDelegateTests(unittest.TestCase):
             '<?xml version="1.0" encoding="UTF-8"?>\n'
             '<MutingPermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<label>Ops Mute</label>"
-            "<objectPermissions><object>Engagement__c</object>"
+            "<objectPermissions><object>HarnessEngagement__c</object>"
             "<allowDelete>true</allowDelete></objectPermissions>"
-            "<fieldPermissions><field>Engagement__c.Margin__c</field>"
+            "<fieldPermissions><field>HarnessEngagement__c.Margin__c</field>"
             "<readable>true</readable><editable>true</editable></fieldPermissions>"
             "<userPermissions><name>ModifyAllData</name><enabled>true</enabled></userPermissions>"
             "</MutingPermissionSet>\n",
         )
         component = self.builder.parse_muting_permission_set(path)
         facts = component["facts"]
-        self.assertEqual({"Engagement__c": "D"}, facts["mutedObjectAccess"])
+        self.assertEqual({"HarnessEngagement__c": "D"}, facts["mutedObjectAccess"])
         self.assertEqual(["ModifyAllData"], facts["mutedSystemPermissions"])
         # Negative grants never enter the positive usage graph.
         self.assertEqual([], component["references"])
@@ -3140,7 +3140,7 @@ class RoleMutingDelegateTests(unittest.TestCase):
             '<DelegateGroup xmlns="http://soap.sforce.com/2006/04/metadata">'
             "<label>Regional Admins</label><loginAccess>true</loginAccess>"
             "<roles>EMEA_Sales</roles>"
-            "<permissionSets>Engagement_Manager</permissionSets>"
+            "<permissionSets>HarnessEngagement_Manager</permissionSets>"
             "<profiles>Support Agent</profiles>"
             "</DelegateGroup>\n",
         )
@@ -3149,7 +3149,7 @@ class RoleMutingDelegateTests(unittest.TestCase):
         self.assertTrue(facts["loginAccess"])
         self.assertEqual(["EMEA_Sales"], facts["administersRoles"])
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}
-        self.assertIn(("grants-to-permission-set", "Engagement_Manager"), references)
+        self.assertIn(("grants-to-permission-set", "HarnessEngagement_Manager"), references)
         self.assertIn(("grants-to-profile", "Support Agent"), references)
 
 
@@ -3316,10 +3316,10 @@ class CriteriaInfrastructureTests(unittest.TestCase):
             "name": "Demo",
             "path": "force-app/main/default/flows/Demo.flow-meta.xml",
             "references": [
-                {"kind": "references-field", "target": "Engagement__c.Status__c"},
+                {"kind": "references-field", "target": "HarnessEngagement__c.Status__c"},
                 {
                     "kind": "references-field",
-                    "target": "Engagement__c.Guess__c",
+                    "target": "HarnessEngagement__c.Guess__c",
                     "heuristic": True,
                 },
             ],

@@ -20,6 +20,7 @@ from scripts.knowledge_registry import (
     canonical_digest,
     file_sha256,
 )
+from scripts.validate_harness import reserved_fixture_leaks
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -187,29 +188,58 @@ class KnowledgeSchemaTests(unittest.TestCase):
         pattern = re.compile(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—")
         for path in source_files:
             source_ids.update(pattern.findall(path.read_text(encoding="utf-8")))
-        expected = {rule_id for rule_id in source_ids if not rule_id.startswith("MP-INV-")}
         actual = [rule["ruleId"] for rule in registry["rules"]]
-        self.assertEqual(expected, set(actual))
+        self.assertEqual(source_ids, set(actual))
         self.assertEqual(len(actual), len(set(actual)))
-        self.assertFalse(any(rule_id.startswith("MP-INV-") for rule_id in actual))
 
-    def test_live_knowledge_has_no_unverified_example_or_canonical_fact(self) -> None:
-        relations = (ROOT / ".ai/knowledge/object-relations.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertNotIn("Invoice__c", relations)
-        self.assertNotIn("ExampleManagedObject__c", relations)
+    def test_live_knowledge_has_no_reserved_fixture_leak(self) -> None:
+        """Reserved synthetic fixture identifiers must never reach live Knowledge
+        surfaces. Legal Salesforce names (including ones that collide with old
+        example names, e.g. Invoice__c) are governed by provenance and lifecycle
+        rules, not by a name denylist."""
+        surfaces = [ROOT / ".ai/knowledge/object-relations.md"]
         for directory in ("claims", "evidence", "reviews"):
-            files = [
-                path.name
-                for path in (ROOT / ".ai/knowledge" / directory).iterdir()
-                if path.is_file()
-            ]
-            self.assertEqual([".gitkeep"], files)
+            for path in sorted((ROOT / ".ai/knowledge" / directory).iterdir()):
+                if not path.is_file():
+                    continue
+                self.assertTrue(
+                    path.name == ".gitkeep" or path.suffix == ".yaml",
+                    f"{path}: only .gitkeep or schema-governed YAML records belong here",
+                )
+                if path.suffix == ".yaml":
+                    surfaces.append(path)
+        for surface in surfaces:
+            leaks = reserved_fixture_leaks(surface.read_text(encoding="utf-8"))
+            self.assertEqual([], leaks, f"{surface}: reserved fixture tokens leaked: {leaks}")
         for filename in DOMAIN_FILES:
             text = (ROOT / ".ai/knowledge" / filename).read_text(encoding="utf-8")
             self.assertIn("BEGIN GENERATED CLAIM INDEX", text)
             self.assertIn("END GENERATED CLAIM INDEX", text)
+
+    def test_legal_business_names_are_not_screened_as_fixture_leaks(self) -> None:
+        """Regression for the retired name denylist (introduced in 07c1788): a real
+        team's legally named metadata and rule prefixes must pass the
+        runtime-authority leak scan."""
+        legal_text = "Flow writes Invoice__c.Status__c under rule MP-INV-001."
+        self.assertEqual([], reserved_fixture_leaks(legal_text))
+        self.assertEqual(
+            ["HarnessEngagement"],
+            reserved_fixture_leaks("references HarnessEngagement__c"),
+        )
+
+    def test_claim_about_legally_named_object_is_schema_valid(self) -> None:
+        """A claim about an object that shares its name with a former example
+        (Invoice__c) must be schema-valid end to end."""
+        claim = load_yaml(FIXTURES / "knowledge-claim.proposed.yaml")
+        claim["claimId"] = "KCLM-INVOICE-EXISTS-001"
+        claim["subject"]["identity"] = "examplepkg__Invoice__c"
+        claim["statement"] = (
+            "Synthetic regression fixture; Invoice__c exists in the accessible QA schema."
+        )
+        errors = list(
+            self.validator("knowledge-claim.schema.json").iter_errors(claim)
+        )
+        self.assertEqual([], errors, [error.message for error in errors])
 
 
 class KnowledgeRegistryWorkflowTests(unittest.TestCase):
@@ -394,7 +424,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
                 "value": {
                     "metadataType": "Flow",
                     "description": (
-                        "Record-triggered flow on Engagement__c that runs after save when Status__c "
+                        "Record-triggered flow on HarnessEngagement__c that runs after save when Status__c "
                         "changes to Approved, updates the related Account rating, and sends a "
                         "notification to the record owner."
                     ),
@@ -455,7 +485,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
             "schemaVersion": 3,
             "evidenceId": "KEVD-FLOW-ROUTER-001",
             "sourceType": "metadata-repository",
-            "sourceLocator": f"git://{commit}/force-app/main/default/flows/EngagementRouter.flow-meta.xml",
+            "sourceLocator": f"git://{commit}/force-app/main/default/flows/HarnessEngagementRouter.flow-meta.xml",
             "authorityFor": ["automation-inventory"],
             "environment": "not-applicable",
             "orgKey": None,
@@ -475,7 +505,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
             "sensitivity": "internal-sanitized",
             "sanitization": {"rawDataCommitted": False, "redactions": []},
             "contentDigest": f"sha256:{'c' * 64}",
-            "summary": "Sanitized source observation of Flow:EngagementRouter.",
+            "summary": "Sanitized source observation of Flow:HarnessEngagementRouter.",
         }
         claim = {
             "schemaVersion": 3,
@@ -483,21 +513,21 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
             "revision": 1,
             "domain": "automation-map",
             "claimType": "automation-inventory",
-            "subject": {"kind": "automation", "identity": "EngagementRouter"},
+            "subject": {"kind": "automation", "identity": "HarnessEngagementRouter"},
             "assertion": {
                 "predicate": "source-defined-automation",
                 "value": {
                     "metadataType": "Flow",
-                    "facts": {"object": "Engagement__c", "referencedObjects": ["Account", "Engagement__c"]},
+                    "facts": {"object": "HarnessEngagement__c", "referencedObjects": ["Account", "HarnessEngagement__c"]},
                     "references": [
-                        {"kind": "operates-on", "target": "Engagement__c"},
+                        {"kind": "operates-on", "target": "HarnessEngagement__c"},
                         {"kind": "reads-field", "target": "Account.Name"},
-                        {"kind": "writes-field", "target": "Engagement__c.Status__c"},
-                        {"kind": "invokes-apex", "target": "EngagementNotifier"},
+                        {"kind": "writes-field", "target": "HarnessEngagement__c.Status__c"},
+                        {"kind": "invokes-apex", "target": "HarnessEngagementNotifier"},
                     ],
                 },
             },
-            "statement": "EngagementRouter is a source-defined Flow component at the repository commit.",
+            "statement": "HarnessEngagementRouter is a source-defined Flow component at the repository commit.",
             "status": "proposed",
             "assurance": "observed",
             "scope": {
@@ -514,7 +544,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
             "reviewBy": "2026-12-01T11:00:00Z",
             "sensitivity": "internal-sanitized",
             "keywords": [],
-            "candidateKeywords": ["engagement"],
+            "candidateKeywords": ["harnessEngagement"],
             "limitations": ["Repository metadata establishes intended source only."],
             "supersedes": [],
             "supersededBy": None,
@@ -535,17 +565,17 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         self.write_chat_reviewer()
         self.assertEqual("verified", self.registry.approve_claim("KCLM-FLOW-ROUTER-001", 1)["status"])
 
-        by_object = self.registry.query(uses_object="Engagement__c")
+        by_object = self.registry.query(uses_object="HarnessEngagement__c")
         self.assertEqual(1, by_object["count"])
         self.assertEqual("KCLM-FLOW-ROUTER-001", by_object["claims"][0]["claim"]["claimId"])
         self.assertEqual(1, self.registry.query(uses_field="Account.Name")["count"])
-        self.assertEqual(1, self.registry.query(invokes="EngagementNotifier")["count"])
+        self.assertEqual(1, self.registry.query(invokes="HarnessEngagementNotifier")["count"])
         self.assertEqual(0, self.registry.query(uses_object="Contact")["count"])
 
         index = load_json(self.root / ".ai/knowledge/claims-index.json")
         row = next(r for r in index["claims"] if r["claimId"] == "KCLM-FLOW-ROUTER-001")
-        self.assertEqual(["Account", "Engagement__c"], row["usesObjects"])
-        self.assertIn("Engagement__c.Status__c", row["usesFields"])
+        self.assertEqual(["Account", "HarnessEngagement__c"], row["usesObjects"])
+        self.assertIn("HarnessEngagement__c.Status__c", row["usesFields"])
         self.assertNotIn("emitsErrors", row)
         automation_map = (self.root / ".ai/knowledge/automation-map.md").read_text(encoding="utf-8")
         self.assertIn("## Automations by object", automation_map)
@@ -591,7 +621,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
                 "value": {
                     "metadataType": "Flow",
                     "facts": {
-                        "object": "Engagement__c",
+                        "object": "HarnessEngagement__c",
                         "errorCatalog": [
                             {
                                 "component": "Block_Discount",
@@ -599,7 +629,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
                                 "errorMessage": "Discount cannot exceed 20% for {!$Label.Tier_Name}.",
                                 "resolvedErrorMessage": "Discount cannot exceed 20% for Standard tier.",
                                 "fieldSelection": "Discount__c",
-                                "triggerContext": "Engagement__c / Update / RecordBeforeSave",
+                                "triggerContext": "HarnessEngagement__c / Update / RecordBeforeSave",
                                 "paths": [
                                     [
                                         {
@@ -612,7 +642,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
                             }
                         ],
                     },
-                    "references": [{"kind": "operates-on", "target": "Engagement__c"}],
+                    "references": [{"kind": "operates-on", "target": "HarnessEngagement__c"}],
                 },
             },
             "statement": "DiscountGuard is a source-defined Flow component at the repository commit"
@@ -733,7 +763,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
             "schemaVersion": 3,
             "evidenceId": "KEVD-FLOW-ROUTER-002",
             "sourceType": "metadata-repository",
-            "sourceLocator": f"git://{commit}/force-app/main/default/flows/EngagementRouter.flow-meta.xml",
+            "sourceLocator": f"git://{commit}/force-app/main/default/flows/HarnessEngagementRouter.flow-meta.xml",
             "authorityFor": ["automation-inventory"],
             "environment": "not-applicable",
             "orgKey": None,
@@ -753,7 +783,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
             "sensitivity": "internal-sanitized",
             "sanitization": {"rawDataCommitted": False, "redactions": []},
             "contentDigest": f"sha256:{'c' * 64}",
-            "summary": "Sanitized source observation of Flow:EngagementRouter.",
+            "summary": "Sanitized source observation of Flow:HarnessEngagementRouter.",
         }
         claim = {
             "schemaVersion": 3,
@@ -761,20 +791,20 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
             "revision": 1,
             "domain": "automation-map",
             "claimType": "automation-inventory",
-            "subject": {"kind": "automation", "identity": "EngagementRouter"},
+            "subject": {"kind": "automation", "identity": "HarnessEngagementRouter"},
             "assertion": {
                 "predicate": "source-defined-automation",
                 "value": {
                     "metadataType": "Flow",
-                    "facts": {"object": "Engagement__c", "referencedObjects": ["Account"]},
+                    "facts": {"object": "HarnessEngagement__c", "referencedObjects": ["Account"]},
                     "references": [
-                        {"kind": "operates-on", "target": "Engagement__c"},
+                        {"kind": "operates-on", "target": "HarnessEngagement__c"},
                         {"kind": "reads-field", "target": "Account.Name"},
-                        {"kind": "invokes-apex", "target": "EngagementNotifier"},
+                        {"kind": "invokes-apex", "target": "HarnessEngagementNotifier"},
                     ],
                 },
             },
-            "statement": "EngagementRouter is a source-defined Flow that routes engagements.",
+            "statement": "HarnessEngagementRouter is a source-defined Flow that routes harnessEngagements.",
             "status": "proposed",
             "assurance": "observed",
             "scope": {
@@ -816,7 +846,7 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         self.promote_usage_claim()
 
         # Subject-identity tokens (camel-split) rank the flow claim first.
-        routed = self.registry.query(search="engagement router")
+        routed = self.registry.query(search="harnessEngagement router")
         self.assertGreaterEqual(routed["count"], 1)
         self.assertEqual("KCLM-FLOW-ROUTER-002", routed["claims"][0]["claim"]["claimId"])
         self.assertGreater(routed["claims"][0]["score"], 0)
@@ -831,10 +861,10 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         self.assertEqual(0, self.registry.query(search="zzzunknownterm")["count"])
         self.assertEqual(1, self.registry.query(search="the", top=1)["count"])
         with self.assertRaisesRegex(ContractError, "--top"):
-            self.registry.query(search="engagement", top=0)
+            self.registry.query(search="harnessEngagement", top=0)
 
         # Search composes with structured filters: rank only the survivors.
-        composed = self.registry.query(search="engagement", claim_type="object-existence")
+        composed = self.registry.query(search="harnessEngagement", claim_type="object-existence")
         self.assertTrue(
             all(m["claim"]["claimType"] == "object-existence" for m in composed["claims"])
         )
@@ -843,16 +873,16 @@ class KnowledgeRegistryWorkflowTests(unittest.TestCase):
         self.promote()
         self.promote_usage_claim()
 
-        subject = self.registry.explain("EngagementRouter")
+        subject = self.registry.explain("HarnessEngagementRouter")
         self.assertEqual(1, subject["claimCount"])
         self.assertIn("automation-inventory", subject["claims"])
         self.assertEqual(
-            ["Account", "Engagement__c"], subject["usage"]["objects"]
+            ["Account", "HarnessEngagement__c"], subject["usage"]["objects"]
         )
         self.assertEqual(["Account.Name"], subject["usage"]["fields"])
-        self.assertEqual(["EngagementNotifier"], subject["usage"]["invokes"])
+        self.assertEqual(["HarnessEngagementNotifier"], subject["usage"]["invokes"])
 
-        reverse = self.registry.explain("Engagement__c")
+        reverse = self.registry.explain("HarnessEngagement__c")
         self.assertEqual(0, reverse["claimCount"])
         self.assertEqual(1, len(reverse["usedBy"]))
         self.assertEqual("KCLM-FLOW-ROUTER-002", reverse["usedBy"][0]["claimId"])

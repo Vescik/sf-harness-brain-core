@@ -27,7 +27,7 @@ Optional narrowing: domain, claim type, environment/org scope.
    - dependency: `python scripts/knowledge_registry.py query --uses-object <Object>` |
      `--uses-field <Object.Field>` | `--invokes <name>` — finds every automation/component whose
      source-declared usage registry touches that object/field or invokes that Apex/subflow/action
-     (e.g. "which automations write `Claim__c.Status__c`?").
+     (e.g. "which automations write `ParentObject__c.Status__c`?").
    - ranked search: `python scripts/knowledge_registry.py query --search "<terms>" [--top N]` —
      BM25 over statements, descriptions, keywords, subject identities, and usage-registry
      targets (object/field/invoke names are searchable, camel/underscore-split). Results carry a

@@ -128,7 +128,7 @@ class AgentCommandSurfaceTests(unittest.TestCase):
         # Usage-registry query flags and the read-only report commands are agent-allowed.
         self.assertTrue(
             role_guard.knowledge_registry_command_allowed(
-                ["query", "--uses-object", "Invoice__c"], "development-assistant"
+                ["query", "--uses-object", "HarnessInvoice__c"], "development-assistant"
             )
         )
         self.assertTrue(
