@@ -49,8 +49,9 @@ metadata type, namespace, domain, claim type, environment/org scope.
    - keyword / text / dependency / ranked search / graph / explain: as before —
      `--keyword`, `--text`, `--uses-object`, `--uses-field`, `--invokes`, `--search "<terms>"
      [--top N]`, `--related <KCLM-id> [--depth 1-5]`, `explain --identity <ApiName>`.
-     `--related` is the only mode that also returns non-effective claims (that history is the
-     point); each match is annotated `effective` + `nonEffectiveReason`.
+     Every query result now carries `appliedFilters` plus `nonEffectiveCount` and a bounded
+     `nonEffectiveMatches` list with each record's `nonEffectiveReason` — report those
+     separately instead of presenting an empty result as absence.
    - combine with `--domain`, `--claim-type`, `--environment`, `--org-key` as needed.
 3. **Prefer the entry when both layers answer the same source question.** An approved entry
    shadows a metadata-repository-evidence claim about the same subject (SAFE-CLAIM-001 v2); cite

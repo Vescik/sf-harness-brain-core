@@ -17,6 +17,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+try:
+    from scripts.text_analysis import analyze as analyze_text
+except ModuleNotFoundError:  # invoked as `python scripts/knowledge_registry.py`
+    from text_analysis import analyze as analyze_text  # type: ignore
 from jsonschema import Draft202012Validator
 
 try:
@@ -323,6 +328,7 @@ class KnowledgeRegistry:
         self.policy_path = self.root / "config/knowledge-policy.json"
         self.registry_path = self.root / ".github/instructions/rule-registry.yaml"
         self.current_time = current_time
+        self._record_cache: dict[Path, list[tuple[Path, dict[str, Any]]]] = {}
 
     def at_time(self, at: datetime | None = None) -> datetime:
         value = at or self.current_time or utc_now()
@@ -374,7 +380,21 @@ class KnowledgeRegistry:
             raise ContractError(f"{label}: schema failure at {location}: {first.message}")
 
     def records(self, directory: Path) -> list[tuple[Path, dict[str, Any]]]:
-        return [(path, load_yaml(path)) for path in sorted(directory.glob("*.yaml"))]
+        """Parsed records for one store directory, memoized per registry instance.
+
+        `query` validates, then re-reads, and every effectiveness check reconciles — which
+        re-read the same YAML repeatedly and made a broad query super-linear in store size.
+        The cache is dropped on every write (see `invalidate_cache`), so a mutating command
+        never observes stale records."""
+
+        cached = self._record_cache.get(directory)
+        if cached is None:
+            cached = [(path, load_yaml(path)) for path in sorted(directory.glob("*.yaml"))]
+            self._record_cache[directory] = cached
+        return [(path, copy.deepcopy(record)) for path, record in cached]
+
+    def invalidate_cache(self) -> None:
+        self._record_cache.clear()
 
     def claim_path(self, claim_id: str) -> Path:
         return self.claims / f"{claim_id}.yaml"
@@ -771,14 +791,22 @@ class KnowledgeRegistry:
             "rules": len(rule_ids),
         }
 
-    def claim_is_effective(self, claim: dict[str, Any], at: datetime) -> bool:
-        if claim["status"] not in EFFECTIVE_CLAIM_STATUSES or not self.is_fresh(claim, at):
-            return False
-        if claim["contradicts"] or claim.get("supersededBy") is not None:
-            return False
-        reconciliation = self.reconcile(claim)
-        if reconciliation["conflictingClaimRefs"]:
-            return False
+    def claim_ineffective_reason(self, claim: dict[str, Any], at: datetime) -> str | None:
+        """Why a claim is not an established fact, or None when it is one.
+
+        Consumers must be able to say WHY a match was withheld — silently dropping
+        non-effective records is what let stale or contested knowledge look like absence."""
+
+        if claim["status"] not in EFFECTIVE_CLAIM_STATUSES:
+            return f"status:{claim['status']}"
+        if not self.is_fresh(claim, at):
+            return "expired"
+        if claim["contradicts"]:
+            return "contested"
+        if claim.get("supersededBy") is not None:
+            return "superseded"
+        if self.reconcile(claim)["conflictingClaimRefs"]:
+            return "conflicting-scope"
         claim_id = str(claim["claimId"])
         for _, other in self.records(self.claims):
             if (
@@ -786,8 +814,11 @@ class KnowledgeRegistry:
                 and other["status"] in ACTIVE_CLAIM_STATUSES
                 and claim_id in other["contradicts"]
             ):
-                return False
-        return True
+                return "contradicted-by-active-claim"
+        return None
+
+    def claim_is_effective(self, claim: dict[str, Any], at: datetime) -> bool:
+        return self.claim_ineffective_reason(claim, at) is None
 
     def effective_claim(
         self, claim_id: str, at: datetime | None = None
@@ -864,6 +895,28 @@ class KnowledgeRegistry:
         effective_at = self.at_time(at)
         self.validate_all(effective_at, enforce_current=False)
         matches: list[dict[str, Any]] = []
+        non_effective: list[dict[str, Any]] = []
+        applied_filters = {
+            name: value
+            for name, value in {
+                "claim-id": claim_id,
+                "domain": domain,
+                "claim-type": claim_type,
+                "subject-kind": subject_kind,
+                "subject-identity": subject_identity,
+                "environment": environment,
+                "org-key": org_key,
+                "package-namespace": package_namespace,
+                "keyword": keyword,
+                "text": text,
+                "feature": feature,
+                "uses-object": uses_object,
+                "uses-field": uses_field,
+                "invokes": invokes,
+                "search": search,
+            }.items()
+            if value is not None
+        }
         for path, claim in self.records(self.claims):
             if claim_id is not None and claim["claimId"] != claim_id:
                 continue
@@ -922,7 +975,16 @@ class KnowledgeRegistry:
                     name.casefold() for name in usage["invokes"]
                 }:
                     continue
-            if not self.claim_is_effective(claim, effective_at):
+            ineffective = self.claim_ineffective_reason(claim, effective_at)
+            if ineffective is not None:
+                non_effective.append(
+                    {
+                        "claimId": claim["claimId"],
+                        "status": claim["status"],
+                        "subject": copy.deepcopy(claim["subject"]),
+                        "nonEffectiveReason": ineffective,
+                    }
+                )
                 continue
             match = {
                 "claim": copy.deepcopy(claim),
@@ -936,8 +998,11 @@ class KnowledgeRegistry:
             matches = self.rank_matches(matches, search, top)
         return {
             "effectiveAt": effective_at.isoformat().replace("+00:00", "Z"),
+            "appliedFilters": applied_filters,
             "count": len(matches),
             "claims": matches,
+            "nonEffectiveCount": len(non_effective),
+            "nonEffectiveMatches": sorted(non_effective, key=lambda item: str(item["claimId"]))[:25],
         }
 
     # Claim-graph edges used by --related traversal and the search corpus.
@@ -1024,7 +1089,11 @@ class KnowledgeRegistry:
 
     @classmethod
     def search_tokens(cls, value: str) -> list[str]:
-        return re.findall(r"[a-z0-9]+", cls.SEARCH_CAMEL_BOUNDARY.sub(" ", value).lower())
+        """Delegates to the shared analyzer so both Knowledge layers tokenize identically.
+
+        The former ASCII-only regex dropped Polish text entirely and reduced
+        `Object__c.Field__c` to a stream of `c`; see scripts/text_analysis.py."""
+        return analyze_text(value)
 
     def search_corpus(
         self, claim: dict[str, Any], claims_by_id: dict[str, dict[str, Any]]
@@ -1272,6 +1341,7 @@ class KnowledgeRegistry:
                 raise ContractError(f"evidence is immutable and already exists: {record['evidenceId']}")
             return
         atomic_yaml_write(path, record)
+        self.invalidate_cache()
 
     def write_proposed_claim(
         self, record: dict[str, Any], expected_revision: int, refresh_verified: bool = False
@@ -1301,6 +1371,7 @@ class KnowledgeRegistry:
         if missing:
             raise ContractError(f"proposed claim references missing evidence: {missing}")
         atomic_yaml_write(path, record)
+        self.invalidate_cache()
 
     def enforce_entry_home_freeze(
         self,
@@ -1562,6 +1633,7 @@ class KnowledgeRegistry:
             )
         self.evaluate_verify_review(review, claim, evidence_records, self.at_time())
         atomic_yaml_write(path, review)
+        self.invalidate_cache()
         return {"reviewId": review["reviewId"], "decision": review["decision"]}
 
     def promote(self, claim_id: str, review_id: str, expected_revision: int) -> dict[str, Any]:
@@ -1609,6 +1681,7 @@ class KnowledgeRegistry:
         if current["revision"] != expected_revision:
             raise ContractError("claim changed after validation; promotion aborted")
         atomic_yaml_write(claim_path, promoted)
+        self.invalidate_cache()
         return {"claimId": claim_id, "status": "verified", "revision": promoted["revision"]}
 
     def approve_claim(
@@ -1736,6 +1809,7 @@ class KnowledgeRegistry:
         if current["revision"] != expected_revision:
             raise ContractError("claim changed after validation; rejection aborted")
         atomic_yaml_write(claim_path, rejected)
+        self.invalidate_cache()
         if render:
             self.render_indexes(check=False)
         return {

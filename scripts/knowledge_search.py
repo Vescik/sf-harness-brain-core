@@ -35,10 +35,11 @@ sys.path.insert(0, str(ROOT))
 
 try:
     from scripts import knowledge_store as store
+    from scripts.text_analysis import ANALYZER_VERSION, analyze, fold_diacritics
 except ModuleNotFoundError:  # invoked as `python scripts/knowledge_search.py`
     import knowledge_store as store  # type: ignore
+    from text_analysis import ANALYZER_VERSION, analyze, fold_diacritics  # type: ignore
 
-ANALYZER_VERSION = "1.0.0"
 INDEX_SCHEMA_VERSION = 1
 POLICY_VERSION = "1.0.0"
 
@@ -119,61 +120,10 @@ def cache_root() -> Path:
 
 # --- analyzer (Unicode + Salesforce identifiers) ---------------------------------------
 
-CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
-SF_SUFFIX = re.compile(r"__(c|r|e|mdt|b|x|kav|s|hd|share|history)$", re.IGNORECASE)
 # Merge fields collapse to a single visible sentinel so two messages that differ only in
 # their runtime variables share a fingerprint, while a message with no variable at all
 # stays distinct. U+FFFC (OBJECT REPLACEMENT CHARACTER) can never occur in Flow source.
-MERGE_PLACEHOLDER = "￼"
-# Latin letters that carry no combining mark and therefore survive NFD unchanged; without
-# this table Polish `ł` (and friends) block the folded alias used for diacritic-free recall.
-STROKE_FOLDING = str.maketrans(
-    {"ł": "l", "Ł": "L", "đ": "d", "Đ": "D", "ø": "o", "Ø": "O", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE", "ß": "ss"}
-)
-
-
-def fold_diacritics(value: str) -> str:
-    decomposed = unicodedata.normalize("NFD", value.translate(STROKE_FOLDING))
-    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-
-
-def analyze(value: str) -> list[str]:
-    """Tokens for one text value: full symbols preserved, plus split and folded aliases.
-
-    Unlike the v1 tokenizer (ASCII-only `[a-z0-9]+`, which shreds Polish text and turns
-    `Object__c.Field__c` into a stream of `c`), this keeps the exact scoped symbol, the
-    Salesforce suffix as its own signal, and a diacritic-folded alias for recall.
-    """
-    text = unicodedata.normalize("NFKC", value)
-    tokens: list[str] = []
-    for raw in re.split(r"[\s,;:/\\()\[\]{}<>\"'`|!?]+", text):
-        if not raw:
-            continue
-        symbol = raw.strip(".-").casefold()
-        if not symbol:
-            continue
-        tokens.append(symbol)  # exact scoped symbol, e.g. engagement__c.status__c
-        # Split dotted segments first so the Salesforce suffix is still attached when it is
-        # detected; splitting on "_" up front would destroy `__c` before it can be indexed.
-        for segment in re.split(r"\.+", CAMEL_BOUNDARY.sub(" ", raw)):
-            segment = segment.strip().casefold()
-            if not segment:
-                continue
-            suffix = SF_SUFFIX.search(segment)
-            if suffix:
-                tokens.append(suffix.group(0))
-                segment = SF_SUFFIX.sub("", segment)
-            for word in re.split(r"[_\s]+", segment):
-                if not word:
-                    continue
-                tokens.append(word)
-                folded_word = fold_diacritics(word)
-                if folded_word != word:
-                    tokens.append(folded_word)
-        folded = fold_diacritics(symbol)
-        if folded != symbol:
-            tokens.append(folded)
-    return [token for token in tokens if token]
+MERGE_PLACEHOLDER = "\ufffc"
 
 
 def message_fingerprint(message: str) -> str:

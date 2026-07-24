@@ -248,6 +248,35 @@ class KnowledgeSchemaTests(unittest.TestCase):
         self.assertEqual([], errors, [error.message for error in errors])
 
 
+class V1SearchQualityTests(unittest.TestCase):
+    """T08a: the v1 registry must tokenize like the entry layer and explain its results."""
+
+    def test_tokenizer_keeps_salesforce_symbols_and_unicode(self) -> None:
+        tokens = KnowledgeRegistry.search_tokens("HarnessAlphaCase__c.Status__c")
+        self.assertIn("harnessalphacase__c.status__c", tokens)
+        self.assertIn("__c", tokens)
+        self.assertIn("status", tokens)
+        self.assertNotEqual({"c"}, set(tokens))
+        polish = KnowledgeRegistry.search_tokens("właściwej kolejki")
+        self.assertIn("właściwej", polish)
+        self.assertIn("wlasciwej", polish)  # diacritic-folded alias for recall
+
+    def test_record_reads_are_memoized_and_invalidated_on_write(self) -> None:
+        registry = KnowledgeRegistry(ROOT)
+        first = registry.records(registry.claims)
+        self.assertEqual(first, registry.records(registry.claims))
+        self.assertIn(registry.claims, registry._record_cache)
+        registry.invalidate_cache()
+        self.assertEqual({}, registry._record_cache)
+
+    def test_memoized_records_cannot_be_mutated_through_the_cache(self) -> None:
+        registry = KnowledgeRegistry(ROOT)
+        registry._record_cache[registry.claims] = [(ROOT / "x.yaml", {"claimId": "KCLM-X"})]
+        handed_out = registry.records(registry.claims)
+        handed_out[0][1]["claimId"] = "MUTATED"
+        self.assertEqual("KCLM-X", registry._record_cache[registry.claims][0][1]["claimId"])
+
+
 class EntryHomeFreezeTests(unittest.TestCase):
     """T07 P2 freeze: repository facts for profiled metadata types belong to the entry store.
 
