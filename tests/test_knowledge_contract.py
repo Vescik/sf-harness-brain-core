@@ -323,10 +323,27 @@ class EntryHomeFreezeTests(unittest.TestCase):
         )
 
     def test_unprofiled_metadata_types_keep_their_v1_repository_leg(self) -> None:
+        # Derived from the profile set so the case survives every future profile addition:
+        # whatever has no entry profile yet must keep its v1 repository leg.
+        from scripts.knowledge_registry import ENTRY_PROFILED_METADATA_TYPES
+
+        unprofiled = next(
+            name
+            for name in ("Layout", "CustomTab", "QuickAction", "StaticResource")
+            if name not in ENTRY_PROFILED_METADATA_TYPES
+        )
         registry = self.registry(with_entry=True)
         registry.enforce_entry_home_freeze(
-            self.claim("ApexClass"), self.evidence("metadata-repository"), {}
+            self.claim(unprofiled), self.evidence("metadata-repository"), {}
         )
+
+    def test_freeze_covers_every_implemented_entry_profile(self) -> None:
+        from scripts.knowledge_registry import ENTRY_PROFILED_METADATA_TYPES
+        from scripts import knowledge_store
+
+        # The freeze must widen exactly as profiles ship — otherwise a type gains an entry
+        # home while its repository claims keep flowing into the registry unchallenged.
+        self.assertEqual(set(knowledge_store.PROFILES), set(ENTRY_PROFILED_METADATA_TYPES))
 
     def test_org_evidence_leg_is_never_frozen(self) -> None:
         registry = self.registry(with_entry=True)
