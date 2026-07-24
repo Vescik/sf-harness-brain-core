@@ -256,7 +256,7 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
 # is never Knowledge authority, so it needs no mutation role. Flags mirror the parser and are
 # pinned by tests/test_guard_parser_contract.py.
 KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
-    "build": frozenset({"--check"}),
+    "build": frozenset({"--check", "--full"}),
     "search": frozenset(
         {
             "--text",

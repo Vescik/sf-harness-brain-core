@@ -145,8 +145,9 @@ Search-engine notes for later phases: the generated cache lives in the ignored
 `.cache/knowledge-search/` (immutable `gen-*` directories + atomic `current.json`), refuses
 to answer when the committed entry set no longer matches the generation (`INDEX STALE`), and
 never appears in citations — hits cite the canonical entry path plus entry/facts/source/profile
-digests. Sharding, incremental rebuild, and fuzzy/trigram fallback are deliberately deferred
-until a target-scale fixture justifies the shard boundaries (review package §3).
+digests. Incremental rebuild and a lazily-loaded postings index shipped once the benchmark showed
+where the budget actually broke (review package §8.1); fuzzy/trigram fallback and semantic
+reranking remain deferred until an eval demonstrates a recall gap the analyzer cannot close.
 
 ## 9. Completeness check
 

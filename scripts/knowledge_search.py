@@ -28,7 +28,7 @@ import sys
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -55,6 +55,7 @@ FIELD_WEIGHTS = {
     "relationTarget": 1.0,
     "sourcePath": 0.2,
 }
+LEXICAL_CANDIDATE_CAP = 2000
 BM25_K1 = 1.2
 BM25_B = 0.75
 
@@ -378,7 +379,9 @@ def corpus_fingerprint() -> str:
         parts.append((path.relative_to(store.ROOT).as_posix(), stat.st_size, stat.st_mtime_ns))
     ledger = store.LEDGER_PATH
     ledger_stat = (ledger.stat().st_size, ledger.stat().st_mtime_ns) if ledger.is_file() else (0, 0)
-    return store.canonical_digest({"entries": sorted(parts), "ledger": ledger_stat})
+    return store.canonical_digest(
+        {"entries": sorted(parts), "ledger": ledger_stat, "analyzer": ANALYZER_VERSION}
+    )
 
 
 def entry_set_digest(projections: list[dict[str, Any]]) -> str:
@@ -396,17 +399,94 @@ def entry_set_digest(projections: list[dict[str, Any]]) -> str:
     )
 
 
-def collect_projections() -> list[dict[str, Any]]:
+def _stamp_of(path: Path) -> list[Any]:
+    try:
+        stat = path.stat()
+    except OSError:
+        return [path.name, None, None]
+    return [path.name, stat.st_size, stat.st_mtime_ns]
+
+
+def projection_dependencies(path: Path, fragments: list[dict[str, Any]]) -> dict[str, Any]:
+    """Everything a projection's content AND lane depend on.
+
+    The lane is not a function of the entry file alone: source drift moves it to
+    approved-drifted and a ledger append can approve or revoke it. Keying reuse on the entry
+    file alone silently served a stale lane (caught by the drifted-lane golden query), so the
+    key covers the entry, every source fragment, and the ledger."""
+
+    ledger = store.LEDGER_PATH
+    return {
+        "entry": _stamp_of(path),
+        "sources": sorted(_stamp_of(store.ROOT / fragment["path"]) for fragment in fragments),
+        "ledger": _stamp_of(ledger) if ledger.is_file() else None,
+    }
+
+
+def load_previous_projections() -> dict[str, dict[str, Any]]:
+    """Projections from the current generation, keyed by path+stamp for reuse."""
+    root = cache_root()
+    pointer = root / "current.json"
+    if not pointer.is_file():
+        return {}
+    try:
+        current = json.loads(pointer.read_text(encoding="utf-8"))
+        documents_path = root / current.get("directory", "") / "documents.jsonl"
+        manifest = json.loads((root / current["directory"] / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError):
+        return {}
+    if manifest.get("analyzerVersion") != ANALYZER_VERSION or manifest.get("schemaVersion") != INDEX_SCHEMA_VERSION:
+        return {}  # a projection built by a different analyzer may not be reused
+    reusable: dict[str, dict[str, Any]] = {}
+    try:
+        for line in documents_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            document = json.loads(line)
+            if document.get("_deps"):
+                reusable[document["path"]] = document
+    except (OSError, ValueError):
+        return {}
+    return reusable
+
+
+def collect_projections(reuse: dict[str, dict[str, Any]] | None = None) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Project every entry, reusing unchanged ones from the previous generation.
+
+    A full projection costs ~5 ms per entry (measured), so rebuilding 15k entries after a
+    single approval would take over a minute. Reuse is keyed on the entry's path plus its
+    size/mtime stamp and is only ever a cache: anything whose stamp moved is re-projected,
+    and a changed analyzer version discards the whole previous generation."""
+
+    reuse = reuse if reuse is not None else {}
     latest = store.ledger_latest(store.read_ledger())
-    projections = []
+    projections: list[dict[str, Any]] = []
+    stats = {"reused": 0, "projected": 0}
     for path in store.all_entry_paths():
+        relative = path.relative_to(store.ROOT).as_posix()
+        cached = reuse.get(relative)
+        if cached is not None:
+            fragments = cached.get("_deps", {}).get("sourcePaths") or []
+            expected = projection_dependencies(path, [{"path": item} for item in fragments])
+            if cached["_deps"].get("stamps") == expected:
+                projections.append(cached)
+                stats["reused"] += 1
+                continue
         lane = store.compute_lane(path, latest)
-        projections.append(project_entry(path, lane))
-    return sorted(projections, key=lambda item: item["identity"])
+        document = project_entry(path, lane)
+        front, _ = store.split_entry(path.read_text(encoding="utf-8"))
+        fragment_paths = [fragment["path"] for fragment in front["source"]["fragments"]]
+        document["_deps"] = {
+            "sourcePaths": fragment_paths,
+            "stamps": projection_dependencies(path, front["source"]["fragments"]),
+        }
+        projections.append(document)
+        stats["projected"] += 1
+    return sorted(projections, key=lambda item: item["identity"]), stats
 
 
-def build_index(check: bool = False) -> dict[str, Any]:
-    projections = collect_projections()
+def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
+    projections, stats = collect_projections({} if full else load_previous_projections())
     generation = entry_set_digest(projections)
     root = cache_root()
     pointer = root / "current.json"
@@ -421,9 +501,66 @@ def build_index(check: bool = False) -> dict[str, Any]:
     generation_dir = root / f"gen-{generation[7:23]}"
     generation_dir.mkdir(parents=True, exist_ok=True)
     documents = generation_dir / "documents.jsonl"
+    offsets: dict[str, list[int]] = {}
+    lanes: dict[str, list[str]] = defaultdict(list)
+    facet_postings: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    token_postings: dict[str, list[str]] = defaultdict(list)
+    relation_postings: dict[str, list[str]] = defaultdict(list)
+    document_frequency: dict[str, int] = defaultdict(int)
+    field_length_totals: dict[str, list[int]] = defaultdict(list)
+    position = 0
     with documents.open("w", encoding="utf-8", newline="\n") as handle:
         for item in projections:
-            handle.write(json.dumps(item, sort_keys=True, ensure_ascii=False) + "\n")
+            line = json.dumps(item, sort_keys=True, ensure_ascii=False) + "\n"
+            encoded = line.encode("utf-8")
+            offsets[item["identity"]] = [position, len(encoded)]
+            position += len(encoded)
+            handle.write(line)
+            lanes[item["lane"]].append(item["identity"])
+            for key, value in item["facets"].items():
+                values = value if isinstance(value, list) else [value]
+                for entry in values:
+                    if entry is None:
+                        continue
+                    facet_postings[key][str(entry).casefold()].append(item["identity"])
+            for edge in item["edges"]:
+                relation_postings[edge["target"]].append(item["identity"])
+            seen_tokens = {token for field in item["fields"].values() for token in field}
+            for token in seen_tokens:
+                token_postings[token].append(item["identity"])
+                document_frequency[token] += 1
+            for field, tokens in item["fields"].items():
+                field_length_totals[field].append(len(tokens))
+    postings = {
+        "offsets": offsets,
+        "lanes": {lane: sorted(ids) for lane, ids in lanes.items()},
+        "facets": {
+            key: {value: sorted(ids) for value, ids in values.items()}
+            for key, values in facet_postings.items()
+        },
+        "tokens": {token: sorted(ids) for token, ids in token_postings.items()},
+        "relations": {target: sorted(set(ids)) for target, ids in relation_postings.items()},
+        "documentFrequency": dict(document_frequency),
+        "averageFieldLength": {
+            field: (sum(lengths) / len(lengths)) if lengths else 1.0
+            for field, lengths in field_length_totals.items()
+        },
+        "documentCount": len(projections),
+    }
+    for name, payload in (
+        ("offsets", postings["offsets"]),
+        ("lanes", postings["lanes"]),
+        ("facets", postings["facets"]),
+        ("relations", postings["relations"]),
+        ("tokens", postings["tokens"]),
+        ("stats", {
+            "documentFrequency": postings["documentFrequency"],
+            "averageFieldLength": postings["averageFieldLength"],
+            "documentCount": postings["documentCount"],
+        }),
+    ):
+        with (generation_dir / f"{name}.json").open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(json.dumps(payload, sort_keys=True) + "\n")
     manifest = {
         "kind": "knowledge-search-manifest",
         "schemaVersion": INDEX_SCHEMA_VERSION,
@@ -458,7 +595,13 @@ def build_index(check: bool = False) -> dict[str, Any]:
     for stale in root.glob("gen-*"):
         if stale.is_dir() and stale.name != generation_dir.name:
             shutil.rmtree(stale, ignore_errors=True)
-    return {"outcome": "BUILT", "generation": generation, "entries": len(projections)}
+    return {
+        "outcome": "BUILT",
+        "generation": generation,
+        "entries": len(projections),
+        "reusedProjections": stats["reused"],
+        "rebuiltProjections": stats["projected"],
+    }
 
 
 def load_index() -> tuple[list[dict[str, Any]], dict[str, Any]]:
@@ -478,8 +621,85 @@ def load_index() -> tuple[list[dict[str, Any]], dict[str, Any]]:
         raise SearchError("INDEX STALE / REBUILD REQUIRED: incompatible or partial generation")
     if manifest.get("corpusFingerprint") != corpus_fingerprint():
         raise SearchError("INDEX STALE / REBUILD REQUIRED: entries changed since the last build")
-    documents = [json.loads(line) for line in documents_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    return documents, manifest
+    if not (generation_dir / "offsets.json").is_file():
+        raise SearchError("INDEX STALE / REBUILD REQUIRED: generation predates the postings index")
+    return DocumentStore(documents_path, generation_dir), manifest
+
+
+class DocumentStore:
+    """Random-access reader over one generation.
+
+    Queries resolve a candidate identity set from the postings first and hydrate only those
+    documents by byte offset; parsing every line made query latency linear in corpus size,
+    which is what broke the p95 budget past ~5 000 entries (review package §8)."""
+
+    def __init__(self, path: Path, generation_dir: Path):
+        self.path = path
+        self.generation_dir = generation_dir
+        self._cache: dict[str, dict[str, Any]] = {}
+        self._postings: dict[str, Any] = {}
+
+    def posting_file(self, name: str) -> dict[str, Any]:
+        """Load one posting file on first use.
+
+        Token postings dominate the index by volume but are only needed for lexical queries;
+        loading them for an identity or facet lookup was pure latency."""
+        if name not in self._postings:
+            path = self.generation_dir / f"{name}.json"
+            self._postings[name] = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        return self._postings[name]
+
+    @property
+    def postings(self) -> dict[str, Any]:
+        # Compatibility surface for callers that read a specific family.
+        return {
+            "offsets": self.posting_file("offsets"),
+            "facets": self.posting_file("facets"),
+            "documentFrequency": self.posting_file("stats").get("documentFrequency", {}),
+            "averageFieldLength": self.posting_file("stats").get("averageFieldLength", {}),
+        }
+
+    @property
+    def count(self) -> int:
+        return int(self.posting_file("stats").get("documentCount", 0))
+
+    def identities(self) -> list[str]:
+        return sorted(self.posting_file("offsets"))
+
+    def get(self, identity: str) -> dict[str, Any] | None:
+        if identity in self._cache:
+            return self._cache[identity]
+        location = self.posting_file("offsets").get(identity)
+        if location is None:
+            return None
+        offset, length = location
+        with self.path.open("rb") as handle:
+            handle.seek(offset)
+            document = json.loads(handle.read(length).decode("utf-8"))
+        self._cache[identity] = document
+        return document
+
+    def load_many(self, identities: Iterable[str]) -> list[dict[str, Any]]:
+        return [document for document in (self.get(identity) for identity in identities) if document]
+
+    def lane_ids(self, lanes: Iterable[str]) -> set[str]:
+        result: set[str] = set()
+        for lane in lanes:
+            result.update(self.posting_file("lanes").get(lane, []))
+        return result
+
+    def facet_ids(self, key: str, value: str) -> set[str] | None:
+        """Identity set for an exact facet value; None when the operator needs full evaluation."""
+        values = self.posting_file("facets").get(key)
+        if values is None:
+            return set()
+        return set(values.get(value.casefold(), []))
+
+    def token_ids(self, token: str) -> set[str]:
+        return set(self.posting_file("tokens").get(token, []))
+
+    def relation_ids(self, target: str) -> set[str]:
+        return set(self.posting_file("relations").get(target, []))
 
 
 # --- query ----------------------------------------------------------------------------------
@@ -539,27 +759,25 @@ def parse_facet(expression: str) -> tuple[str, str, str]:
     return key, operator, value
 
 
-def bm25f(documents: list[dict[str, Any]], candidates: list[dict[str, Any]], query_tokens: list[str]) -> dict[str, tuple[float, list[dict[str, Any]]]]:
+def bm25f(store_index: "DocumentStore", candidates: list[dict[str, Any]], query_tokens: list[str]) -> dict[str, tuple[float, list[dict[str, Any]]]]:
+    """Rank candidates with corpus statistics precomputed at build time.
+
+    Document frequencies and average field lengths come from the postings index, so ranking
+    no longer has to read the whole corpus on every query."""
+
     if not query_tokens:
         return {}
-    document_frequency: dict[str, int] = defaultdict(int)
-    field_lengths: dict[str, list[int]] = defaultdict(list)
-    for document in documents:
-        seen = {token for field in document["fields"].values() for token in field}
-        for token in seen:
-            document_frequency[token] += 1
-        for field, tokens in document["fields"].items():
-            field_lengths[field].append(len(tokens))
-    average_length = {
-        field: (sum(lengths) / len(lengths)) if lengths else 1.0 for field, lengths in field_lengths.items()
-    }
-    total = max(len(documents), 1)
+    statistics = store_index.posting_file("stats")
+    document_frequency = statistics.get("documentFrequency", {})
+    average_length = statistics.get("averageFieldLength", {})
+    total = max(store_index.count, 1)
     scored: dict[str, tuple[float, list[dict[str, Any]]]] = {}
     for document in candidates:
         score = 0.0
         matched: list[dict[str, Any]] = []
         for token in set(query_tokens):
-            idf = math.log(1 + (total - document_frequency.get(token, 0) + 0.5) / (document_frequency.get(token, 0) + 0.5))
+            frequency = document_frequency.get(token, 0)
+            idf = math.log(1 + (total - frequency + 0.5) / (frequency + 0.5))
             weighted_tf = 0.0
             for field, tokens in document["fields"].items():
                 count = tokens.count(token)
@@ -606,7 +824,6 @@ def hydrate(hits: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]
     stat signature still cannot be served, because its recomputed lane and digest are checked
     here before the hit leaves the process."""
 
-    latest = store.ledger_latest(store.read_ledger())
     verified: list[dict[str, Any]] = []
     gaps: list[str] = []
     for hit in hits:
@@ -614,11 +831,24 @@ def hydrate(hits: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]
         if not path.is_file():
             gaps.append(f"{hit['artifactId']}: entry file disappeared since the index was built")
             continue
-        lane = store.compute_lane(path, latest)
-        if lane["lane"] != hit["lifecycle"] or lane.get("reviewedContentDigest") != hit["citation"]["entryDigest"]:
+        # The ledger is already covered by the freshness fingerprint (a ledger append or
+        # revocation invalidates the whole generation), so hydration only has to prove the
+        # FILE still holds the content the projection was built from — which is exactly the
+        # case a stat-based fingerprint could theoretically miss. Re-reading the 15k-line
+        # ledger per query was pure overhead.
+        try:
+            frontmatter, body = store.split_entry(path.read_text(encoding="utf-8"))
+            recomputed = store.reviewed_content_digest(frontmatter, body)
+        except store.StoreError as error:
+            gaps.append(f"{hit['artifactId']}: entry no longer parses ({error})")
+            continue
+        subject = frontmatter["subject"]
+        identity = store.identity_of(
+            subject["metadataType"], subject.get("namespace"), subject["fullName"]
+        )
+        if identity != hit["artifactId"] or recomputed != hit["citation"]["entryDigest"]:
             gaps.append(
-                f"{hit['artifactId']}: entry changed since the index was built "
-                f"(now {lane['lane']}) — rebuild the index"
+                f"{hit['artifactId']}: entry changed since the index was built — rebuild the index"
             )
             continue
         verified.append(hit)
@@ -646,23 +876,69 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         "top": args.top,
     }
 
-    candidates: list[dict[str, Any]] = []
-    for document in documents:
-        if document["lane"] not in states:
-            excluded["lifecycle:" + document["lane"]] += 1
-            continue
-        if args.metadata_type and document["facets"]["metadataType"] != args.metadata_type:
-            excluded["metadataType"] += 1
-            continue
-        if args.namespace is not None:
-            wanted = None if args.namespace == "c" else args.namespace
-            if document["facets"]["namespace"] != wanted:
-                excluded["scope"] += 1
+    # Hard filters resolve to identity sets through the postings index; only the survivors
+    # are hydrated. Exact-equality facets narrow via postings, other operators are evaluated
+    # on the (already narrowed) candidate documents.
+    all_ids = set(documents.identities())
+    candidate_ids = documents.lane_ids(states)
+    excluded["lifecycle"] = len(all_ids) - len(candidate_ids)
+    if args.metadata_type:
+        by_type = documents.facet_ids("metadataType", args.metadata_type)
+        excluded["metadataType"] = len(candidate_ids - by_type)
+        candidate_ids &= by_type
+    if args.namespace is not None:
+        wanted = "c" if args.namespace == "c" else args.namespace
+        by_namespace = (
+            documents.facet_ids("namespace", wanted)
+            if args.namespace != "c"
+            else candidate_ids - set().union(*(
+                set(values) for values in documents.posting_file("facets").get("namespace", {}).values()
+            ) or [set()])
+        )
+        excluded["scope"] = len(candidate_ids - by_namespace)
+        candidate_ids &= by_namespace
+    exact_facets = [item for item in facets if item[1] == "eq"]
+    other_facets = [item for item in facets if item[1] != "eq"]
+    for key, _operator, value in exact_facets:
+        by_facet = documents.facet_ids(key, value)
+        excluded["facet"] += len(candidate_ids - by_facet)
+        candidate_ids &= by_facet
+    lexical_truncated = 0
+    if args.text and not other_facets:
+        # Seed candidates from the RAREST query token and intersect outwards. A common term
+        # ("queue") matches the whole corpus, so a naive union would hydrate everything and
+        # put latency back where the postings index was meant to remove it.
+        frequency = documents.posting_file("stats").get("documentFrequency", {})
+        tokens_by_rarity = sorted(set(analyze(args.text)), key=lambda token: frequency.get(token, 0))
+        token_ids: set[str] = set()
+        for token in tokens_by_rarity:
+            posting = documents.token_ids(token)
+            if not posting:
                 continue
-        if any(not facet_matches(document, key, operator, value) for key, operator, value in facets):
-            excluded["facet"] += 1
-            continue
-        candidates.append(document)
+            token_ids = posting if not token_ids else (token_ids | posting)
+            if len(token_ids) >= LEXICAL_CANDIDATE_CAP:
+                break
+        candidate_ids &= token_ids
+        if len(candidate_ids) > LEXICAL_CANDIDATE_CAP:
+            # Never silently truncate: the cap is reported alongside the results.
+            rarest = documents.token_ids(tokens_by_rarity[0]) & candidate_ids
+            lexical_truncated = len(candidate_ids) - len(rarest if rarest else candidate_ids)
+            if rarest:
+                candidate_ids = rarest
+            else:
+                candidate_ids = set(sorted(candidate_ids)[:LEXICAL_CANDIDATE_CAP])
+    needs_full_scan = bool(args.text) or bool(other_facets) or args.mode == "intentional-flow-error" or (
+        not args.identity and not args.relation_anchor
+    )
+    candidates = documents.load_many(sorted(candidate_ids)) if needs_full_scan else []
+    if other_facets:
+        kept = []
+        for document in candidates:
+            if all(facet_matches(document, key, operator, value) for key, operator, value in other_facets):
+                kept.append(document)
+            else:
+                excluded["facet"] += 1
+        candidates = kept
 
     gaps: list[str] = []
     results: list[dict[str, Any]] = []
@@ -712,7 +988,12 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         # outgoing: what the anchor itself declares — "what does this Flow touch".
         anchor = args.relation_anchor
         direction = args.direction or "incoming"
-        for document in candidates:
+        if direction == "incoming":
+            scan = documents.load_many(sorted(documents.relation_ids(anchor) & candidate_ids))
+        else:
+            anchor_ids = ({anchor} & set(documents.posting_file("offsets"))) | documents.facet_ids("fullName", anchor)
+            scan = documents.load_many(sorted(anchor_ids & candidate_ids))
+        for document in scan:
             is_anchor = anchor in {document["identity"], document["facets"]["fullName"]}
             if direction == "outgoing" and not is_anchor:
                 continue
@@ -747,11 +1028,12 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
                 "--include-heuristic is set, and absence of an edge is not proof of absence."
             )
     elif args.identity:
-        for document in candidates:
-            if document["identity"] == args.identity or document["facets"]["fullName"] == args.identity:
-                results.append(
-                    hit_of(document, 1.0, [{"field": "identity", "match": "exact-identity", "value": args.identity}], "exact-identity")
-                )
+        wanted = {args.identity} & set(documents.posting_file("offsets"))
+        wanted |= documents.facet_ids("fullName", args.identity)
+        for document in documents.load_many(sorted(wanted & candidate_ids)):
+            results.append(
+                hit_of(document, 1.0, [{"field": "identity", "match": "exact-identity", "value": args.identity}], "exact-identity")
+            )
         if len({hit["artifactId"] for hit in results}) > 1 and args.namespace is None:
             return {
                 "outcome": "AMBIGUOUS",
@@ -769,17 +1051,25 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
                 score, matched = scored[document["identity"]]
                 results.append(hit_of(document, score, matched, "structured-plus-lexical" if facets else "lexical"))
         results.sort(key=lambda hit: (-hit["score"], hit["artifactId"]))
+        if lexical_truncated:
+            gaps.append(
+                f"Lexical candidate set capped at {LEXICAL_CANDIDATE_CAP}; {lexical_truncated} "
+                "lower-signal matches were not ranked. Narrow with a facet or a rarer term."
+            )
         if not results:
             gaps.append("No lexical match; try --state draft, relax a facet, or check the analyzer aliases.")
     else:
         results = [hit_of(document, 0.0, [], "structured") for document in candidates]
         results.sort(key=lambda hit: hit["artifactId"])
 
-    draft_lane = [
-        hit_of(document, 0.0, [], "draft-lane")
-        for document in documents
-        if document["lane"] == "draft" and "draft" not in states
-    ]
+    draft_lane = (
+        [
+            hit_of(document, 0.0, [], "draft-lane")
+            for document in documents.load_many(sorted(documents.lane_ids(["draft"]))[:10])
+        ]
+        if "draft" not in states
+        else []
+    )
     relaxations = []
     if not results:
         if args.metadata_type:
@@ -812,14 +1102,15 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
 
 def run_explain(args: argparse.Namespace) -> dict[str, Any]:
     documents, manifest = load_index()
-    document = next((item for item in documents if item["identity"] == args.identity), None)
+    document = documents.get(args.identity)
     if document is None:
         raise SearchError(f"no entry projection for {args.identity}")
+    targets = {document["identity"], document["facets"]["fullName"]}
     incoming = [
         {"source": other["identity"], "kind": edge["kind"], "assurance": edge["assurance"]}
-        for other in documents
+        for other in documents.load_many(documents.identities())
         for edge in other["edges"]
-        if edge["target"] in {document["identity"], document["facets"]["fullName"]}
+        if edge["target"] in targets
     ]
     return {
         "outcome": "EXPLAIN",
@@ -848,13 +1139,14 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
 def run_impact(args: argparse.Namespace) -> dict[str, Any]:
     documents, manifest = load_index()
     depth = max(1, min(args.depth, 2))
-    by_identity = {document["identity"]: document for document in documents}
+    all_documents = documents.load_many(documents.identities())
+    by_identity = {document["identity"]: document for document in all_documents}
     frontier = {args.identity}
     visited: set[str] = set()
     paths: list[dict[str, Any]] = []
     for level in range(depth):
         next_frontier: set[str] = set()
-        for document in documents:
+        for document in all_documents:
             for edge in document["edges"]:
                 if edge["target"] in frontier or edge["target"] in {
                     by_identity[node]["facets"]["fullName"] for node in frontier if node in by_identity
@@ -909,7 +1201,7 @@ def run_capabilities(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def command_build(args: argparse.Namespace) -> dict[str, Any]:
-    return build_index(check=args.check)
+    return build_index(check=args.check, full=args.full)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -918,6 +1210,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     build = commands.add_parser("build", help="rebuild the generated search cache")
     build.add_argument("--check", action="store_true")
+    build.add_argument("--full", action="store_true", help="ignore reusable projections")
     build.set_defaults(func=command_build)
 
     search = commands.add_parser("search", help="typed retrieval over approved entries")

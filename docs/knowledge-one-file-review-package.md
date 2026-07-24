@@ -239,4 +239,31 @@ the proposed budgets rather than around them:
    hydrating (re-reading and digest-checking) only the results actually served. Identity queries
    went from 1 030 ms to 7.7 ms at 200 entries.
 
+### 8.1. After the retrieval rework (same machine, same fixture)
+
+The measurements above drove four changes: incremental rebuild with dependency-complete
+reuse, a postings index (offsets, lanes, facets, relations, tokens, corpus statistics) split
+into lazily loaded files, identity/relation fast paths that never hydrate the corpus,
+rarest-token candidate selection for lexical queries with an explicitly reported cap, and
+hydration that no longer re-parses the ledger (the freshness fingerprint already covers it).
+
+| Entries | identity p95 | facet p95 | relation p95 | text p95 |
+|---:|---:|---:|---:|---:|
+| 5 000 | 92 ms | 126 ms | 127 ms | 168 ms |
+| **15 000 (target)** | **183 ms** | **209 ms** | **190 ms** | **242 ms** |
+
+**The p95 <= 250 ms budget now holds at the 15 000-entry target scale**, where the previous
+implementation extrapolated to 0.4-0.75 s. Index size at 15 000 entries: 62 MB of generated
+cache over 20 MB of entries (ignored by Git, disposable, never cited).
+
+Build cost: a full rebuild is ~7 ms per entry (~107 s at 15 000) and is now rarely needed —
+an incremental rebuild after a single change reuses every unaffected projection and completes
+in **152 ms at 2 000 entries versus 13.7 s for a full rebuild (90x)**. Reuse is keyed on the
+entry file, its source fragments, and the ledger together: keying on the entry alone served a
+stale lane after source drift, which the drifted-lane golden query caught.
+
+Still open on this axis: native-Windows latency (correctness on Windows is covered by the
+cross-platform suite, which CI runs on windows-latest), and the validator's `.ai/**` sweep at
+~1.7 s per run at 15 000 entries — acceptable but worth revisiting if the corpus grows further.
+
 Re-run these tiers, plus a native-Windows pass, before any cutover decision.

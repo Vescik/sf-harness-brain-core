@@ -463,3 +463,42 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
         # Numbers are only meaningful with their environment attached.
         self.assertIn("platform", result["environment"])
         self.assertIn("not a certification", result["note"].lower())
+
+
+class IncrementalRebuildTests(KnowledgeSearchTests):
+    """Reuse must be a pure cache: identical logical index, never a stale lane."""
+
+    def test_unchanged_entries_are_reused_and_new_ones_are_projected(self) -> None:
+        self.seed()
+        second = search.build_index()
+        self.assertEqual(4, second["reusedProjections"])
+        self.assertEqual(0, second["rebuiltProjections"])
+        self.draft("Flow", "HarnessBetaDispatch", "Changed purpose text.")
+        third = search.build_index()
+        self.assertEqual(1, third["rebuiltProjections"])
+        self.assertEqual(3, third["reusedProjections"])
+
+    def test_source_drift_forces_reprojection_not_a_stale_lane(self) -> None:
+        self.seed()
+        flow = self.temp / "force-app/main/default/flows/HarnessAlphaRouter.flow-meta.xml"
+        flow.write_text(ALPHA_FLOW.replace("<status>Active</status>", "<status>Draft</status>"), encoding="utf-8")
+        result = search.build_index()
+        self.assertGreaterEqual(result["rebuiltProjections"], 1)
+        drifted = self.search(identity="Flow:c:HarnessAlphaRouter", state=["approved-drifted"])
+        self.assertEqual(["Flow:c:HarnessAlphaRouter"], self.ids(drifted))
+
+    def test_ledger_change_forces_reprojection(self) -> None:
+        seeded = self.seed()
+        store.command_entry_revoke(
+            argparse.Namespace(identity=seeded["alpha"]["identity"], rationale="mistake")
+        )
+        result = search.build_index()
+        self.assertEqual(0, result["reusedProjections"])  # a ledger move can change any lane
+        self.assertEqual([], self.ids(self.search(identity=seeded["alpha"]["identity"])))
+
+    def test_incremental_and_full_builds_produce_the_same_index(self) -> None:
+        self.seed()
+        incremental = search.build_index()
+        full = search.build_index(full=True)
+        self.assertEqual(incremental["generation"], full["generation"])
+        self.assertEqual(0, full["reusedProjections"])

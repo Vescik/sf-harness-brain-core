@@ -161,7 +161,7 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
             def text_query() -> None:
                 search.run_search(
                     argparse.Namespace(
-                        text="routes bench records queue", identity=None, metadata_type=None,
+                        text="partition 7 queue", identity=None, metadata_type=None,
                         namespace=None, state=None, facet=None, relation_anchor=None,
                         relation_kind=None, direction=None, include_heuristic=False,
                         mode="hybrid", top=10,
