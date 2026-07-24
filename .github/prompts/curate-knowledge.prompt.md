@@ -1,7 +1,7 @@
 ---
 name: curate-knowledge
 description: Knowledge maintenance session - health report, then approved refresh or batch drafting with human-approved promotion.
-argument-hint: "health | entries | drafts | drift | refresh | batch <MetadataType>"
+argument-hint: "health | entries | build <MetadataType> | describe | drafts | drift | refresh | batch <MetadataType>"
 agent: knowledge-curator
 tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal']
 ---
@@ -15,6 +15,16 @@ still runs the claim workflows below):
 - `entries`: `python scripts/knowledge_store.py entry-coverage` — per-type lanes, entries
   missing for profiled source components, and which types have no entry profile yet (those
   are not gaps). Read-only.
+- `build <MetadataType>`: create entries for every artifact of that type that has none.
+  `python scripts/knowledge_store.py entry-coverage` names the gaps, then
+  `entry-draft --metadata-type <Type> --full-name <Name>` per artifact. Drafts land holding
+  `<AGENT_DESCRIPTION>` — facts extracted, analysis pending. Report the count; do not describe
+  in the same pass unless the human asks.
+- `describe`: for each entry still holding the sentinel, `entry-context --identity <Identity>`
+  then write 1-8 sentences from the source and the entries that use it, and store them with
+  `entry-describe --identity <Identity> --purpose-file <file>`. State only what the source
+  supports; leave a gap visible rather than inventing intent. Hand the described set to
+  `/approve-drafts-knowledge`.
 - `drafts`: `python scripts/knowledge_store.py entry-review` — render the review surface for
   outstanding drafts and hand the digest-pinned command to `/approve-drafts-knowledge`.
   Never approve from this cockpit.

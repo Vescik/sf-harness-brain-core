@@ -19,11 +19,25 @@ source-tree drift, parser errors, or changed `HEAD`.
 
 ## Routing: entries vs claims
 
-Repository facts for metadata types with an implemented entry profile (Flow, CustomField)
-belong to the one-file Knowledge Entry store, not here: draft them with
-`python scripts/knowledge_store.py entry-draft --metadata-type <Type> --full-name <Name>` and
-promote them with `/approve-drafts-knowledge`. Once this workspace holds entries, the registry
-refuses profiled repository-only proposals and names the entry route in the error.
+Repository facts for metadata types with an implemented entry profile belong to the one-file
+Knowledge Entry store, not here. `python scripts/knowledge_store.py entry-coverage` lists the
+profiled types, which artifacts have no entry yet, and which types have no profile at all
+(those are not gaps). For a profiled artifact:
+
+1. `entry-draft --metadata-type <Type> --full-name <Name>` — the executor derives every fact
+   from source and writes the entry; you supply no facts. It lands as a draft holding
+   `<AGENT_DESCRIPTION>`.
+2. `entry-context --identity <Identity>` — returns that artifact's source, its extracted
+   facts, and every entry that references it.
+3. Write 1-8 sentences of analysis from step 2 and store them with
+   `entry-describe --identity <Identity> --purpose-file <file>`. Do not source the description
+   from a `description` element: most components have none, and what a component is *for* is
+   usually only visible in its callers. Do not restate the facts — they are already in the
+   entry.
+4. Hand the described entries to `/approve-drafts-knowledge`. Never approve from this skill.
+
+Once this workspace holds entries, the registry refuses profiled repository-only proposals and
+names the entry route in the error.
 
 This skill remains the path for every other metadata type's repository facts and for any claim
 backed by org, vendor, SME, or ADO evidence.

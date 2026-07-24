@@ -774,3 +774,73 @@ class DraftLaneHonestyTests(KnowledgeStoreTests):
         path = self.temp / drafted["path"]
         path.write_text(path.read_text(encoding="utf-8").replace("right queue", "other queue"), encoding="utf-8")
         self.assertEqual("not-effective", self.lane_of(drafted["identity"])["lane"])
+
+
+class WorkflowReachabilityTests(unittest.TestCase):
+    """Every executor command must be reachable from the public surface AND permitted.
+
+    A command that exists but no prompt, skill or agent ever names is dead machinery; a
+    command a prompt names but the guard denies is a broken prompt. Both failed silently
+    until this test: the approval skill was not loaded by its own agent, and nothing on the
+    public surface drafted or described an entry at all.
+    """
+
+    HARNESS = Path(__file__).resolve().parents[1]
+
+    def surface_text(self) -> str:
+        parts = []
+        for pattern in (".github/prompts/*.prompt.md", ".github/skills/*/SKILL.md", ".github/agents/*.agent.md"):
+            for path in sorted(self.HARNESS.glob(pattern)):
+                parts.append(path.read_text(encoding="utf-8"))
+        return "\n".join(parts)
+
+    # Commands that belong to CI rather than to a person, with the reason.
+    NOT_ON_PUBLIC_SURFACE = {"entry-check": "CI integrity gate, run by validate_harness"}
+
+    def test_every_entry_command_is_named_on_the_public_surface(self) -> None:
+        surface = self.surface_text()
+        commands = set(store.build_parser()._subparsers._group_actions[0].choices)
+        for command in sorted(commands - set(self.NOT_ON_PUBLIC_SURFACE)):
+            with self.subTest(command=command):
+                self.assertIn(
+                    command, surface, f"{command} is not reachable from any prompt, skill or agent"
+                )
+
+    def test_ci_only_commands_are_declared_and_actually_run_by_ci(self) -> None:
+        workflow = (self.HARNESS / ".github/workflows/harness-ci.yml").read_text(encoding="utf-8")
+        validator = (self.HARNESS / "scripts/validate_harness.py").read_text(encoding="utf-8")
+        for command, reason in self.NOT_ON_PUBLIC_SURFACE.items():
+            with self.subTest(command=command):
+                self.assertTrue(reason.strip())
+                self.assertTrue(
+                    command in workflow or command in validator,
+                    f"{command} is declared CI-only but no CI step runs it",
+                )
+
+    def test_the_curator_agent_loads_the_skills_its_prompts_use(self) -> None:
+        agent = (self.HARNESS / ".github/agents/knowledge-curator.agent.md").read_text(encoding="utf-8")
+        for skill in ("approve-knowledge-drafts", "propose-force-app-knowledge", "batch-knowledge"):
+            with self.subTest(skill=skill):
+                self.assertIn(skill, agent, f"knowledge-curator does not load {skill}")
+
+    def test_each_workflow_step_is_permitted_for_the_curator_and_denied_elsewhere(self) -> None:
+        from scripts import copilot_role_guard as guard
+
+        mutations = [
+            "python scripts/knowledge_store.py entry-draft --metadata-type Flow --full-name X",
+            "python scripts/knowledge_store.py entry-describe --identity Flow:c:X --purpose-file d.md",
+            "python scripts/knowledge_store.py entry-approve --entry Flow:c:X:sha256:" + "a" * 64,
+        ]
+        reads = [
+            "python scripts/knowledge_store.py entry-context --identity Flow:c:X",
+            "python scripts/knowledge_store.py entry-coverage",
+            "python scripts/knowledge_store.py entry-review",
+        ]
+        for command in mutations:
+            with self.subTest(command=command.split("py ")[1].split()[0]):
+                self.assertTrue(guard.allowed_role_command(command, self.HARNESS, "knowledge-curator"))
+                self.assertFalse(guard.allowed_role_command(command, self.HARNESS, "solution-designer"))
+        for command in reads:
+            with self.subTest(command=command.split("py ")[1].split()[0]):
+                for role in ("knowledge-curator", "solution-designer", "guardrail-reviewer"):
+                    self.assertTrue(guard.allowed_role_command(command, self.HARNESS, role))
