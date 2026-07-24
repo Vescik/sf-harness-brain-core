@@ -46,6 +46,19 @@ Category: `<ADO Category field value>`
 
 <!-- AI-generated, 2-3 sentences, from the item's Description + Acceptance Criteria. -->
 
+### Acceptance criteria
+
+<!--
+ALL acceptance criteria from the work item's Acceptance Criteria section, complete and in
+their original order — never a selected/"key" subset, never reworded into new criteria,
+never invented when the section is empty. One bullet per criterion. If the work item has
+no Acceptance Criteria section, use exactly the fallback text below instead of the list.
+-->
+
+- `<Acceptance criterion>`
+
+No acceptance criteria documented
+
 ### Technical table
 
 <!--
