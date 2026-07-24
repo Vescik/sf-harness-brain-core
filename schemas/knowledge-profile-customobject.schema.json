@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-customobject.schema.json",
-  "title": "Knowledge Entry profile \u2014 salesforce.custom-object v1 (custom objects, platform events, custom settings, custom metadata types)",
+  "title": "Knowledge Entry profile \u2014 salesforce.custom-object v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -16,8 +17,7 @@
       ],
       "properties": {
         "objectKind": {
-          "type": "string",
-          "description": "Collector routing fact: custom object, platform event, custom setting, big object, custom metadata type, or standard-object extension."
+          "type": "string"
         },
         "label": {
           "type": "string"
@@ -35,7 +35,8 @@
           "type": "string"
         },
         "nameField": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "customSettingsType": {
           "type": "string"
@@ -59,6 +60,15 @@
           "type": "boolean"
         },
         "enableSearch": {
+          "type": "boolean"
+        },
+        "enableBulkApi": {
+          "type": "boolean"
+        },
+        "enableStreamingApi": {
+          "type": "boolean"
+        },
+        "enableSharing": {
           "type": "boolean"
         },
         "references": {

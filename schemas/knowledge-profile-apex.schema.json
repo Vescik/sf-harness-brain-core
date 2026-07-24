@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-apex.schema.json",
-  "title": "Knowledge Entry profile \u2014 salesforce.apex v1 (ApexClass and ApexTrigger)",
+  "title": "Knowledge Entry profile \u2014 salesforce.apex v1 (ApexClass, ApexTrigger)",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -21,9 +22,11 @@
             "ApexTrigger"
           ]
         },
-        "sharing": {
-          "type": "string",
-          "description": "with sharing | without sharing | inherited sharing | unspecified"
+        "declarationKind": {
+          "type": "string"
+        },
+        "sharingModel": {
+          "type": "string"
         },
         "isTest": {
           "type": "boolean"
@@ -49,14 +52,36 @@
             "type": "string"
           }
         },
-        "triggerObject": {
+        "object": {
           "type": "string"
         },
-        "triggerEvents": {
+        "events": {
           "type": "array",
           "items": {
             "type": "string"
           }
+        },
+        "soqlObjects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dmlOperations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dmlTargets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "Per-object DML verbs observed in source (heuristic token scan)."
         },
         "references": {
           "type": "array",
@@ -84,8 +109,7 @@
                 ]
               }
             }
-          },
-          "description": "Typed relation edges; per-edge assurance is required so heuristic lineage is never served as exact."
+          }
         }
       }
     },

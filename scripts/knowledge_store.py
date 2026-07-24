@@ -610,87 +610,57 @@ def _assurance_for(edges: list[dict[str, Any]]) -> dict[str, str]:
     return {"typeFacts": "source-derived-heuristic" if heuristic else "source-exact"}
 
 
-def _compact(values: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in values.items() if value is not None}
+# Collector facts deliberately not carried into an entry, with the reason. Everything else is
+# passed through: hand-listing what to KEEP silently lost real content — validation rules
+# arrived as `conditionPresent: true` without the formula, fields lost their picklist values
+# and rollup definitions, Apex lost its sharing model and SOQL/DML targets. Anything the
+# collector emits that a profile does not declare now fails draft validation loudly instead
+# of disappearing from the entry.
+FACT_EXCLUSIONS: dict[str, dict[str, str]] = {
+    "Flow": {
+        "errorCatalog": "screen-validation and fault-path entries must never reach an entry; "
+        "author-declared Custom Errors are carried in intentionalErrors instead (contract §7)",
+        "elementCounts": "shape statistics, not an assertion about the artifact",
+        "start": "already represented by trigger/*",
+        "referencedObjects": "already represented as typed reference edges",
+        "dataOperations": "already represented by operations[]",
+        "variables": "carried by the Flow profile mapping",
+        "formulas": "expression bodies belong to the source, not the entry",
+        "label": "not a behavioural fact for Flow entries",
+        "object": "already represented by trigger.object",
+        "triggerType": "already represented by trigger.type",
+        "recordTriggerType": "already represented by trigger.recordTriggerType",
+        "processType": "carried by the Flow profile mapping",
+        "status": "carried by the Flow profile mapping",
+    },
+}
 
 
-def apex_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
-    facts = component.get("facts", {})
-    edges = _edges(component)
-    type_facts = _compact(
-        {
-            "kind": component.get("metadataType"),
-            "sharing": facts.get("sharing"),
-            "isTest": facts.get("isTest"),
-            "apiVersion": facts.get("apiVersion"),
-            "status": facts.get("status"),
-            "superclass": facts.get("superclass"),
-            "interfaces": facts.get("interfaces"),
-            "annotations": facts.get("annotations"),
-            "triggerObject": facts.get("object") or facts.get("triggerObject"),
-            "triggerEvents": facts.get("events") or facts.get("triggerEvents"),
-        }
-    )
-    if edges:
-        type_facts["references"] = edges
-    return type_facts, [], _assurance_for(edges)
+def _normalize_fact(value: Any) -> Any:
+    """Digit-only XML text becomes an integer; everything else is carried verbatim.
+
+    Salesforce emits numeric attributes (field length, precision, scale) as text. Normalizing
+    them keeps numeric facets comparable without inventing or losing information."""
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return value
 
 
-def validation_rule_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
-    facts = component.get("facts", {})
-    edges = _edges(component)
-    type_facts = _compact(
-        {
-            "object": facts.get("object"),
-            "active": facts.get("active"),
-            "errorDisplayField": facts.get("errorDisplayField"),
-            "errorMessagePresent": facts.get("errorMessagePresent"),
-            # The rule's own error text stays in the claim/evidence world: a ValidationRule is
-            # not a Flow Custom Error and must never reach the intentional-error index (§7).
-            "conditionPresent": bool(facts.get("errorCatalog")) or None,
-        }
-    )
-    if edges:
-        type_facts["references"] = edges
-    return type_facts, [], _assurance_for(edges)
+def _passthrough_adapter(metadata_type: str):
+    """Carry the collector's facts faithfully; exclusions must be declared and justified."""
 
-
-def permission_set_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
-    facts = component.get("facts", {})
-    edges = _edges(component)
-    type_facts = _compact(
-        {
-            "label": facts.get("label"),
-            "license": facts.get("license"),
-            "hasActivationRequired": facts.get("hasActivationRequired"),
-            "objectAccess": facts.get("objectAccess"),
-            "systemPermissions": facts.get("systemPermissions"),
-            "objectPermissionCount": facts.get("objectPermissionCount"),
-            "fieldPermissionCount": facts.get("fieldPermissionCount"),
-            "classAccessCount": facts.get("classAccessCount"),
-            "customPermissionCount": facts.get("customPermissionCount"),
-            "flowAccessCount": facts.get("flowAccessCount"),
-            "referencesTruncated": facts.get("referencesTruncated"),
-            "truncatedFamilies": facts.get("truncatedFamilies"),
-        }
-    )
-    if edges:
-        type_facts["references"] = edges
-    coverage = _assurance_for(edges)
-    return type_facts, [], coverage
-
-
-
-def _passthrough_adapter(keys: tuple[str, ...]):
-    """Adapter for types whose collector facts map one-to-one onto the profile.
-
-    The fact vocabulary is the collector's; the profile schema is what pins it. Keeping the
-    mapping declarative avoids six near-identical hand-written adapters drifting apart."""
+    excluded = set(FACT_EXCLUSIONS.get(metadata_type, {}))
 
     def adapter(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
         facts = component.get("facts", {})
         edges = _edges(component)
-        type_facts = _compact({key: facts.get(key) for key in keys})
+        type_facts = {
+            key: _normalize_fact(value)
+            for key, value in facts.items()
+            if key not in excluded and value is not None
+        }
+        if metadata_type in {"ApexClass", "ApexTrigger"}:
+            type_facts["kind"] = metadata_type
         if edges:
             type_facts["references"] = edges
         return type_facts, [], _assurance_for(edges)
@@ -698,33 +668,24 @@ def _passthrough_adapter(keys: tuple[str, ...]):
     return adapter
 
 
-custom_object_type_facts = _passthrough_adapter(
-    (
-        "objectKind", "label", "pluralLabel", "description", "sharingModel", "deploymentStatus",
-        "nameField", "customSettingsType", "eventType", "publishBehavior", "enableActivities",
-        "enableFeeds", "enableHistory", "enableReports", "enableSearch",
-    )
-)
-record_type_facts = _passthrough_adapter(("object", "fullName", "label", "active", "description"))
-custom_metadata_type_facts = _passthrough_adapter(
-    ("type", "record", "label", "protected", "fieldsPopulated", "values")
-)
-lwc_type_facts = _passthrough_adapter(
-    ("isExposed", "targets", "targetConfigs", "apiProperties", "wiredAdapters")
-)
-
-
 ADAPTERS = {
+    # Flow keeps a bespoke adapter: it is the only type with intentionalErrors, which must be
+    # derived from the customErrors element class rather than passed through.
     "Flow": flow_type_facts,
-    "CustomField": custom_field_type_facts,
-    "ApexClass": apex_type_facts,
-    "ApexTrigger": apex_type_facts,
-    "ValidationRule": validation_rule_type_facts,
-    "PermissionSet": permission_set_type_facts,
-    "CustomObject": custom_object_type_facts,
-    "RecordType": record_type_facts,
-    "CustomMetadata": custom_metadata_type_facts,
-    "LightningComponentBundle": lwc_type_facts,
+    **{
+        metadata_type: _passthrough_adapter(metadata_type)
+        for metadata_type in (
+            "CustomField",
+            "ApexClass",
+            "ApexTrigger",
+            "ValidationRule",
+            "PermissionSet",
+            "CustomObject",
+            "RecordType",
+            "CustomMetadata",
+            "LightningComponentBundle",
+        )
+    },
 }
 
 
@@ -763,8 +724,15 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
         raise StoreError(f"unsupported metadata type {metadata_type!r} in pilot (Flow, CustomField)")
     component = collector_component(metadata_type, args.full_name)
     type_facts, intentional, assurance = adapter(component)
+    # Without an authored description the entry carries a sentinel: the facts are extracted,
+    # but the artifact cannot be approved until an agent has read the source and written what
+    # the component does. An empty body would look finished; a sentinel cannot be approved.
     purpose = Path(args.purpose_file).read_text(encoding="utf-8") if args.purpose_file else ""
-    body = "## Purpose\n\n" + normalize_body(purpose) if purpose.strip() else ""
+    body = (
+        "## Purpose\n\n" + normalize_body(purpose)
+        if purpose.strip()
+        else "## Purpose\n\n<AGENT_DESCRIPTION>\n"
+    )
     from scripts.force_app_knowledge import file_digest
 
     fragment_path = ROOT / component["path"]
@@ -802,7 +770,11 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
     if intentional:
         frontmatter["intentionalErrors"] = intentional
     frontmatter["lifecycle"]["contentDigest"] = reviewed_content_digest(frontmatter, body)
-    problems = validate_entry(frontmatter, body)
+    problems = [
+        problem
+        for problem in validate_entry(frontmatter, body)
+        if "sentinel" not in problem or purpose.strip()
+    ]
     if problems:
         raise StoreError("draft validation failed: " + "; ".join(problems))
     path = entry_path(metadata_type, args.namespace, args.full_name)
@@ -915,6 +887,56 @@ def classify_chunk(resolved: list[tuple[str, dict[str, Any], str, str]], latest:
         else:
             facts_only.append(identity)
     return {"proseChanges": sorted(prose), "factsOnly": sorted(facts_only)}
+
+
+def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
+    """Write the agent-authored description into an existing entry.
+
+    The description is the one part of an entry a model produces rather than extracts, so it
+    is the one part a human must actually read. Structured facts are never touched here: this
+    command replaces only the attested body, recomputes the digests, and returns the entry to
+    `draft` — an approval bound to the previous text cannot survive new text (contract §5.5).
+    """
+
+    assert_no_reparse_points()
+    metadata_type, namespace_segment, full_name = args.identity.split(":", 2)
+    namespace = None if namespace_segment == "c" else namespace_segment
+    path = entry_path(metadata_type, namespace, full_name)
+    if not path.is_file():
+        raise StoreError(f"no entry to describe: {args.identity}")
+    frontmatter, previous_body = split_entry(path.read_text(encoding="utf-8"))
+    description = normalize_body(Path(args.purpose_file).read_text(encoding="utf-8"))
+    if not description.strip():
+        raise StoreError("the description file is empty")
+    sentences = [part for part in re.split(r"(?<=[.!?])\s+", description.strip()) if part.strip()]
+    if not 1 <= len(sentences) <= 8:
+        raise StoreError(
+            f"a description must be 1-8 sentences, got {len(sentences)} — it states what the "
+            "component does, it is not a transcript of its source"
+        )
+    body = "## Purpose\n\n" + description
+    problems = validate_entry(frontmatter, body)
+    if problems:
+        raise StoreError("description rejected: " + "; ".join(problems))
+    was_approved = frontmatter["lifecycle"]["state"] == "approved"
+    frontmatter["lifecycle"]["state"] = "draft"
+    frontmatter["approval"] = {
+        "reviewedContentDigest": None,
+        "reviewedBy": None,
+        "reviewedAt": None,
+        "mechanism": None,
+    }
+    frontmatter["lifecycle"]["contentDigest"] = reviewed_content_digest(frontmatter, body)
+    atomic_write(path, render_entry(frontmatter, body))
+    return {
+        "outcome": "DESCRIBED",
+        "identity": args.identity,
+        "path": str(path.relative_to(ROOT)),
+        "reviewedContentDigest": frontmatter["lifecycle"]["contentDigest"],
+        "previousApprovalInvalidated": was_approved,
+        "sentences": len(sentences),
+        "replacedSentinel": "<AGENT_" in previous_body,
+    }
 
 
 def command_entry_review(args: argparse.Namespace) -> dict[str, Any]:
@@ -1133,6 +1155,13 @@ def build_parser() -> argparse.ArgumentParser:
     approve = commands.add_parser("entry-approve", help="digest-pinned chat-approved promotion")
     approve.add_argument("--entry", action="append", default=None, help="<identity>:sha256:<digest>")
     approve.set_defaults(func=command_entry_approve)
+
+    describe = commands.add_parser(
+        "entry-describe", help="write the agent-authored description into an existing entry"
+    )
+    describe.add_argument("--identity", required=True)
+    describe.add_argument("--purpose-file", required=True)
+    describe.set_defaults(func=command_entry_describe)
 
     review = commands.add_parser(
         "entry-review", help="render the executor-authored review surface and the pinned command"

@@ -1,95 +1,222 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-customfield.schema.json",
-  "title": "Knowledge Entry profile — salesforce.custom-field v1 (DRAFT — T07 Phase 0, not wired)",
-  "description": "Validates typeFacts of a Knowledge Entry whose subject.metadataType is CustomField (fullName = Object.Field). Contract: docs/knowledge-one-file-contract.md. CustomField entries carry no intentionalErrors.",
+  "title": "Knowledge Entry profile \u2014 salesforce.custom-field v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
   "type": "object",
   "additionalProperties": true,
-  "required": ["typeFacts"],
+  "required": [
+    "typeFacts"
+  ],
   "properties": {
     "typeFacts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["object", "type"],
+      "required": [
+        "object",
+        "type"
+      ],
       "properties": {
-        "object": { "type": "string", "minLength": 1 },
-        "type": {
-          "type": "string",
-          "description": "Source-declared field type (Text, Picklist, Lookup, MasterDetail, Formula, Number, Checkbox, ...)."
+        "object": {
+          "type": "string"
         },
-        "label": { "type": "string" },
-        "required": { "type": "boolean" },
-        "unique": { "type": "boolean" },
-        "externalId": { "type": "boolean" },
-        "encrypted": { "type": "boolean" },
-        "trackHistory": { "type": "boolean" },
-        "length": { "type": "integer", "minimum": 0 },
-        "precision": { "type": "integer", "minimum": 0 },
-        "scale": { "type": "integer", "minimum": 0 },
+        "fullName": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inlineHelpText": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "unique": {
+          "type": "boolean"
+        },
+        "externalId": {
+          "type": "boolean"
+        },
+        "encrypted": {
+          "type": "boolean"
+        },
+        "caseSensitive": {
+          "type": "boolean"
+        },
+        "trackHistory": {
+          "type": "boolean"
+        },
+        "trackFeedHistory": {
+          "type": "boolean"
+        },
+        "length": {
+          "type": [
+            "integer",
+            "number",
+            "string"
+          ],
+          "description": "Salesforce emits this as XML text; the adapter normalizes digit-only values to integers and keeps anything else verbatim."
+        },
+        "precision": {
+          "type": [
+            "integer",
+            "number",
+            "string"
+          ],
+          "description": "Salesforce emits this as XML text; the adapter normalizes digit-only values to integers and keeps anything else verbatim."
+        },
+        "scale": {
+          "type": [
+            "integer",
+            "number",
+            "string"
+          ],
+          "description": "Salesforce emits this as XML text; the adapter normalizes digit-only values to integers and keeps anything else verbatim."
+        },
+        "defaultValue": {
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "null"
+          ]
+        },
         "referenceTo": {
           "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
-          ],
-          "description": "Target object(s) for Lookup/MasterDetail; array covers polymorphic lookups (collector emits a list)."
-        },
-        "relationshipName": { "type": "string" },
-        "deleteConstraint": { "enum": ["SetNull", "Restrict", "Cascade"] },
-        "controllingField": { "type": "string" },
-        "formula": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "returnType": { "type": "string" },
-            "referencedFields": {
-              "type": "array",
-              "items": { "type": "string" }
+            {
+              "type": "string"
             },
-            "blankHandling": { "enum": ["BlankAsBlank", "BlankAsZero"] }
-          }
-        },
-        "valueSet": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "restricted": { "type": "boolean" },
-            "globalValueSet": { "type": ["string", "null"] },
-            "values": {
+            {
               "type": "array",
               "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["fullName"],
-                "properties": {
-                  "fullName": { "type": "string" },
-                  "label": { "type": "string" },
-                  "default": { "type": "boolean" },
-                  "active": { "type": "boolean" }
-                }
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "relationshipName": {
+          "type": "string"
+        },
+        "relationshipLabel": {
+          "type": "string"
+        },
+        "relationshipOrder": {
+          "type": [
+            "integer",
+            "number",
+            "string"
+          ],
+          "description": "Salesforce emits this as XML text; the adapter normalizes digit-only values to integers and keeps anything else verbatim."
+        },
+        "deleteConstraint": {
+          "type": "string"
+        },
+        "reparentableMasterDetail": {
+          "type": "boolean"
+        },
+        "writeRequiresMasterRead": {
+          "type": "boolean"
+        },
+        "controllingField": {
+          "type": "string"
+        },
+        "formula": {
+          "type": "string"
+        },
+        "formulaTreatBlanksAs": {
+          "type": "string"
+        },
+        "valueSetName": {
+          "type": "string"
+        },
+        "picklistRestricted": {
+          "type": "boolean"
+        },
+        "picklistSorted": {
+          "type": "boolean"
+        },
+        "picklistValues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "fullName": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "default": {
+                "type": "boolean"
+              },
+              "active": {
+                "type": "boolean"
               }
             }
           }
         },
-        "lookupFilter": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "active": { "type": "boolean" },
-            "isOptional": { "type": "boolean" },
-            "errorMessage": { "type": "string" }
-          }
+        "picklistValueCount": {
+          "type": [
+            "integer",
+            "number",
+            "string"
+          ],
+          "description": "Salesforce emits this as XML text; the adapter normalizes digit-only values to integers and keeps anything else verbatim."
         },
-        "defaultValue": { "type": ["string", "number", "boolean", "null"] },
-        "description": { "type": "string" },
-        "inlineHelpText": { "type": "string" }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "type": { "enum": ["Lookup", "MasterDetail"] } } },
-          "then": { "required": ["object", "type", "referenceTo"] }
+        "picklistValuesTruncated": {
+          "type": "boolean"
+        },
+        "summaryOperation": {
+          "type": "string"
+        },
+        "summaryForeignKey": {
+          "type": "string"
+        },
+        "summarizedField": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
         }
-      ]
+      }
     },
-    "intentionalErrors": { "type": "array", "maxItems": 0 }
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
   }
 }

@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-permissionset.schema.json",
   "title": "Knowledge Entry profile \u2014 salesforce.permission-set v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -24,7 +25,9 @@
         },
         "objectAccess": {
           "type": "object",
-          "description": "Per-object CRUD map as emitted by the collector."
+          "additionalProperties": {
+            "type": "string"
+          }
         },
         "systemPermissions": {
           "type": "array",
@@ -33,24 +36,34 @@
           }
         },
         "objectPermissionCount": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
         },
         "fieldPermissionCount": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
         },
         "classAccessCount": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
         },
         "customPermissionCount": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
+        },
+        "recordTypeCount": {
+          "type": "integer"
         },
         "flowAccessCount": {
-          "type": "integer",
-          "minimum": 0
+          "type": "integer"
+        },
+        "userPermissionCount": {
+          "type": "integer"
+        },
+        "tabCount": {
+          "type": "integer"
+        },
+        "pageAccessCount": {
+          "type": "integer"
+        },
+        "applicationVisibilityCount": {
+          "type": "integer"
         },
         "referencesTruncated": {
           "type": "boolean"
@@ -87,8 +100,7 @@
                 ]
               }
             }
-          },
-          "description": "Typed relation edges; per-edge assurance is required so heuristic lineage is never served as exact."
+          }
         }
       }
     },

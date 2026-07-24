@@ -19,6 +19,22 @@ only renders and executes; the human reads the rendered body and clicks the conf
 Optional `identity` values (`<MetadataType>:<ns|c>:<FullName>`). With none, every `draft` entry
 is offered. Nothing else is accepted — scope is entry identities, never free text.
 
+## Authoring the description first
+
+An entry drafted without a description carries an `<AGENT_DESCRIPTION>` sentinel and can never
+be approved. The description is the one part of an entry a model writes rather than extracts,
+so it is written after the facts exist and from the artifact's actual source:
+
+1. `python scripts/knowledge_store.py entry-status` — find entries still holding the sentinel.
+2. Read that artifact's source. Do not describe it from its name, from its label, or from the
+   extracted facts alone.
+3. Write 1-8 sentences: what the component does, what triggers it, what it decides. State only
+   what the source supports; a gap is a gap, not a guess.
+4. `python scripts/knowledge_store.py entry-describe --identity <Identity> --purpose-file <file>`
+   — the executor validates and writes it; extracted facts are never touched, and rewriting a
+   description on an already-approved entry returns it to `draft` because the approval was
+   bound to the previous text.
+
 ## Procedure
 
 1. Render the review surface with the executor — never write the summary yourself:

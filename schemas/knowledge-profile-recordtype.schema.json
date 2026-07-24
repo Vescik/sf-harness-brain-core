@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-recordtype.schema.json",
   "title": "Knowledge Entry profile \u2014 salesforce.record-type v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -29,6 +30,16 @@
         },
         "description": {
           "type": "string"
+        },
+        "businessProcess": {
+          "type": "string"
+        },
+        "picklistValueSets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
         },
         "references": {
           "type": "array",

@@ -323,10 +323,13 @@ class KnowledgeStoreTests(unittest.TestCase):
             self.approve([pin.strip() for pin in pins])
 
     def test_entry_review_skips_invalid_drafts_and_reports_why(self) -> None:
-        drafted = self.draft(purpose_file=None)  # no Purpose section
+        drafted = self.draft(purpose_file=None)  # facts extracted, description not authored yet
         result = self.review([drafted["identity"]])
         self.assertEqual("NOTHING_TO_REVIEW", result["outcome"])
-        self.assertTrue(any("Purpose" in problem for problem in result["problems"]))
+        self.assertTrue(
+            any("sentinel" in problem or "Purpose" in problem for problem in result["problems"]),
+            f"the refusal must name why: {result['problems']}",
+        )
 
     def test_entry_review_enforces_the_prose_chunk_cap(self) -> None:
         self.draft()
@@ -364,9 +367,13 @@ class KnowledgeStoreTests(unittest.TestCase):
         front, _ = store.split_entry((self.temp / rule["path"]).read_text(encoding="utf-8"))
         self.assertEqual("HarnessAlphaCase__c", front["typeFacts"]["object"])
         self.assertTrue(front["typeFacts"]["active"])
-        # A ValidationRule's message is not a Flow Custom Error and never enters that index.
+        # The rule itself must be IN the entry — an entry saying only "this rule has a
+        # condition" cannot answer what the rule enforces.
+        declared = front["typeFacts"]["errorCatalog"][0]
+        self.assertEqual("ISBLANK(Status__c)", declared["condition"])
+        self.assertEqual("Status is required.", declared["errorMessage"])
+        # ...while staying out of intentionalErrors, which is FlowCustomError-only.
         self.assertEqual([], front.get("intentionalErrors", []))
-        self.assertNotIn("Status is required", json.dumps(front))
 
         self.approve([f"{apex['identity']}:{apex['reviewedContentDigest']}",
                       f"{rule['identity']}:{rule['reviewedContentDigest']}"])
@@ -638,3 +645,115 @@ class EntryCitationVerificationTests(KnowledgeStoreTests):
         self.assertIn("CustomField", report["missingEntryCounts"])
         # A type with no profile is listed as unprofiled, never as a coverage gap
         self.assertNotIn("CustomObject", report["missingEntryCounts"])
+
+
+class AdapterFaithfulnessTests(unittest.TestCase):
+    """An entry must carry what the collector extracted.
+
+    Hand-listing which facts to KEEP silently lost real content: validation rules arrived as
+    `conditionPresent: true` with no formula, fields lost their picklist values and rollup
+    definitions, Apex lost its sharing model. Adapters now pass everything through, and any
+    fact a profile does not declare fails validation loudly instead of vanishing.
+    """
+
+    def test_adapters_drop_nothing_that_is_not_declared_and_justified(self) -> None:
+        for metadata_type, adapter in store.ADAPTERS.items():
+            if metadata_type == "Flow":
+                continue  # bespoke adapter; its exclusions are asserted below
+            with self.subTest(metadataType=metadata_type):
+                facts = {"alpha": 1, "beta": "two", "gamma": ["three"]}
+                carried, _errors, _assurance = adapter({"facts": facts, "metadataType": metadata_type})
+                for key in facts:
+                    self.assertIn(key, carried, f"{metadata_type} silently dropped {key}")
+
+    def test_every_flow_exclusion_states_a_reason(self) -> None:
+        for metadata_type, exclusions in store.FACT_EXCLUSIONS.items():
+            for key, reason in exclusions.items():
+                with self.subTest(metadataType=metadata_type, fact=key):
+                    self.assertTrue(reason.strip(), f"{metadata_type}.{key} is excluded without a reason")
+
+    def test_numeric_xml_text_is_normalized_but_other_text_is_verbatim(self) -> None:
+        adapter = store.ADAPTERS["CustomField"]
+        carried, _, _ = adapter({"facts": {"length": "18", "label": "18 characters", "object": "X__c"}})
+        self.assertEqual(18, carried["length"])
+        self.assertEqual("18 characters", carried["label"])
+
+    def test_validation_rule_entry_carries_the_rule_itself(self) -> None:
+        component = {
+            "metadataType": "ValidationRule",
+            "facts": {
+                "object": "ClientProfile__c",
+                "active": True,
+                "errorDisplayField": "Health_Score__c",
+                "errorCatalog": [
+                    {
+                        "component": "Health_Score_In_Range",
+                        "kind": "validation-rule",
+                        "condition": "NOT(ISBLANK(Health_Score__c))",
+                        "errorMessage": "Health Score must be between 0 and 100.",
+                    }
+                ],
+            },
+        }
+        carried, errors, _ = store.ADAPTERS["ValidationRule"](component)
+        self.assertEqual("NOT(ISBLANK(Health_Score__c))", carried["errorCatalog"][0]["condition"])
+        self.assertIn("between 0 and 100", carried["errorCatalog"][0]["errorMessage"])
+        # A validation rule's message is not a Flow Custom Error and never enters that index.
+        self.assertEqual([], errors)
+
+
+class AgentDescriptionTests(KnowledgeStoreTests):
+    """The description is the one part of an entry a model writes rather than extracts."""
+
+    def describe(self, identity: str, text: str):
+        path = self.temp / "description.md"
+        path.write_text(text, encoding="utf-8")
+        return store.command_entry_describe(
+            argparse.Namespace(identity=identity, purpose_file=str(path))
+        )
+
+    def test_undescribed_draft_carries_a_sentinel_and_cannot_be_approved(self) -> None:
+        drafted = self.draft(purpose_file=None)
+        body = (self.temp / drafted["path"]).read_text(encoding="utf-8")
+        self.assertIn("<AGENT_DESCRIPTION>", body)
+        review = store.command_entry_review(argparse.Namespace(identity=[drafted["identity"]]))
+        self.assertEqual("NOTHING_TO_REVIEW", review["outcome"])
+        self.assertTrue(any("sentinel" in problem for problem in review["problems"]))
+
+    def test_describe_replaces_the_sentinel_and_unlocks_review(self) -> None:
+        drafted = self.draft(purpose_file=None)
+        described = self.describe(
+            drafted["identity"],
+            "Routes engagement records to the owning queue after save. Blocks the update when "
+            "the discount exceeds the approved threshold.",
+        )
+        self.assertEqual("DESCRIBED", described["outcome"])
+        self.assertTrue(described["replacedSentinel"])
+        self.assertEqual(2, described["sentences"])
+        review = store.command_entry_review(argparse.Namespace(identity=[drafted["identity"]]))
+        self.assertEqual("REVIEW_READY", review["outcome"])
+
+    def test_rewriting_a_description_invalidates_an_existing_approval(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        self.assertEqual("approved-current", self.lane_of(drafted["identity"])["lane"])
+        result = self.describe(drafted["identity"], "A materially different description.")
+        self.assertTrue(result["previousApprovalInvalidated"])
+        self.assertEqual("draft", self.lane_of(drafted["identity"])["lane"])
+
+    def test_description_length_is_bounded_and_emptiness_refused(self) -> None:
+        drafted = self.draft(purpose_file=None)
+        with self.assertRaises(store.StoreError):
+            self.describe(drafted["identity"], "   ")
+        with self.assertRaises(store.StoreError) as ctx:
+            self.describe(drafted["identity"], " ".join(f"Sentence {i}." for i in range(20)))
+        self.assertIn("1-8 sentences", str(ctx.exception))
+
+    def test_describe_never_touches_extracted_facts(self) -> None:
+        drafted = self.draft()
+        before, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.describe(drafted["identity"], "Rewritten description of the component.")
+        after, body = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(before["typeFacts"], after["typeFacts"])
+        self.assertEqual(before["intentionalErrors"], after["intentionalErrors"])
+        self.assertIn("Rewritten description", body)

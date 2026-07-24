@@ -1,7 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-custommetadata.schema.json",
-  "title": "Knowledge Entry profile \u2014 salesforce.custom-metadata v1 (configuration records held as metadata)",
+  "title": "Knowledge Entry profile \u2014 salesforce.custom-metadata v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -16,8 +17,7 @@
       ],
       "properties": {
         "type": {
-          "type": "string",
-          "description": "Owning custom metadata type (__mdt)."
+          "type": "string"
         },
         "record": {
           "type": "string"
@@ -38,10 +38,7 @@
           "type": "array",
           "items": {
             "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "field"
-            ],
+            "additionalProperties": true,
             "properties": {
               "field": {
                 "type": "string"
@@ -50,13 +47,14 @@
                 "type": [
                   "string",
                   "number",
+                  "integer",
                   "boolean",
                   "null"
                 ]
               }
             }
           },
-          "description": "Sanitized configuration values as the collector emits them: one {field, value} pair per populated field. Only records the collector deemed safe to commit reach here."
+          "description": "Sanitized configuration values as emitted by the collector."
         },
         "references": {
           "type": "array",

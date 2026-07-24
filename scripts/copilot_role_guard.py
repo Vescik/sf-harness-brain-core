@@ -231,7 +231,9 @@ FORCE_APP_COMMAND_FLAGS = {
 # tests/test_guard_parser_contract.py diffs these flags against knowledge_store.build_parser.
 # entry-review only renders a review artifact under output/; it mutates no Knowledge, so it
 # stays outside the mutation set while still being a curator/investigator-shaped action.
-KNOWLEDGE_STORE_MUTATION_COMMANDS = frozenset({"entry-draft", "entry-approve", "entry-revoke"})
+KNOWLEDGE_STORE_MUTATION_COMMANDS = frozenset(
+    {"entry-draft", "entry-describe", "entry-approve", "entry-revoke"}
+)
 KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-draft": frozenset(
         {
@@ -245,6 +247,7 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     ),
     "entry-approve": frozenset({"--entry"}),
     "entry-review": frozenset({"--identity"}),
+    "entry-describe": frozenset({"--identity", "--purpose-file"}),
     "entry-revoke": frozenset({"--identity", "--rationale"}),
     "entry-status": frozenset({"--identity"}),
     "entry-coverage": frozenset(),

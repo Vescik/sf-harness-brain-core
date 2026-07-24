@@ -3438,6 +3438,35 @@ class NestedSourceLayoutTests(unittest.TestCase):
         self.assertEqual("ApexClass:TriggerHandler", klass["id"])
         self.assertEqual("ApexTrigger:OrderTrigger", trigger["id"])
 
+    def test_prose_is_never_mistaken_for_code(self) -> None:
+        """Regression from real package source: comments and assertion strings were scanned as
+        code. `FROM the ledger` in a comment produced an object named `the`, and
+        'name defaulted from account' in a test assertion produced `account`."""
+        temporary = tempfile.TemporaryDirectory(prefix="apex-prose-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        classes = root / "force-app/main/default/classes"
+        classes.mkdir(parents=True)
+        (classes / "LedgerService.cls").write_text(
+            "/**\n"
+            " * @description Reads entries selected from the ledger for a client.\n"
+            " */\n"
+            "public with sharing class LedgerService {\n"
+            "    public void run() {\n"
+            "        List<Invoice__c> rows = [SELECT Id FROM Invoice__c];\n"
+            "        String dynamic = 'SELECT Id FROM BillingEvent__c';\n"
+            "        System.assertEquals('x', 'y', 'name defaulted from account');\n"
+            "    }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        facts = ForceAppKnowledge(root).parse_apex(classes / "LedgerService.cls", "ApexClass")["facts"]
+        objects = set(facts.get("soqlObjects") or [])
+        self.assertIn("Invoice__c", objects)
+        self.assertIn("BillingEvent__c", objects, "dynamic SOQL in a string literal must survive")
+        self.assertNotIn("the", objects, "comment prose must not become an object")
+        self.assertNotIn("account", objects, "assertion-message prose must not become an object")
+
     def test_flat_and_domain_grouped_layouts_extract_the_same_types(self) -> None:
         for layout in ("main/default", "main/default/billing"):
             with self.subTest(layout=layout):

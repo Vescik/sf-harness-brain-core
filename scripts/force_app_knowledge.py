@@ -110,7 +110,13 @@ PERMISSION_TOKEN_RE = re.compile(r"\$Permission\.([A-Za-z][A-Za-z0-9_]*)")
 # Source-token heuristics for Apex usage. These read declared source only and are best-effort: they
 # do not resolve variable types or dynamic SOQL, so the automation-inventory claim records an
 # explicit heuristic limitation.
-SOQL_FROM_RE = re.compile(r"\bFROM\s+([A-Za-z][A-Za-z0-9_]*)", re.IGNORECASE)
+# A bare `FROM x` also matches prose inside string literals ("name defaulted from account"),
+# and string literals cannot simply be stripped because dynamic SOQL lives in them
+# (Database.query('SELECT Id FROM Account')). Binding FROM to its SELECT keeps dynamic SOQL
+# and rejects prose. The bounded gap stops one SELECT from claiming a FROM far below it.
+SOQL_FROM_RE = re.compile(
+    r"\bSELECT\b[\s\S]{0,600}?\bFROM\s+([A-Za-z][A-Za-z0-9_]*)", re.IGNORECASE
+)
 DML_RE = re.compile(r"\b(insert|update|upsert|delete|undelete)\b", re.IGNORECASE)
 APEX_CALL_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]{2,})\.[A-Za-z_][A-Za-z0-9_]*\s*\(")
 # Inline SOQL blocks for field-level extraction (standard fields included — the FROM object gives
@@ -1570,14 +1576,20 @@ class ForceAppKnowledge:
         )
 
     def parse_apex(self, path: Path, metadata_type: str) -> dict[str, Any]:
-        source = path.read_text(encoding="utf-8", errors="replace")
+        raw_source = path.read_text(encoding="utf-8", errors="replace")
+        # Every token scan below runs over code lines only. Prose is not code: a comment
+        # reading "selected from the ledger" made SOQL_FROM_RE report an object named `the`,
+        # and "Base class for all trigger handlers" named a class `for`. Line-level filtering
+        # keeps dynamic SOQL in string literals (Database.query('... FROM X')) intact, which
+        # wholesale comment stripping would not.
+        source = code_lines(raw_source)
         references: list[dict[str, Any]] = [
             {"kind": "object-token", "target": value}
             for value in sorted(set(CUSTOM_OBJECT_RE.findall(source)))
         ]
         trigger_object: str | None = None
         if metadata_type == "ApexTrigger":
-            match = TRIGGER_RE.search(code_lines(source))
+            match = TRIGGER_RE.search(source)
             name = match.group(1) if match else path.stem
             facts: dict[str, Any] = {}
             if match:
@@ -1588,7 +1600,7 @@ class ForceAppKnowledge:
                 }
                 references.append({"kind": "operates-on", "target": trigger_object})
         else:
-            match = CLASS_RE.search(code_lines(source))
+            match = CLASS_RE.search(source)
             name = match.group(2) if match else path.stem
             facts = {"declarationKind": match.group(1).lower() if match else "unknown"}
             # Header facts: sharing posture, inheritance, and the file-level annotation set.
