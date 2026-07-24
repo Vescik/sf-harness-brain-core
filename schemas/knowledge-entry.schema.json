@@ -33,7 +33,8 @@
         "namespace": {
           "type": ["string", "null"],
           "pattern": "^[A-Za-z][A-Za-z0-9_]{0,14}$",
-          "description": "Package namespace; null for subscriber-owned (canonical id segment 'c')."
+          "not": { "const": "c" },
+          "description": "Package namespace; null for subscriber-owned (canonical id segment 'c'). The literal value 'c' is rejected: it is reserved as the subscriber sentinel and is Salesforce's default LWC namespace (contract §2.1, review R2-4)."
         }
       }
     },
@@ -103,28 +104,37 @@
     },
     "intentionalErrors": {
       "type": "array",
-      "description": "Flow only; validated in detail by the Flow profile schema. kind is pinned here so no other error class can enter the envelope.",
+      "description": "Flow only; validated in detail by the Flow profile schema. kind AND originTag are pinned here: originTag is the structural discriminator verified by the executor against the flow XML's <customErrors> element class — a relabeled screen-validation or fault-path record fails it (contract §7, review R2-6).",
       "items": {
         "type": "object",
-        "required": ["kind"],
-        "properties": { "kind": { "const": "flow-custom-error" } }
+        "required": ["kind", "originTag"],
+        "properties": {
+          "kind": { "const": "flow-custom-error" },
+          "originTag": { "const": "customErrors" }
+        }
       }
     },
     "extractionCoverage": {
       "type": "object",
       "additionalProperties": { "enum": ["full", "partial", "generic"] },
-      "minProperties": 1,
-      "description": "Per-section parser coverage keyed by frontmatter section name (e.g. typeFacts, intentionalErrors)."
+      "required": ["typeFacts"],
+      "description": "Per-section parser coverage keyed by frontmatter section name. Required for EVERY populated section (executor-enforced; typeFacts pinned here, intentionalErrors pinned via allOf below). Digest-bound inside factsDigest (contract §5.1, review R1-6)."
     },
     "assurance": {
       "type": "object",
       "additionalProperties": { "enum": ["source-exact", "source-derived-heuristic"] },
-      "minProperties": 1,
-      "description": "Per-section assurance markers. Heuristic output must never be presented as observed or complete."
+      "required": ["typeFacts"],
+      "description": "Per-section assurance markers; section marker = weakest member; per-edge markers required inside references[] (profile schemas). Digest-bound inside factsDigest. Heuristic output must never be presented as observed or complete (reviews R1-6, R2-9)."
     },
     "limitations": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 },
+      "description": "ALL limitations are digest-bound (contract §5.1); no materiality sub-classes (review R1-7)."
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 },
+      "description": "Advisory, digest-EXCLUDED free text. Consumers must never present notes as approved content (review R1-7/R1-12)."
     },
     "keywords": {
       "type": "array",
@@ -146,7 +156,7 @@
       "properties": {
         "reviewedContentDigest": {
           "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }],
-          "description": "canonical_digest({identity, profileMajor, factsDigest, semanticsDigest}) captured at approval; null while draft. Serving as approved-current requires this to equal the recomputation (contract §5.3, §5.5)."
+          "description": "canonical_digest({identity, profileMajor, factsDigest, semanticsDigest, sensitivity}) captured at approval; null while draft. The in-file approval block is a MIRROR: the append-only ledger (.ai/knowledge/artifacts-ledger.jsonl) is authoritative, and approved-current additionally requires this digest to be the latest ledger record for the identity (contract §4, §6.1)."
         },
         "reviewedBy": { "type": ["string", "null"], "minLength": 3, "maxLength": 120 },
         "reviewedAt": { "type": ["string", "null"], "format": "date-time" },
@@ -187,6 +197,18 @@
       },
       "then": {
         "properties": { "intentionalErrors": { "maxItems": 0 } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "intentionalErrors": { "minItems": 1 } },
+        "required": ["intentionalErrors"]
+      },
+      "then": {
+        "properties": {
+          "extractionCoverage": { "required": ["typeFacts", "intentionalErrors"] },
+          "assurance": { "required": ["typeFacts", "intentionalErrors"] }
+        }
       }
     }
   ],

@@ -99,7 +99,29 @@ P5  parity certification, cutover, v1 repo-claim path retirement
 | Determinism suite (new) | same source tree → identical digests on macOS/Linux/Windows; case-fold collision fails closed; reserved-name handling | P1 |
 | Fixture families | two independent `Harness*` metadata families (closes §30 follow-up) | P0 (plan) / P1 (data) |
 
-## 7. Completeness check
+## 7. Review-driven additions (contract v1.1, 2026-07-24)
+
+Rows added after the three-reviewer adversarial pass (verdicts in
+`docs/knowledge-one-file-review-package.md` §6):
+
+| Touchpoint | Change | Phase |
+|---|---|---|
+| Approval ledger | new governed `.ai/knowledge/artifacts-ledger.jsonl` (append-only; executor-written; validator checks monotonic sequence + append-only history; lane computation requires ledger-latest) | P1 |
+| `entry-approve` digest pinning | command carries exact digest set; safety-hook `ask` displays it; executor fails chunk on mismatch (TOCTOU) | P1 |
+| Review surface | executor-rendered approval artifact `output/knowledge-approvals/<chunkId>.md`; agent prose never the review surface | P1 |
+| Validator performance budget | `validate_harness.py` reserved-token sweep over `.ai/**` and the 30s subprocess timeout are over budget by construction at 10–15k entries — dedicated perf budget row: scoped/incremental sweep, revised timeouts, Windows CI wall-time gate at target scale | P1 |
+| `tests/test_knowledge_contract.py` live-leak test | extend reserved-token scan to `.ai/knowledge/artifacts/` + ledger; note `DOMAIN_FILES` marker pins break at domain-file retirement | P1 (extend), P5 (retire pins) |
+| Rule-registry SHA rebind | SAFE-CLAIM v2 text edit changes `copilot-instructions.md` bytes → `rule-registry.yaml` regeneration + in-flight work-record ruleRef re-pin/grandfather policy | P3 |
+| `coverage` / `stale-report` / `dashboard` commands | claim-scoped reporting misreports after entry migration — repoint or dual-report | P2–P5 |
+| `config/repo-map-seed.json` + repo-map | `.ai/knowledge` description ("canonical claims/evidence/reviews") becomes false at P1 — update seed + regenerate | P1 |
+| Chunk stamping journal | per-file stamping with ledger `chunkId` resume point; crash/`PermissionError` recovery test on Windows | P1 |
+| Onboarding/backfill plan | staged per-domain draft waves with entry-count ramp against the validator budget; initial mass-draft never lands as one commit; EXPECTED_COUNTS/repo-map CI gotchas itemized for the P4 prompt consolidation | P1 (plan), P4 |
+| Same-change wiring + quarantine | governed-path pattern, guard flag allowlists, hook trap, and parser-contract pins land in the SAME change that creates the artifacts dir; pre-existing files invalid until re-issued through the executor (ledger enforces) | P1 |
+| Profile PATCH regeneration waves | frontmatter rewrite waves (no lane change) must be coalesced: one regeneration commit per profile bump with machine-produced diff summary | P1 rule, ongoing |
+| v1 freeze at P2 | registry `propose` rejects metadata-repository-evidence claims for entry-home claimTypes (contract §1 table) | P2 |
+| Cross-system contradiction surface | unified query + `verify-citations` must report entry-vs-claim conflicts as `CONTESTED`; shadowing verdict `shadowed-by-entry` in `validate_claim_refs` | P2/P3 |
+
+## 8. Completeness check
 
 Every touchpoint reported by the three sweeps appears above with a phase. Items examined and
 consciously **unassigned** (no change in any phase): `tool-capabilities.md`,

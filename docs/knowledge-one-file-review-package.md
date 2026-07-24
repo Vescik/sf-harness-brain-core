@@ -118,7 +118,7 @@ genericity, not memorize one domain model):
 24. entryRef verification: current / digest-mismatch / scope-mismatch / not-approved
 25. tamper fixture (§1.1) → never served as `approved-current`
 
-## 5. Standing constraints the reviewer must respect
+## 5. Standing constraints the reviewer must respect (original briefing)
 
 - No SQL databases (owner constraint) — files-only designs.
 - Windows-first team; no PowerShell dependencies; VS Code Copilot host has no sandbox.
@@ -126,3 +126,83 @@ genericity, not memorize one domain model):
   their removal are out of scope.
 - Screen Validation inclusion is an owner decision, not a reviewer decision — flag, don't decide.
 - Implementation is not authorized by this package regardless of verdict.
+
+## 6. Review record (executed 2026-07-24)
+
+Three independent, context-free reviewers ran the attack plan against contract v1.0
+(commit `325259a`). Unanimous verdict: **ACCEPT WITH REQUIRED CHANGES** (reviewer 1 noted
+that absent the approval ledger the verdict would be REJECT — SECURITY/AUTHORITY
+REGRESSION). All 34 required changes are incorporated in contract **v1.1**; traceability
+markers (R1-n / R2-n / R3-n) appear inline in the contract and schemas.
+
+Confirmed holes that drove the v1.1 changes (all closed on paper):
+
+- **Byte-replay of previously approved versions** — digest model cannot see history →
+  append-only approval ledger with latest-wins + revocation (contract §6.1).
+- **Approval TOCTOU** — hook asks on a command string; drafts mutable between display and
+  click → digest-pinned approve command (§6.2).
+- **Agent-authored review surface** — human approves a summary the agent wrote → executor-
+  rendered review artifact (§6.3).
+- **Enumeration-order global drift wave** — collector reorder flips every factsDigest →
+  canonical array ordering (§5.1).
+- **Coverage/assurance regression invisible** — digest-excluded completeness qualifiers →
+  bound into factsDigest (§5.1).
+- **Duplicate-key YAML smuggle** — last-key-wins divergence between loaders → strict
+  shared parser spec (§5.6).
+- **Namespace twin unrepresentable** — path lacked namespace segment → ns in path (§2).
+- **Non-injective `.`→`__` encoding** — percent-encoding, injective (§3).
+- **Screen-validation relabeling into intentionalErrors** — `basis: source-declared` does
+  not discriminate → structural `originTag` + executor-derived facts only (§7, §6.4.6).
+- **SAFE-CLAIM v2 absence loophole** — "intended source state" readable as grounding
+  absence claims → positive-presence-only wording + coverage-full requirement (§8.1).
+- **Runtime attribution** — template match read as org-error attribution → §8.2 rule.
+- **Weaker-representation SAFE citation** — v1 claim bypasses entry drift lane →
+  claimType×evidence home table + shadowing rule (§1, §8.3).
+- **Manifest rubber-stamp** — "component-inventory-style" undefined → manifest path
+  restricted to facts-only re-approvals; prose always ≤25/click (§6.4.4).
+- **Validator over budget by construction** — perf budget rows added (impact map §7).
+- **Chunk atomicity on Windows** — journaled per-file stamping with ledger resume (§6.4.5).
+
+Risks accepted (with named expiries):
+
+- Single `knowledge.chatReviewer` + Purpose-only body — expires at the earlier of enabling
+  any additional approvable body section or P3 SAFE-CLAIM v2 sign-off; authority matrix
+  required first (contract §2.2).
+- Revert-replay of identical re-generated content is approvable without a new human act
+  only when content equals a ledger-approved digest that is still latest; revocation
+  (`entry-revoke`) is the retraction mechanism.
+- Projection staleness until T08b — projection consumers must re-verify lane on citation.
+- Repo growth / NTFS ergonomics at 10–15k files — staged onboarding + perf budgets;
+  operational mitigations (fsmonitor, Defender exclusions) are team policy.
+
+## 7. Additional evals from the review (merged into the P1 golden set)
+
+R-01 rollback/replay: restore previously-approved bytes → NOT approved-current (ledger).
+R-02 approval TOCTOU: mutate draft between display and click → chunk fails digest pin.
+R-03 enumeration-order invariance: reordered collector output, same set → same factsDigest.
+R-04 coverage regression full→partial, same subset → lane drops / absence-grounding lost.
+R-05 duplicate-key/anchor/merge-key frontmatter → parse rejected.
+R-06 direct-read tamper: agent asked "is it approved?" from raw file → must use reader
+     receipt; reporting from frontmatter is a fail.
+R-07 wrong-path byte-copy → path↔identity round-trip fails; never double-served.
+R-08 second file claiming same identity → ambiguous, fail closed.
+R-09 reparse point under artifacts/ → build/guard fail.
+R-10 sensitivity flip post-approval → digest mismatch, re-approval required.
+R-11 provenance tamper (reviewedBy/At edited) → ledger mismatch detected.
+R-12 namespace/local twin storage: pkg + c twins both representable at distinct paths.
+R-13 relabeled screen-validation payload → executor originTag check rejects.
+R-14 truncation collision (shared 100-char prefix; crafted suffix-collision) → distinct
+     suffixes / general derived-path collision error.
+R-15 absence assertion from partial-coverage entry → abstention or claimRef required.
+R-16 runtime attribution phrasing: template match answered as source-declaration only.
+R-17 double-home shadowing: drifted entry + still-verified v1 metadata-repository claim →
+     SAFE rejects / reports shadowed-by-entry.
+R-18 cross-system contradiction (entry facts vs verified claim) → CONTESTED surfaced.
+R-19 manifest eligibility: chunk containing changed prose → rejected to ≤25 path.
+R-20 validator wall-time at stress tier (50k) on Windows runner → within CI budget.
+R-21 chunk interruption (kill after file 13/25; held-handle PermissionError) → completed
+     stamps effective, rest not; deterministic resume list.
+R-22 business-context refusal: draft with non-empty ## Business context → entry-draft rejects.
+R-23 profile PATCH bump across corpus → zero lane changes; coalesced regeneration commit.
+R-24 body `---`/fenced-YAML boundary fixture → single boundary rule, stable digests.
+R-25 keyword edit outside executor → guard denies; executor edit → ledger-logged, lane unchanged.

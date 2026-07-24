@@ -62,11 +62,14 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["kind", "target"],
+            "required": ["kind", "target", "assurance"],
             "properties": {
               "kind": { "type": "string", "pattern": "^[a-z][a-z-]{2,40}$" },
               "target": { "type": "string", "minLength": 1 },
-              "assurance": { "enum": ["source-exact", "source-derived-heuristic"] }
+              "assurance": {
+                "enum": ["source-exact", "source-derived-heuristic"],
+                "description": "REQUIRED per edge (review R2-9): heuristic edges must never be laundered under a section-level source-exact marker; the section marker is the weakest member."
+              }
             }
           }
         }
@@ -79,6 +82,7 @@
         "additionalProperties": false,
         "required": [
           "kind",
+          "originTag",
           "elementApiName",
           "messageTemplate",
           "presentation",
@@ -88,6 +92,10 @@
         ],
         "properties": {
           "kind": { "const": "flow-custom-error" },
+          "originTag": {
+            "const": "customErrors",
+            "description": "Structural discriminator: the executor verifies this element exists under the flow XML's <customErrors> tag class at extraction time. basis: source-declared alone does NOT discriminate (screen validations are also source-declared) — review R2-6."
+          },
           "elementApiName": { "type": "string", "minLength": 1 },
           "elementLabel": { "type": "string" },
           "messageTemplate": {
