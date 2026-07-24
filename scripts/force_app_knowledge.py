@@ -141,7 +141,13 @@ APEX_VAR_DECL_RE = re.compile(
 # Apex declaration facts: sharing posture, annotations, inheritance, and test markers read from
 # the class header. Source-token level, but the header grammar is regular enough to be reliable.
 APEX_SHARING_RE = re.compile(r"\b(with|without|inherited)\s+sharing\b", re.IGNORECASE)
-APEX_ANNOTATION_RE = re.compile(r"@([A-Za-z][A-Za-z0-9_]*)")
+# An annotation only counts when it opens a token: preceded by line start, whitespace or `(`.
+# `user@example.com` in a comment therefore no longer registers as an annotation, and the
+# per-line filter below drops ApexDoc tags (`@description`, `@param`) that live inside
+# comment blocks. Verified against real package source, where the naive pattern reported
+# `description` 39 times and an email domain once, against 25 genuine annotations.
+APEX_ANNOTATION_RE = re.compile(r"(?:(?<=^)|(?<=[\s(]))@([A-Za-z][A-Za-z0-9_]*)")
+APEX_COMMENT_LINE_RE = re.compile(r"^\s*(?:\*|//|/\*)")
 APEX_EXTENDS_RE = re.compile(r"\bextends\s+([A-Za-z][A-Za-z0-9_]*)")
 APEX_IMPLEMENTS_RE = re.compile(r"\bimplements\s+([A-Za-z0-9_.,<>\s]+?)\s*\{")
 APEX_TEST_RE = re.compile(r"@isTest\b|\btestMethod\b", re.IGNORECASE)
@@ -1591,7 +1597,12 @@ class ForceAppKnowledge:
             if APEX_TEST_RE.search(source):
                 facts["isTest"] = True
         annotations = sorted(
-            {value for value in APEX_ANNOTATION_RE.findall(source)}
+            {
+                value
+                for line in source.splitlines()
+                if not APEX_COMMENT_LINE_RE.match(line)
+                for value in APEX_ANNOTATION_RE.findall(line)
+            }
         )
         if annotations:
             facts["annotations"] = annotations
@@ -4459,11 +4470,16 @@ class ForceAppKnowledge:
                     diagnostics.append(
                         {"severity": "error", "path": self.relative(path), "message": str(exc)}
                     )
+        # Directory-routed source types are discovered anywhere under the package directory.
+        # SFDX projects commonly group metadata per domain (main/default/<domain>/classes/...),
+        # and a hard-coded main/default/<folder> glob silently skipped every such class: they
+        # fell through to the generic handler as `Cls`/`Trigger` with no references at all,
+        # so the whole Apex usage registry came out empty on real projects.
         for folder, metadata_type, suffix in (
             ("classes", "ApexClass", ".cls"),
             ("triggers", "ApexTrigger", ".trigger"),
         ):
-            for path in sorted((self.source_root / "main/default" / folder).glob(f"*{suffix}")):
+            for path in sorted(self.source_root.rglob(f"{folder}/*{suffix}")):
                 try:
                     components.append(self.parse_apex(path, metadata_type))
                     handled.add(path)
@@ -4475,7 +4491,7 @@ class ForceAppKnowledge:
             ("pages", "ApexPage", ".page"),
             ("components", "ApexComponent", ".component"),
         ):
-            for path in sorted((self.source_root / "main/default" / folder).glob(f"*{suffix}")):
+            for path in sorted(self.source_root.rglob(f"{folder}/*{suffix}")):
                 try:
                     components.append(self.parse_visualforce(path, metadata_type))
                     handled.add(path)
@@ -4491,7 +4507,7 @@ class ForceAppKnowledge:
                 diagnostics.append(
                     {"severity": "error", "path": self.relative(path), "message": str(exc)}
                 )
-        for path in sorted((self.source_root / "main/default/email").rglob("*.email")):
+        for path in sorted(self.source_root.rglob("email/**/*.email")):
             try:
                 components.append(self.parse_email_template(path))
                 handled.add(path)
@@ -4523,8 +4539,7 @@ class ForceAppKnowledge:
                         {"severity": "error", "path": self.relative(path), "message": str(exc)}
                     )
         for folder, parser in (("lwc", self.parse_lwc), ("aura", self.parse_aura)):
-            base = self.source_root / "main/default" / folder
-            if base.is_dir():
+            for base in sorted(path for path in self.source_root.rglob(folder) if path.is_dir()):
                 for bundle in sorted(path for path in base.iterdir() if path.is_dir()):
                     try:
                         components.append(parser(bundle))

@@ -3333,3 +3333,89 @@ class CriteriaInfrastructureTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NestedSourceLayoutTests(unittest.TestCase):
+    """Domain-grouped SFDX layouts must extract exactly like the flat one.
+
+    Regression: directory-routed types (Apex, Visualforce, LWC/Aura, email templates) were
+    globbed from a hard-coded `main/default/<folder>`, so a project grouping metadata per
+    domain (`main/default/<domain>/classes/...`) silently produced `Cls`/`Trigger`/`Js`
+    components with no references — the entire Apex usage registry came out empty. Found on
+    real package metadata, not in synthetic fixtures.
+    """
+
+    def build(self, relative: str) -> dict:
+        temporary = tempfile.TemporaryDirectory(prefix="nested-layout-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        classes = root / "force-app" / relative / "classes"
+        classes.mkdir(parents=True)
+        (classes / "OrderService.cls").write_text(
+            "public with sharing class OrderService {\n"
+            "    public void run() { List<Order__c> rows = [SELECT Id FROM Order__c]; update rows; }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        (classes / "OrderService.cls-meta.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<apiVersion>62.0</apiVersion><status>Active</status></ApexClass>\n",
+            encoding="utf-8",
+        )
+        triggers = root / "force-app" / relative / "triggers"
+        triggers.mkdir(parents=True)
+        (triggers / "OrderTrigger.trigger").write_text(
+            "trigger OrderTrigger on Order__c (before insert) {}\n", encoding="utf-8"
+        )
+        import subprocess
+
+        for command in (
+            ["git", "init", "-q"],
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"],
+        ):
+            subprocess.run(command, cwd=root, check=True, capture_output=True)
+        for name in ("force-app-knowledge-inventory.schema.json",):
+            (root / "schemas").mkdir(exist_ok=True)
+            shutil.copy2(ROOT / "schemas" / name, root / "schemas" / name)
+        components = {}
+        for component in ForceAppKnowledge(root).inventory()["components"]:
+            components.setdefault(component["metadataType"], []).append(component)
+        return components
+
+    def test_apexdoc_tags_and_emails_are_not_annotations(self) -> None:
+        """Regression from real package source: the naive `@word` scan reported ApexDoc tags
+        (`@description` x39) and an email domain as Apex annotations, drowning the 25 real
+        ones. Only token-opening `@Name` outside comment lines counts."""
+        temporary = tempfile.TemporaryDirectory(prefix="apex-annotations-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        classes = root / "force-app/main/default/classes"
+        classes.mkdir(parents=True)
+        (classes / "Documented.cls").write_text(
+            "/**\n"
+            " * @description Selector for Account, owned by someone@example.com\n"
+            " * @param input the value\n"
+            " * @return nothing\n"
+            " */\n"
+            "@IsTest\n"
+            "public with sharing class Documented {\n"
+            "    @TestVisible private static String note = 'contact us at team@example.com';\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        component = ForceAppKnowledge(root).parse_apex(classes / "Documented.cls", "ApexClass")
+        self.assertEqual(["IsTest", "TestVisible"], component["facts"]["annotations"])
+
+    def test_flat_and_domain_grouped_layouts_extract_the_same_types(self) -> None:
+        for layout in ("main/default", "main/default/billing"):
+            with self.subTest(layout=layout):
+                components = self.build(layout)
+                self.assertIn("ApexClass", components)
+                self.assertIn("ApexTrigger", components)
+                self.assertNotIn("Cls", components)
+                self.assertNotIn("Trigger", components)
+                apex = components["ApexClass"][0]
+                self.assertEqual("62.0", apex["facts"].get("apiVersion"))
+                self.assertTrue(apex["references"], "nested Apex must still yield usage references")
