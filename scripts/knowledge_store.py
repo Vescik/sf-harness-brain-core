@@ -370,15 +370,26 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any
         result["lane"] = "not-effective"
         result["problems"].append(f"path/identity round-trip failed (expected {expected.relative_to(ROOT)})")
         return result
+    if frontmatter["lifecycle"]["state"] == "draft":
+        # A draft is never served, so its outstanding work is not an integrity failure. An
+        # entry still awaiting its description belongs in `draft` with the reason attached —
+        # reporting it as `not-effective` made ordinary unfinished work look like corruption.
+        result["lane"] = "draft"
+        result["reviewedContentDigest"] = (
+            reviewed_content_digest(frontmatter, body) if not result["problems"] else None
+        )
+        result["sourceTreeDigest"] = frontmatter["scope"]["sourceTreeDigest"]
+        result["profile"] = (
+            f"{frontmatter['profile']['id']}@{frontmatter['profile']['version'].split('.', 1)[0]}"
+        )
+        return result
     if result["problems"]:
         result["lane"] = "not-effective"
         return result
     recomputed = reviewed_content_digest(frontmatter, body)
     result["reviewedContentDigest"] = recomputed
     ledger_record = latest.get(identity)
-    if frontmatter["lifecycle"]["state"] == "draft":
-        result["lane"] = "draft"
-    elif ledger_record is None:
+    if ledger_record is None:
         result["lane"] = "not-effective"
         result["problems"].append("approved state without any ledger record (quarantined)")
     elif ledger_record["action"] == "revoke":
@@ -889,6 +900,77 @@ def classify_chunk(resolved: list[tuple[str, dict[str, Any], str, str]], latest:
     return {"proseChanges": sorted(prose), "factsOnly": sorted(facts_only)}
 
 
+def command_entry_context(args: argparse.Namespace) -> dict[str, Any]:
+    """Everything needed to WRITE a description, in one read-only call.
+
+    A description is an analysis of the artifact, not a copy of its `description` element —
+    most real components have none. So this returns the artifact's own source, its extracted
+    facts, and how the rest of the package uses it, because "what this component does" is
+    usually only answerable from the definition plus its callers."""
+
+    assert_no_reparse_points()
+    metadata_type, namespace_segment, full_name = args.identity.split(":", 2)
+    namespace = None if namespace_segment == "c" else namespace_segment
+    path = entry_path(metadata_type, namespace, full_name)
+    if not path.is_file():
+        raise StoreError(f"no entry for {args.identity}; draft it first")
+    frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+
+    sources = []
+    for fragment in frontmatter["source"]["fragments"]:
+        source_path = ROOT / fragment["path"]
+        text = source_path.read_text(encoding="utf-8", errors="replace") if source_path.is_file() else ""
+        truncated = len(text) > args.max_source_chars
+        sources.append(
+            {
+                "path": fragment["path"],
+                "truncated": truncated,
+                "text": text[: args.max_source_chars],
+            }
+        )
+
+    # Reverse usage: who points at this artifact. An entry that only describes itself misses
+    # the half of "what it does" that lives in its callers.
+    identity = identity_of(metadata_type, namespace, full_name)
+    targets = {identity, full_name}
+    if "." in full_name:
+        targets.add(full_name.split(".", 1)[1])
+    latest = ledger_latest(read_ledger())
+    used_by: list[dict[str, Any]] = []
+    for other in all_entry_paths():
+        if other == path:
+            continue
+        try:
+            other_front, _ = split_entry(other.read_text(encoding="utf-8"))
+        except StoreError:
+            continue
+        other_subject = other_front["subject"]
+        other_identity = identity_of(
+            other_subject["metadataType"], other_subject.get("namespace"), other_subject["fullName"]
+        )
+        for edge in (other_front.get("typeFacts", {}).get("references") or []):
+            if edge.get("target") in targets:
+                used_by.append(
+                    {"source": other_identity, "kind": edge["kind"], "assurance": edge.get("assurance")}
+                )
+    return {
+        "outcome": "CONTEXT",
+        "identity": identity,
+        "describedYet": "<AGENT_" not in body,
+        "currentBody": body,
+        "typeFacts": frontmatter.get("typeFacts", {}),
+        "intentionalErrors": frontmatter.get("intentionalErrors", []),
+        "uses": frontmatter.get("typeFacts", {}).get("references", []),
+        "usedBy": sorted(used_by, key=lambda item: (item["source"], item["kind"])),
+        "source": sources,
+        "guidance": (
+            "Write 1-8 sentences stating what this component does, from the source above and "
+            "how it is used. Do not restate the facts, do not infer intent the source does not "
+            "support, and leave the gap visible if the source does not say why it exists."
+        ),
+    }
+
+
 def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
     """Write the agent-authored description into an existing entry.
 
@@ -1155,6 +1237,13 @@ def build_parser() -> argparse.ArgumentParser:
     approve = commands.add_parser("entry-approve", help="digest-pinned chat-approved promotion")
     approve.add_argument("--entry", action="append", default=None, help="<identity>:sha256:<digest>")
     approve.set_defaults(func=command_entry_approve)
+
+    context = commands.add_parser(
+        "entry-context", help="source, facts and reverse usage for writing a description"
+    )
+    context.add_argument("--identity", required=True)
+    context.add_argument("--max-source-chars", type=int, default=8000)
+    context.set_defaults(func=command_entry_context)
 
     describe = commands.add_parser(
         "entry-describe", help="write the agent-authored description into an existing entry"

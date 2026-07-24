@@ -154,6 +154,12 @@ APEX_SHARING_RE = re.compile(r"\b(with|without|inherited)\s+sharing\b", re.IGNOR
 # `description` 39 times and an email domain once, against 25 genuine annotations.
 APEX_ANNOTATION_RE = re.compile(r"(?:(?<=^)|(?<=[\s(]))@([A-Za-z][A-Za-z0-9_]*)")
 APEX_COMMENT_LINE_RE = re.compile(r"^\s*(?:\*|//|/\*)")
+# ApexDoc `@description` in the header block: the author stating what the class is for.
+# Declarative metadata carries the same thing in <description>; Apex keeps it in a comment,
+# which is why it has to be read from the comment rather than from code lines.
+APEXDOC_DESCRIPTION_RE = re.compile(
+    r"@description\s+(.+?)(?=\n\s*\*\s*@|\n\s*\*/)", re.DOTALL | re.IGNORECASE
+)
 APEX_EXTENDS_RE = re.compile(r"\bextends\s+([A-Za-z][A-Za-z0-9_]*)")
 APEX_IMPLEMENTS_RE = re.compile(r"\bimplements\s+([A-Za-z0-9_.,<>\s]+?)\s*\{")
 APEX_TEST_RE = re.compile(r"@isTest\b|\btestMethod\b", re.IGNORECASE)
@@ -1634,6 +1640,12 @@ class ForceAppKnowledge:
             facts["annotations"] = annotations
         # Companion meta (`X.cls-meta.xml`): the inventory loop skips it as a component, but its
         # apiVersion/status are the only source of "is this class deployed as Active".
+        header_doc = APEXDOC_DESCRIPTION_RE.search(raw_source)
+        if header_doc:
+            documented = re.sub(r"\s*\n\s*\*\s*", " ", header_doc.group(1))
+            documented = re.sub(r"\s+", " ", documented).strip()
+            if documented:
+                facts["description"] = documented
         meta_path = path.with_name(path.name + "-meta.xml")
         if meta_path.is_file():
             try:
@@ -3026,6 +3038,7 @@ class ForceAppKnowledge:
         facts, references = self._parse_access_bundle(root)
         facts = {
             "label": direct_text(root, "label"),
+            "description": direct_text(root, "description"),
             "license": direct_text(root, "license"),
             "hasActivationRequired": boolean(direct_text(root, "hasActivationRequired")),
             **facts,

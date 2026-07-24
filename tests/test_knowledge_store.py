@@ -757,3 +757,20 @@ class AgentDescriptionTests(KnowledgeStoreTests):
         self.assertEqual(before["typeFacts"], after["typeFacts"])
         self.assertEqual(before["intentionalErrors"], after["intentionalErrors"])
         self.assertIn("Rewritten description", body)
+
+
+class DraftLaneHonestyTests(KnowledgeStoreTests):
+    """Unfinished work and broken work must not look the same."""
+
+    def test_undescribed_draft_reports_draft_with_the_reason(self) -> None:
+        drafted = self.draft(purpose_file=None)
+        lane = self.lane_of(drafted["identity"])
+        self.assertEqual("draft", lane["lane"])
+        self.assertTrue(any("sentinel" in problem for problem in lane["problems"]))
+
+    def test_tampered_approved_entry_still_reports_not_effective(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        path = self.temp / drafted["path"]
+        path.write_text(path.read_text(encoding="utf-8").replace("right queue", "other queue"), encoding="utf-8")
+        self.assertEqual("not-effective", self.lane_of(drafted["identity"])["lane"])

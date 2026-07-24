@@ -110,6 +110,10 @@
               }
             }
           }
+        },
+        "description": {
+          "type": "string",
+          "description": "The author's own statement of intent, taken verbatim from source (ApexDoc @description or the metadata <description> element)."
         }
       }
     },
