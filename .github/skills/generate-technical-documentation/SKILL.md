@@ -41,6 +41,17 @@ large or heterogeneous. Do not infer which manifest members belong to the work i
 8. Write a collision-safe draft under `output/documentation/<itemId>.md`; never overwrite an
    accepted/reviewed artifact without confirmation.
 
+## Knowledge grounding: two layers
+
+Query both layers through [search-knowledge](../search-knowledge/SKILL.md) and keep their
+authorities apart. Approved one-file Knowledge Entries ground intended repository-source facts
+(what a component declares, what touches a field) and are cited as `entryRef` with the entry
+path and digests. The claim registry grounds org state, runtime behavior, business meaning, and
+package/vendor facts, cited as `claimRef` + `evidenceRef`. Where an approved entry exists for a
+subject it shadows a metadata-repository claim about the same fact (SAFE-CLAIM-001 v2) — cite
+the entry. Absence, deployed state, and semantics are never grounded by an entry, and a missing
+search hit is never proof of absence.
+
 ## Return
 
 Return `recordId`, draft path, component counts, missing/ambiguous components, source

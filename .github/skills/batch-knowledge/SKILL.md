@@ -15,6 +15,15 @@ Requires the `config-investigator` role. Exactly one metadata type per batch —
 (e.g. Flow and CustomObject) in one run. The workflow is a loop, not a line: a failed
 verification returns to the phase that produced the defect.
 
+## Routing: entries vs claims
+
+Batch conversion covers metadata types whose repository facts still live in the claim registry.
+Profiled types (Flow, CustomField) are drafted as one-file Knowledge Entries instead —
+`python scripts/knowledge_store.py entry-draft` per artifact, then one
+`/approve-drafts-knowledge` session per chunk (chunks carrying prose changes stay within the
+25-entry cap). Do not batch-propose profiled repository claims: once this workspace holds
+entries the registry refuses them and names the entry route.
+
 ## Phase 1 — DISCOVER
 
 1. Run `python scripts/preflight.py --capability metadata` and

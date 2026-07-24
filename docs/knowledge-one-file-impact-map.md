@@ -129,7 +129,10 @@ Rows added after the three-reviewer adversarial pass (verdicts in
 | P1 executor + enforcement wiring | **done** | `scripts/knowledge_store.py`; guard/hook/validator/CI wiring; 19 executor tests |
 | P3 SAFE-CLAIM v2 + entryRef | **done** (owner-approved 2026-07-24) | kernel rule v2; `validate_entry_refs`, `bind-entry`, shadowing; additive `entryRefs[]` in 3 envelope schemas |
 | P2 search engine (T08b) | **done** | `scripts/knowledge_search.py` (generation cache, Unicode/Salesforce analyzer, BM25F, typed facets, relation graph, FlowCustomError mode, capabilities); 28 golden-query tests |
-| P2 consumer repointing | open | `/search-knowledge` and citing skills still call the v1 registry; unified surface is the next step |
+| P2 consumer repointing | **done** | `/search-knowledge` routes both layers; solution-design, principles check, feature coverage, and technical documentation carry the two-layer grounding rule |
+| P2 v1 freeze | **done** | `enforce_entry_home_freeze` in the registry, scoped to profiled types in workspaces that hold entries |
+| Approval entry point | **done** | `/approve-drafts-knowledge` + `approve-knowledge-drafts` skill + executor-rendered `entry-review` |
+| Normative template | **done** | `.ai/templates/knowledge-entry.md` rewritten for both record shapes |
 | P4 prompt consolidation | open | batch with the test-case-creator removals (count pins 23/24 → 21/22) |
 | P5 cutover | open | needs real-package pilot parity data; no big-bang delete |
 

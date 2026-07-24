@@ -17,6 +17,17 @@ Require the `config-investigator` role and a complete current inventory. Require
 file to be tracked and clean at the exact inventory commit. Stop on untracked/modified metadata,
 source-tree drift, parser errors, or changed `HEAD`.
 
+## Routing: entries vs claims
+
+Repository facts for metadata types with an implemented entry profile (Flow, CustomField)
+belong to the one-file Knowledge Entry store, not here: draft them with
+`python scripts/knowledge_store.py entry-draft --metadata-type <Type> --full-name <Name>` and
+promote them with `/approve-drafts-knowledge`. Once this workspace holds entries, the registry
+refuses profiled repository-only proposals and names the entry route in the error.
+
+This skill remains the path for every other metadata type's repository facts and for any claim
+backed by org, vendor, SME, or ADO evidence.
+
 ## Procedure
 
 1. Run `python scripts/force_app_knowledge.py draft`.

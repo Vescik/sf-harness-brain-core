@@ -29,6 +29,13 @@ knowledge about force-app source artifacts**. Deterministic home assignment is k
 | `automation-inventory`, `field-schema`, `object-existence`, `object-relation`, `component-relation`, `integration`, `object-ownership` | **entry-home**; v1 metadata-repository drafting frozen at P2 | **v1-home** (org-describe, tooling, SME, vendor legs stay v1) |
 | `reference-data`, `business-meaning`, `process`, `glossary`, `runtime-behavior`, `package-limitation`, and all remaining types | n/a | **v1-home**, unchanged |
 
+**Freeze scoping** (implemented T07 P2): the registry refuses a repository-only proposal for
+an entry-home claim type when — and only when — the metadata type has an implemented entry
+profile AND this workspace already holds entries. Freezing unconditionally would strand the
+repository facts of every metadata type whose profile has not shipped (2 of ~59 today), which is
+a capability regression rather than a migration. The freeze therefore widens automatically as
+profiles ship, and activates per workspace on adoption.
+
 **Shadowing rule** (review R3-2): once an entry exists for a subject, a v1 claim grounded in
 `metadata-repository` evidence may not ground a SAFE verdict for the same subject/predicate;
 `validate_claim_refs` reports it as `shadowed-by-entry` (P3 wiring). Cross-system

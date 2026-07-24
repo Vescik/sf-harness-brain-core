@@ -111,6 +111,17 @@ Goal: the change is proven, not asserted.
    Knowledge become proposed claims (delegate to Config Investigator) so the next design starts
    better grounded.
 
+## Knowledge grounding: two layers
+
+Query both layers through [search-knowledge](../search-knowledge/SKILL.md) and keep their
+authorities apart. Approved one-file Knowledge Entries ground intended repository-source facts
+(what a component declares, what touches a field) and are cited as `entryRef` with the entry
+path and digests. The claim registry grounds org state, runtime behavior, business meaning, and
+package/vendor facts, cited as `claimRef` + `evidenceRef`. Where an approved entry exists for a
+subject it shadows a metadata-repository claim about the same fact (SAFE-CLAIM-001 v2) — cite
+the entry. Absence, deployed state, and semantics are never grounded by an entry, and a missing
+search hit is never proof of absence.
+
 ## Return
 
 Return the phase reached and its status: `GROUNDED`, `DRAFTED`, `DESIGN VERIFIED`,

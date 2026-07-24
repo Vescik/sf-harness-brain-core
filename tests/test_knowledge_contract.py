@@ -248,6 +248,64 @@ class KnowledgeSchemaTests(unittest.TestCase):
         self.assertEqual([], errors, [error.message for error in errors])
 
 
+class EntryHomeFreezeTests(unittest.TestCase):
+    """T07 P2 freeze: repository facts for profiled metadata types belong to the entry store.
+
+    The freeze is deliberately scoped — it fires only where an alternative home exists, so a
+    metadata type without an entry profile keeps its v1 repository leg instead of losing it."""
+
+    def registry(self, with_entry: bool) -> KnowledgeRegistry:
+        temporary = tempfile.TemporaryDirectory(prefix="entry-freeze-test-")
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        (root / "schemas").mkdir()
+        for name in SCHEMA_FILES:
+            shutil.copy2(ROOT / "schemas" / name, root / "schemas" / name)
+        (root / "config").mkdir()
+        shutil.copy2(ROOT / "config/knowledge-policy.json", root / "config/knowledge-policy.json")
+        if with_entry:
+            entry_dir = root / ".ai/knowledge/artifacts/Flow/c"
+            entry_dir.mkdir(parents=True)
+            (entry_dir / "SomeFlow.md").write_text("---\n---\n\n", encoding="utf-8")
+        return KnowledgeRegistry(root)
+
+    def claim(self, metadata_type: str) -> dict:
+        return {
+            "claimType": "component-description",
+            "evidenceRefs": ["KEVD-X-1"],
+            "assertion": {"value": {"metadataType": metadata_type}},
+        }
+
+    def evidence(self, source_type: str) -> dict:
+        return {"KEVD-X-1": {"evidenceId": "KEVD-X-1", "sourceType": source_type}}
+
+    def test_profiled_repo_claim_is_refused_once_the_entry_store_is_in_use(self) -> None:
+        registry = self.registry(with_entry=True)
+        with self.assertRaises(ContractError) as ctx:
+            registry.enforce_entry_home_freeze(
+                self.claim("Flow"), self.evidence("metadata-repository"), {}
+            )
+        self.assertIn("entry-draft", str(ctx.exception))
+
+    def test_freeze_stays_off_until_the_workspace_adopts_entries(self) -> None:
+        registry = self.registry(with_entry=False)
+        registry.enforce_entry_home_freeze(
+            self.claim("Flow"), self.evidence("metadata-repository"), {}
+        )
+
+    def test_unprofiled_metadata_types_keep_their_v1_repository_leg(self) -> None:
+        registry = self.registry(with_entry=True)
+        registry.enforce_entry_home_freeze(
+            self.claim("ApexClass"), self.evidence("metadata-repository"), {}
+        )
+
+    def test_org_evidence_leg_is_never_frozen(self) -> None:
+        registry = self.registry(with_entry=True)
+        registry.enforce_entry_home_freeze(
+            self.claim("Flow"), self.evidence("salesforce-org-review"), {}
+        )
+
+
 class KnowledgeRegistryWorkflowTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="knowledge-registry-test-")

@@ -27,6 +27,26 @@ except ModuleNotFoundError:  # imported as scripts.knowledge_registry by unit te
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
 
+# Claim types whose repository-derived leg moved to one-file Knowledge Entries
+# (docs/knowledge-one-file-contract.md §1, SAFE-CLAIM-001 v2). Their org/vendor/SME legs stay
+# here; a proposal backed ONLY by metadata-repository receipts is routed to the entry store.
+ENTRY_HOME_CLAIM_TYPES = frozenset(
+    {
+        "automation-inventory",
+        "component-description",
+        "component-inventory",
+        "field-schema",
+        "integration",
+        "object-existence",
+        "object-ownership",
+        "object-relation",
+        "component-relation",
+    }
+)
+# Metadata types with an implemented entry profile (scripts/knowledge_store.py PROFILES).
+# The freeze below applies only to these: a type without a profile has no other home yet.
+ENTRY_PROFILED_METADATA_TYPES = frozenset({"Flow", "CustomField"})
+
 ACTIVE_CLAIM_STATUSES = {"proposed", "verified", "stale", "contested"}
 EFFECTIVE_CLAIM_STATUSES = {"verified"}
 SCOPE_FIELDS = (
@@ -1282,6 +1302,43 @@ class KnowledgeRegistry:
             raise ContractError(f"proposed claim references missing evidence: {missing}")
         atomic_yaml_write(path, record)
 
+    def enforce_entry_home_freeze(
+        self,
+        claim: dict[str, Any],
+        proposed_by_id: dict[str, Any],
+        existing_evidence: dict[str, Any],
+    ) -> None:
+        """Repository-derived facts are proposed as Knowledge Entries, not claims.
+
+        Frozen at T07 P2, but only where the entry store can actually hold the fact: the
+        metadata type must have an implemented entry profile AND this workspace must have
+        adopted the entry store. Freezing unconditionally would strand the repository facts
+        of every metadata type whose profile has not shipped yet — a capability regression,
+        not a migration. Legs backed by org, vendor, SME, or ADO receipts always stay here."""
+
+        if claim["claimType"] not in ENTRY_HOME_CLAIM_TYPES:
+            return
+        metadata_type = claim.get("assertion", {}).get("value")
+        metadata_type = metadata_type.get("metadataType") if isinstance(metadata_type, dict) else None
+        if metadata_type not in ENTRY_PROFILED_METADATA_TYPES:
+            return
+        artifacts_root = self.root / ".ai/knowledge/artifacts"
+        if not artifacts_root.is_dir() or not any(artifacts_root.rglob("*.md")):
+            return
+        source_types = set()
+        for evidence_ref in claim["evidenceRefs"]:
+            record = proposed_by_id.get(evidence_ref) or existing_evidence.get(evidence_ref)
+            if isinstance(record, dict) and record.get("sourceType"):
+                source_types.add(record["sourceType"])
+        if source_types and source_types == {"metadata-repository"}:
+            raise ContractError(
+                f"{metadata_type} repository facts belong to the one-file Knowledge Entry store, "
+                "which this workspace already uses: run "
+                "`python scripts/knowledge_store.py entry-draft` and approve with "
+                "/approve-drafts-knowledge (SAFE-CLAIM-001 v2). A claim here needs org, vendor, "
+                "SME, or ADO evidence."
+            )
+
     def propose(
         self,
         claim_file: Path,
@@ -1329,6 +1386,7 @@ class KnowledgeRegistry:
                 else existing_evidence[evidence_ref],
             )
 
+        self.enforce_entry_home_freeze(claim, proposed_by_id, existing_evidence)
         existing_claims = {str(record["claimId"]): record for _, record in self.records(self.claims)}
         references_with_candidate = dict(existing_claims)
         references_with_candidate[str(claim["claimId"])] = claim
