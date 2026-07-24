@@ -211,7 +211,7 @@
     },
     {
       "path": ".github/agents",
-      "purpose": "Five role agents with tools, handoffs, role-guard hooks"
+      "purpose": "Six role agents with tools, handoffs, role-guard hooks"
     },
     {
       "path": ".github/instructions",
@@ -295,6 +295,13 @@
       "description": "Bounded defect fix express lane — edit the diagnosed component in force-app, write a fix note; deployment stays human.",
       "name": "adhoc-fix",
       "path": ".github/prompts/adhoc-fix.prompt.md"
+    },
+    {
+      "agent": "knowledge-curator",
+      "argumentHint": "[identity=<MetadataType>:<ns|c>:<FullName>] [identity=...]",
+      "description": "Review and promote draft one-file Knowledge Entries; the executor renders the review surface and the human confirms the digest-pinned approval in chat.",
+      "name": "approve-drafts-knowledge",
+      "path": ".github/prompts/approve-drafts-knowledge.prompt.md"
     },
     {
       "agent": "config-investigator",
@@ -466,6 +473,11 @@
       "path": ".github/skills/adhoc-fix/SKILL.md"
     },
     {
+      "description": "Human-initiated promotion of draft one-file Knowledge Entries - renders the executor-authored review surface, presents the exact digest set, and runs the digest-pinned approval the human confirms in chat. Never approves content the human has not been shown.",
+      "name": "approve-knowledge-drafts",
+      "path": ".github/skills/approve-knowledge-drafts/SKILL.md"
+    },
+    {
       "description": "Five-phase batch conversion of one metadata type into governed Knowledge - discover the component set and existing claims, plan chunked work, verify the plan with the human, execute draft/describe/propose/chat-approve per chunk, and verify the resulting Knowledge. One metadata type per batch.",
       "name": "batch-knowledge",
       "path": ".github/skills/batch-knowledge/SKILL.md"
@@ -597,6 +609,7 @@
     ".github/instructions/organization-principles.instructions.md": "sha256:23712c8784dc60a2adf6c535cb4054af1bacb0018bd7d56c1ff52e482284193f",
     ".github/instructions/salesforce-best-practices.instructions.md": "sha256:8d286666f9736a2c84a4681d9c1c65c029e47473524494e54dad64ba5993a6ee",
     ".github/prompts/adhoc-fix.prompt.md": "sha256:8b7087012cda5242db4d728910d678617521d4f5c79eda4ea70b9d081a23ff18",
+    ".github/prompts/approve-drafts-knowledge.prompt.md": "sha256:92161400b4a355574c8d4e5ce6ba1988b7fce918d622ced968dce5e77ac639da",
     ".github/prompts/batch-knowledge.prompt.md": "sha256:b744b614968a26b22a59c3c9e368db0cd15f1253021bf7e3ef8b94f8c8cc3d7c",
     ".github/prompts/check-against-principles.prompt.md": "sha256:4dc93199dd92924bb294a38fa7db096e9a2f3e912889d944ca4da86cb325328f",
     ".github/prompts/curate-knowledge.prompt.md": "sha256:d2e07df1347a78dbe232b13b0b5ed3be3889b82d624c4c5c799c626d27adad16",
@@ -620,6 +633,7 @@
     ".github/prompts/tune-test-case-keywords.prompt.md": "sha256:d11c3e84e713b5ff69ea4e6b9d019d1ce0a6ad04a4ddf774fbdf2e48cf4de32e",
     ".github/prompts/update-relations.prompt.md": "sha256:9e00ee4a7dec4b17311663ec931168e170284584f3e98f21504c296e2f0c1e94",
     ".github/skills/adhoc-fix/SKILL.md": "sha256:a1bc18b1cd827cd3b65bafb0d30dac8d1a63feba8be0c3bd2e8a541f814a81f4",
+    ".github/skills/approve-knowledge-drafts/SKILL.md": "sha256:de3be0445b84e574f26dd864d44c7a43e8f9005c0e6868d5585beb9e959660b8",
     ".github/skills/batch-knowledge/SKILL.md": "sha256:8f440cd38231fed999ddf188cbc2dbc3f91004f87444f239ea6ff2849fb10cdb",
     ".github/skills/check-against-principles/SKILL.md": "sha256:343abc57d5ffdc1db7c96eda640dcf609d6590e45d69e1efd203a32fc39aa96a",
     ".github/skills/check-feature-coverage/SKILL.md": "sha256:6b56459883ce318d3fd8e4c9074afe4c2a96826162473510fdedc5d85d83faf2",
@@ -643,7 +657,7 @@
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
     ".github/skills/update-knowledge-base/SKILL.md": "sha256:b6da4a24d83116ef3dea64bbd49b57d3229f9a6ab68d09eb477c4bb771d02c7c",
     ".github/skills/update-relations/SKILL.md": "sha256:5c6e3f55a32f965edf5456033e89912598b8e2cf2c5a9152d4841420c2b3e121",
-    "config/repo-map-seed.json": "sha256:f973d95dd2cb42007f2e25ecb56d189cd0ed646ce5016d212a41197c41a8526b"
+    "config/repo-map-seed.json": "sha256:16c1d6dc23374ef4b610ec06f711c8403c3c3e8eddd1c13361520b6d7220a48a"
   },
-  "wordCount": 858
+  "wordCount": 871
 }

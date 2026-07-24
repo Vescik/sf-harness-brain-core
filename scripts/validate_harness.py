@@ -22,7 +22,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 6, "prompts": 23, "skills": 24, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 24, "skills": 25, "instructions": 3}
 # Reserved, deliberately synthetic identifiers owned by this harness's test fixtures.
 # They may appear only under tests/ and evals/fixtures; runtime authority surfaces
 # (.github, .ai, config, schemas, scripts) must never depend on or mention them.

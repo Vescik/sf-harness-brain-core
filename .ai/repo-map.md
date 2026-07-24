@@ -16,7 +16,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 | `.ai/templates` | Document templates |
 | `.cache` | Ignored transient caches, drafts, worklists, receipts |
 | `.github` | Copilot surface: kernel, agents, prompts, skills, hooks, CI |
-| `.github/agents` | Five role agents with tools, handoffs, role-guard hooks |
+| `.github/agents` | Six role agents with tools, handoffs, role-guard hooks |
 | `.github/instructions` | Tiered principles + rule-registry.yaml |
 | `.github/prompts` | Public slash commands, each linking its skill |
 | `.github/skills` | Internal skill procedures (SKILL.md per folder) |
@@ -44,6 +44,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 ## Skills (`.github/skills/`)
 
 - `adhoc-fix` — Express lane for a small …
+- `approve-knowledge-drafts` — Human-initiated promotion of draft one-file …
 - `batch-knowledge` — Five-phase batch conversion of one …
 - `check-against-principles` — Evaluate a scoped design or …
 - `check-feature-coverage` — Compare a current Azure DevOps …
@@ -71,6 +72,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 ## Commands (`.github/prompts/`, public)
 
 - `/adhoc-fix` → development-assistant
+- `/approve-drafts-knowledge` → knowledge-curator
 - `/batch-knowledge` → config-investigator
 - `/check-against-principles` → guardrail-reviewer
 - `/curate-knowledge` → knowledge-curator

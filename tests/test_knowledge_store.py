@@ -261,6 +261,60 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertNotIn("trigger", frontmatter["typeFacts"])
         self.assertEqual(1, len(frontmatter["intentionalErrors"]))
 
+    def review(self, identities=None):
+        return store.command_entry_review(argparse.Namespace(identity=identities))
+
+    def test_entry_review_renders_the_surface_before_approval(self) -> None:
+        drafted = self.draft()
+        result = self.review()
+        self.assertEqual("REVIEW_READY", result["outcome"])
+        artifact = self.temp / result["reviewArtifact"]
+        text = artifact.read_text(encoding="utf-8")
+        # The executor renders the attested body itself; the agent never authors it.
+        self.assertIn("Routes alpha cases to the right queue.", text)
+        self.assertIn("Attested body", text)
+        self.assertIn(drafted["reviewedContentDigest"], text)
+        self.assertIn("new approval", text)
+        self.assertEqual([drafted["identity"]], result["classification"]["proseChanges"])
+        self.assertIn(f"--entry {drafted['identity']}:{drafted['reviewedContentDigest']}", result["approveCommand"])
+
+    def test_reviewed_command_approves_and_edits_after_review_are_rejected(self) -> None:
+        drafted = self.draft()
+        pins = self.review()["approveCommand"].split("--entry ")[1:]
+        self.assertEqual("APPROVED", self.approve([pin.strip() for pin in pins])["outcome"])
+        self.assertEqual("approved-current", self.lane_of(drafted["identity"])["lane"])
+        # Re-review after a prose edit yields a different digest; the stale pin fails closed.
+        path = self.temp / drafted["path"]
+        path.write_text(path.read_text(encoding="utf-8").replace("right queue", "other queue"), encoding="utf-8")
+        with self.assertRaises(store.StoreError):
+            self.approve([pin.strip() for pin in pins])
+
+    def test_entry_review_skips_invalid_drafts_and_reports_why(self) -> None:
+        drafted = self.draft(purpose_file=None)  # no Purpose section
+        result = self.review([drafted["identity"]])
+        self.assertEqual("NOTHING_TO_REVIEW", result["outcome"])
+        self.assertTrue(any("Purpose" in problem for problem in result["problems"]))
+
+    def test_entry_review_enforces_the_prose_chunk_cap(self) -> None:
+        self.draft()
+        self.draft(metadata_type="CustomField", full_name="HarnessAlphaCase__c.Status__c")
+        saved = store.PROSE_CHUNK_LIMIT
+        store.PROSE_CHUNK_LIMIT = 1
+        self.addCleanup(setattr, store, "PROSE_CHUNK_LIMIT", saved)
+        result = self.review()
+        self.assertEqual("CHUNK_TOO_LARGE", result["outcome"])
+        self.assertTrue(result["capViolations"])
+
+    def test_facts_only_reapproval_is_classified_separately(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        flow = self.temp / "force-app/main/default/flows/HarnessAlphaRouter.flow-meta.xml"
+        flow.write_text(FLOW_XML.replace("<status>Active</status>", "<status>Draft</status>"), encoding="utf-8")
+        redrafted = self.draft()  # same prose, regenerated facts
+        result = self.review([redrafted["identity"]])
+        self.assertEqual([redrafted["identity"]], result["classification"]["factsOnly"])
+        self.assertEqual([], result["classification"]["proseChanges"])
+
     def test_work_record_entry_refs_validate_and_track_lanes(self) -> None:
         from scripts import work_record
 

@@ -728,6 +728,113 @@ def command_entry_approve(args: argparse.Namespace) -> dict[str, Any]:
     return {"outcome": "APPROVED", "chunkId": chunk_id, "entries": len(resolved)}
 
 
+def classify_chunk(resolved: list[tuple[str, dict[str, Any], str, str]], latest: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Split a chunk into prose-bearing and facts-only re-approvals (contract §6.4.4)."""
+    prose, facts_only = [], []
+    for identity, _front, body, _digest in resolved:
+        previous = latest.get(identity)
+        if previous is None or previous.get("semanticsDigest") != semantics_digest(body):
+            prose.append(identity)
+        else:
+            facts_only.append(identity)
+    return {"proseChanges": sorted(prose), "factsOnly": sorted(facts_only)}
+
+
+def command_entry_review(args: argparse.Namespace) -> dict[str, Any]:
+    """Render the executor-authored review surface a human approves against.
+
+    Contract §6.3: the diff a reviewer reads is produced here, never by the agent, and it
+    exists BEFORE the approval click. The printed command carries the exact digest set, so
+    any edit between review and approval fails the pin in entry-approve (§6.2).
+    """
+    assert_no_reparse_points()
+    latest = ledger_latest(read_ledger())
+    wanted = set(args.identity or [])
+    resolved: list[tuple[str, dict[str, Any], str, str]] = []
+    problems: list[str] = []
+    for path in all_entry_paths():
+        frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+        subject = frontmatter["subject"]
+        identity = identity_of(subject["metadataType"], subject.get("namespace"), subject["fullName"])
+        if wanted and identity not in wanted:
+            continue
+        if not wanted and frontmatter["lifecycle"]["state"] != "draft":
+            continue
+        entry_problems = validate_entry(frontmatter, body)
+        if "## Purpose" not in body:
+            entry_problems.append("approval requires a '## Purpose' section (contract §2.2)")
+        if entry_problems:
+            problems.extend(f"{identity}: {problem}" for problem in entry_problems)
+            continue
+        resolved.append((identity, frontmatter, body, reviewed_content_digest(frontmatter, body)))
+    if not resolved:
+        return {"outcome": "NOTHING_TO_REVIEW", "problems": problems}
+
+    classification = classify_chunk(resolved, latest)
+    chunk_id = canonical_digest(sorted((identity, digest) for identity, _f, _b, digest in resolved))[7:19]
+    lines = [
+        f"# Knowledge approval review — chunk {chunk_id}",
+        "",
+        f"Entries: {len(resolved)} (prose changes: {len(classification['proseChanges'])}, "
+        f"facts-only: {len(classification['factsOnly'])})",
+        "",
+        "Read every Purpose section below. Approving binds these exact digests; any edit "
+        "afterwards invalidates the pin and the chunk is rejected.",
+        "",
+    ]
+    for identity, frontmatter, body, digest in resolved:
+        previous = latest.get(identity)
+        change = "new approval" if previous is None else (
+            "prose changed" if previous.get("semanticsDigest") != semantics_digest(body) else "facts-only re-approval"
+        )
+        lines += [
+            f"## {identity}",
+            "",
+            f"- change: {change}",
+            f"- digest: `{digest}`",
+            f"- source: `{frontmatter['source']['fragments'][0]['path']}`",
+            f"- coverage: {json.dumps(frontmatter.get('extractionCoverage', {}), sort_keys=True)}",
+            f"- assurance: {json.dumps(frontmatter.get('assurance', {}), sort_keys=True)}",
+            f"- limitations: {json.dumps(frontmatter.get('limitations', []), sort_keys=True)}",
+            "",
+            "### Attested body (exactly what approval covers)",
+            "",
+            body.strip() or "(empty — cannot be approved)",
+            "",
+        ]
+        if frontmatter.get("intentionalErrors"):
+            lines += ["### Source-declared intentional errors", ""]
+            for error in frontmatter["intentionalErrors"]:
+                lines.append(
+                    f"- `{error['elementApiName']}` → {json.dumps(error.get('messageTemplate'))} "
+                    f"({error.get('presentation', {}).get('mode')})"
+                )
+            lines.append("")
+    REVIEW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+    artifact = REVIEW_ARTIFACT_ROOT / f"{chunk_id}-review.md"
+    with artifact.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("\n".join(lines))
+
+    pins = " ".join(f"--entry {identity}:{digest}" for identity, _f, _b, digest in resolved)
+    caps: list[str] = []
+    if classification["proseChanges"] and len(resolved) > PROSE_CHUNK_LIMIT:
+        caps.append(
+            f"chunk carries prose changes and exceeds the {PROSE_CHUNK_LIMIT}-entry cap — split it"
+        )
+    if len(resolved) > MANIFEST_CHUNK_LIMIT:
+        caps.append(f"chunk exceeds the {MANIFEST_CHUNK_LIMIT}-entry hard cap — split it")
+    return {
+        "outcome": "REVIEW_READY" if not caps else "CHUNK_TOO_LARGE",
+        "chunkId": chunk_id,
+        "reviewArtifact": str(artifact.relative_to(ROOT)),
+        "entries": len(resolved),
+        "classification": classification,
+        "capViolations": caps,
+        "problems": problems,
+        "approveCommand": f"python scripts/knowledge_store.py entry-approve {pins}",
+    }
+
+
 def command_entry_revoke(args: argparse.Namespace) -> dict[str, Any]:
     latest = ledger_latest(read_ledger())
     record = latest.get(args.identity)
@@ -798,6 +905,12 @@ def build_parser() -> argparse.ArgumentParser:
     approve = commands.add_parser("entry-approve", help="digest-pinned chat-approved promotion")
     approve.add_argument("--entry", action="append", default=None, help="<identity>:sha256:<digest>")
     approve.set_defaults(func=command_entry_approve)
+
+    review = commands.add_parser(
+        "entry-review", help="render the executor-authored review surface and the pinned command"
+    )
+    review.add_argument("--identity", action="append", default=None)
+    review.set_defaults(func=command_entry_review)
 
     revoke = commands.add_parser("entry-revoke", help="append a revocation for an identity")
     revoke.add_argument("--identity", required=True)
