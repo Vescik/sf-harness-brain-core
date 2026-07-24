@@ -6,6 +6,7 @@ import unittest
 from scripts import copilot_role_guard as guard
 from scripts import force_app_knowledge
 from scripts import knowledge_registry
+from scripts import knowledge_search
 from scripts import knowledge_store
 
 
@@ -22,6 +23,7 @@ INTENTIONALLY_UNGUARDED = {
         "feature-draft": "human-terminal-only: feature dossier drafting",
     },
     "knowledge_store": {},
+    "knowledge_search": {},
 }
 
 # Parser flags the guard deliberately does not accept for a guarded subcommand.
@@ -30,6 +32,7 @@ INTENTIONALLY_EXCLUDED_FLAGS: dict[str, dict[str, set[str]]] = {
     "knowledge_registry": {},
     "force_app_knowledge": {},
     "knowledge_store": {},
+    "knowledge_search": {},
 }
 
 
@@ -108,6 +111,23 @@ class GuardParserContractTests(unittest.TestCase):
             knowledge_store.build_parser(),
             guard.KNOWLEDGE_STORE_COMMAND_FLAGS,
         )
+
+    def test_knowledge_search_guard_mirrors_parser(self) -> None:
+        self.contract(
+            "knowledge_search",
+            knowledge_search.build_parser(),
+            guard.KNOWLEDGE_SEARCH_COMMAND_FLAGS,
+        )
+
+    def test_knowledge_search_is_read_only_for_every_role(self) -> None:
+        # Search never mutates canonical Knowledge; `build` only writes the ignored cache.
+        for role in guard.WORK_RECORD_COMMANDS:
+            with self.subTest(role=role):
+                self.assertTrue(
+                    guard.knowledge_search_command_allowed(["search", "--text", "x"], role)
+                )
+                self.assertTrue(guard.knowledge_search_command_allowed(["build", "--check"], role))
+                self.assertFalse(guard.knowledge_search_command_allowed(["search", "--rm"], role))
 
     def test_knowledge_store_mutation_commands_are_role_bound(self) -> None:
         # Entry mutations stay with the knowledge roles; reads stay universal. The approve

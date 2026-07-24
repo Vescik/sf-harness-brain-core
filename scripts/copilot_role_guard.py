@@ -243,6 +243,58 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
 }
 
 
+# Knowledge Entry search (docs/knowledge-one-file-contract.md, T08b). Every role may read;
+# `build` writes only the git-ignored generated cache under .cache/knowledge-search/, which
+# is never Knowledge authority, so it needs no mutation role. Flags mirror the parser and are
+# pinned by tests/test_guard_parser_contract.py.
+KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
+    "build": frozenset({"--check"}),
+    "search": frozenset(
+        {
+            "--text",
+            "--identity",
+            "--metadata-type",
+            "--namespace",
+            "--state",
+            "--facet",
+            "--relation-anchor",
+            "--relation-kind",
+            "--direction",
+            "--include-heuristic",
+            "--mode",
+            "--top",
+        }
+    ),
+    "explain": frozenset({"--identity"}),
+    "impact": frozenset({"--identity", "--depth", "--include-heuristic"}),
+    "capabilities": frozenset({"--metadata-type"}),
+}
+KNOWLEDGE_SEARCH_VALUELESS_FLAGS = frozenset({"--check", "--include-heuristic"})
+
+
+def knowledge_search_command_allowed(parts: list[str], role: str) -> bool:
+    if not parts or parts[0] not in KNOWLEDGE_SEARCH_COMMAND_FLAGS:
+        return False
+    allowed_flags = KNOWLEDGE_SEARCH_COMMAND_FLAGS[parts[0]]
+    index = 1
+    while index < len(parts):
+        token = parts[index]
+        if not token.startswith("--"):
+            return False
+        if "=" in token:
+            flag = token.split("=", 1)[0]
+            index += 1
+        elif token in KNOWLEDGE_SEARCH_VALUELESS_FLAGS:
+            flag = token
+            index += 1
+        else:
+            flag = token
+            index += 2
+        if flag not in allowed_flags:
+            return False
+    return True
+
+
 def knowledge_store_command_allowed(parts: list[str], role: str) -> bool:
     if not parts or parts[0] not in KNOWLEDGE_STORE_COMMAND_FLAGS:
         return False
@@ -900,6 +952,8 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         return knowledge_registry_command_allowed(remainder, role, root)
     if script == (root / "scripts/knowledge_store.py").resolve():
         return knowledge_store_command_allowed(remainder, role)
+    if script == (root / "scripts/knowledge_search.py").resolve():
+        return knowledge_search_command_allowed(remainder, role)
     if script == force_app_knowledge:
         return force_app_knowledge_command_allowed(remainder, role)
     if script == salesforce_read:

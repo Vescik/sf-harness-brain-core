@@ -186,6 +186,7 @@ def check_required_files(audit: Audit) -> None:
         "schemas/knowledge-profile-flow.schema.json",
         "schemas/knowledge-profile-customfield.schema.json",
         "scripts/knowledge_store.py",
+        "scripts/knowledge_search.py",
         "docs/knowledge-one-file-contract.md",
         "schemas/change-record.schema.json",
         "schemas/handoff-envelope.schema.json",

@@ -121,7 +121,26 @@ Rows added after the three-reviewer adversarial pass (verdicts in
 | v1 freeze at P2 | registry `propose` rejects metadata-repository-evidence claims for entry-home claimTypes (contract §1 table) | P2 |
 | Cross-system contradiction surface | unified query + `verify-citations` must report entry-vs-claim conflicts as `CONTESTED`; shadowing verdict `shadowed-by-entry` in `validate_claim_refs` | P2/P3 |
 
-## 8. Completeness check
+## 8. Delivery log
+
+| Phase | Status | Evidence |
+|---|---|---|
+| P0 contract freeze + adversarial review | **done** | `docs/knowledge-one-file-contract.md` v1.1; 3-reviewer verdicts recorded in the review package §6 |
+| P1 executor + enforcement wiring | **done** | `scripts/knowledge_store.py`; guard/hook/validator/CI wiring; 19 executor tests |
+| P3 SAFE-CLAIM v2 + entryRef | **done** (owner-approved 2026-07-24) | kernel rule v2; `validate_entry_refs`, `bind-entry`, shadowing; additive `entryRefs[]` in 3 envelope schemas |
+| P2 search engine (T08b) | **done** | `scripts/knowledge_search.py` (generation cache, Unicode/Salesforce analyzer, BM25F, typed facets, relation graph, FlowCustomError mode, capabilities); 28 golden-query tests |
+| P2 consumer repointing | open | `/search-knowledge` and citing skills still call the v1 registry; unified surface is the next step |
+| P4 prompt consolidation | open | batch with the test-case-creator removals (count pins 23/24 → 21/22) |
+| P5 cutover | open | needs real-package pilot parity data; no big-bang delete |
+
+Search-engine notes for later phases: the generated cache lives in the ignored
+`.cache/knowledge-search/` (immutable `gen-*` directories + atomic `current.json`), refuses
+to answer when the committed entry set no longer matches the generation (`INDEX STALE`), and
+never appears in citations — hits cite the canonical entry path plus entry/facts/source/profile
+digests. Sharding, incremental rebuild, and fuzzy/trigram fallback are deliberately deferred
+until a target-scale fixture justifies the shard boundaries (review package §3).
+
+## 9. Completeness check
 
 Every touchpoint reported by the three sweeps appears above with a phase. Items examined and
 consciously **unassigned** (no change in any phase): `tool-capabilities.md`,
