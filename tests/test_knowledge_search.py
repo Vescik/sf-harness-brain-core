@@ -206,7 +206,11 @@ class KnowledgeSearchTests(unittest.TestCase):
         return search.run_search(args)
 
     def ids(self, result):
-        return [hit["artifactId"] for hit in result["approvedResults"]]
+        """Everything the query actually served, across both lane buckets."""
+        return [
+            hit["artifactId"]
+            for hit in result["approvedResults"] + result["nonCurrentResults"]
+        ]
 
     # --- golden queries ------------------------------------------------------------
 
@@ -286,6 +290,11 @@ class KnowledgeSearchTests(unittest.TestCase):
         self.assertIn(draft["identity"], approved["draftCandidates"])
         explicit = self.search(identity=draft["identity"], state=["draft"])
         self.assertEqual([draft["identity"]], self.ids(explicit))
+        # Opting into a lane must not rename it: the draft is served, but never under a key
+        # a consumer would read as approved knowledge.
+        self.assertEqual([], explicit["approvedResults"])
+        self.assertEqual([draft["identity"]], [hit["artifactId"] for hit in explicit["nonCurrentResults"]])
+        self.assertTrue(any("not approved-current" in gap for gap in explicit["gaps"]))
 
     def test_g13_namespace_twins_are_ambiguous_not_guessed(self) -> None:
         self.seed()
@@ -502,3 +511,46 @@ class IncrementalRebuildTests(KnowledgeSearchTests):
         full = search.build_index(full=True)
         self.assertEqual(incremental["generation"], full["generation"])
         self.assertEqual(0, full["reusedProjections"])
+
+
+class DraftLaneSearchTests(KnowledgeSearchTests):
+    """Draft entries must be searchable in their own lane, not silently dropped."""
+
+    def test_undescribed_drafts_survive_hydration(self) -> None:
+        drafted = store.command_entry_draft(
+            argparse.Namespace(metadata_type="Flow", full_name="HarnessAlphaRouter",
+                               namespace=None, purpose_file=None, source_api_version="64.0",
+                               candidate_keyword=None)
+        )
+        search.build_index()
+        result = self.search(identity=drafted["identity"], state=["draft"])
+        self.assertEqual([drafted["identity"]], self.ids(result))
+        self.assertEqual([], [gap for gap in result["gaps"] if "rebuild the index" in gap])
+
+
+class ProjectorVersionTests(KnowledgeSearchTests):
+    """A change to the projector must invalidate the index the old projector produced.
+
+    Reuse was keyed on entry/source/ledger stamps only, so editing the lane logic kept every
+    projection reusable and queries served pre-fix fields until someone thought to pass
+    --full. Real symptom: draft relation hits carried a null citation digest and hydration
+    dropped all of them as "entry changed" while nothing had changed but the code."""
+
+    def _move_code_fingerprint(self) -> None:
+        original = search._CODE_FINGERPRINT
+        self.addCleanup(setattr, search, "_CODE_FINGERPRINT", original)
+        search._CODE_FINGERPRINT = "sha256:" + "e" * 64
+
+    def test_moved_projector_discards_the_previous_generation(self) -> None:
+        self.seed()
+        self._move_code_fingerprint()
+        self.assertEqual({}, search.load_previous_projections())
+        rebuilt = search.build_index()
+        self.assertEqual(0, rebuilt["reusedProjections"])
+
+    def test_moved_projector_refuses_to_answer_from_the_old_index(self) -> None:
+        self.seed()
+        self._move_code_fingerprint()
+        with self.assertRaises(search.SearchError) as raised:
+            search.load_index()
+        self.assertIn("INDEX STALE", str(raised.exception))

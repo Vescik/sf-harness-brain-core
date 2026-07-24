@@ -375,9 +375,9 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any
         # entry still awaiting its description belongs in `draft` with the reason attached —
         # reporting it as `not-effective` made ordinary unfinished work look like corruption.
         result["lane"] = "draft"
-        result["reviewedContentDigest"] = (
-            reviewed_content_digest(frontmatter, body) if not result["problems"] else None
-        )
+        # The digest is a pure function of content, so it exists even while the entry is
+        # unfinished. Withholding it made draft-lane search hits fail hydration and vanish.
+        result["reviewedContentDigest"] = reviewed_content_digest(frontmatter, body)
         result["sourceTreeDigest"] = frontmatter["scope"]["sourceTreeDigest"]
         result["profile"] = (
             f"{frontmatter['profile']['id']}@{frontmatter['profile']['version'].split('.', 1)[0]}"

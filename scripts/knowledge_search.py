@@ -20,6 +20,7 @@ returned in a separate lane and never interleave with approved results.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -415,6 +416,31 @@ def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:
 # --- index build --------------------------------------------------------------------------
 
 
+_CODE_FINGERPRINT: str | None = None
+
+
+def code_fingerprint() -> str:
+    """Digest of the code that produces projections and lanes.
+
+    Reuse and freshness were keyed on the data alone. Editing the lane logic therefore left
+    the previous generation entirely reusable — no entry file had moved, so every projection
+    was reused — and queries went on serving fields the current code would never produce.
+    Observed: draft entries kept the null citation digest written before the fix, so hydration
+    dropped every relation hit as "entry changed since the index was built" while the entries
+    were in fact untouched. A stat stamp cannot see a code change, so the code is part of the
+    key: edit the projector and the previous generation is discarded automatically."""
+
+    global _CODE_FINGERPRINT
+    if _CODE_FINGERPRINT is None:
+        parts = []
+        for module in (sys.modules[__name__], store, sys.modules[analyze.__module__]):
+            path = Path(getattr(module, "__file__", "") or "")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "absent"
+            parts.append((path.name, digest))
+        _CODE_FINGERPRINT = store.canonical_digest(sorted(parts))
+    return _CODE_FINGERPRINT
+
+
 def corpus_fingerprint() -> str:
     """Cheap freshness signal: identity, size and mtime of every entry file plus the ledger.
 
@@ -430,7 +456,12 @@ def corpus_fingerprint() -> str:
     ledger = store.LEDGER_PATH
     ledger_stat = (ledger.stat().st_size, ledger.stat().st_mtime_ns) if ledger.is_file() else (0, 0)
     return store.canonical_digest(
-        {"entries": sorted(parts), "ledger": ledger_stat, "analyzer": ANALYZER_VERSION}
+        {
+            "entries": sorted(parts),
+            "ledger": ledger_stat,
+            "analyzer": ANALYZER_VERSION,
+            "code": code_fingerprint(),
+        }
     )
 
 
@@ -445,6 +476,7 @@ def entry_set_digest(projections: list[dict[str, Any]]) -> str:
             "analyzer": ANALYZER_VERSION,
             "schema": INDEX_SCHEMA_VERSION,
             "policy": POLICY_VERSION,
+            "code": code_fingerprint(),
         }
     )
 
@@ -487,6 +519,8 @@ def load_previous_projections() -> dict[str, dict[str, Any]]:
         return {}
     if manifest.get("analyzerVersion") != ANALYZER_VERSION or manifest.get("schemaVersion") != INDEX_SCHEMA_VERSION:
         return {}  # a projection built by a different analyzer may not be reused
+    if manifest.get("codeFingerprint") != code_fingerprint():
+        return {}  # projections built by different projector/lane code may not be reused
     reusable: dict[str, dict[str, Any]] = {}
     try:
         for line in documents_path.read_text(encoding="utf-8").splitlines():
@@ -628,6 +662,7 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
             for metadata_type in sorted({item["facets"]["metadataType"] for item in projections})
         },
         "corpusFingerprint": corpus_fingerprint(),
+        "codeFingerprint": code_fingerprint(),
         "documentsDigest": store.canonical_digest(documents.read_text(encoding="utf-8")),
         "complete": True,
     }
@@ -1133,10 +1168,23 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
 
     served, hydration_gaps = hydrate(results[: args.top])
     gaps.extend(hydration_gaps)
+    # `--state draft` (or any other lane opt-in) must not tip non-current content into a key
+    # named `approvedResults`: a consumer reading that key is entitled to treat every hit in
+    # it as effective approved knowledge. Opted-in lanes are served in their own bucket, each
+    # hit still carrying its `lifecycle`.
+    current = [hit for hit in served if hit["lifecycle"] == "approved-current"]
+    non_current = [hit for hit in served if hit["lifecycle"] != "approved-current"]
+    if non_current:
+        lanes = sorted({hit["lifecycle"] for hit in non_current})
+        gaps.append(
+            f"{len(non_current)} result(s) served from opted-in lane(s) {', '.join(lanes)}; "
+            "they are not approved-current knowledge and must not be cited as effective."
+        )
     return {
         "outcome": "OK" if served else "NO_MATCH",
         "interpretedQuery": interpreted,
-        "approvedResults": served,
+        "approvedResults": current,
+        "nonCurrentResults": non_current,
         "draftCandidates": [hit["artifactId"] for hit in draft_lane][:10],
         "excludedCounts": dict(sorted(excluded.items())),
         "facetCounts": {
