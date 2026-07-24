@@ -26,57 +26,115 @@
     "artifactPath"
   ],
   "properties": {
-    "schemaVersion": { "const": 3 },
-    "workflow": { "type": "string", "minLength": 1 },
-    "workflowClass": { "enum": ["governed", "cache-read"] },
-    "generatedAt": { "type": "string", "format": "date-time" },
-    "status": { "enum": ["success", "incomplete", "failed"] },
+    "schemaVersion": {
+      "const": 3
+    },
+    "workflow": {
+      "type": "string",
+      "minLength": 1
+    },
+    "workflowClass": {
+      "enum": [
+        "governed",
+        "cache-read"
+      ]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "success",
+        "incomplete",
+        "failed"
+      ]
+    },
     "recordRef": {
       "oneOf": [
-        { "type": "null" },
-        { "$ref": "#/$defs/recordRef" }
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/recordRef"
+        }
       ]
     },
     "sourceRefs": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "ruleRefs": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$" }
+      "items": {
+        "type": "string",
+        "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$"
+      }
     },
     "claimRefs": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" }
+      "items": {
+        "type": "string",
+        "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$"
+      }
     },
     "evidenceRefs": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^(KEVD|EV)-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$" }
+      "items": {
+        "type": "string",
+        "pattern": "^(KEVD|EV)-[A-Za-z0-9][A-Za-z0-9._-]{2,127}$"
+      }
     },
     "knowledgeSnapshotAt": {
       "oneOf": [
-        { "type": "null" },
-        { "type": "string", "format": "date-time" }
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "format": "date-time"
+        }
       ]
     },
     "reconciliation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "mismatches", "missingEvidence"],
+      "required": [
+        "status",
+        "mismatches",
+        "missingEvidence"
+      ],
       "properties": {
-        "status": { "enum": ["not-required", "matched", "source-org-drift", "contested", "incomplete"] },
+        "status": {
+          "enum": [
+            "not-required",
+            "matched",
+            "source-org-drift",
+            "contested",
+            "incomplete"
+          ]
+        },
         "mismatches": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         },
         "missingEvidence": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         }
       }
@@ -84,35 +142,77 @@
     "completeness": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "missingEvidence"],
+      "required": [
+        "status",
+        "missingEvidence"
+      ],
       "properties": {
-        "status": { "enum": ["complete", "partial"] },
+        "status": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
         "missingEvidence": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true
         }
       }
     },
-    "reviewStatus": { "enum": ["draft", "accepted", "rejected", "promoted"] },
+    "reviewStatus": {
+      "enum": [
+        "draft",
+        "accepted",
+        "rejected",
+        "promoted"
+      ]
+    },
     "assumptions": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "warnings": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
     "filesWritten": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     },
     "verification": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 }
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
     },
-    "artifactPath": { "type": ["string", "null"] }
+    "artifactPath": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "entryRefs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entryRef"
+      },
+      "description": "Optional approved Knowledge Entry grounding (SAFE-CLAIM-001 v2); present only when entries are bound."
+    }
   },
   "$defs": {
     "sha256": {
@@ -141,38 +241,101 @@
           "type": "string",
           "pattern": "^ADO-[a-z0-9][a-z0-9-]{0,62}-[1-9][0-9]*$"
         },
-        "recordRevision": { "type": "integer", "minimum": 1 },
-        "recordHash": { "$ref": "#/$defs/sha256" },
-        "scopeHash": { "$ref": "#/$defs/sha256" },
-        "designHash": { "$ref": "#/$defs/sha256" },
-        "groundingHash": { "$ref": "#/$defs/sha256" },
+        "recordRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "recordHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "scopeHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "designHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "groundingHash": {
+          "$ref": "#/$defs/sha256"
+        },
         "consumedHandoffId": {
           "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/handoffId" }
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/handoffId"
+            }
           ]
         },
         "createdHandoffId": {
           "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/handoffId" }
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/handoffId"
+            }
           ]
         }
       }
+    },
+    "entryRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entryId",
+        "reviewedContentDigest",
+        "factsDigest",
+        "sourceTreeDigest",
+        "profile"
+      ],
+      "properties": {
+        "entryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9]{1,79}:[A-Za-z0-9_]{1,15}:.{1,240}$"
+        },
+        "reviewedContentDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "factsDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "sourceTreeDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "profile": {
+          "type": "string",
+          "pattern": "^salesforce\\.[a-z][a-z0-9-]{1,60}@[0-9]+$"
+        }
+      },
+      "description": "SAFE-CLAIM-001 v2 grounding for intended repository-source state (docs/knowledge-one-file-contract.md par 6.2/par 8). Additive: claimRef/evidenceRef grammar untouched."
     }
   },
   "allOf": [
     {
       "if": {
-        "properties": { "status": { "const": "success" } },
-        "required": ["status"]
+        "properties": {
+          "status": {
+            "const": "success"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "then": {
         "properties": {
           "completeness": {
             "properties": {
-              "status": { "const": "complete" },
-              "missingEvidence": { "maxItems": 0 }
+              "status": {
+                "const": "complete"
+              },
+              "missingEvidence": {
+                "maxItems": 0
+              }
             }
           }
         }
@@ -180,13 +343,26 @@
     },
     {
       "if": {
-        "properties": { "workflowClass": { "const": "cache-read" } },
-        "required": ["workflowClass"]
+        "properties": {
+          "workflowClass": {
+            "const": "cache-read"
+          }
+        },
+        "required": [
+          "workflowClass"
+        ]
       },
       "then": {
         "properties": {
-          "recordRef": { "type": "null" },
-          "reviewStatus": { "enum": ["draft", "rejected"] }
+          "recordRef": {
+            "type": "null"
+          },
+          "reviewStatus": {
+            "enum": [
+              "draft",
+              "rejected"
+            ]
+          }
         }
       }
     },
@@ -195,55 +371,111 @@
         "anyOf": [
           {
             "properties": {
-              "workflowClass": { "const": "governed" },
-              "status": { "const": "success" }
+              "workflowClass": {
+                "const": "governed"
+              },
+              "status": {
+                "const": "success"
+              }
             },
-            "required": ["workflowClass", "status"]
+            "required": [
+              "workflowClass",
+              "status"
+            ]
           },
           {
             "properties": {
-              "reviewStatus": { "enum": ["accepted", "promoted"] }
+              "reviewStatus": {
+                "enum": [
+                  "accepted",
+                  "promoted"
+                ]
+              }
             },
-            "required": ["reviewStatus"]
+            "required": [
+              "reviewStatus"
+            ]
           }
         ]
       },
       "then": {
         "properties": {
-          "workflowClass": { "const": "governed" },
-          "status": { "const": "success" },
+          "workflowClass": {
+            "const": "governed"
+          },
+          "status": {
+            "const": "success"
+          },
           "recordRef": {
             "type": "object",
             "anyOf": [
               {
-                "properties": { "consumedHandoffId": { "$ref": "#/$defs/handoffId" } },
-                "required": ["consumedHandoffId"]
+                "properties": {
+                  "consumedHandoffId": {
+                    "$ref": "#/$defs/handoffId"
+                  }
+                },
+                "required": [
+                  "consumedHandoffId"
+                ]
               },
               {
-                "properties": { "createdHandoffId": { "$ref": "#/$defs/handoffId" } },
-                "required": ["createdHandoffId"]
+                "properties": {
+                  "createdHandoffId": {
+                    "$ref": "#/$defs/handoffId"
+                  }
+                },
+                "required": [
+                  "createdHandoffId"
+                ]
               }
             ]
           },
-          "sourceRefs": { "minItems": 1 },
-          "ruleRefs": { "minItems": 1 },
-          "claimRefs": { "minItems": 1 },
-          "evidenceRefs": { "minItems": 1 },
-          "knowledgeSnapshotAt": { "type": "string", "format": "date-time" },
+          "sourceRefs": {
+            "minItems": 1
+          },
+          "ruleRefs": {
+            "minItems": 1
+          },
+          "claimRefs": {
+            "minItems": 1
+          },
+          "evidenceRefs": {
+            "minItems": 1
+          },
+          "knowledgeSnapshotAt": {
+            "type": "string",
+            "format": "date-time"
+          },
           "reconciliation": {
             "properties": {
-              "status": { "enum": ["not-required", "matched"] },
-              "mismatches": { "maxItems": 0 },
-              "missingEvidence": { "maxItems": 0 }
+              "status": {
+                "enum": [
+                  "not-required",
+                  "matched"
+                ]
+              },
+              "mismatches": {
+                "maxItems": 0
+              },
+              "missingEvidence": {
+                "maxItems": 0
+              }
             }
           },
           "completeness": {
             "properties": {
-              "status": { "const": "complete" },
-              "missingEvidence": { "maxItems": 0 }
+              "status": {
+                "const": "complete"
+              },
+              "missingEvidence": {
+                "maxItems": 0
+              }
             }
           },
-          "verification": { "minItems": 1 }
+          "verification": {
+            "minItems": 1
+          }
         }
       }
     }

@@ -37,111 +37,237 @@
     "consumedRecordRevision"
   ],
   "properties": {
-    "schemaVersion": { "const": 2 },
-    "handoffId": { "type": "string", "pattern": "^HO-[A-Za-z0-9][A-Za-z0-9._-]{5,127}$" },
-    "recordId": { "type": "string", "pattern": "^ADO-[a-z0-9][a-z0-9-]{0,62}-[1-9][0-9]*$" },
-    "recordRevision": { "type": "integer", "minimum": 1 },
-    "recordHash": { "$ref": "#/$defs/sha256" },
-    "status": { "enum": ["pending", "consumed", "rejected", "superseded"] },
-    "fromRole": { "$ref": "#/$defs/role" },
-    "toRole": { "$ref": "#/$defs/role" },
-    "createdAt": { "type": "string", "format": "date-time" },
-    "updatedAt": { "type": "string", "format": "date-time" },
-    "reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
-    "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
-    "state": { "$ref": "#/$defs/state" },
-    "expectedNextState": {
-      "oneOf": [
-        { "type": "null" },
-        { "$ref": "#/$defs/state" }
+    "schemaVersion": {
+      "const": 2
+    },
+    "handoffId": {
+      "type": "string",
+      "pattern": "^HO-[A-Za-z0-9][A-Za-z0-9._-]{5,127}$"
+    },
+    "recordId": {
+      "type": "string",
+      "pattern": "^ADO-[a-z0-9][a-z0-9-]{0,62}-[1-9][0-9]*$"
+    },
+    "recordRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "recordHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "status": {
+      "enum": [
+        "pending",
+        "consumed",
+        "rejected",
+        "superseded"
       ]
     },
-    "scope": { "$ref": "#/$defs/scope" },
-    "scopeHash": { "$ref": "#/$defs/sha256" },
-    "designHash": { "$ref": "#/$defs/sha256" },
-    "groundingHash": { "$ref": "#/$defs/sha256" },
+    "fromRole": {
+      "$ref": "#/$defs/role"
+    },
+    "toRole": {
+      "$ref": "#/$defs/role"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "state": {
+      "$ref": "#/$defs/state"
+    },
+    "expectedNextState": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/state"
+        }
+      ]
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "scopeHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "designHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "groundingHash": {
+      "$ref": "#/$defs/sha256"
+    },
     "ruleRefs": {
       "type": "array",
-      "items": { "$ref": "#/$defs/ruleRef" }
+      "items": {
+        "$ref": "#/$defs/ruleRef"
+      }
     },
     "claimRefs": {
       "type": "array",
-      "items": { "$ref": "#/$defs/claimRef" }
+      "items": {
+        "$ref": "#/$defs/claimRef"
+      }
     },
     "requiredReads": {
       "type": "array",
-      "items": { "$ref": "#/$defs/requiredRead" },
+      "items": {
+        "$ref": "#/$defs/requiredRead"
+      },
       "uniqueItems": true
     },
     "evidenceRefs": {
       "type": "array",
-      "items": { "$ref": "#/$defs/evidenceRef" }
+      "items": {
+        "$ref": "#/$defs/evidenceRef"
+      }
     },
     "repositories": {
       "type": "array",
-      "items": { "$ref": "#/$defs/repository" }
+      "items": {
+        "$ref": "#/$defs/repository"
+      }
     },
     "unresolvedQuestions": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^BQ-[A-Za-z0-9._-]+$" },
+      "items": {
+        "type": "string",
+        "pattern": "^BQ-[A-Za-z0-9._-]+$"
+      },
       "uniqueItems": true
     },
     "requiredActions": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
     },
     "prohibitedActions": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
     },
-    "completeness": { "enum": ["complete", "partial"] },
+    "completeness": {
+      "enum": [
+        "complete",
+        "partial"
+      ]
+    },
     "consumedAt": {
       "oneOf": [
-        { "type": "null" },
-        { "type": "string", "format": "date-time" }
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "format": "date-time"
+        }
       ]
     },
     "consumedBy": {
       "oneOf": [
-        { "type": "null" },
-        { "$ref": "#/$defs/role" }
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/role"
+        }
       ]
     },
     "consumedRecordRevision": {
-      "type": ["integer", "null"],
+      "type": [
+        "integer",
+        "null"
+      ],
       "minimum": 1
+    },
+    "entryRefs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entryRef"
+      },
+      "description": "Optional approved Knowledge Entry grounding (SAFE-CLAIM-001 v2); present only when entries are bound."
     }
   },
   "allOf": [
     {
       "if": {
-        "properties": { "status": { "const": "pending" } },
-        "required": ["status"]
+        "properties": {
+          "status": {
+            "const": "pending"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "then": {
         "properties": {
-          "consumedAt": { "type": "null" },
-          "consumedBy": { "type": "null" },
-          "consumedRecordRevision": { "type": "null" }
+          "consumedAt": {
+            "type": "null"
+          },
+          "consumedBy": {
+            "type": "null"
+          },
+          "consumedRecordRevision": {
+            "type": "null"
+          }
         }
       }
     },
     {
       "if": {
-        "properties": { "status": { "const": "consumed" } },
-        "required": ["status"]
+        "properties": {
+          "status": {
+            "const": "consumed"
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "then": {
         "properties": {
-          "consumedAt": { "type": "string", "format": "date-time" },
-          "consumedBy": { "$ref": "#/$defs/role" },
-          "consumedRecordRevision": { "type": "integer", "minimum": 1 }
+          "consumedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "consumedBy": {
+            "$ref": "#/$defs/role"
+          },
+          "consumedRecordRevision": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       }
     }
   ],
   "$defs": {
-    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
     "role": {
       "enum": [
         "solution-designer",
@@ -155,9 +281,21 @@
     "state": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["phase", "status"],
+      "required": [
+        "phase",
+        "status"
+      ],
       "properties": {
-        "phase": { "enum": ["intake", "design", "development", "qa", "review", "complete"] },
+        "phase": {
+          "enum": [
+            "intake",
+            "design",
+            "development",
+            "qa",
+            "review",
+            "complete"
+          ]
+        },
         "status": {
           "enum": [
             "draft",
@@ -178,17 +316,29 @@
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["workspaceRoot", "components", "paths"],
+      "required": [
+        "workspaceRoot",
+        "components",
+        "paths"
+      ],
       "properties": {
-        "workspaceRoot": { "const": "brain-core" },
+        "workspaceRoot": {
+          "const": "brain-core"
+        },
         "components": {
           "type": "array",
-          "items": { "$ref": "#/$defs/component" },
+          "items": {
+            "$ref": "#/$defs/component"
+          },
           "uniqueItems": true
         },
         "paths": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
           "uniqueItems": true
         }
       }
@@ -196,59 +346,133 @@
     "component": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "type", "ownership", "ownershipClaimRef", "packageNamespace", "packageVersion"],
+      "required": [
+        "name",
+        "type",
+        "ownership",
+        "ownershipClaimRef",
+        "packageNamespace",
+        "packageVersion"
+      ],
       "properties": {
-        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
-        "type": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
         "ownership": {
-          "enum": ["package-owned", "subscriber-owned", "platform", "unknown"]
+          "enum": [
+            "package-owned",
+            "subscriber-owned",
+            "platform",
+            "unknown"
+          ]
         },
         "ownershipClaimRef": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$"
         },
-        "packageNamespace": { "type": ["string", "null"], "maxLength": 64 },
-        "packageVersion": { "type": ["string", "null"], "maxLength": 128 }
+        "packageNamespace": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 64
+        },
+        "packageVersion": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        }
       },
       "allOf": [
         {
           "if": {
-            "properties": { "ownership": { "const": "unknown" } },
-            "required": ["ownership"]
-          },
-          "then": {
             "properties": {
-              "ownershipClaimRef": { "type": "null" },
-              "packageNamespace": { "type": "null" },
-              "packageVersion": { "type": "null" }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": { "ownership": { "const": "package-owned" } },
-            "required": ["ownership"]
-          },
-          "then": {
-            "properties": {
-              "ownershipClaimRef": { "type": "string" },
-              "packageNamespace": { "type": "string", "minLength": 1 },
-              "packageVersion": { "type": "string", "minLength": 1 }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "ownership": { "enum": ["subscriber-owned", "platform"] }
+              "ownership": {
+                "const": "unknown"
+              }
             },
-            "required": ["ownership"]
+            "required": [
+              "ownership"
+            ]
           },
           "then": {
             "properties": {
-              "ownershipClaimRef": { "type": "string" },
-              "packageNamespace": { "type": "null" },
-              "packageVersion": { "type": "null" }
+              "ownershipClaimRef": {
+                "type": "null"
+              },
+              "packageNamespace": {
+                "type": "null"
+              },
+              "packageVersion": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "ownership": {
+                "const": "package-owned"
+              }
+            },
+            "required": [
+              "ownership"
+            ]
+          },
+          "then": {
+            "properties": {
+              "ownershipClaimRef": {
+                "type": "string"
+              },
+              "packageNamespace": {
+                "type": "string",
+                "minLength": 1
+              },
+              "packageVersion": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "ownership": {
+                "enum": [
+                  "subscriber-owned",
+                  "platform"
+                ]
+              }
+            },
+            "required": [
+              "ownership"
+            ]
+          },
+          "then": {
+            "properties": {
+              "ownershipClaimRef": {
+                "type": "string"
+              },
+              "packageNamespace": {
+                "type": "null"
+              },
+              "packageVersion": {
+                "type": "null"
+              }
             }
           }
         }
@@ -257,46 +481,120 @@
     "ruleRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ruleId", "tier", "sourceFile", "registrySha256", "sourceSha256"],
+      "required": [
+        "ruleId",
+        "tier",
+        "sourceFile",
+        "registrySha256",
+        "sourceSha256"
+      ],
       "properties": {
-        "ruleId": { "type": "string", "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$" },
-        "tier": { "enum": ["kernel", "1", "2", "3"] },
-        "sourceFile": { "type": "string", "minLength": 1, "maxLength": 1024 },
-        "registrySha256": { "$ref": "#/$defs/sha256" },
-        "sourceSha256": { "$ref": "#/$defs/sha256" }
+        "ruleId": {
+          "type": "string",
+          "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$"
+        },
+        "tier": {
+          "enum": [
+            "kernel",
+            "1",
+            "2",
+            "3"
+          ]
+        },
+        "sourceFile": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "registrySha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "sourceSha256": {
+          "$ref": "#/$defs/sha256"
+        }
       }
     },
     "claimRef": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "claimId", "revision", "path", "sha256", "claimType", "subject", "assertion",
-        "scope", "reviewRef", "verifiedAt", "reviewBy"
+        "claimId",
+        "revision",
+        "path",
+        "sha256",
+        "claimType",
+        "subject",
+        "assertion",
+        "scope",
+        "reviewRef",
+        "verifiedAt",
+        "reviewBy"
       ],
       "properties": {
-        "claimId": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
-        "revision": { "type": "integer", "minimum": 2 },
-        "path": { "type": "string", "pattern": "^\\.ai/knowledge/claims/[^/]+\\.yaml$" },
-        "sha256": { "$ref": "#/$defs/sha256" },
-        "claimType": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "subject": { "type": "object" },
-        "assertion": { "type": "object" },
-        "scope": { "type": "object" },
-        "reviewRef": { "type": "string", "pattern": "^KREV-[A-Z0-9][A-Z0-9-]{2,79}$" },
-        "verifiedAt": { "type": "string", "format": "date-time" },
-        "reviewBy": { "type": "string", "format": "date-time" }
+        "claimId": {
+          "type": "string",
+          "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^\\.ai/knowledge/claims/[^/]+\\.yaml$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "claimType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "subject": {
+          "type": "object"
+        },
+        "assertion": {
+          "type": "object"
+        },
+        "scope": {
+          "type": "object"
+        },
+        "reviewRef": {
+          "type": "string",
+          "pattern": "^KREV-[A-Z0-9][A-Z0-9-]{2,79}$"
+        },
+        "verifiedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reviewBy": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
     },
     "requiredRead": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "sha256"],
+      "required": [
+        "path",
+        "sha256"
+      ],
       "properties": {
-        "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
         "sha256": {
           "oneOf": [
-            { "type": "null" },
-            { "$ref": "#/$defs/sha256" }
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/sha256"
+            }
           ]
         }
       }
@@ -304,36 +602,150 @@
     "evidenceRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["evidenceId", "path", "sha256", "type", "completeness", "durability", "sourceRef", "sourceRevision", "retrievedAt"],
+      "required": [
+        "evidenceId",
+        "path",
+        "sha256",
+        "type",
+        "completeness",
+        "durability",
+        "sourceRef",
+        "sourceRevision",
+        "retrievedAt"
+      ],
       "properties": {
-        "evidenceId": { "type": "string", "pattern": "^EV-[A-Za-z0-9._-]+$" },
-        "path": { "type": "string", "pattern": "^evidence/[^/]+\\.json$" },
-        "sha256": { "$ref": "#/$defs/sha256" },
-        "type": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "completeness": { "enum": ["complete", "partial"] },
-        "durability": { "enum": ["durable", "ephemeral"] },
-        "sourceRef": { "type": "string", "minLength": 1, "maxLength": 2048 },
-        "sourceRevision": { "type": ["string", "integer", "null"] },
-        "retrievedAt": { "type": "string", "format": "date-time" }
+        "evidenceId": {
+          "type": "string",
+          "pattern": "^EV-[A-Za-z0-9._-]+$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^evidence/[^/]+\\.json$"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "completeness": {
+          "enum": [
+            "complete",
+            "partial"
+          ]
+        },
+        "durability": {
+          "enum": [
+            "durable",
+            "ephemeral"
+          ]
+        },
+        "sourceRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "sourceRevision": {
+          "type": [
+            "string",
+            "integer",
+            "null"
+          ]
+        },
+        "retrievedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
     },
     "repository": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["workspaceRoot", "remote", "branch", "baseCommit", "headCommit", "dirtyPaths", "capturedAt"],
+      "required": [
+        "workspaceRoot",
+        "remote",
+        "branch",
+        "baseCommit",
+        "headCommit",
+        "dirtyPaths",
+        "capturedAt"
+      ],
       "properties": {
-        "workspaceRoot": { "const": "brain-core" },
-        "remote": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
-        "branch": { "type": ["string", "null"], "maxLength": 512 },
-        "baseCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
-        "headCommit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "workspaceRoot": {
+          "const": "brain-core"
+        },
+        "remote": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512
+        },
+        "baseCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        "headCommit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
         "dirtyPaths": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
           "uniqueItems": true
         },
-        "capturedAt": { "type": "string", "format": "date-time" }
+        "capturedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
       }
+    },
+    "entryRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entryId",
+        "reviewedContentDigest",
+        "factsDigest",
+        "sourceTreeDigest",
+        "profile"
+      ],
+      "properties": {
+        "entryId": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9]{1,79}:[A-Za-z0-9_]{1,15}:.{1,240}$"
+        },
+        "reviewedContentDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "factsDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "sourceTreeDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "profile": {
+          "type": "string",
+          "pattern": "^salesforce\\.[a-z][a-z0-9-]{1,60}@[0-9]+$"
+        }
+      },
+      "description": "SAFE-CLAIM-001 v2 grounding for intended repository-source state (docs/knowledge-one-file-contract.md par 6.2/par 8). Additive: claimRef/evidenceRef grammar untouched."
     }
   }
 }

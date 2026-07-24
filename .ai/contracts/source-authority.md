@@ -6,6 +6,13 @@ Schema version: 2
 Source authority depends on the claim being made. There is no universal ranking, and multiple
 records derived from the same underlying source are not independent corroboration.
 
+Approved one-file Knowledge Entries (`entryRef`, SAFE-CLAIM-001 v2, owner-approved
+2026-07-24) carry `metadata-repository` authority only: they establish the intended
+repository-source state of a force-app artifact (positive presence, source-exact,
+fully-covered sections) and never deployed state, runtime behavior, business meaning,
+package limitations, vendor guarantees, or absence/completeness beyond the machine-emitted
+enumeration — see `docs/knowledge-one-file-contract.md` §8.
+
 | Evidence source type | Can establish | Cannot establish alone |
 |---|---|---|
 | `org-describe` | Accessible object/field/relation schema at observation time | Business meaning, closed package internals, or absence when permissions are incomplete |

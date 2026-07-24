@@ -84,6 +84,7 @@ WORK_RECORD_COMMANDS = {
         "capture-repository",
         "capture-org-review",
         "create-handoff",
+        "bind-entry",
     },
     "config-investigator": {
         "validate",
@@ -411,6 +412,7 @@ def work_record_command_allowed(parts: list[str], role: str) -> bool:
         "append-review",
         "attach-rule",
         "bind-claim",
+        "bind-entry",
         "add-question",
         "resolve-question",
         "capture-repository",

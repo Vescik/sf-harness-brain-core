@@ -13,9 +13,17 @@ catalogs, resume pointers) before exploring the tree.
 - **SAFE-EVID-001 — incomplete evidence cannot be safe.** Missing, stale, partial, unreviewed,
   contested, scope-mismatched, or unresolved evidence yields `INCOMPLETE — NEEDS HUMAN`, never
   `SAFE`.
-- **SAFE-CLAIM-001 — material facts require governed claims.** A material system or package fact
-  must reference a schema-valid claim and its evidence. Model inference, chat recollection, and
-  generic Salesforce knowledge may propose a claim but cannot verify it.
+- **SAFE-CLAIM-001 — material facts require governed grounding.** A material system or package
+  fact must reference either (a) a schema-valid claim and its evidence, or (b) — only for the
+  intended repository-source state of a force-app artifact — a current approved Knowledge Entry
+  (`entryRef`; lane `approved-current` confirmed by the entry executor's receipt, never by a raw
+  file read) covering a source-exact, fully-covered section, and only for positive presence
+  assertions. Absence or completeness of source, deployed org state, runtime behavior, business
+  meaning, package limitations, and vendor guarantees still require a claim with evidence. When
+  an approved entry exists for a subject, a metadata-repository claim may not ground the same
+  fact (`shadowed-by-entry`). Model inference, chat recollection, and generic Salesforce
+  knowledge may propose but cannot verify. (v2 per docs/knowledge-one-file-contract.md §8;
+  owner-approved 2026-07-24.)
 - **SAFE-TOOL-001 — never invent execution.** Never state or imply that a file, repository, MCP
   tool, CLI command, org query, test, approval, or handoff was inspected or completed without its
   actual successful receipt. An unavailable tool is `DEPENDENCY UNAVAILABLE`, not permission to

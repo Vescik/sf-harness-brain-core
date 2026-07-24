@@ -301,7 +301,7 @@ discriminator is structural, not asserted (review R2-6):
   consumers of "intentional errors" must use the entry-backed mode from P2 on; the legacy
   path answers only legacy queries and is retired at P5 (review R2 back-door flag).
 
-## 8. SAFE-CLAIM v2 draft (Tier 1 change — owner sign-off at P3)
+## 8. SAFE-CLAIM v2 (Tier 1 change — OWNER-APPROVED 2026-07-24, implemented in P3)
 
 ### 8.1. Grounding rule (tightened per reviews R2-7, R1-6)
 

@@ -80,7 +80,8 @@ Every generated report, draft, or returned structured context states:
 - completeness (`complete` or `partial`) and warnings;
 - review status (`draft`, `accepted`, `rejected`, or `promoted`);
 - files written and verification performed.
-- material `ruleRefs`, `claimRefs`, and `evidenceRefs`, including missing/stale/contested refs.
+- material `ruleRefs`, `claimRefs`, `entryRefs` (approved Knowledge Entries, SAFE-CLAIM-001 v2),
+  and `evidenceRefs`, including missing/stale/contested/shadowed refs.
 
 Never silently overwrite a human-reviewed artifact. Sanitize output names and keep writes inside
 the documented brain or named Salesforce workspace root.

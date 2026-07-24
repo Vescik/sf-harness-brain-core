@@ -68,6 +68,26 @@ class StoreError(RuntimeError):
     """Fail-closed executor error; message is the actionable reason."""
 
 
+import contextlib
+
+
+@contextlib.contextmanager
+def rooted(root: Path):
+    """Bind module paths to a different repo root (work_record gates, unit tests)."""
+    global ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH
+    saved = (ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH)
+    ROOT = Path(root).resolve()
+    ARTIFACTS_ROOT = ROOT / ".ai/knowledge/artifacts"
+    LEDGER_PATH = ROOT / ".ai/knowledge/artifacts-ledger.jsonl"
+    REVIEW_ARTIFACT_ROOT = ROOT / "output/knowledge-approvals"
+    LOCAL_CONFIG = ROOT / "config/harness.local.json"
+    TAXONOMY_PATH = ROOT / ".ai/knowledge/keyword-taxonomy.md"
+    try:
+        yield
+    finally:
+        ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH = saved
+
+
 # --- strict canonical parser (contract §5.6) -------------------------------------------
 
 
@@ -342,7 +362,23 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any
         regenerated = regenerate_fragment_digest(frontmatter)
         result["lane"] = "approved-current" if regenerated else "approved-drifted"
         result["factsDigest"] = current_facts
+    result["sourceTreeDigest"] = frontmatter["scope"]["sourceTreeDigest"]
+    result["profile"] = f"{frontmatter['profile']['id']}@{frontmatter['profile']['version'].split('.', 1)[0]}"
     return result
+
+
+def lane_for_identity(root: Path, identity: str) -> dict[str, Any] | None:
+    """Compute the effectiveness lane for one identity under an explicit repo root."""
+    with rooted(root):
+        latest = ledger_latest(read_ledger())
+        for path in all_entry_paths():
+            try:
+                lane = compute_lane(path, latest)
+            except StoreError:
+                continue
+            if lane["identity"] == identity:
+                return lane
+    return None
 
 
 def regenerate_fragment_digest(frontmatter: dict[str, Any]) -> bool:

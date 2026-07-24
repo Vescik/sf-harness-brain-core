@@ -342,6 +342,18 @@ def grounding_hash(record: dict[str, Any]) -> str:
                 deepcopy(record.get("claimRefs", [])),
                 key=lambda item: item.get("claimId", ""),
             ),
+            # entryRefs join the grounding hash only when present so hashes of entry-less
+            # records (and all pre-v2 fixtures) stay stable (SAFE-CLAIM-001 v2, additive).
+            **(
+                {
+                    "entryRefs": sorted(
+                        deepcopy(record["entryRefs"]),
+                        key=lambda item: item.get("entryId", ""),
+                    )
+                }
+                if record.get("entryRefs")
+                else {}
+            ),
             "repositories": sorted(
                 [
                     {
@@ -530,6 +542,136 @@ def persisted_claim_ref(root: Path, claim_id: str) -> dict[str, Any]:
     return claim_reference_from_result(root, claim_id, result)
 
 
+# claimTypes whose metadata-repository evidence leg is entry-home under the one-file model
+# (docs/knowledge-one-file-contract.md §1). Their repo-evidence claims are shadowed by an
+# approved entry for the same subject (SAFE-CLAIM-001 v2, owner-approved 2026-07-24).
+ENTRY_HOME_CLAIM_TYPES = frozenset(
+    {
+        "automation-inventory",
+        "component-description",
+        "component-inventory",
+        "field-schema",
+        "integration",
+        "object-existence",
+        "object-ownership",
+        "object-relation",
+        "component-relation",
+    }
+)
+ENTRY_REF_FIELDS = frozenset(
+    {"entryId", "reviewedContentDigest", "factsDigest", "sourceTreeDigest", "profile"}
+)
+
+
+def _knowledge_store():
+    try:
+        from scripts import knowledge_store
+    except ModuleNotFoundError:
+        try:
+            import knowledge_store  # type: ignore
+        except ModuleNotFoundError as exc:
+            raise WorkRecordError("the Knowledge Entry executor is unavailable") from exc
+    return knowledge_store
+
+
+def entry_relative_path(root: Path, identity: str) -> str:
+    store = _knowledge_store()
+    metadata_type, namespace_segment, full_name = identity.split(":", 2)
+    with store.rooted(root):
+        path = store.entry_path(
+            metadata_type, None if namespace_segment == "c" else namespace_segment, full_name
+        )
+        return path.relative_to(store.ROOT).as_posix()
+
+
+def _entry_identity_lanes(root: Path) -> dict[str, str]:
+    store = _knowledge_store()
+    lanes: dict[str, str] = {}
+    with store.rooted(root):
+        latest = store.ledger_latest(store.read_ledger())
+        for path in store.all_entry_paths():
+            try:
+                lane = store.compute_lane(path, latest)
+            except store.StoreError:
+                continue
+            lanes[lane["identity"]] = lane["lane"]
+    return lanes
+
+
+def _claim_evidence_source_types(root: Path, claim_id: str) -> set[str]:
+    """Evidence sourceTypes backing a claim; unknown/unreadable receipts yield an empty set.
+
+    Shadowing restricts only provably repo-only claims — when evidence cannot be read the
+    claim keeps its v1 standing and the registry's own validation remains the gate."""
+    try:
+        claim = load_yaml(contained_path(root, f".ai/knowledge/claims/{claim_id}.yaml"))
+    except (WorkRecordError, FileNotFoundError, OSError):
+        return set()
+    source_types: set[str] = set()
+    for evidence_id in claim.get("evidenceRefs", []):
+        try:
+            evidence = load_yaml(contained_path(root, f".ai/knowledge/evidence/{evidence_id}.yaml"))
+        except (WorkRecordError, FileNotFoundError, OSError):
+            return set()
+        source_type = evidence.get("sourceType")
+        if isinstance(source_type, str):
+            source_types.add(source_type)
+    return source_types
+
+
+def _assert_not_shadowed(root: Path, claim_id: str, expected: dict[str, Any]) -> None:
+    if expected["claimType"] not in ENTRY_HOME_CLAIM_TYPES:
+        return
+    source_types = _claim_evidence_source_types(root, claim_id)
+    if not source_types or source_types != {"metadata-repository"}:
+        return  # org/other evidence legs remain v1-home (contract §1 table)
+    subject_identity = str(expected.get("subject", {}).get("identity", ""))
+    for identity, lane in _entry_identity_lanes(root).items():
+        if lane not in {"approved-current", "approved-drifted"}:
+            continue
+        _type, namespace_segment, full_name = identity.split(":", 2)
+        candidates = {full_name}
+        if namespace_segment != "c":
+            candidates.add(f"{namespace_segment}__{full_name}")
+        if subject_identity in candidates:
+            raise WorkRecordError(
+                f"Knowledge claim is shadowed-by-entry ({identity}); metadata-repository "
+                f"claims cannot ground facts an approved entry owns: {claim_id}"
+            )
+
+
+def validate_entry_refs(
+    root: Path,
+    references: list[dict[str, Any]],
+    *,
+    require_current: bool,
+) -> None:
+    seen: set[str] = set()
+    for reference in references:
+        entry_id = str(reference.get("entryId", ""))
+        if entry_id in seen:
+            raise WorkRecordError(f"duplicate Knowledge entry reference: {entry_id}")
+        seen.add(entry_id)
+        if set(reference) != ENTRY_REF_FIELDS:
+            raise WorkRecordError(f"invalid entryRef shape: {entry_id or '<missing entryId>'}")
+        lane = _knowledge_store().lane_for_identity(root, entry_id)
+        if lane is None:
+            raise WorkRecordError(f"Knowledge entry does not exist: {entry_id}")
+        if lane.get("reviewedContentDigest") != reference["reviewedContentDigest"]:
+            raise WorkRecordError(f"Knowledge entry digest differs from the bound reference: {entry_id}")
+        if lane.get("sourceTreeDigest") != reference["sourceTreeDigest"] or lane.get("profile") != reference["profile"]:
+            raise WorkRecordError(f"Knowledge entry scope/profile differs from the bound reference: {entry_id}")
+        if require_current:
+            if lane["lane"] != "approved-current":
+                raise WorkRecordError(
+                    f"Knowledge entry is not approved-current (lane {lane['lane']}): {entry_id}"
+                )
+        elif lane["lane"] not in {"approved-current", "approved-drifted"}:
+            raise WorkRecordError(
+                f"Knowledge entry is not approved (lane {lane['lane']}): {entry_id}"
+            )
+
+
 def validate_claim_refs(
     root: Path,
     references: list[dict[str, Any]],
@@ -546,6 +688,8 @@ def validate_claim_refs(
         if reference != expected:
             qualifier = "effective" if require_current else "persisted"
             raise WorkRecordError(f"Knowledge claim reference differs from its {qualifier} source: {claim_id}")
+        if require_current:
+            _assert_not_shadowed(root, claim_id, expected)
 
 
 def validate_component_claim_bindings(root: Path, record: dict[str, Any]) -> None:
@@ -1056,6 +1200,7 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
         raise WorkRecordError("groundingHash does not match rules, claims, scope, repositories, and environment")
     validate_rule_refs(root, record.get("ruleRefs", []))
     validate_claim_refs(root, record.get("claimRefs", []), require_current=False)
+    validate_entry_refs(root, record.get("entryRefs", []), require_current=False)
     validate_component_claim_bindings(root, record)
 
     record_dir = record_directory(root, record["recordId"])
@@ -1182,7 +1327,11 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
         ):
             raise WorkRecordError("environment verification is not a VERIFIED org-identity receipt")
 
-    valid_resolution_refs = {item["claimId"] for item in record.get("claimRefs", [])} | evidence_ids
+    valid_resolution_refs = (
+        {item["claimId"] for item in record.get("claimRefs", [])}
+        | {item["entryId"] for item in record.get("entryRefs", [])}
+        | evidence_ids
+    )
     for question in record.get("blockingQuestions", []):
         if question["status"] == "open" and question.get("resolutionRef") is not None:
             raise WorkRecordError(f"open blocking question has a resolution: {question['id']}")
@@ -1215,9 +1364,12 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
             {item["tier"] for item in record["ruleRefs"]}
         ):
             raise WorkRecordError("SAFE/complete state requires applicable rules from kernel and Tiers 1-3")
-        if not record["claimRefs"]:
-            raise WorkRecordError("SAFE/complete state requires fresh verified Knowledge claims")
+        if not record["claimRefs"] and not record.get("entryRefs"):
+            raise WorkRecordError(
+                "SAFE/complete state requires fresh verified Knowledge grounding (claims or entries)"
+            )
         validate_claim_refs(root, record["claimRefs"], require_current=True)
+        validate_entry_refs(root, record.get("entryRefs", []), require_current=True)
         bound_claims = {item["claimId"] for item in record["claimRefs"]}
         if any(
             component["ownership"] == "unknown"
@@ -1276,6 +1428,7 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
                 handoff.get("groundingHash") != record["groundingHash"]
                 or handoff.get("ruleRefs") != record["ruleRefs"]
                 or handoff.get("claimRefs") != record["claimRefs"]
+                or handoff.get("entryRefs", []) != record.get("entryRefs", [])
             ):
                 raise WorkRecordError("pending handoff binds to stale grounding")
 
@@ -1538,6 +1691,7 @@ def command_context(args: argparse.Namespace) -> dict[str, Any]:
         "groundingHash": record["groundingHash"],
         "ruleRefs": deepcopy(record["ruleRefs"]),
         "claimRefs": deepcopy(record["claimRefs"]),
+        **({"entryRefs": deepcopy(record["entryRefs"])} if record.get("entryRefs") else {}),
         "environment": deepcopy(record["environment"]),
         "contextRefs": deepcopy(record["contextRefs"]),
         "evidenceRefs": deepcopy(record["evidenceRefs"]),
@@ -1850,6 +2004,56 @@ def command_bind_claim(args: argparse.Namespace) -> dict[str, Any]:
     return persist_record(root, record)
 
 
+def command_bind_entry(args: argparse.Namespace) -> dict[str, Any]:
+    root = data_root(args.root)
+    if args.role != "solution-designer":
+        raise WorkRecordError("only solution-designer may bind approved Knowledge entries")
+    record = load_record(root, args.record_id)
+    check_expected(record, args.expected_revision, args.expected_record_hash)
+    if record["currentHandoffId"]:
+        raise WorkRecordError("consume the pending handoff before changing grounding")
+    if current_approval(record) is not None or state_pair(record) not in {
+        ("intake", "draft"),
+        ("intake", "incomplete"),
+        ("intake", "blocked"),
+        ("design", "draft"),
+        ("design", "awaiting_human"),
+        ("design", "incomplete"),
+        ("design", "blocked"),
+    }:
+        raise WorkRecordError("Knowledge grounding can change only before human design approval")
+    lane = _knowledge_store().lane_for_identity(root, args.entry_id)
+    if lane is None:
+        raise WorkRecordError(f"Knowledge entry does not exist: {args.entry_id}")
+    if lane["lane"] != "approved-current":
+        raise WorkRecordError(
+            f"Knowledge entry is not approved-current (lane {lane['lane']}): {args.entry_id}"
+        )
+    reference = {
+        "entryId": args.entry_id,
+        "reviewedContentDigest": lane["reviewedContentDigest"],
+        "factsDigest": lane["factsDigest"],
+        "sourceTreeDigest": lane["sourceTreeDigest"],
+        "profile": lane["profile"],
+    }
+    by_id = {item["entryId"]: item for item in record.get("entryRefs", [])}
+    by_id[args.entry_id] = reference
+    record["entryRefs"] = sorted(by_id.values(), key=lambda item: item["entryId"])
+    before = deepcopy(record["state"])
+    timestamp = utc_now()
+    record["groundingHash"] = grounding_hash(record)
+    append_event(
+        record,
+        action="bind-entry",
+        role=args.role,
+        from_state=before,
+        note=f"Bound approved Knowledge entry {args.entry_id}.",
+        at=timestamp,
+    )
+    bump(record, timestamp)
+    return persist_record(root, record)
+
+
 def command_add_question(args: argparse.Namespace) -> dict[str, Any]:
     root = data_root(args.root)
     if args.role not in {"solution-designer", "config-investigator"}:
@@ -2127,6 +2331,7 @@ def _required_reads(root: Path, record: dict[str, Any], values: Iterable[str]) -
     requested = [
         record["design"]["path"],
         *(item["path"] for item in record.get("claimRefs", [])),
+        *(entry_relative_path(root, item["entryId"]) for item in record.get("entryRefs", [])),
         *values,
     ]
     result: list[dict[str, Any]] = []
@@ -2237,6 +2442,7 @@ def command_create_handoff(args: argparse.Namespace) -> dict[str, Any]:
         "groundingHash": record["groundingHash"],
         "ruleRefs": deepcopy(record["ruleRefs"]),
         "claimRefs": deepcopy(record["claimRefs"]),
+        **({"entryRefs": deepcopy(record["entryRefs"])} if record.get("entryRefs") else {}),
         "requiredReads": _required_reads(root, record, args.required_read or []),
         "evidenceRefs": selected_evidence,
         "repositories": deepcopy(record["repositories"]),
@@ -2286,6 +2492,7 @@ def command_accept_handoff(args: argparse.Namespace) -> dict[str, Any]:
         or handoff["groundingHash"] != record["groundingHash"]
         or handoff["ruleRefs"] != record["ruleRefs"]
         or handoff["claimRefs"] != record["claimRefs"]
+        or handoff.get("entryRefs", []) != record.get("entryRefs", [])
     ):
         raise WorkRecordError("handoff grounding, scope, or design no longer matches the record")
 
@@ -2415,9 +2622,12 @@ def command_approve(args: argparse.Namespace) -> dict[str, Any]:
         {item["tier"] for item in record["ruleRefs"]}
     ):
         raise WorkRecordError("human approval requires applicable rules from kernel and Tiers 1-3")
-    if not record["claimRefs"]:
-        raise WorkRecordError("human approval requires at least one fresh verified Knowledge claim")
+    if not record["claimRefs"] and not record.get("entryRefs"):
+        raise WorkRecordError(
+            "human approval requires at least one fresh verified Knowledge claim or approved entry"
+        )
     validate_claim_refs(root, record["claimRefs"], require_current=True)
+    validate_entry_refs(root, record.get("entryRefs", []), require_current=True)
     bound_claims = {item["claimId"] for item in record["claimRefs"]}
     if any(
         component["ownership"] == "unknown"
@@ -2571,6 +2781,17 @@ def build_parser() -> argparse.ArgumentParser:
     bind_claim.add_argument("--role", required=True, choices=sorted(AGENT_ROLES))
     bind_claim.add_argument("--claim-id", required=True)
     bind_claim.set_defaults(func=command_bind_claim)
+
+    bind_entry = subparsers.add_parser(
+        "bind-entry",
+        help="bind an approved-current Knowledge entry to the record grounding",
+    )
+    bind_entry.add_argument("--record-id", required=True)
+    bind_entry.add_argument("--expected-revision", required=True, type=int)
+    bind_entry.add_argument("--expected-record-hash", required=True)
+    bind_entry.add_argument("--role", required=True, choices=sorted(AGENT_ROLES))
+    bind_entry.add_argument("--entry-id", required=True)
+    bind_entry.set_defaults(func=command_bind_entry)
 
     add_question = subparsers.add_parser("add-question", help="persist an unresolved blocking question")
     add_question.add_argument("--record-id", required=True)

@@ -261,6 +261,60 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertNotIn("trigger", frontmatter["typeFacts"])
         self.assertEqual(1, len(frontmatter["intentionalErrors"]))
 
+    def test_work_record_entry_refs_validate_and_track_lanes(self) -> None:
+        from scripts import work_record
+
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        lane = store.lane_for_identity(self.temp, drafted["identity"])
+        reference = {
+            "entryId": drafted["identity"],
+            "reviewedContentDigest": lane["reviewedContentDigest"],
+            "factsDigest": lane["factsDigest"],
+            "sourceTreeDigest": lane["sourceTreeDigest"],
+            "profile": lane["profile"],
+        }
+        work_record.validate_entry_refs(self.temp, [reference], require_current=True)
+        tampered = dict(reference, reviewedContentDigest="sha256:" + "f" * 64)
+        with self.assertRaises(work_record.WorkRecordError):
+            work_record.validate_entry_refs(self.temp, [tampered], require_current=True)
+        flow = self.temp / "force-app/main/default/flows/HarnessAlphaRouter.flow-meta.xml"
+        flow.write_text(FLOW_XML.replace("Active", "Draft"), encoding="utf-8")
+        with self.assertRaises(work_record.WorkRecordError):  # drifted is not current
+            work_record.validate_entry_refs(self.temp, [reference], require_current=True)
+        work_record.validate_entry_refs(self.temp, [reference], require_current=False)
+
+    def test_repo_only_claims_are_shadowed_by_approved_entries(self) -> None:
+        from scripts import work_record
+
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        claims_dir = self.temp / ".ai/knowledge/claims"
+        evidence_dir = self.temp / ".ai/knowledge/evidence"
+        claims_dir.mkdir(parents=True)
+        evidence_dir.mkdir(parents=True)
+        (claims_dir / "KCLM-ROUTER-DESC-001.yaml").write_text(
+            "claimId: KCLM-ROUTER-DESC-001\nevidenceRefs: [KEVD-ROUTER-SRC-001]\n",
+            encoding="utf-8",
+        )
+        expected = {
+            "claimType": "component-description",
+            "subject": {"kind": "automation", "identity": "HarnessAlphaRouter"},
+        }
+        (evidence_dir / "KEVD-ROUTER-SRC-001.yaml").write_text(
+            "evidenceId: KEVD-ROUTER-SRC-001\nsourceType: metadata-repository\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(work_record.WorkRecordError) as ctx:
+            work_record._assert_not_shadowed(self.temp, "KCLM-ROUTER-DESC-001", expected)
+        self.assertIn("shadowed-by-entry", str(ctx.exception))
+        # An org-observation leg of the same claim type keeps its v1 standing.
+        (evidence_dir / "KEVD-ROUTER-SRC-001.yaml").write_text(
+            "evidenceId: KEVD-ROUTER-SRC-001\nsourceType: salesforce-org-review\n",
+            encoding="utf-8",
+        )
+        work_record._assert_not_shadowed(self.temp, "KCLM-ROUTER-DESC-001", expected)
+
     def test_yaml_11_bool_landmines_stay_strings(self) -> None:
         frontmatter, _ = store.split_entry("---\nvalue: NO\nother: 'yes'\n---\n\n")
         self.assertEqual("NO", frontmatter["value"])
