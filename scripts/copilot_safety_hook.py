@@ -786,6 +786,22 @@ def main() -> int:
         )
         return 0
 
+    if is_terminal_tool(tool_name) and re.search(
+        r"knowledge_store\.py", dequote(command).replace("\\", "/")
+    ) and re.search(r"(?:^|\s)entry-(?:approve|revoke)(?:\s|$)", dequote(command)):
+        print(
+            json.dumps(
+                hook_response(
+                    "ask",
+                    "SAFE-HUMAN-001: confirm this Knowledge Entry approval/revocation — the "
+                    "command is digest-pinned to the exact displayed content and your click is "
+                    "recorded as the copilot-chat-entry-confirmation review mechanism "
+                    "(docs/knowledge-one-file-contract.md §6).",
+                )
+            )
+        )
+        return 0
+
     if has_recursive_force_rm(text) or any(pattern.search(text) for pattern in DESTRUCTIVE_PATTERNS):
         print(json.dumps(hook_response("deny", "Destructive operation blocked by SAFE-ROLE-001.")))
         return 0

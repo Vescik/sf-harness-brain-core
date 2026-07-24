@@ -2,6 +2,12 @@
 
 Status: implemented, governed pilot
 
+> Migration note (2026-07-24): repository-derived knowledge is moving to the one-file
+> Knowledge Entry model (`docs/knowledge-one-file-contract.md`, executor
+> `scripts/knowledge_store.py`). This document remains accurate for the retained v1 paths
+> (org observations, semantic claims) and for the legacy repo-claim pipeline until the P5
+> parity cutover described in `docs/knowledge-one-file-impact-map.md`.
+
 ## Objective
 
 Create reusable Salesforce Knowledge from the repository-root `force-app` without turning file

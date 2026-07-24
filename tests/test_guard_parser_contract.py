@@ -6,6 +6,7 @@ import unittest
 from scripts import copilot_role_guard as guard
 from scripts import force_app_knowledge
 from scripts import knowledge_registry
+from scripts import knowledge_store
 
 
 # Subcommands that exist in the CLI parsers but are deliberately NOT reachable through the
@@ -20,6 +21,7 @@ INTENTIONALLY_UNGUARDED = {
         "feature-crawl": "human-terminal-only: feature boundary exploration",
         "feature-draft": "human-terminal-only: feature dossier drafting",
     },
+    "knowledge_store": {},
 }
 
 # Parser flags the guard deliberately does not accept for a guarded subcommand.
@@ -27,6 +29,7 @@ INTENTIONALLY_UNGUARDED = {
 INTENTIONALLY_EXCLUDED_FLAGS: dict[str, dict[str, set[str]]] = {
     "knowledge_registry": {},
     "force_app_knowledge": {},
+    "knowledge_store": {},
 }
 
 
@@ -97,6 +100,25 @@ class GuardParserContractTests(unittest.TestCase):
             "force_app_knowledge",
             force_app_knowledge.build_parser(),
             guard.FORCE_APP_COMMAND_FLAGS,
+        )
+
+    def test_knowledge_store_guard_mirrors_parser(self) -> None:
+        self.contract(
+            "knowledge_store",
+            knowledge_store.build_parser(),
+            guard.KNOWLEDGE_STORE_COMMAND_FLAGS,
+        )
+
+    def test_knowledge_store_mutation_commands_are_role_bound(self) -> None:
+        # Entry mutations stay with the knowledge roles; reads stay universal. The approve
+        # and revoke commands additionally require the safety hook's chat confirmation.
+        self.assertEqual(
+            frozenset({"entry-draft", "entry-approve", "entry-revoke"}),
+            guard.KNOWLEDGE_STORE_MUTATION_COMMANDS,
+        )
+        self.assertLessEqual(
+            guard.KNOWLEDGE_STORE_MUTATION_COMMANDS,
+            set(guard.KNOWLEDGE_STORE_COMMAND_FLAGS),
         )
 
     def test_query_flag_constants_stay_consistent(self) -> None:

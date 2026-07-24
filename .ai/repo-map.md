@@ -9,7 +9,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 |---|---|
 | `.ai` | Governed agent state: contracts, knowledge, work records, memory, QA |
 | `.ai/contracts` | Normative execution/knowledge/workflow/tooling contracts, loaded per role |
-| `.ai/knowledge` | Canonical claims/evidence/reviews + generated indexes (claims-index.json) |
+| `.ai/knowledge` | Canonical claims/evidence/reviews, one-file artifact entries + approval ledger, generated indexes |
 | `.ai/change-records` | Durable work records; record.json is authoritative state |
 | `.ai/memory` | Human-curated decisions-log.md |
 | `.ai/qa` | QA keyword map and cached test cases |

@@ -6,6 +6,15 @@ Schema version: 2
 This contract defines how an observation becomes reusable Knowledge. The model may propose a
 claim, but it is never itself an evidence source and may never promote a claim to `verified`.
 
+Scope (narrowed 2026-07-24, T07 P1): this claim/evidence/review lifecycle governs org
+observations, reference-data snapshots, and semantic assertions not derivable from source.
+Repository-derived knowledge about force-app artifacts is governed by the one-file
+Knowledge Entry contract instead — see `docs/knowledge-one-file-contract.md` (entries under
+`.ai/knowledge/artifacts/`, executor `scripts/knowledge_store.py`, approvals in the
+append-only `artifacts-ledger.jsonl`). The claimType-to-home assignment table lives in that
+contract §1; drafting metadata-repository-evidence claims for entry-home claim types is
+frozen from P2 of the migration plan.
+
 ## Canonical records
 
 The canonical layer consists of three independently validated record types:

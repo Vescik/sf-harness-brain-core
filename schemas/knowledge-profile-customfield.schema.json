@@ -27,8 +27,11 @@
         "precision": { "type": "integer", "minimum": 0 },
         "scale": { "type": "integer", "minimum": 0 },
         "referenceTo": {
-          "type": "string",
-          "description": "Target object for Lookup/MasterDetail."
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          ],
+          "description": "Target object(s) for Lookup/MasterDetail; array covers polymorphic lookups (collector emits a list)."
         },
         "relationshipName": { "type": "string" },
         "deleteConstraint": { "enum": ["SetNull", "Restrict", "Cascade"] },

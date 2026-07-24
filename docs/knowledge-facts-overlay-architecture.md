@@ -1,6 +1,10 @@
 # Knowledge v2: Facts Lockfile + Attested Overlay
 
-Status: approved design, not yet implemented
+**Status: SHELVED (owner decision 2026-07-24) — kept as a decision record and fallback only.**
+**The operative design is the one-file Knowledge Entry model:**
+**`docs/knowledge-one-file-contract.md` (facts live inside the entry, no separate lockfile).**
+
+Original status line: approved design, not yet implemented
 Owner decisions: 2026-07-23 (full new model; committed facts; chat-approve governance)
 
 ## Motivation

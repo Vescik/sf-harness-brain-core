@@ -4,7 +4,7 @@
   "directories": [
     { "path": ".ai", "purpose": "Governed agent state: contracts, knowledge, work records, memory, QA" },
     { "path": ".ai/contracts", "purpose": "Normative execution/knowledge/workflow/tooling contracts, loaded per role" },
-    { "path": ".ai/knowledge", "purpose": "Canonical claims/evidence/reviews + generated indexes (claims-index.json)" },
+    { "path": ".ai/knowledge", "purpose": "Canonical claims/evidence/reviews, one-file artifact entries + approval ledger, generated indexes" },
     { "path": ".ai/change-records", "purpose": "Durable work records; record.json is authoritative state" },
     { "path": ".ai/memory", "purpose": "Human-curated decisions-log.md" },
     { "path": ".ai/qa", "purpose": "QA keyword map and cached test cases" },

@@ -218,6 +218,52 @@ FORCE_APP_COMMAND_FLAGS = {
     "draft": frozenset({"--observed-at", "--metadata-type"}),
 }
 
+# One-file Knowledge Entry executor (docs/knowledge-one-file-contract.md v1.1). Reads are
+# available to every role; mutations require the knowledge mutation roles, all writes flow
+# through the executor (the artifacts path itself is governed), and the safety hook answers
+# `ask` for entry-approve/entry-revoke with mechanism copilot-chat-entry-confirmation.
+# tests/test_guard_parser_contract.py diffs these flags against knowledge_store.build_parser.
+KNOWLEDGE_STORE_MUTATION_COMMANDS = frozenset({"entry-draft", "entry-approve", "entry-revoke"})
+KNOWLEDGE_STORE_COMMAND_FLAGS = {
+    "entry-draft": frozenset(
+        {
+            "--metadata-type",
+            "--full-name",
+            "--namespace",
+            "--purpose-file",
+            "--source-api-version",
+            "--candidate-keyword",
+        }
+    ),
+    "entry-approve": frozenset({"--entry"}),
+    "entry-revoke": frozenset({"--identity", "--rationale"}),
+    "entry-status": frozenset({"--identity"}),
+    "entry-check": frozenset(),
+}
+
+
+def knowledge_store_command_allowed(parts: list[str], role: str) -> bool:
+    if not parts or parts[0] not in KNOWLEDGE_STORE_COMMAND_FLAGS:
+        return False
+    command = parts[0]
+    if command in KNOWLEDGE_STORE_MUTATION_COMMANDS and role not in KNOWLEDGE_MUTATION_ROLES:
+        return False
+    allowed_flags = KNOWLEDGE_STORE_COMMAND_FLAGS[command]
+    index = 1
+    while index < len(parts):
+        token = parts[index]
+        if not token.startswith("--"):
+            return False
+        if "=" in token:
+            flag = token.split("=", 1)[0]
+            index += 1
+        else:
+            flag = token
+            index += 2
+        if flag not in allowed_flags:
+            return False
+    return True
+
 PATH_KEYS = {
     "path",
     "filepath",
@@ -850,6 +896,8 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         return work_record_command_allowed(remainder, role)
     if script == knowledge_registry:
         return knowledge_registry_command_allowed(remainder, role, root)
+    if script == (root / "scripts/knowledge_store.py").resolve():
+        return knowledge_store_command_allowed(remainder, role)
     if script == force_app_knowledge:
         return force_app_knowledge_command_allowed(remainder, role)
     if script == salesforce_read:
@@ -955,12 +1003,17 @@ def role_path_allowed(relative_path: str, role: str) -> bool:
 
 
 def is_governed_record_path(relative_path: str) -> bool:
+    # The one-file entry patterns match case-folded so NTFS case variants (Foo.MD, .AI/...)
+    # cannot slip past the governed boundary (contract §3, review R1-10).
+    lowered = relative_path.casefold()
     return bool(
         re.fullmatch(r"\.ai/change-records/[^/]+/record\.json", relative_path)
         or re.fullmatch(r"\.ai/change-records/[^/]+/handoffs/[^/]+\.json", relative_path)
         or re.fullmatch(r"\.ai/change-records/[^/]+/evidence/[^/]+\.json", relative_path)
         or re.fullmatch(r"\.ai/knowledge/(claims|evidence|reviews)/[^/]+\.(yaml|yml|json)", relative_path)
         or re.fullmatch(r"\.ai/knowledge/(automation-map|business-processes|current-implementation|field-descriptions|glossary|integration-map|known-limitations|object-descriptions|object-relations)\.md", relative_path)
+        or re.fullmatch(r"\.ai/knowledge/artifacts/.+\.md", lowered)
+        or lowered == ".ai/knowledge/artifacts-ledger.jsonl"
     )
 
 

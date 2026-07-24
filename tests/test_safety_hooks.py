@@ -712,6 +712,59 @@ class RoleGuardTests(unittest.TestCase):
         )
         self.assertEqual(hook_decision(output), "ask")
 
+    def test_entry_approve_and_revoke_ask_for_human_confirmation(self) -> None:
+        # One-file Knowledge Entry approvals are digest-pinned and chat-confirmed
+        # (docs/knowledge-one-file-contract.md par 6; mechanism copilot-chat-entry-confirmation).
+        for command in (
+            "python scripts/knowledge_store.py entry-approve --entry Flow:c:X:sha256:" + "a" * 64,
+            "python scripts/knowledge_store.py entry-revoke --identity Flow:c:X --rationale bad",
+        ):
+            with self.subTest(command=command):
+                output = run_hook(
+                    "copilot_safety_hook.py",
+                    {
+                        "tool_name": "execute/runInTerminal",
+                        "tool_input": {"command": command},
+                    },
+                )
+                self.assertEqual(hook_decision(output), "ask")
+
+    def test_entry_store_commands_are_role_bound_and_artifact_edits_denied(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        draft = (
+            "python scripts/knowledge_store.py entry-draft "
+            "--metadata-type Flow --full-name RouterX --purpose-file purpose.md"
+        )
+        status = "python scripts/knowledge_store.py entry-status"
+        for role in ("config-investigator", "knowledge-curator"):
+            with self.subTest(role=role):
+                self.assertTrue(role_guard.allowed_role_command(draft, ROOT, role))
+        for role in ("solution-designer", "development-assistant", "test-strategist", "guardrail-reviewer"):
+            with self.subTest(role=role):
+                self.assertFalse(role_guard.allowed_role_command(draft, ROOT, role))
+                self.assertTrue(role_guard.allowed_role_command(status, ROOT, role))
+        # The artifacts path and ledger are governed: raw edits denied for every role,
+        # including NTFS case variants (contract par 3).
+        for path in (
+            ".ai/knowledge/artifacts/Flow/c/RouterX.md",
+            ".ai/knowledge/Artifacts/Flow/c/RouterX.MD",
+            ".ai/knowledge/artifacts-ledger.jsonl",
+        ):
+            for role in ("config-investigator", "knowledge-curator", "development-assistant"):
+                with self.subTest(path=path, role=role):
+                    output = run_hook(
+                        "copilot_role_guard.py",
+                        {
+                            "cwd": str(ROOT),
+                            "tool_name": "edit/editFiles",
+                            "tool_input": {"path": path},
+                        },
+                        "--role",
+                        role,
+                    )
+                    self.assertEqual(hook_decision(output), "deny")
+
     def test_investigator_may_request_approve_claim_others_may_not(self) -> None:
         from scripts import copilot_role_guard as role_guard
 

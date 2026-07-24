@@ -183,7 +183,7 @@
     },
     {
       "path": ".ai/knowledge",
-      "purpose": "Canonical claims/evidence/reviews + generated indexes (claims-index.json)"
+      "purpose": "Canonical claims/evidence/reviews, one-file artifact entries + approval ledger, generated indexes"
     },
     {
       "path": ".ai/change-records",
@@ -583,7 +583,7 @@
   ],
   "sourceDigests": {
     ".ai/contracts/execution-contract.md": "sha256:c5c9a549c94dfc4d7240cd4534db51c24375e3f756d11d6c4c074e6663d3f6b5",
-    ".ai/contracts/knowledge-lifecycle.md": "sha256:9d9d50f11ef7c6b73bce759d2b0674d2fa750c97f1936e52babcc4e22bd1df40",
+    ".ai/contracts/knowledge-lifecycle.md": "sha256:37553a1921e1b0d0b05280d60beef828c4afebb1b7d2a061f5c9822d54be5c66",
     ".ai/contracts/source-authority.md": "sha256:8d2a124483cc8fe283b0bc41aed47c26ea303a2758cbd5ee2664b69b3949de25",
     ".ai/contracts/tool-capabilities.md": "sha256:9daa9e6485af7b556fac6007c94f3daf4c26c191c9256d871f4efe20a906a9c5",
     ".ai/contracts/workflow-state-machine.md": "sha256:b2b4e313741bec172732b18977beaccfb741379b55ff4f2b422383485b0e2334",
@@ -643,7 +643,7 @@
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
     ".github/skills/update-knowledge-base/SKILL.md": "sha256:b6da4a24d83116ef3dea64bbd49b57d3229f9a6ab68d09eb477c4bb771d02c7c",
     ".github/skills/update-relations/SKILL.md": "sha256:5c6e3f55a32f965edf5456033e89912598b8e2cf2c5a9152d4841420c2b3e121",
-    "config/repo-map-seed.json": "sha256:f5e3e507a7a9a4a2b69f399bae8452c7d2d6ac2bae4af3a377803cdebe942766"
+    "config/repo-map-seed.json": "sha256:f973d95dd2cb42007f2e25ecb56d189cd0ed646ce5016d212a41197c41a8526b"
   },
-  "wordCount": 854
+  "wordCount": 858
 }

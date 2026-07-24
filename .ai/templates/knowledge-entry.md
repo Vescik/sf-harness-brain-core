@@ -1,5 +1,11 @@
 # Template: Knowledge Claim Proposal (Schema v3)
 
+> Scope note (2026-07-24): this template covers the v1 claim/evidence/review path, which now
+> governs org observations and semantic assertions only. Repository-derived knowledge about
+> force-app artifacts uses one-file Knowledge Entries created exclusively by
+> `scripts/knowledge_store.py entry-draft` (never hand-written) — see
+> `docs/knowledge-one-file-contract.md` for the entry shape and approval flow.
+
 Canonical Knowledge is stored as YAML records, not as free-form entries inside domain Markdown
 files. Validate claims with `schemas/knowledge-claim.schema.json`, evidence with
 `schemas/knowledge-evidence.schema.json`, and human decisions with

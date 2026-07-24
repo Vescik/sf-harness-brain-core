@@ -208,6 +208,12 @@ class KnowledgeSchemaTests(unittest.TestCase):
                 )
                 if path.suffix == ".yaml":
                     surfaces.append(path)
+        artifacts_root = ROOT / ".ai/knowledge/artifacts"
+        if artifacts_root.exists():
+            surfaces.extend(sorted(artifacts_root.rglob("*.md")))
+        ledger = ROOT / ".ai/knowledge/artifacts-ledger.jsonl"
+        if ledger.exists():
+            surfaces.append(ledger)
         for surface in surfaces:
             leaks = reserved_fixture_leaks(surface.read_text(encoding="utf-8"))
             self.assertEqual([], leaks, f"{surface}: reserved fixture tokens leaked: {leaks}")

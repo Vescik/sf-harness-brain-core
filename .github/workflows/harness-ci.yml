@@ -68,6 +68,7 @@ jobs:
         run: |
           python scripts/knowledge_registry.py validate
           python scripts/knowledge_registry.py render-indexes --check
+          python scripts/knowledge_store.py entry-check
 
       - name: Report knowledge freshness (advisory)
         # Advisory only: expired/expiring claims are surfaced in the log for re-review

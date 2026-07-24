@@ -182,6 +182,11 @@ def check_required_files(audit: Audit) -> None:
         "schemas/force-app-knowledge-draft-manifest.schema.json",
         "schemas/force-app-knowledge-worklist.schema.json",
         "schemas/knowledge-claims-index.schema.json",
+        "schemas/knowledge-entry.schema.json",
+        "schemas/knowledge-profile-flow.schema.json",
+        "schemas/knowledge-profile-customfield.schema.json",
+        "scripts/knowledge_store.py",
+        "docs/knowledge-one-file-contract.md",
         "schemas/change-record.schema.json",
         "schemas/handoff-envelope.schema.json",
         "schemas/salesforce-org-review-evidence.schema.json",
@@ -834,6 +839,9 @@ def check_grounding_contracts(audit: Audit) -> None:
         "knowledge-extraction.schema.json",
         "dev-tool-batch.schema.json",
         "ado-wiki-cache.schema.json",
+        "knowledge-entry.schema.json",
+        "knowledge-profile-flow.schema.json",
+        "knowledge-profile-customfield.schema.json",
     ):
         schema = load_json(ROOT / "schemas" / schema_name, audit)
         try:
@@ -844,6 +852,7 @@ def check_grounding_contracts(audit: Audit) -> None:
     for command in (
         [sys.executable, "scripts/knowledge_registry.py", "validate"],
         [sys.executable, "scripts/knowledge_registry.py", "render-indexes", "--check"],
+        [sys.executable, "scripts/knowledge_store.py", "entry-check"],
     ):
         completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=30, check=False)
         audit.require(completed.returncode == 0, f"grounding command failed: {' '.join(command[1:])}: {completed.stderr.strip() or completed.stdout.strip()}")
