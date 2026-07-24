@@ -93,6 +93,36 @@ PROFILE_FACETS = {
         "flow.intentionalError.field": "string",
         "flow.intentionalError.usesLabel": "boolean",
     },
+    "ApexClass": {
+        "apex.kind": "string",
+        "apex.sharing": "string",
+        "apex.isTest": "boolean",
+        "apex.apiVersion": "string",
+        "apex.status": "string",
+        "apex.superclass": "string",
+        "apex.interfaces": "string",
+        "apex.annotations": "string",
+    },
+    "ApexTrigger": {
+        "apex.kind": "string",
+        "apex.isTest": "boolean",
+        "apex.apiVersion": "string",
+        "trigger.object": "string",
+        "trigger.events": "string",
+    },
+    "ValidationRule": {
+        "validationRule.object": "string",
+        "validationRule.active": "boolean",
+        "validationRule.errorDisplayField": "string",
+    },
+    "PermissionSet": {
+        "permissionSet.label": "string",
+        "permissionSet.license": "string",
+        "permissionSet.systemPermissions": "string",
+        "permissionSet.objectPermissionCount": "number",
+        "permissionSet.fieldPermissionCount": "number",
+        "permissionSet.referencesTruncated": "boolean",
+    },
     "CustomField": {
         "field.object": "string",
         "field.type": "string",
@@ -184,7 +214,52 @@ def _custom_field_facets(front: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-PROFILE_PROJECTORS = {"Flow": _flow_facets, "CustomField": _custom_field_facets}
+
+def _apex_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "apex.kind": facts.get("kind"),
+        "apex.sharing": facts.get("sharing"),
+        "apex.isTest": facts.get("isTest"),
+        "apex.apiVersion": facts.get("apiVersion"),
+        "apex.status": facts.get("status"),
+        "apex.superclass": facts.get("superclass"),
+        "apex.interfaces": facts.get("interfaces"),
+        "apex.annotations": facts.get("annotations"),
+        "trigger.object": facts.get("triggerObject"),
+        "trigger.events": facts.get("triggerEvents"),
+    }
+
+
+def _validation_rule_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "validationRule.object": facts.get("object"),
+        "validationRule.active": facts.get("active"),
+        "validationRule.errorDisplayField": facts.get("errorDisplayField"),
+    }
+
+
+def _permission_set_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "permissionSet.label": facts.get("label"),
+        "permissionSet.license": facts.get("license"),
+        "permissionSet.systemPermissions": facts.get("systemPermissions"),
+        "permissionSet.objectPermissionCount": facts.get("objectPermissionCount"),
+        "permissionSet.fieldPermissionCount": facts.get("fieldPermissionCount"),
+        "permissionSet.referencesTruncated": facts.get("referencesTruncated"),
+    }
+
+
+PROFILE_PROJECTORS = {
+    "Flow": _flow_facets,
+    "CustomField": _custom_field_facets,
+    "ApexClass": _apex_facets,
+    "ApexTrigger": _apex_facets,
+    "ValidationRule": _validation_rule_facets,
+    "PermissionSet": _permission_set_facets,
+}
 
 
 def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-apex.schema.json",
+  "title": "Knowledge Entry profile \u2014 salesforce.apex v1 (ApexClass and ApexTrigger)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "ApexClass",
+            "ApexTrigger"
+          ]
+        },
+        "sharing": {
+          "type": "string",
+          "description": "with sharing | without sharing | inherited sharing | unspecified"
+        },
+        "isTest": {
+          "type": "boolean"
+        },
+        "apiVersion": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "superclass": {
+          "type": "string"
+        },
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "triggerObject": {
+          "type": "string"
+        },
+        "triggerEvents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          },
+          "description": "Typed relation edges; per-edge assurance is required so heuristic lineage is never served as exact."
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

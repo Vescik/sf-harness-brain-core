@@ -63,6 +63,32 @@ FIELD_XML = """<?xml version="1.0" encoding="UTF-8"?>
 </CustomField>
 """
 
+APEX_CLASS = """public with sharing class HarnessAlphaService {
+    @AuraEnabled
+    public static void run() {
+        List<HarnessAlphaCase__c> rows = [SELECT Id FROM HarnessAlphaCase__c];
+        update rows;
+    }
+}
+"""
+
+APEX_META = """<?xml version="1.0" encoding="UTF-8"?>
+<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>64.0</apiVersion>
+    <status>Active</status>
+</ApexClass>
+"""
+
+VALIDATION_RULE = """<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status_Required</fullName>
+    <active>true</active>
+    <errorConditionFormula>ISBLANK(Status__c)</errorConditionFormula>
+    <errorMessage>Status is required.</errorMessage>
+    <errorDisplayField>Status__c</errorDisplayField>
+</ValidationRule>
+"""
+
 PATCHED = ("ROOT", "ARTIFACTS_ROOT", "LEDGER_PATH", "REVIEW_ARTIFACT_ROOT", "LOCAL_CONFIG", "TAXONOMY_PATH")
 
 
@@ -84,6 +110,13 @@ class KnowledgeStoreTests(unittest.TestCase):
         field_dir = self.temp / "force-app/main/default/objects/HarnessAlphaCase__c/fields"
         field_dir.mkdir(parents=True)
         (field_dir / "Status__c.field-meta.xml").write_text(FIELD_XML, encoding="utf-8")
+        apex_dir = self.temp / "force-app/main/default/classes"
+        apex_dir.mkdir(parents=True)
+        (apex_dir / "HarnessAlphaService.cls").write_text(APEX_CLASS, encoding="utf-8")
+        (apex_dir / "HarnessAlphaService.cls-meta.xml").write_text(APEX_META, encoding="utf-8")
+        vr_dir = self.temp / "force-app/main/default/objects/HarnessAlphaCase__c/validationRules"
+        vr_dir.mkdir(parents=True)
+        (vr_dir / "Status_Required.validationRule-meta.xml").write_text(VALIDATION_RULE, encoding="utf-8")
         (self.temp / ".ai/knowledge").mkdir(parents=True)
         shutil.copytree(Path(__file__).resolve().parents[1] / "schemas", self.temp / "schemas")
         (self.temp / "config").mkdir()
@@ -314,6 +347,37 @@ class KnowledgeStoreTests(unittest.TestCase):
         result = self.review([redrafted["identity"]])
         self.assertEqual([redrafted["identity"]], result["classification"]["factsOnly"])
         self.assertEqual([], result["classification"]["proseChanges"])
+
+    def test_apex_and_validation_rule_profiles_draft_and_approve(self) -> None:
+        apex = self.draft(metadata_type="ApexClass", full_name="HarnessAlphaService")
+        front, _ = store.split_entry((self.temp / apex["path"]).read_text(encoding="utf-8"))
+        self.assertEqual("ApexClass", front["typeFacts"]["kind"])
+        self.assertEqual("64.0", front["typeFacts"]["apiVersion"])
+        self.assertIn("references", front["typeFacts"])
+        # Heuristic Apex lineage must not be laundered as exact.
+        self.assertTrue(all("assurance" in edge for edge in front["typeFacts"]["references"]))
+        self.assertEqual([], front.get("intentionalErrors", []))
+
+        rule = self.draft(
+            metadata_type="ValidationRule", full_name="HarnessAlphaCase__c.Status_Required"
+        )
+        front, _ = store.split_entry((self.temp / rule["path"]).read_text(encoding="utf-8"))
+        self.assertEqual("HarnessAlphaCase__c", front["typeFacts"]["object"])
+        self.assertTrue(front["typeFacts"]["active"])
+        # A ValidationRule's message is not a Flow Custom Error and never enters that index.
+        self.assertEqual([], front.get("intentionalErrors", []))
+        self.assertNotIn("Status is required", json.dumps(front))
+
+        self.approve([f"{apex['identity']}:{apex['reviewedContentDigest']}",
+                      f"{rule['identity']}:{rule['reviewedContentDigest']}"])
+        for drafted in (apex, rule):
+            self.assertEqual("approved-current", self.lane_of(drafted["identity"])["lane"])
+
+    def test_every_profile_has_a_schema_and_an_adapter(self) -> None:
+        for metadata_type, profile in store.PROFILES.items():
+            with self.subTest(metadataType=metadata_type):
+                self.assertIn(metadata_type, store.ADAPTERS)
+                self.assertTrue((self.temp / "schemas" / profile["schema"]).is_file())
 
     def test_work_record_entry_refs_validate_and_track_lanes(self) -> None:
         from scripts import work_record

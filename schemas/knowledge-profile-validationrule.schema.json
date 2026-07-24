@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-validationrule.schema.json",
+  "title": "Knowledge Entry profile \u2014 salesforce.validation-rule v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object"
+      ],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "errorDisplayField": {
+          "type": "string"
+        },
+        "errorMessagePresent": {
+          "type": "boolean"
+        },
+        "conditionPresent": {
+          "type": "boolean"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          },
+          "description": "Typed relation edges; per-edge assurance is required so heuristic lineage is never served as exact."
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

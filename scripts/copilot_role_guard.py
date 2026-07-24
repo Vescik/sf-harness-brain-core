@@ -217,6 +217,11 @@ FORCE_APP_COMMAND_FLAGS = {
     "relations-draft": frozenset({"--observed-at", "--metadata-type", "--limit", "--include-heuristic"}),
     "refresh": frozenset({"--observed-at", "--metadata-type", "--warn-days", "--limit", "--dry-run"}),
     "draft": frozenset({"--observed-at", "--metadata-type"}),
+    # The public /feature-documentor prompt runs these two; leaving them unguarded made its
+    # core procedure impossible for the agent it is addressed to (evidence-doc F-14). Both
+    # write only under the ignored .cache/knowledge-proposals/ workspace.
+    "feature-crawl": frozenset({"--feature", "--anchors", "--depth", "--hub"}),
+    "feature-draft": frozenset({"--feature", "--observed-at"}),
 }
 
 # One-file Knowledge Entry executor (docs/knowledge-one-file-contract.md v1.1). Reads are
@@ -709,6 +714,39 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
             if flag != "--metadata-type" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
                 return False
         return True
+    if parts[0] in {"feature-crawl", "feature-draft"}:
+        index = 1
+        seen_feature = False
+        while index < len(parts):
+            token = parts[index]
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                index += 1
+            else:
+                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
+                index += 2
+            if flag not in FORCE_APP_COMMAND_FLAGS[parts[0]]:
+                return False
+            if flag == "--feature":
+                if not re.fullmatch(r"[A-Za-z][A-Za-z0-9 _-]{0,79}", value):
+                    return False
+                seen_feature = True
+            elif flag == "--anchors":
+                names = [name.strip() for name in value.split(",") if name.strip()]
+                if not names or len(names) > 10 or not all(
+                    re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", name) for name in names
+                ):
+                    return False
+            elif flag == "--hub":
+                if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
+                    return False
+            elif flag == "--depth":
+                if not value.isdigit() or not 1 <= int(value) <= 3:
+                    return False
+            elif flag == "--observed-at":
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", value):
+                    return False
+        return seen_feature
     if parts[0] == "coverage":
         # Read-only documentation-coverage summary; --write only saves the derived view under the
         # ignored .cache/knowledge-proposals/ workspace.

@@ -61,6 +61,18 @@ PROFILES = {
         "version": "1.0.0",
         "schema": "knowledge-profile-customfield.schema.json",
     },
+    "ApexClass": {"id": "salesforce.apex", "version": "1.0.0", "schema": "knowledge-profile-apex.schema.json"},
+    "ApexTrigger": {"id": "salesforce.apex", "version": "1.0.0", "schema": "knowledge-profile-apex.schema.json"},
+    "ValidationRule": {
+        "id": "salesforce.validation-rule",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-validationrule.schema.json",
+    },
+    "PermissionSet": {
+        "id": "salesforce.permission-set",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-permissionset.schema.json",
+    },
 }
 
 
@@ -559,7 +571,103 @@ def custom_field_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], 
     return type_facts, [], {"typeFacts": "source-exact"}
 
 
-ADAPTERS = {"Flow": flow_type_facts, "CustomField": custom_field_type_facts}
+
+def _edges(component: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collector references as profile edges, with per-edge assurance preserved."""
+    return [
+        {
+            "kind": reference["kind"],
+            "target": reference["target"],
+            "assurance": "source-derived-heuristic" if reference.get("heuristic") else "source-exact",
+        }
+        for reference in component.get("references", [])
+    ]
+
+
+def _assurance_for(edges: list[dict[str, Any]]) -> dict[str, str]:
+    """Section marker is the weakest member (contract §2.1)."""
+    heuristic = any(edge["assurance"] == "source-derived-heuristic" for edge in edges)
+    return {"typeFacts": "source-derived-heuristic" if heuristic else "source-exact"}
+
+
+def _compact(values: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in values.items() if value is not None}
+
+
+def apex_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
+    facts = component.get("facts", {})
+    edges = _edges(component)
+    type_facts = _compact(
+        {
+            "kind": component.get("metadataType"),
+            "sharing": facts.get("sharing"),
+            "isTest": facts.get("isTest"),
+            "apiVersion": facts.get("apiVersion"),
+            "status": facts.get("status"),
+            "superclass": facts.get("superclass"),
+            "interfaces": facts.get("interfaces"),
+            "annotations": facts.get("annotations"),
+            "triggerObject": facts.get("object") or facts.get("triggerObject"),
+            "triggerEvents": facts.get("events") or facts.get("triggerEvents"),
+        }
+    )
+    if edges:
+        type_facts["references"] = edges
+    return type_facts, [], _assurance_for(edges)
+
+
+def validation_rule_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
+    facts = component.get("facts", {})
+    edges = _edges(component)
+    type_facts = _compact(
+        {
+            "object": facts.get("object"),
+            "active": facts.get("active"),
+            "errorDisplayField": facts.get("errorDisplayField"),
+            "errorMessagePresent": facts.get("errorMessagePresent"),
+            # The rule's own error text stays in the claim/evidence world: a ValidationRule is
+            # not a Flow Custom Error and must never reach the intentional-error index (§7).
+            "conditionPresent": bool(facts.get("errorCatalog")) or None,
+        }
+    )
+    if edges:
+        type_facts["references"] = edges
+    return type_facts, [], _assurance_for(edges)
+
+
+def permission_set_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
+    facts = component.get("facts", {})
+    edges = _edges(component)
+    type_facts = _compact(
+        {
+            "label": facts.get("label"),
+            "license": facts.get("license"),
+            "hasActivationRequired": facts.get("hasActivationRequired"),
+            "objectAccess": facts.get("objectAccess"),
+            "systemPermissions": facts.get("systemPermissions"),
+            "objectPermissionCount": facts.get("objectPermissionCount"),
+            "fieldPermissionCount": facts.get("fieldPermissionCount"),
+            "classAccessCount": facts.get("classAccessCount"),
+            "customPermissionCount": facts.get("customPermissionCount"),
+            "flowAccessCount": facts.get("flowAccessCount"),
+            "referencesTruncated": facts.get("referencesTruncated"),
+            "truncatedFamilies": facts.get("truncatedFamilies"),
+        }
+    )
+    if edges:
+        type_facts["references"] = edges
+    coverage = _assurance_for(edges)
+    return type_facts, [], coverage
+
+
+ADAPTERS = {
+    "Flow": flow_type_facts,
+    "CustomField": custom_field_type_facts,
+    "ApexClass": apex_type_facts,
+    "ApexTrigger": apex_type_facts,
+    "ValidationRule": validation_rule_type_facts,
+    "PermissionSet": permission_set_type_facts,
+}
 
 
 # --- write path -------------------------------------------------------------------------
@@ -603,7 +711,9 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
 
     fragment_path = ROOT / component["path"]
     fragments = [{"path": component["path"], "sourceDigest": f"sha256:{file_digest(fragment_path)}"}]
-    coverage = {"typeFacts": "full"}
+    coverage = {
+        "typeFacts": "partial" if type_facts.get("referencesTruncated") else "full"
+    }
     if intentional:
         coverage["intentionalErrors"] = "full"
         assurance = {**assurance, "intentionalErrors": "source-exact"}

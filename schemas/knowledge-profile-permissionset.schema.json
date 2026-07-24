@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-permissionset.schema.json",
+  "title": "Knowledge Entry profile \u2014 salesforce.permission-set v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "hasActivationRequired": {
+          "type": "boolean"
+        },
+        "objectAccess": {
+          "type": "object",
+          "description": "Per-object CRUD map as emitted by the collector."
+        },
+        "systemPermissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "objectPermissionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fieldPermissionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "classAccessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "customPermissionCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "flowAccessCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          },
+          "description": "Typed relation edges; per-edge assurance is required so heuristic lineage is never served as exact."
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

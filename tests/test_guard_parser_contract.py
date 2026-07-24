@@ -18,10 +18,7 @@ INTENTIONALLY_UNGUARDED = {
         "review": "human-terminal-only: file-based review recording",
         "promote": "human-terminal-only: file-based promotion",
     },
-    "force_app_knowledge": {
-        "feature-crawl": "human-terminal-only: feature boundary exploration",
-        "feature-draft": "human-terminal-only: feature dossier drafting",
-    },
+    "force_app_knowledge": {},
     "knowledge_store": {},
     "knowledge_search": {},
 }
