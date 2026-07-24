@@ -60,7 +60,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `propose-force-app-knowledge` — Draft schema-v3 Knowledge claims and …
 - `relation-health` — Read-only report of verified object-relation/component-relation …
 - `search-ado` — Read-only Azure DevOps text search …
-- `search-knowledge` — Read-only search over the governed …
+- `search-knowledge` — Read-only search across both Knowledge …
 - `solution-design` — Five-phase Solution Design workflow (discover, …
 - `suggest-test-cases` — Rank existing synced Test Cases …
 - `sync-test-cases` — Synchronize an allowlisted Azure Test …

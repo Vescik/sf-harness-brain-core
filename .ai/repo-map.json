@@ -410,8 +410,8 @@
     },
     {
       "agent": "config-investigator",
-      "argumentHint": "keyword=<term> | text=<fragment> | subject=<identity> | uses-object=<Object> | uses-field=<Object.Field> [domain=<domain>]",
-      "description": "Search governed Knowledge by subject, keyword, or text; effective verified facts are reported separately from non-effective records.",
+      "argumentHint": "keyword=<term> | text=<fragment> | subject=<identity> | uses-object=<Object> | uses-field=<Object.Field> | error=<pasted message> [type=<MetadataType>] [namespace=<ns>] [domain=<domain>]",
+      "description": "Search governed Knowledge - approved one-file Entries for repository-source facts and the claim registry for org observations and semantics; effective facts are reported separately from non-effective records.",
       "name": "search-knowledge",
       "path": ".github/prompts/search-knowledge.prompt.md"
     },
@@ -546,7 +546,7 @@
       "path": ".github/skills/search-ado/SKILL.md"
     },
     {
-      "description": "Read-only search over the governed Knowledge registry - by subject, approved or candidate keyword, statement/description text, and the component usage registry (object/field/invoked-component dependency) - reporting effective facts separately from non-effective records. Never proposes, promotes, or edits Knowledge.",
+      "description": "Read-only search across both Knowledge layers - approved one-file Knowledge Entries for repository-source artifact facts, and the governed claim registry for org observations and semantics - reporting effective facts separately from non-effective records with their citations. Never proposes, promotes, or edits Knowledge.",
       "name": "search-knowledge",
       "path": ".github/skills/search-knowledge/SKILL.md"
     },
@@ -613,7 +613,7 @@
     ".github/prompts/relation-health.prompt.md": "sha256:81907a5f9cf2462332ca6d178f81a57b9e5ea7c32257838e1e770209b666f082",
     ".github/prompts/release-handover.prompt.md": "sha256:723b90811dac3acd2a604baaa9dc5c35ed00640a9920755fefaaecbb01c5f18c",
     ".github/prompts/search-ado.prompt.md": "sha256:e6fa23e465545216101e2e4411b799278c39e335d260a205eca72f57bdc0c5b0",
-    ".github/prompts/search-knowledge.prompt.md": "sha256:29f4d75c3ec48aef60a46fb72afe936fa37141440cea069d2daabe861e6c21b3",
+    ".github/prompts/search-knowledge.prompt.md": "sha256:d52b715c91b9b457f2e2aa9dbf968df8acae989c8ad78ca9355ca5ef20576c1b",
     ".github/prompts/solution-design.prompt.md": "sha256:d248113874576e6e250021df24c46cbb5993018d09782f097db365118a01ad95",
     ".github/prompts/suggest-test-cases.prompt.md": "sha256:b5b52efbeb4aa84aa5138d4aa7a8536177c5d24a681232c514b4e4ef185711c1",
     ".github/prompts/sync-test-cases.prompt.md": "sha256:123ac9b75b72602c4fb0e4e5d5cb86aae648b7570feab5c0848fb9d0b3ac3860",
@@ -636,7 +636,7 @@
     ".github/skills/propose-force-app-knowledge/SKILL.md": "sha256:3decaa233ac9f07e667f5c7123befe38ab3954e9bf4bb56eb33c2a1e10ec1ee9",
     ".github/skills/relation-health/SKILL.md": "sha256:b744dfc2c829496afc804be03610bd653baac1fb8e81d969ab0a68a8f0b32442",
     ".github/skills/search-ado/SKILL.md": "sha256:4c6a1e155d7cf3b2079953837681ebd89e6226b4ff98f8ae30f079640b788cc7",
-    ".github/skills/search-knowledge/SKILL.md": "sha256:d978f8add9952c95f6acef64eabca34664c291e145a7184937e516ca7cbd476d",
+    ".github/skills/search-knowledge/SKILL.md": "sha256:d05558ebcb5c57ccc6947e8f253dce3fedd763f1f692b4c6b05d324316a1478d",
     ".github/skills/solution-design/SKILL.md": "sha256:93f1129cdff7abe6a7107ef049bead38382a6522d9ac11b649491fe8ccb4e5eb",
     ".github/skills/suggest-test-cases/SKILL.md": "sha256:4ebb53a086698f440d2fbd85716cb7758f959317dda6233ad4f1fd945bf888df",
     ".github/skills/sync-test-cases/SKILL.md": "sha256:86b1af1a8415d07f548e7160a565933be7dfede396e55341345fe76ffccfe529",
