@@ -447,3 +447,19 @@ class KnowledgeSearchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
+    """Keep the scale harness runnable; the real tiers are run manually, not in CI."""
+
+    def test_benchmark_runs_and_reports_bound_measurements(self) -> None:
+        from scripts import knowledge_benchmark
+
+        result = knowledge_benchmark.run(entries=25, repeats=2)
+        self.assertEqual(25, result["fixture"]["entries"])
+        self.assertGreater(result["indexBuildMs"], 0)
+        for name in ("identityQuery", "textQuery", "facetQuery", "relationQuery"):
+            self.assertIn("p95Ms", result["queries"][name])
+        # Numbers are only meaningful with their environment attached.
+        self.assertIn("platform", result["environment"])
+        self.assertIn("not a certification", result["note"].lower())

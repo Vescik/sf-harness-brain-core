@@ -289,6 +289,23 @@ def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:
 # --- index build --------------------------------------------------------------------------
 
 
+def corpus_fingerprint() -> str:
+    """Cheap freshness signal: identity, size and mtime of every entry file plus the ledger.
+
+    Recomputing the full projection on each query re-parsed the whole corpus and cost ~1s at
+    200 entries (measured, scripts/knowledge_benchmark.py) — the index bought nothing. Stat
+    calls are ~two orders of magnitude cheaper, and correctness does not rest on them: every
+    result that is actually returned is re-read and digest-checked during hydration.
+    """
+    parts = []
+    for path in store.all_entry_paths():
+        stat = path.stat()
+        parts.append((path.relative_to(store.ROOT).as_posix(), stat.st_size, stat.st_mtime_ns))
+    ledger = store.LEDGER_PATH
+    ledger_stat = (ledger.stat().st_size, ledger.stat().st_mtime_ns) if ledger.is_file() else (0, 0)
+    return store.canonical_digest({"entries": sorted(parts), "ledger": ledger_stat})
+
+
 def entry_set_digest(projections: list[dict[str, Any]]) -> str:
     payload = sorted(
         (item["identity"], item["path"], item["lane"], item["citation"]["entryDigest"] or "")
@@ -348,6 +365,7 @@ def build_index(check: bool = False) -> dict[str, Any]:
             )
             for metadata_type in sorted({item["facets"]["metadataType"] for item in projections})
         },
+        "corpusFingerprint": corpus_fingerprint(),
         "documentsDigest": store.canonical_digest(documents.read_text(encoding="utf-8")),
         "complete": True,
     }
@@ -383,8 +401,7 @@ def load_index() -> tuple[list[dict[str, Any]], dict[str, Any]]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not manifest.get("complete") or manifest.get("analyzerVersion") != ANALYZER_VERSION:
         raise SearchError("INDEX STALE / REBUILD REQUIRED: incompatible or partial generation")
-    projections = collect_projections()
-    if entry_set_digest(projections) != manifest["generation"]:
+    if manifest.get("corpusFingerprint") != corpus_fingerprint():
         raise SearchError("INDEX STALE / REBUILD REQUIRED: entries changed since the last build")
     documents = [json.loads(line) for line in documents_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     return documents, manifest
@@ -504,6 +521,33 @@ def hit_of(document: dict[str, Any], score: float, matched: list[dict[str, Any]]
         "limitations": document["limitations"],
         "citation": document["citation"],
     }
+
+
+def hydrate(hits: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    """Re-read and digest-check the canonical entries behind the results we are about to serve.
+
+    Contract §25.6: compact search first, then load and verify the selected entries. This is
+    what makes the cheap freshness fingerprint safe — a file that changed without changing its
+    stat signature still cannot be served, because its recomputed lane and digest are checked
+    here before the hit leaves the process."""
+
+    latest = store.ledger_latest(store.read_ledger())
+    verified: list[dict[str, Any]] = []
+    gaps: list[str] = []
+    for hit in hits:
+        path = store.ROOT / hit["citation"]["path"]
+        if not path.is_file():
+            gaps.append(f"{hit['artifactId']}: entry file disappeared since the index was built")
+            continue
+        lane = store.compute_lane(path, latest)
+        if lane["lane"] != hit["lifecycle"] or lane.get("reviewedContentDigest") != hit["citation"]["entryDigest"]:
+            gaps.append(
+                f"{hit['artifactId']}: entry changed since the index was built "
+                f"(now {lane['lane']}) — rebuild the index"
+            )
+            continue
+        verified.append(hit)
+    return verified, gaps
 
 
 def run_search(args: argparse.Namespace) -> dict[str, Any]:
@@ -672,10 +716,12 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         if args.relation_anchor and not args.include_heuristic:
             relaxations.append("add --include-heuristic (separate assurance lane)")
 
+    served, hydration_gaps = hydrate(results[: args.top])
+    gaps.extend(hydration_gaps)
     return {
-        "outcome": "OK" if results else "NO_MATCH",
+        "outcome": "OK" if served else "NO_MATCH",
         "interpretedQuery": interpreted,
-        "approvedResults": results[: args.top],
+        "approvedResults": served,
         "draftCandidates": [hit["artifactId"] for hit in draft_lane][:10],
         "excludedCounts": dict(sorted(excluded.items())),
         "facetCounts": {

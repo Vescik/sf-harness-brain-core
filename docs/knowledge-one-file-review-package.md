@@ -206,3 +206,37 @@ R-22 business-context refusal: draft with non-empty ## Business context → entr
 R-23 profile PATCH bump across corpus → zero lane changes; coalesced regeneration commit.
 R-24 body `---`/fenced-YAML boundary fixture → single boundary rule, stable digests.
 R-25 keyword edit outside executor → guard denies; executor edit → ledger-logged, lane unchanged.
+
+## 8. Measured scale results (2026-07-24)
+
+Run with `python scripts/knowledge_benchmark.py --entries N` on a synthetic corpus of approved
+Flow entries. Environment: macOS/arm64, CPython 3.9.6, APFS. **These are this machine's numbers
+on a synthetic fixture — not a certification for any real managed package, and Windows/NTFS
+must be measured on Windows** (review R-20 remains open for that platform).
+
+| Entries | identity p95 | facet p95 | relation p95 | text p95 | full index build | validator `.ai/**` sweep | entries on disk | index size |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 200 | 7.8 ms | 17.7 ms | 17.8 ms | 42.3 ms | 1.0 s | 5.8 ms | 0.26 MB | 0.45 MB |
+| 2 000 | 57.7 ms | 90.0 ms | 97.9 ms | 117.6 ms | 10.3 s | 107 ms | 2.6 MB | 4.5 MB |
+| 5 000 | 146.8 ms | 177.8 ms | 177.7 ms | 255.6 ms | 26.3 s | 454 ms | 6.6 MB | 11.1 MB |
+
+Scaling is linear in corpus size across all measured operations. Conclusions, stated against
+the proposed budgets rather than around them:
+
+1. **The warm-query budget (p95 ≤ 250 ms) holds to roughly 5 000 entries and is exceeded
+   beyond it.** Extrapolating the linear fit to a 15 000-entry target: identity ≈ 0.4 s,
+   text ≈ 0.75 s. The deferred work — shard selection and term postings instead of a single
+   linear scan — is therefore justified by measurement, not by taste, and must land before a
+   target-scale corpus is onboarded.
+2. **Full index build is ~5.2 ms per entry** (≈ 80 s at 15 000). Acceptable for an occasional
+   rebuild, and the concrete argument for the deferred incremental rebuild.
+3. **The validator's reserved-token sweep over `.ai/**` is not the problem the review feared**
+   (R3-5 estimated 15–150 s at target scale): measured ≈ 0.45 s at 5 000 entries, extrapolating
+   to ≈ 1.4 s at 15 000. No scoping change is needed; the concern is retired with evidence.
+4. A defect this benchmark caught immediately: the first implementation re-projected the entire
+   corpus on **every** query to prove freshness, costing ~1 s at 200 entries — the index bought
+   nothing. Freshness now uses a stat-based corpus fingerprint, and correctness is preserved by
+   hydrating (re-reading and digest-checking) only the results actually served. Identity queries
+   went from 1 030 ms to 7.7 ms at 200 entries.
+
+Re-run these tiers, plus a native-Windows pass, before any cutover decision.

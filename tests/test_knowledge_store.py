@@ -369,6 +369,88 @@ class KnowledgeStoreTests(unittest.TestCase):
         )
         work_record._assert_not_shadowed(self.temp, "KCLM-ROUTER-DESC-001", expected)
 
+    # --- remaining adversarial-review evals (R-09..R-24) ---------------------------
+
+    def test_r09_reparse_point_under_knowledge_fails_closed(self) -> None:
+        target = self.temp / "elsewhere"
+        target.mkdir()
+        link = self.temp / ".ai/knowledge/artifacts-link"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(target)
+        with self.assertRaises(store.StoreError) as ctx:
+            store.assert_no_reparse_points()
+        self.assertIn("reparse", str(ctx.exception))
+
+    def test_r10_sensitivity_flip_after_approval_invalidates(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        path = self.temp / drafted["path"]
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("sensitivity: internal-sanitized", "sensitivity: public"),
+            encoding="utf-8",
+        )
+        self.assertEqual("not-effective", self.lane_of(drafted["identity"])["lane"])
+
+    def test_r11_provenance_tamper_is_detected_against_the_ledger(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        path = self.temp / drafted["path"]
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("Reviewer Person", "Someone Else"),
+            encoding="utf-8",
+        )
+        lane = self.lane_of(drafted["identity"])
+        self.assertEqual("not-effective", lane["lane"])
+        self.assertTrue(any("provenance" in problem for problem in lane["problems"]))
+
+    def test_r21_interrupted_chunk_leaves_only_completed_stamps_effective(self) -> None:
+        first = self.draft()
+        second = self.draft(metadata_type="CustomField", full_name="HarnessAlphaCase__c.Status__c")
+        original_write = store.atomic_write
+        calls = {"count": 0}
+
+        def failing_write(path, text):
+            calls["count"] += 1
+            if calls["count"] > 1:
+                raise OSError("simulated crash mid-chunk")
+            return original_write(path, text)
+
+        store.atomic_write = failing_write
+        self.addCleanup(setattr, store, "atomic_write", original_write)
+        with self.assertRaises(OSError):
+            self.approve(
+                [
+                    f"{first['identity']}:{first['reviewedContentDigest']}",
+                    f"{second['identity']}:{second['reviewedContentDigest']}",
+                ]
+            )
+        store.atomic_write = original_write
+        lanes = {entry["identity"]: entry["lane"] for entry in store.command_entry_status(argparse.Namespace(identity=None))["entries"]}
+        # The journaled ledger records only what completed; the rest stays draft.
+        self.assertEqual(1, sum(1 for lane in lanes.values() if lane == "approved-current"))
+        self.assertEqual(1, sum(1 for lane in lanes.values() if lane == "draft"))
+        self.assertEqual(1, len(store.read_ledger()))
+
+    def test_r23_profile_patch_bump_changes_no_lane(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        path = self.temp / drafted["path"]
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("version: 1.0.0", "version: 1.0.9"),
+            encoding="utf-8",
+        )
+        # reviewedContentDigest binds the profile MAJOR only, so a patch bump is a no-op.
+        self.assertEqual("approved-current", self.lane_of(drafted["identity"])["lane"])
+
+    def test_r24_body_with_dashes_and_fenced_yaml_has_one_boundary(self) -> None:
+        body = "## Purpose\n\nSee below.\n\n---\n\n```yaml\nkey: value\n---\nother: value\n```\n"
+        text = "---\nschemaVersion: 1\n---\n\n" + body
+        frontmatter, parsed = store.split_entry(text)
+        self.assertEqual({"schemaVersion": 1}, frontmatter)
+        self.assertIn("```yaml", parsed)
+        self.assertIn("other: value", parsed)
+        self.assertEqual(store.semantics_digest(parsed), store.semantics_digest(parsed + "\n"))
+
     def test_yaml_11_bool_landmines_stay_strings(self) -> None:
         frontmatter, _ = store.split_entry("---\nvalue: NO\nother: 'yes'\n---\n\n")
         self.assertEqual("NO", frontmatter["value"])

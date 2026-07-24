@@ -136,6 +136,11 @@ Rows added after the three-reviewer adversarial pass (verdicts in
 | P4 prompt consolidation | open | batch with the test-case-creator removals (count pins 23/24 → 21/22) |
 | P5 cutover | open | needs real-package pilot parity data; no big-bang delete |
 
+Measured scale results (200 / 2 000 / 5 000 entries) are in the review package §8: warm
+queries hold the p95 <= 250 ms budget to ~5 000 entries and exceed it beyond, which is the
+evidence that gates sharding and incremental rebuild before a target-scale onboarding; the
+feared validator sweep cost was measured and retired (~0.45 s at 5 000 entries).
+
 Search-engine notes for later phases: the generated cache lives in the ignored
 `.cache/knowledge-search/` (immutable `gen-*` directories + atomic `current.json`), refuses
 to answer when the committed entry set no longer matches the generation (`INDEX STALE`), and

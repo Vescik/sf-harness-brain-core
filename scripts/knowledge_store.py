@@ -357,6 +357,15 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any
     elif frontmatter["approval"].get("reviewedContentDigest") != recomputed:
         result["lane"] = "not-effective"
         result["problems"].append("in-file approval mirror mismatches recomputation")
+    elif any(
+        frontmatter["approval"].get(field) != ledger_record.get(field)
+        for field in ("reviewedBy", "reviewedAt", "mechanism")
+    ):
+        # The ledger is authoritative for who approved, when, and by which mechanism
+        # (contract §5.3). Content tampering is caught by the digest; provenance tampering
+        # would otherwise be invisible, so the mirror is compared field by field.
+        result["lane"] = "not-effective"
+        result["problems"].append("in-file approval provenance mismatches the ledger record")
     else:
         current_facts = facts_digest(frontmatter)
         regenerated = regenerate_fragment_digest(frontmatter)
