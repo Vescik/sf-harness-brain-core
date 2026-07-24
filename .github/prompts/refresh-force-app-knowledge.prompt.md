@@ -24,3 +24,7 @@ with `approve-claim --claim-spec` batches.
 
 Return the selection counts by reason, artifact paths, commit/tree digest, registry results, and
 the outstanding human approval requirement.
+
+Entry-home metadata types are not refreshed here: their staleness shows up as the
+`approved-drifted` lane, resolved by re-drafting the affected entry and re-approving it
+through `/approve-drafts-knowledge`. Report them instead of drafting refresh claims.

@@ -592,3 +592,49 @@ class CrossPlatformDeterminismTests(KnowledgeStoreTests):
         store.atomic_write(path, "second\n")
         self.assertEqual("second\n", path.read_text(encoding="utf-8"))
         self.assertFalse(path.with_suffix(".tmp").exists())
+
+
+class EntryCitationVerificationTests(KnowledgeStoreTests):
+    """verify-citations must cover both citation kinds, or an envelope is half-checked."""
+
+    def registry(self):
+        from scripts.knowledge_registry import KnowledgeRegistry
+
+        return KnowledgeRegistry(self.temp)
+
+    def test_verdicts_track_the_entry_lifecycle(self) -> None:
+        drafted = self.draft()
+        ref = {"entryId": drafted["identity"], "reviewedContentDigest": drafted["reviewedContentDigest"]}
+        self.assertEqual("not-approved", self.registry().verify_entry_citations([ref])[0]["verdict"])
+
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        self.assertEqual("current", self.registry().verify_entry_citations([ref])[0]["verdict"])
+
+        flow = self.temp / "force-app/main/default/flows/HarnessAlphaRouter.flow-meta.xml"
+        flow.write_text(FLOW_XML.replace("<status>Active</status>", "<status>Draft</status>"), encoding="utf-8")
+        drifted = self.registry().verify_entry_citations([ref])[0]
+        self.assertEqual("drifted", drifted["verdict"])
+        self.assertEqual("warning", drifted["severity"])
+
+        store.command_entry_revoke(argparse.Namespace(identity=drafted["identity"], rationale="x"))
+        self.assertEqual("revoked", self.registry().verify_entry_citations([ref])[0]["verdict"])
+
+    def test_missing_and_mismatched_citations_are_invalid(self) -> None:
+        registry = self.registry()
+        self.assertEqual("missing", registry.verify_entry_citations([{"entryId": "Flow:c:Nope"}])[0]["verdict"])
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        stale = {"entryId": drafted["identity"], "reviewedContentDigest": "sha256:" + "0" * 64}
+        verdict = self.registry().verify_entry_citations([stale])[0]
+        self.assertEqual("digest-mismatch", verdict["verdict"])
+        self.assertEqual("invalid", verdict["severity"])
+
+    def test_entry_coverage_separates_gaps_from_unprofiled_types(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        report = store.command_entry_coverage(argparse.Namespace())
+        self.assertEqual({"approved-current": 1}, report["lanes"]["Flow"])
+        # CustomField/ValidationRule sources exist without entries -> real gaps
+        self.assertIn("CustomField", report["missingEntryCounts"])
+        # A type with no profile is listed as unprofiled, never as a coverage gap
+        self.assertNotIn("CustomObject", report["missingEntryCounts"])

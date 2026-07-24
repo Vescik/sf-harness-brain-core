@@ -13,3 +13,7 @@ If a `type` argument is given, scope the whole run to that metadata type
 given, use it in place of the default 200 for `relations-draft --limit`. If this is governed work,
 require and validate `recordId` and attach the resulting report/claim references to that record;
 otherwise state that the run is not tied to a work record.
+
+For entry-home metadata types the relation graph lives in the entries themselves
+(`typeFacts.references`): query it with `knowledge_search.py search --relation-anchor ...`
+or `impact --identity ...` rather than drafting relation claims for them.

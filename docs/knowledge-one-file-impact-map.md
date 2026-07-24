@@ -133,7 +133,10 @@ Rows added after the three-reviewer adversarial pass (verdicts in
 | P2 v1 freeze | **done** | `enforce_entry_home_freeze` in the registry, scoped to profiled types in workspaces that hold entries |
 | Approval entry point | **done** | `/approve-drafts-knowledge` + `approve-knowledge-drafts` skill + executor-rendered `entry-review` |
 | Normative template | **done** | `.ai/templates/knowledge-entry.md` rewritten for both record shapes |
-| P4 prompt consolidation | open | batch with the test-case-creator removals (count pins 23/24 → 21/22) |
+| P4 producer/maintainer migration | **done** | collector skips entry-home types (reported in the manifest); curate cockpit gained entries/drafts/drift modes; refresh and relation prompts routed to lanes and the entry graph |
+| P4 prompt consolidation | open | still batched with the test-case-creator removals (owner go outstanding) |
+| P5 staged retirement | **done as policy + mechanism** | per-type retirement rules in contract §10a; freeze, collector skip, shadowing and drift lanes all keyed on the profile set |
+| P5 code removal | gated | deleting v1 repository-claim machinery needs parity certification on a real package; unprofiled types still depend on it |
 | P5 cutover | open | needs real-package pilot parity data; no big-bang delete |
 
 Measured scale results (200 / 2 000 / 5 000 entries) are in the review package §8: warm

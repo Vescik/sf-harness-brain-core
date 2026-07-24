@@ -5324,6 +5324,20 @@ class ForceAppKnowledge:
             result["path"] = self.relative(coverage_path)
         return result
 
+
+    # Metadata types whose repository facts moved to one-file Knowledge Entries. Drafting a
+    # repository claim for them would only be rejected at propose time (SAFE-CLAIM-001 v2),
+    # so the collector skips them and names the entry route instead of producing dead work.
+    def entry_home_types(self) -> frozenset[str]:
+        artifacts_root = self.root / ".ai/knowledge/artifacts"
+        if not artifacts_root.is_dir() or not any(artifacts_root.rglob("*.md")):
+            return frozenset()
+        try:
+            from scripts.knowledge_registry import ENTRY_PROFILED_METADATA_TYPES
+        except ModuleNotFoundError:  # invoked as a script
+            from knowledge_registry import ENTRY_PROFILED_METADATA_TYPES  # type: ignore
+        return frozenset(ENTRY_PROFILED_METADATA_TYPES)
+
     def draft(
         self,
         observed_at: datetime,
@@ -5361,10 +5375,17 @@ class ForceAppKnowledge:
         for old in self.draft_root.glob("*.yaml"):
             old.unlink()
         bundles: list[dict[str, Any]] = []
+        entry_home = self.entry_home_types()
+        skipped_entry_home: dict[str, int] = {}
         for component in inventory["components"]:
             if metadata_type is not None and component["metadataType"] != metadata_type:
                 continue
             if component_ids is not None and component["id"] not in component_ids:
+                continue
+            if component["metadataType"] in entry_home:
+                skipped_entry_home[component["metadataType"]] = (
+                    skipped_entry_home.get(component["metadataType"], 0) + 1
+                )
                 continue
             candidates = self.candidate_claims(component, feature)
             if include_relations:
@@ -5507,11 +5528,20 @@ class ForceAppKnowledge:
             **({"metadataTypeFilter": metadata_type} if metadata_type else {}),
             "claimCount": sum("claimFile" in item for item in bundles),
             "bundles": bundles,
+            **({"skippedEntryHome": dict(sorted(skipped_entry_home.items()))} if skipped_entry_home else {}),
             "limitations": [
                 "Drafts are proposed claims only and are not verified Knowledge.",
                 "Repository evidence establishes intended source, not deployed org state or business meaning.",
                 "Each selected claim must be submitted through knowledge_registry.py and remains subject to reconciliation and human review.",
-            ],
+            ]
+            + (
+                [
+                    "Entry-home metadata types were skipped: draft them with "
+                    "knowledge_store.py entry-draft and promote with /approve-drafts-knowledge."
+                ]
+                if skipped_entry_home
+                else []
+            ),
         }
         self.validate_record(
             manifest,

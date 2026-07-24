@@ -10,3 +10,7 @@ Use the [relation-health skill](../skills/relation-health/SKILL.md).
 
 The health check is a read and does not require a work record: only when the caller provided
 `recordId` attach the report/claim references to that record.
+
+For entry-home metadata types the relation graph lives in the entries themselves
+(`typeFacts.references`): query it with `knowledge_search.py search --relation-anchor ...`
+or `impact --identity ...` rather than drafting relation claims for them.

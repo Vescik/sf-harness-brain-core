@@ -2027,6 +2027,50 @@ class KnowledgeRegistry:
 
     HARD_CITATION_STATUSES = {"rejected", "superseded"}
 
+    def verify_entry_citations(self, entry_refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Advisory verdicts for cited Knowledge Entries (SAFE-CLAIM-001 v2 entryRefs).
+
+        Mirrors verify_citations for the entry layer so an envelope carrying both citation
+        kinds is checked end to end instead of half-checked."""
+
+        try:
+            from scripts import knowledge_store
+        except ModuleNotFoundError:  # invoked as a script
+            import knowledge_store  # type: ignore
+        results: list[dict[str, Any]] = []
+        for reference in entry_refs:
+            entry_id = str(reference.get("entryId", ""))
+            record: dict[str, Any] = {"entryId": entry_id}
+            lane = knowledge_store.lane_for_identity(self.root, entry_id) if entry_id else None
+            if lane is None:
+                record.update(verdict="missing", severity="invalid", reason="no entry with this identity")
+            elif lane["lane"] == "revoked":
+                record.update(verdict="revoked", severity="invalid", reason="approval was revoked")
+            elif lane["lane"] == "draft":
+                record.update(verdict="not-approved", severity="invalid", reason="entry is still a draft")
+            elif lane["lane"] == "not-effective":
+                record.update(
+                    verdict="not-effective",
+                    severity="invalid",
+                    reason="; ".join(lane.get("problems", [])) or "entry failed its integrity checks",
+                )
+            elif reference.get("reviewedContentDigest") and lane.get("reviewedContentDigest") != reference["reviewedContentDigest"]:
+                record.update(
+                    verdict="digest-mismatch",
+                    severity="invalid",
+                    reason="cited content digest is not the entry's current approved digest",
+                )
+            elif lane["lane"] == "approved-drifted":
+                record.update(
+                    verdict="drifted",
+                    severity="warning",
+                    reason="source moved on since approval; re-approve before citing as current",
+                )
+            else:
+                record.update(verdict="current", severity="ok", reason="approved-current")
+            results.append(record)
+        return results
+
     def verify_citations(
         self,
         claim_refs: list[dict[str, Any]],
@@ -2091,6 +2135,12 @@ class KnowledgeRegistry:
             },
             "citations": citations,
         }
+
+    @staticmethod
+    def entry_refs_from_envelope(envelope: dict[str, Any]) -> list[dict[str, Any]]:
+        """Optional entryRefs array from an output/handoff/change-record envelope."""
+        raw = envelope.get("entryRefs") or []
+        return [item if isinstance(item, dict) else {"entryId": str(item)} for item in raw]
 
     @staticmethod
     def claim_refs_from_envelope(envelope: dict[str, Any]) -> list[dict[str, Any]]:
@@ -2583,9 +2633,11 @@ def main() -> int:
                 raise ContractError(
                     "verify-citations requires exactly one of --envelope or --claim-ref"
                 )
+            entry_refs: list[dict[str, Any]] = []
             if args.envelope:
                 envelope = load_json(registry.contained_input(args.envelope))
                 claim_refs = registry.claim_refs_from_envelope(envelope)
+                entry_refs = registry.entry_refs_from_envelope(envelope)
             else:
                 claim_refs = []
                 for spec in args.claim_ref:
@@ -2598,6 +2650,15 @@ def main() -> int:
                 claim_refs,
                 at=parse_time(args.at, "verify-citations --at") if args.at else None,
             )
+            if entry_refs:
+                entry_results = registry.verify_entry_citations(entry_refs)
+                result["entryCitations"] = entry_results
+                result["entryInvalid"] = sum(
+                    1 for item in entry_results if item["severity"] == "invalid"
+                )
+                result["entryWarnings"] = sum(
+                    1 for item in entry_results if item["severity"] == "warning"
+                )
         else:  # pragma: no cover - argparse guarantees a known command
             raise ContractError(f"unsupported command: {args.command}")
     except ContractError as exc:

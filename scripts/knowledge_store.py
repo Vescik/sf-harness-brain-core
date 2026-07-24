@@ -954,6 +954,57 @@ def command_entry_review(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def command_entry_coverage(args: argparse.Namespace) -> dict[str, Any]:
+    """Per-metadata-type coverage of the entry store against force-app source.
+
+    This is the entry-layer answer to the collector's `coverage` report: which profiled
+    artifacts have an entry, which lane those entries are in, and which source components
+    still have none. Types without a profile are reported separately so their absence reads
+    as "no entry home yet", never as a coverage gap."""
+
+    from scripts.force_app_knowledge import ForceAppKnowledge
+
+    latest = ledger_latest(read_ledger())
+    lanes: dict[str, dict[str, int]] = {}
+    entry_names: dict[str, set[str]] = {}
+    for path in all_entry_paths():
+        lane = compute_lane(path, latest)
+        metadata_type, _namespace, full_name = lane["identity"].split(":", 2)
+        lanes.setdefault(metadata_type, {})
+        lanes[metadata_type][lane["lane"]] = lanes[metadata_type].get(lane["lane"], 0) + 1
+        entry_names.setdefault(metadata_type, set()).add(full_name)
+
+    source_counts: dict[str, int] = {}
+    gaps: dict[str, list[str]] = {}
+    try:
+        inventory = ForceAppKnowledge(ROOT).inventory()
+    except Exception as error:  # inventory is optional context, never a hard failure here
+        return {
+            "outcome": "COVERAGE",
+            "lanes": lanes,
+            "sourceComparison": f"unavailable: {error}",
+            "profiledTypes": sorted(PROFILES),
+        }
+    for component in inventory.get("components", []):
+        metadata_type = component["metadataType"]
+        source_counts[metadata_type] = source_counts.get(metadata_type, 0) + 1
+        if metadata_type in PROFILES and component["name"] not in entry_names.get(metadata_type, set()):
+            gaps.setdefault(metadata_type, []).append(component["name"])
+    return {
+        "outcome": "COVERAGE",
+        "profiledTypes": sorted(PROFILES),
+        "lanes": {key: dict(sorted(value.items())) for key, value in sorted(lanes.items())},
+        "sourceComponents": dict(sorted(source_counts.items())),
+        "missingEntries": {key: sorted(value)[:50] for key, value in sorted(gaps.items())},
+        "missingEntryCounts": {key: len(value) for key, value in sorted(gaps.items())},
+        "unprofiledTypes": sorted(set(source_counts) - set(PROFILES)),
+        "note": (
+            "Unprofiled types have no entry home yet and keep their v1 repository claims; "
+            "that is not a coverage gap (docs/knowledge-one-file-contract.md §1)."
+        ),
+    }
+
+
 def command_entry_revoke(args: argparse.Namespace) -> dict[str, Any]:
     latest = ledger_latest(read_ledger())
     record = latest.get(args.identity)
@@ -1039,6 +1090,11 @@ def build_parser() -> argparse.ArgumentParser:
     status = commands.add_parser("entry-status", help="computed lanes for entries")
     status.add_argument("--identity", default=None)
     status.set_defaults(func=command_entry_status)
+
+    coverage = commands.add_parser(
+        "entry-coverage", help="entry coverage per metadata type against force-app source"
+    )
+    coverage.set_defaults(func=command_entry_coverage)
 
     check = commands.add_parser("entry-check", help="CI validation of all entries and the ledger")
     check.set_defaults(func=command_entry_check)

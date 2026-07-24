@@ -367,6 +367,37 @@ subject/predicate; `validate_claim_refs` (P3) rejects or reports `shadowed-by-en
 | KUX-002 deterministic facts need no per-record approval | §5.5 (reorder/no-op collector bumps change nothing) |
 | KUX-003 approval shows semantic diff + deps | §6.3 executor-rendered artifact |
 
+## 10a. Retirement of the v1 repository path (P4/P5)
+
+Retirement is **per metadata type**, never a global flip. A type leaves the v1 repository
+path only when all of the following hold; until then its repository facts stay in the claim
+registry and nothing about it changes:
+
+1. an entry profile exists for the type (schema + adapter + facets + tests);
+2. the workspace holds entries, so an alternative home is actually reachable;
+3. entry coverage for the type is known — `knowledge_store.py entry-coverage` lists source
+   components with no entry as gaps, and types with no profile separately as "no home yet";
+4. citations for the type verify: `verify-citations` returns `current` for its entryRefs.
+
+What retirement means in practice, and what is already enforced:
+
+| Behaviour | State |
+|---|---|
+| New repository claims for the type | refused at `propose` (`enforce_entry_home_freeze`) |
+| Collector drafting for the type | skipped, reported as `skippedEntryHome` in the draft manifest |
+| Refresh waves for the type | replaced by the `approved-drifted` lane + per-entry re-approval |
+| Relation claims for the type | replaced by entry `typeFacts.references` and the search relation graph |
+| Existing historical claims | **kept and never reinterpreted**; they remain valid history and are shadowed for SAFE grounding by an approved entry on the same subject |
+| Generated domain indexes / `claims-index.json` | continue to render the claim layer only; entry reporting lives in `entry-coverage` and the search index |
+
+Types with no profile keep every v1 behaviour unchanged. This is why the freeze, the
+collector skip, and the shadowing rule are all keyed on the profile set: coverage widens as
+profiles ship, and no step of the migration can strand a metadata type without a home.
+
+Full removal of the v1 repository-claim code paths stays gated on parity certification
+against a real package (contract §12) — retiring behaviour per type is safe, deleting the
+machinery is not, while unprofiled types still depend on it.
+
 ## 11. Explicit non-goals (unchanged from v1.0)
 
 No storage/engine code in Phase 0; no changes yet to prompts, skills, agents, guard, hook,

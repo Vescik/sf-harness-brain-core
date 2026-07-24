@@ -247,6 +247,7 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-review": frozenset({"--identity"}),
     "entry-revoke": frozenset({"--identity", "--rationale"}),
     "entry-status": frozenset({"--identity"}),
+    "entry-coverage": frozenset(),
     "entry-check": frozenset(),
 }
 

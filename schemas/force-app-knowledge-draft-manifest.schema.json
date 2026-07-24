@@ -5,47 +5,147 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "schemaVersion", "kind", "generatedAt", "repositoryCommit", "sourceTreeDigest",
-    "reviewStatus", "claimCount", "bundles", "limitations"
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "repositoryCommit",
+    "sourceTreeDigest",
+    "reviewStatus",
+    "claimCount",
+    "bundles",
+    "limitations"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "kind": { "const": "force-app-knowledge-draft-manifest" },
-    "generatedAt": { "type": "string", "format": "date-time" },
-    "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "sourceTreeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "reviewStatus": { "const": "draft" },
-    "metadataTypeFilter": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$" },
-    "claimCount": { "type": "integer", "minimum": 0 },
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "force-app-knowledge-draft-manifest"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repositoryCommit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "sourceTreeDigest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "reviewStatus": {
+      "const": "draft"
+    },
+    "metadataTypeFilter": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]{0,79}$"
+    },
+    "claimCount": {
+      "type": "integer",
+      "minimum": 0
+    },
     "bundles": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["claimId", "disposition"],
+        "required": [
+          "claimId",
+          "disposition"
+        ],
         "properties": {
-          "claimId": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
-          "evidenceId": { "type": "string", "pattern": "^KEVD-[A-Z0-9][A-Z0-9-]{2,79}$" },
-          "claimFile": { "type": "string", "pattern": "^\\.cache/knowledge-proposals/force-app-drafts/" },
-          "evidenceFile": { "type": "string", "pattern": "^\\.cache/knowledge-proposals/force-app-drafts/" },
-          "expectedRevision": { "type": "integer", "minimum": 0 },
-          "disposition": { "enum": ["new", "update-proposed", "refresh-verified", "existing-non-proposed"] },
-          "command": { "type": "string", "minLength": 1 },
-          "reason": { "type": "string", "minLength": 1 }
+          "claimId": {
+            "type": "string",
+            "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$"
+          },
+          "evidenceId": {
+            "type": "string",
+            "pattern": "^KEVD-[A-Z0-9][A-Z0-9-]{2,79}$"
+          },
+          "claimFile": {
+            "type": "string",
+            "pattern": "^\\.cache/knowledge-proposals/force-app-drafts/"
+          },
+          "evidenceFile": {
+            "type": "string",
+            "pattern": "^\\.cache/knowledge-proposals/force-app-drafts/"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "disposition": {
+            "enum": [
+              "new",
+              "update-proposed",
+              "refresh-verified",
+              "existing-non-proposed"
+            ]
+          },
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "allOf": [
           {
-            "if": { "properties": { "disposition": { "enum": ["new", "update-proposed", "refresh-verified"] } } },
-            "then": { "required": ["evidenceId", "claimFile", "evidenceFile", "expectedRevision", "command"] }
+            "if": {
+              "properties": {
+                "disposition": {
+                  "enum": [
+                    "new",
+                    "update-proposed",
+                    "refresh-verified"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "evidenceId",
+                "claimFile",
+                "evidenceFile",
+                "expectedRevision",
+                "command"
+              ]
+            }
           },
           {
-            "if": { "properties": { "disposition": { "const": "existing-non-proposed" } } },
-            "then": { "required": ["reason"] }
+            "if": {
+              "properties": {
+                "disposition": {
+                  "const": "existing-non-proposed"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "reason"
+              ]
+            }
           }
         ]
       }
     },
     "limitations": {
-      "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "skippedEntryHome": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "description": "Components skipped because their metadata type is entry-home (repository facts live in one-file Knowledge Entries; see docs/knowledge-one-file-contract.md \u00a71). Counts per metadata type; never silently omitted."
     }
   }
 }
