@@ -5434,7 +5434,17 @@ class ForceAppKnowledge:
         if inventory["repositoryCommit"] != commit:
             raise KnowledgeBuildError("repository HEAD changed after inventory; rerun inventory")
 
-        policy = json.loads((self.root / "config/knowledge-policy.json").read_text(encoding="utf-8"))
+        policy_path = self.root / "config/knowledge-policy.json"
+        if not policy_path.is_file():
+            # Every other precondition in this method fails with an actionable message. A bare
+            # FileNotFoundError traceback here says nothing about which file, why it is needed,
+            # or what to do — and this is reached deep in a drafting run, after the inventory.
+            raise KnowledgeBuildError(
+                f"knowledge policy is missing at {self.relative(policy_path)}; it defines the "
+                "claim-type evidence and sensitivity rules drafting must apply, so drafting "
+                "cannot proceed without it"
+            )
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
         self.draft_root.mkdir(parents=True, exist_ok=True)
         for old in self.draft_root.glob("*.yaml"):
             old.unlink()
