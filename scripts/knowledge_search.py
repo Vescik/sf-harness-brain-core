@@ -420,6 +420,11 @@ def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:
         "citation": {
             "path": lane["path"],
             "entryDigest": lane.get("reviewedContentDigest"),
+            # Digest of the WHOLE file. reviewedContentDigest covers identity, profile major,
+            # facts, semantics and sensitivity — not source.fragments, scope or keywords, so an
+            # edit confined to those passed hydration unseen. This is both stronger and cheaper
+            # than the parse-and-recompute it replaces.
+            "fileDigest": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
             "factsDigest": lane.get("factsDigest"),
             "sourceDigest": lane.get("sourceTreeDigest"),
             "profileDigest": front["profile"]["digest"],
@@ -1064,6 +1069,16 @@ def hydrate(hits: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]
         # FILE still holds the content the projection was built from — which is exactly the
         # case a stat-based fingerprint could theoretically miss. Re-reading the 15k-line
         # ledger per query was pure overhead.
+        expected_file = hit["citation"].get("fileDigest")
+        actual_file = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+        if expected_file and actual_file != expected_file:
+            # Whole-file comparison: catches every byte, including the frontmatter fields
+            # reviewedContentDigest does not cover. One hash instead of a parse plus three
+            # digest computations.
+            gaps.append(
+                f"{hit['artifactId']}: entry changed since the index was built — rebuild the index"
+            )
+            continue
         try:
             frontmatter, body = store.split_entry(path.read_text(encoding="utf-8"))
             recomputed = store.reviewed_content_digest(frontmatter, body)

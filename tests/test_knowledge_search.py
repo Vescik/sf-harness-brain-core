@@ -705,6 +705,38 @@ class AnchorVerificationTests(EntryFixtureMixin, unittest.TestCase):
                     f"{name} served a tampered anchor as current",
                 )
 
+    def test_an_edit_outside_reviewed_content_is_still_caught(self) -> None:
+        """reviewedContentDigest does not cover every field in the file.
+
+        It covers identity, profile major, factsDigest, semanticsDigest and sensitivity — not
+        `source.fragments`, `scope` or `keywords`. Hydration recomputed only that digest, so an
+        edit confined to those fields passed every check: the coarse fingerprint could not see
+        it and hydration did not look. Repointing `source.fragments[0].path` at another file is
+        the sharpest version — it rewrites where the entry claims to come from.
+        """
+
+        seeded = self.seed()
+        path = store.ROOT / seeded["alpha"]["path"]
+        stat = path.stat()
+        original = path.read_text(encoding="utf-8")
+        tampered = original.replace(
+            "flows/HarnessAlphaRouter.flow-meta.xml", "flows/HarnessBetaDispatch.flow-meta.xml"
+        )
+        self.assertNotEqual(original, tampered, "fixture no longer exercises the case")
+        self.assertEqual(
+            store.reviewed_content_digest(*store.split_entry(original)),
+            store.reviewed_content_digest(*store.split_entry(tampered)),
+            "precondition: this edit is invisible to reviewedContentDigest",
+        )
+        path.write_text(tampered, encoding="utf-8")
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+        result = self.explain(seeded["alpha"]["identity"])
+        self.assertTrue(
+            any("rebuild the index" in gap for gap in self.anchor_gaps(result)),
+            "an entry whose declared source path was rewritten was served as current",
+        )
+
     def test_a_current_anchor_raises_no_anchor_gap(self) -> None:
         seeded = self.seed()
         for name, result in (
