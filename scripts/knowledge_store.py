@@ -580,44 +580,6 @@ def flow_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dic
     return type_facts, intentional, assurance
 
 
-def custom_field_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
-    facts = component.get("facts", {})
-
-    def as_int(value: Any) -> int | None:
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return None
-
-    type_facts = {
-        key: value
-        for key, value in {
-            "object": facts.get("object"),
-            "type": facts.get("type") or "Text",
-            "label": facts.get("label"),
-            "required": facts.get("required"),
-            "unique": facts.get("unique"),
-            "externalId": facts.get("externalId"),
-            "encrypted": facts.get("encrypted"),
-            "trackHistory": facts.get("trackHistory"),
-            "length": as_int(facts.get("length")),
-            "precision": as_int(facts.get("precision")),
-            "scale": as_int(facts.get("scale")),
-            "referenceTo": facts.get("referenceTo"),
-            "relationshipName": facts.get("relationshipName"),
-            "deleteConstraint": facts.get("deleteConstraint"),
-            "controllingField": facts.get("controllingField"),
-            "description": facts.get("description"),
-            "inlineHelpText": facts.get("inlineHelpText"),
-        }.items()
-        if value is not None
-    }
-    if facts.get("formula"):
-        type_facts["formula"] = {"returnType": facts.get("type") or "Text"}
-    return type_facts, [], {"typeFacts": "source-exact"}
-
-
-
 def _edges(component: dict[str, Any]) -> list[dict[str, Any]]:
     """Collector references as profile edges, with assurance derived from the kind vocabulary.
 
