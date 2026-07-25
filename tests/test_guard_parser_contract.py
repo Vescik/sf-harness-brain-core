@@ -131,9 +131,15 @@ class GuardParserContractTests(unittest.TestCase):
         # Entry mutations stay with the knowledge roles; reads stay universal. The approve
         # and revoke commands additionally require the safety hook's chat confirmation.
         self.assertEqual(
-            frozenset({"entry-draft", "entry-describe", "entry-approve", "entry-revoke"}),
+            frozenset({
+                "entry-draft", "entry-describe", "entry-approve", "entry-revoke",
+                "feature-propose", "feature-describe", "feature-approve", "feature-revoke",
+            }),
             guard.KNOWLEDGE_STORE_MUTATION_COMMANDS,
         )
+        # Reads stay universal, matching the entry-review precedent.
+        for read_only in ("entry-review", "feature-review", "feature-status", "feature-check"):
+            self.assertNotIn(read_only, guard.KNOWLEDGE_STORE_MUTATION_COMMANDS)
         self.assertLessEqual(
             guard.KNOWLEDGE_STORE_MUTATION_COMMANDS,
             set(guard.KNOWLEDGE_STORE_COMMAND_FLAGS),

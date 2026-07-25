@@ -1,7 +1,7 @@
 ---
 name: curate-knowledge
 description: Knowledge maintenance session - health report, then approved refresh or batch drafting with human-approved promotion.
-argument-hint: "health | entries | build <MetadataType> | describe | drafts | drift | refresh | batch <MetadataType>"
+argument-hint: "health | entries | build <MetadataType> | describe | drafts | drift | refresh | batch <MetadataType> | feature <slug>"
 agent: knowledge-curator
 tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal']
 ---
@@ -46,3 +46,34 @@ Every promotion requires the human's confirmation click; report any missing
 
 Return the mode, health counts, selections executed, claim/review IDs, skipped items with
 reasons, and outstanding approvals.
+
+## Feature boundaries (contract §13)
+
+A feature is a business grouping, so its boundary is authored, not discovered. Measured on a
+20-object package: from one anchor, depth 1 reaches 3 objects, depth 2 reaches 13, depth 4
+saturates at 17 — because every hop expands both along an object's own lookups and along every
+field pointing at it. Depth alone cannot express a feature.
+
+- `feature <slug>`: propose or revise the rule, then describe and route to approval.
+  - `python scripts/force_app_knowledge.py feature-crawl --feature "<Name>" --anchors <A,B> --depth 1 [--hub <X>]`
+    proposes a starting boundary; present it and let the human decide before writing a rule.
+  - `python scripts/knowledge_store.py feature-propose --slug <slug> --name "<Name>" --anchor <A>
+    [--hub <X>] [--depth N] [--include <Identity>] [--exclude <Identity>]
+    [--assurance-floor source-exact|source-derived-heuristic] [--replace]`
+  - `python scripts/knowledge_store.py feature-describe --slug <slug> --purpose-file <file>` —
+    what the feature IS. No traversal can derive this; it is the part a reviewer actually reads.
+  - `python scripts/knowledge_store.py feature-status [--slug <slug>]` — lanes. Read-only.
+  - `python scripts/knowledge_search.py tree --feature <slug> [--include-heuristic]` — current
+    membership with each node's reason and assurance. Advisory: never approved.
+  - `python scripts/knowledge_search.py feature-drift --feature <slug>` — what membership did
+    since approval. `changed: "unknown"` means no baseline is available on this machine, which
+    is not the same as "nothing changed".
+  - Approval goes through [approve-knowledge-drafts](../skills/approve-knowledge-drafts/SKILL.md):
+    `feature-review` renders the rule and the prose, and the human confirms
+    `feature-approve --feature Feature:<slug>:sha256:<digest>` in chat.
+  - `python scripts/knowledge_store.py feature-revoke --slug <slug> --rationale "<reason>"` and
+    `feature-check` (CI integrity gate over features and their ledger).
+
+What approval binds is the RULE and the description — never the member list. Membership depends
+on the package as well as the rule, so storing it would mean every new artifact drifts every
+feature that could contain it, and the reviewer would be re-approving a list they never read.

@@ -1878,6 +1878,203 @@ def run_context(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def load_feature(slug: str) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    path = store.feature_path(slug)
+    if not path.is_file():
+        raise SearchError(f"no feature entry for Feature:{slug}")
+    frontmatter, body = store.split_entry(path.read_text(encoding="utf-8"))
+    latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
+    return frontmatter, body, store.compute_feature_lane(path, latest)
+
+
+def compute_membership(
+    documents: "DocumentStore", boundary: dict[str, Any], *, allowed: set[str],
+    include_heuristic: bool,
+) -> dict[str, Any]:
+    """Members of a boundary rule, recomputed — never stored.
+
+    Membership is a function of the rule AND of the package, so it cannot live in the approved
+    entry: adding an unrelated artifact would drift every feature that could contain it, and the
+    reviewer would be re-approving a list they never read.
+
+    The assurance floor is what stops the rule being a dragnet. Measured on one real boundary,
+    23 of 29 Apex members joined only through heuristic edges — a class that merely mentions the
+    object name. Below-floor members are still found and counted; they are just not presented as
+    members."""
+
+    floor = boundary.get("membershipAssuranceFloor") or relation_kinds.SOURCE_EXACT
+    heuristic_ok = floor == relation_kinds.SOURCE_DERIVED_HEURISTIC or include_heuristic
+    depth = max(0, min(int(boundary.get("depth", 1)), DEPTH_LIMITS["tree"]))
+    excluded_ids = set(boundary.get("exclude") or [])
+
+    nodes: dict[str, dict[str, Any]] = {}
+
+    def offer(identity: str, reason: str, assurance: str, hop: int, path: list) -> None:
+        if identity in excluded_ids or identity in nodes:
+            return
+        nodes[identity] = {
+            "identity": identity, "hop": hop,
+            "membership": {"reason": reason, "assurance": assurance, "hop": hop, "path": path},
+        }
+
+    below_floor: list[dict[str, Any]] = []
+    for anchor_name in sorted(set(boundary.get("anchors") or [])):
+        for identity in documents.identities_for_full_name(anchor_name):
+            offer(identity, "anchor", "human-declared", 0, [])
+        walk = traverse(
+            documents, anchor_name, depth=max(depth, 1), direction="incoming",
+            allowed=allowed, include_heuristic=True,
+        )
+        for node in walk["nodes"]:
+            weakest = node["minAssurance"]
+            if weakest != relation_kinds.SOURCE_EXACT and not heuristic_ok:
+                below_floor.append({"identity": node["node"], "assurance": weakest})
+                continue
+            kinds = {step["kind"] for step in node["path"]}
+            reason = CONTAINMENT_KIND if CONTAINMENT_KIND in kinds else "references-member"
+            offer(node["node"], reason, weakest, node["hop"], node["path"])
+
+    for identity in sorted(set(boundary.get("include") or [])):
+        offer(identity, "declared-include", "human-declared", 0, [])
+
+    for node in nodes.values():
+        document = documents.get(node["identity"])
+        node["lifecycle"] = document["lane"] if document else None
+        node["metadataType"] = document["facets"]["metadataType"] if document else None
+        node["resolved"] = document is not None
+
+    members = sorted(nodes.values(), key=lambda item: (item["hop"], item["identity"]))
+    digest = store.canonical_digest(sorted(item["identity"] for item in members))
+    return {
+        "members": members,
+        "membershipDigest": digest,
+        "belowFloor": {
+            "count": len(below_floor),
+            "assuranceFloor": floor,
+            "identities": sorted({item["identity"] for item in below_floor})[:50],
+        },
+        "limitsHit": sorted(walk["limitsHit"]) if boundary.get("anchors") else [],
+    }
+
+
+def run_tree(args: argparse.Namespace) -> dict[str, Any]:
+    """The feature's current membership, descending from its anchors."""
+
+    documents, manifest = load_index()
+    frontmatter, body, lane = load_feature(args.feature)
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    result = compute_membership(
+        documents, frontmatter["boundary"], allowed=allowed,
+        include_heuristic=bool(getattr(args, "include_heuristic", False)),
+    )
+    current = [node for node in result["members"] if node["lifecycle"] == "approved-current"]
+    non_current = [node for node in result["members"] if node["lifecycle"] != "approved-current"]
+    gaps = [
+        "Membership is recomputed from the approved boundary rule and is ADVISORY — it is not "
+        "part of what any human approved, and it is not itself citable.",
+    ]
+    if lane["lane"] != "approved-current":
+        gaps.append(
+            f"The feature rule itself is in lane '{lane['lane']}', so this tree descends from a "
+            "boundary nobody has approved."
+        )
+    if result["belowFloor"]["count"]:
+        gaps.append(
+            f"{result['belowFloor']['count']} artifact(s) reach this boundary only through "
+            f"inferred edges, below the '{result['belowFloor']['assuranceFloor']}' floor, and are "
+            "counted rather than listed as members. Pass --include-heuristic to include them."
+        )
+    if non_current:
+        gaps.append(
+            f"{len(non_current)} member(s) are not approved-current knowledge."
+        )
+    return {
+        "outcome": "TREE",
+        "feature": store.feature_identity(args.feature),
+        "name": frontmatter["subject"]["name"],
+        "featureLane": lane["lane"],
+        "boundary": frontmatter["boundary"],
+        "purpose": body.split("## Purpose", 1)[-1].strip() if "## Purpose" in body else None,
+        "members": current,
+        "membersNonCurrent": non_current,
+        "belowFloor": result["belowFloor"],
+        "membershipDigest": result["membershipDigest"],
+        "limitsHit": result["limitsHit"],
+        "sourceCoverage": source_coverage(manifest),
+        "gaps": gaps,
+        "indexGeneration": manifest["generation"],
+    }
+
+
+def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
+    """What membership did since the rule was approved.
+
+    Returns `changed: "unknown"` when no approved baseline is reachable. That is not the same as
+    "nothing changed", and reporting `false` there would be the exact inversion this command
+    exists to prevent — on a team with per-developer caches, the machine running drift is often
+    not the machine that approved."""
+
+    documents, manifest = load_index()
+    frontmatter, _body, lane = load_feature(args.feature)
+    identity = store.feature_identity(args.feature)
+    latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
+    record = latest.get(identity)
+    allowed = documents.lane_ids(_requested_states(args))
+    current = compute_membership(
+        documents, frontmatter["boundary"], allowed=allowed,
+        include_heuristic=bool(getattr(args, "include_heuristic", False)),
+    )
+    baseline_path = cache_root() / f"feature-baseline-{args.feature}.json"
+    baseline = None
+    if baseline_path.is_file():
+        try:
+            baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        except ValueError:
+            baseline = None
+
+    gaps = []
+    if record is None or record.get("action") == "revoke":
+        changed: Any = "unknown"
+        gaps.append(f"{identity} is not approved, so there is no baseline to compare against.")
+    elif baseline is None or baseline.get("membershipDigest") is None:
+        changed = "unknown"
+        gaps.append(
+            "No membership baseline is available here. The approval ledger pins the boundary "
+            "digest, not a member list — a permanent human-attributed record must not carry "
+            "identities the reviewer was told they were not approving. Run `tree` on the "
+            "approving machine to write a baseline."
+        )
+    else:
+        changed = baseline["membershipDigest"] != current["membershipDigest"]
+        if changed:
+            was = set(baseline.get("members") or [])
+            now = {item["identity"] for item in current["members"]}
+            gaps.append(f"added: {sorted(now - was)[:20]}")
+            gaps.append(f"removed: {sorted(was - now)[:20]}")
+
+    boundary_moved = bool(record) and record.get("boundaryDigest") != store.boundary_digest(
+        frontmatter["boundary"]
+    )
+    if boundary_moved:
+        gaps.append(
+            "The boundary RULE itself differs from what was approved — that is a re-approval, "
+            "not drift."
+        )
+    return {
+        "outcome": "FEATURE_DRIFT",
+        "feature": identity,
+        "featureLane": lane["lane"],
+        "changed": changed,
+        "membershipDigest": current["membershipDigest"],
+        "baselineDigest": (baseline or {}).get("membershipDigest"),
+        "boundaryRuleChanged": boundary_moved,
+        "memberCount": len(current["members"]),
+        "gaps": gaps,
+        "indexGeneration": manifest["generation"],
+    }
+
+
 def run_capabilities(args: argparse.Namespace) -> dict[str, Any]:
     facets = dict(GLOBAL_FACETS)
     if args.metadata_type:
@@ -1967,6 +2164,18 @@ def build_parser() -> argparse.ArgumentParser:
     context.add_argument("--top", type=int, default=CONTEXT_TOP_DEFAULT)
     context.add_argument("--include-heuristic", action="store_true")
     context.set_defaults(func=run_context)
+
+    tree = commands.add_parser("tree", help="current membership of an approved feature boundary")
+    tree.add_argument("--feature", required=True)
+    tree.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    tree.add_argument("--include-heuristic", action="store_true")
+    tree.set_defaults(func=run_tree)
+
+    drift = commands.add_parser("feature-drift", help="what membership did since approval")
+    drift.add_argument("--feature", required=True)
+    drift.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    drift.add_argument("--include-heuristic", action="store_true")
+    drift.set_defaults(func=run_feature_drift)
 
     capabilities = commands.add_parser("capabilities", help="valid facets, operators, modes")
     capabilities.add_argument("--metadata-type", default=None)

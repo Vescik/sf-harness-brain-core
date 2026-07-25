@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-feature-entry.schema.json",
+  "title": "Feature Entry v1",
+  "description": "A human-approved BOUNDARY RULE for a feature, plus a human description of what the feature is. Membership is never stored: it is recomputed from the rule against the current index, so adding an artifact to the package cannot drift an approved feature. What a reviewer approves is the rule and the prose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "subject",
+    "boundary",
+    "lifecycle",
+    "limitations",
+    "keywords",
+    "candidateKeywords",
+    "sensitivity",
+    "approval"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kind": {
+      "const": "feature-entry",
+      "description": "Discriminates a Feature Entry from an artifact entry for any reader that meets both."
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug", "name"],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "maxLength": 60,
+          "description": "Identity is `Feature:<slug>` — two segments. Three would satisfy work_record.entry_relative_path's unpack and resolve to a path under ARTIFACTS_ROOT that does not exist, failing silently instead of loudly."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchors", "depth"],
+      "description": "The rule, not its result. Measured on a 20-object package: depth 1 from one anchor reaches 3 objects, depth 2 reaches 13, depth 4 saturates at 17 — because each hop expands BOTH along the object's own lookups and along every field that points AT it. Depth alone therefore cannot express a feature; anchors, hubs and explicit overrides are what make the boundary a decision rather than a radius.",
+      "properties": {
+        "anchors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Objects the feature is built around."
+        },
+        "hubs": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Objects kept as an edge target but never expanded through. Without them a shared object (User, Account, a resource table) drags the whole model in at the next hop."
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Object hops. 0 means anchors only."
+        },
+        "include": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Identities a human declares members regardless of what the traversal finds."
+        },
+        "exclude": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Identities a human declares non-members regardless of what the traversal finds."
+        },
+        "membershipAssuranceFloor": {
+          "enum": ["source-exact", "source-derived-heuristic"],
+          "description": "Weakest edge assurance allowed to carry membership. Measured: 23 of 29 Apex members of one boundary joined only through heuristic edges — a class that merely mentions the object name. A floor of source-exact keeps those out of the member list; they are still reported, counted and labelled."
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "contentDigest"],
+      "properties": {
+        "state": { "enum": ["draft", "approved"] },
+        "contentDigest": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "keywords": { "type": "array", "items": { "type": "string" } },
+    "candidateKeywords": { "type": "array", "items": { "type": "string" } },
+    "sensitivity": { "type": "string" },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewedContentDigest", "reviewedBy", "reviewedAt", "mechanism"],
+      "description": "Mirrors the ledger, which is authoritative. No membership list appears here or in the ledger: a permanent human-attributed approval record must not carry cross-artifact identities the reviewer was explicitly told they were not approving, derived from a cache that is never authority.",
+      "properties": {
+        "reviewedContentDigest": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
+        "reviewedBy": { "type": ["string", "null"] },
+        "reviewedAt": { "type": ["string", "null"] },
+        "mechanism": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

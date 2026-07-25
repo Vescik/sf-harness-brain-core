@@ -92,7 +92,8 @@ VALIDATION_RULE = """<?xml version="1.0" encoding="UTF-8"?>
 </ValidationRule>
 """
 
-PATCHED = ("ROOT", "ARTIFACTS_ROOT", "LEDGER_PATH", "REVIEW_ARTIFACT_ROOT", "LOCAL_CONFIG", "TAXONOMY_PATH")
+PATCHED = ("ROOT", "ARTIFACTS_ROOT", "LEDGER_PATH", "REVIEW_ARTIFACT_ROOT", "LOCAL_CONFIG",
+           "TAXONOMY_PATH", "FEATURES_ROOT", "FEATURE_LEDGER_PATH")
 
 
 class KnowledgeStoreTests(unittest.TestCase):
@@ -106,6 +107,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         store.REVIEW_ARTIFACT_ROOT = self.temp / "output/knowledge-approvals"
         store.LOCAL_CONFIG = self.temp / "config/harness.local.json"
         store.TAXONOMY_PATH = self.temp / ".ai/knowledge/keyword-taxonomy.md"
+        store.FEATURES_ROOT = self.temp / ".ai/knowledge/features"
+        store.FEATURE_LEDGER_PATH = self.temp / ".ai/knowledge/features-ledger.jsonl"
         self.addCleanup(lambda: [setattr(store, k, v) for k, v in self._saved.items()])
         flow_dir = self.temp / "force-app/main/default/flows"
         flow_dir.mkdir(parents=True)
@@ -954,3 +957,114 @@ class WorkflowReachabilityTests(unittest.TestCase):
             with self.subTest(command=command.split("py ")[1].split()[0]):
                 for role in ("knowledge-curator", "solution-designer", "guardrail-reviewer"):
                     self.assertTrue(guard.allowed_role_command(command, self.HARNESS, role))
+
+
+class FeatureEntryTests(KnowledgeStoreTests):
+    """A Feature Entry approves a BOUNDARY RULE, never a member list.
+
+    That split is the whole design. Membership is a function of the rule AND of the package, so
+    storing it would mean every new artifact drifts every feature that could contain it — and a
+    reviewer would be re-approving a list they never read.
+    """
+
+    def propose(self, **kwargs):
+        args = argparse.Namespace(
+            slug="scheduling", name="Scheduling", anchor=["HarnessAlphaCase__c"], hub=None,
+            depth=1, include=None, exclude=None, assurance_floor="source-exact", replace=False,
+        )
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return store.command_feature_propose(args)
+
+    def describe(self, slug="scheduling", text="Allocating people and detecting overlaps."):
+        path = self.temp / "fdesc.md"
+        path.write_text(text, encoding="utf-8")
+        return store.command_feature_describe(
+            argparse.Namespace(slug=slug, purpose_file=str(path))
+        )
+
+    def approve_feature(self, slug="scheduling"):
+        review = store.command_feature_review(argparse.Namespace(slug=[slug]))
+        pins = [
+            part for part in review["approveCommand"].split() if part.startswith("Feature:")
+        ]
+        return store.command_feature_approve(argparse.Namespace(feature=pins))
+
+    def lane(self, slug="scheduling"):
+        latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
+        return store.compute_feature_lane(store.feature_path(slug), latest)
+
+    def test_a_feature_cannot_be_approved_before_it_is_described(self) -> None:
+        self.propose()
+        review = store.command_feature_review(argparse.Namespace(slug=None))
+        self.assertEqual("NOTHING_TO_REVIEW", review["outcome"])
+        self.assertTrue(review["skipped"])
+
+    def test_approval_binds_the_rule_and_the_prose(self) -> None:
+        self.propose()
+        self.describe()
+        result = self.approve_feature()
+        self.assertEqual("APPROVED", result["outcome"])
+        self.assertEqual("approved-current", self.lane()["lane"])
+
+    def test_the_ledger_records_a_boundary_digest_and_no_member_list(self) -> None:
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        record = store.read_ledger(store.FEATURE_LEDGER_PATH)[-1]
+        self.assertIn("boundaryDigest", record)
+        for forbidden in ("members", "memberCount", "membershipDigest"):
+            self.assertNotIn(forbidden, record)
+
+    def test_reordering_anchors_is_the_same_rule(self) -> None:
+        # Anchors and hubs are sets in meaning; a cosmetic reorder must not demand re-approval.
+        first = self.propose(anchor=["A__c", "B__c"])
+        second = self.propose(anchor=["B__c", "A__c"], replace=True)
+        self.assertEqual(first["boundaryDigest"], second["boundaryDigest"])
+
+    def test_changing_the_rule_returns_the_feature_to_draft(self) -> None:
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        self.propose(depth=2, replace=True)
+        self.assertNotEqual("approved-current", self.lane()["lane"])
+
+    def test_rewriting_the_description_returns_the_feature_to_draft(self) -> None:
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        self.describe(text="A different account of what this feature is.")
+        self.assertEqual("draft", self.lane()["lane"])
+
+    def test_features_live_outside_the_artifact_corpus(self) -> None:
+        # If a Feature ever landed under ARTIFACTS_ROOT it would enter the artifact index and
+        # could be offered as an entryRef, and every artifact reader would meet a file with no
+        # subject.metadataType.
+        self.propose()
+        self.describe()
+        self.assertNotIn(
+            store.feature_path("scheduling").resolve(),
+            {path.resolve() for path in store.all_entry_paths()},
+        )
+        self.assertNotEqual(store.FEATURE_LEDGER_PATH, store.LEDGER_PATH)
+
+    def test_a_feature_identity_has_two_segments(self) -> None:
+        # Three would satisfy work_record.entry_relative_path's unpack and resolve to a path
+        # under ARTIFACTS_ROOT that does not exist, failing silently instead of loudly.
+        self.assertEqual("Feature:scheduling", store.feature_identity("scheduling"))
+        self.assertEqual(2, len(store.feature_identity("scheduling").split(":")))
+
+    def test_feature_check_catches_an_approved_file_with_no_ledger_record(self) -> None:
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        store.FEATURE_LEDGER_PATH.unlink()
+        with self.assertRaises(store.StoreError) as raised:
+            store.command_feature_check(argparse.Namespace())
+        self.assertIn("no ledger record approves it", str(raised.exception))
+
+    def test_a_slug_cannot_escape_the_features_directory(self) -> None:
+        for hostile in ("../escape", "Upper", "trailing-", "con", "with space"):
+            with self.subTest(slug=hostile):
+                with self.assertRaises(store.StoreError):
+                    store.feature_path(hostile)

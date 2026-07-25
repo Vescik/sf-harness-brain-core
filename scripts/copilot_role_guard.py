@@ -232,7 +232,9 @@ FORCE_APP_COMMAND_FLAGS = {
 # entry-review only renders a review artifact under output/; it mutates no Knowledge, so it
 # stays outside the mutation set while still being a curator/investigator-shaped action.
 KNOWLEDGE_STORE_MUTATION_COMMANDS = frozenset(
-    {"entry-draft", "entry-describe", "entry-approve", "entry-revoke"}
+    {"entry-draft", "entry-describe", "entry-approve", "entry-revoke",
+     # feature-review / feature-status / feature-check are reads, matching entry-review.
+     "feature-propose", "feature-describe", "feature-approve", "feature-revoke"}
 )
 KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-draft": frozenset(
@@ -253,6 +255,18 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-status": frozenset({"--identity"}),
     "entry-coverage": frozenset(),
     "entry-check": frozenset({"--changed-since"}),
+    # Feature Entries (contract §13). The boundary rule is human-authored, so propose/describe
+    # are mutations; review/status/check are reads, mirroring the entry-review precedent.
+    "feature-propose": frozenset(
+        {"--slug", "--name", "--anchor", "--hub", "--depth", "--include", "--exclude",
+         "--assurance-floor", "--replace"}
+    ),
+    "feature-describe": frozenset({"--slug", "--purpose-file"}),
+    "feature-status": frozenset({"--slug"}),
+    "feature-review": frozenset({"--slug"}),
+    "feature-approve": frozenset({"--feature"}),
+    "feature-revoke": frozenset({"--slug", "--rationale"}),
+    "feature-check": frozenset(),
 }
 
 
@@ -283,6 +297,8 @@ KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
         {"--identity", "--depth", "--direction", "--state", "--top", "--include-heuristic"}
     ),
     "context": frozenset({"--identity", "--state", "--top", "--include-heuristic"}),
+    "tree": frozenset({"--feature", "--state", "--include-heuristic"}),
+    "feature-drift": frozenset({"--feature", "--state", "--include-heuristic"}),
     "capabilities": frozenset({"--metadata-type"}),
 }
 # Boolean flags take no value, so the parser must not skip the token after them. A flag missing
@@ -293,7 +309,7 @@ KNOWLEDGE_SEARCH_VALUELESS_FLAGS = frozenset({"--check", "--full", "--include-he
 # Empty because no knowledge_store subcommand declares a boolean yet. The constant and its
 # branch in knowledge_store_command_allowed exist so the first one cannot fail open the way
 # `--full` did on the search side; the arity-derived contract test is what will require it here.
-KNOWLEDGE_STORE_VALUELESS_FLAGS: frozenset[str] = frozenset()
+KNOWLEDGE_STORE_VALUELESS_FLAGS: frozenset[str] = frozenset({"--replace"})
 
 
 def knowledge_search_command_allowed(parts: list[str], role: str) -> bool:
@@ -1130,6 +1146,11 @@ def is_governed_record_path(relative_path: str) -> bool:
         or re.fullmatch(r"\.ai/knowledge/(automation-map|business-processes|current-implementation|field-descriptions|glossary|integration-map|known-limitations|object-descriptions|object-relations)\.md", relative_path)
         or re.fullmatch(r"\.ai/knowledge/artifacts/.+\.md", lowered)
         or lowered == ".ai/knowledge/artifacts-ledger.jsonl"
+        # Feature Entries and their ledger. The FILE needs its own arm, not just the ledger:
+        # without it an agent could rewrite an approved boundary rule through the ordinary
+        # write path and the digest pin would never see it.
+        or re.fullmatch(r"\.ai/knowledge/features/[^/]+\.md", lowered)
+        or lowered == ".ai/knowledge/features-ledger.jsonl"
     )
 
 

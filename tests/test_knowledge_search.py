@@ -107,7 +107,8 @@ LABELS = """<?xml version="1.0" encoding="UTF-8"?>
 </CustomLabels>
 """
 
-PATCHED = ("ROOT", "ARTIFACTS_ROOT", "LEDGER_PATH", "REVIEW_ARTIFACT_ROOT", "LOCAL_CONFIG", "TAXONOMY_PATH")
+PATCHED = ("ROOT", "ARTIFACTS_ROOT", "LEDGER_PATH", "REVIEW_ARTIFACT_ROOT", "LOCAL_CONFIG",
+           "TAXONOMY_PATH", "FEATURES_ROOT", "FEATURE_LEDGER_PATH")
 
 
 class EntryFixtureMixin:
@@ -135,6 +136,8 @@ class EntryFixtureMixin:
         store.REVIEW_ARTIFACT_ROOT = self.temp / "output/knowledge-approvals"
         store.LOCAL_CONFIG = self.temp / "config/harness.local.json"
         store.TAXONOMY_PATH = self.temp / ".ai/knowledge/keyword-taxonomy.md"
+        store.FEATURES_ROOT = self.temp / ".ai/knowledge/features"
+        store.FEATURE_LEDGER_PATH = self.temp / ".ai/knowledge/features-ledger.jsonl"
 
         default = self.temp / "force-app/main/default"
         (default / "flows").mkdir(parents=True)

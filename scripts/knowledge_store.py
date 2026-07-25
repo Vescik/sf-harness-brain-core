@@ -42,6 +42,13 @@ except ModuleNotFoundError:  # invoked as `python scripts/knowledge_store.py`
 
 ARTIFACTS_ROOT = ROOT / ".ai/knowledge/artifacts"
 LEDGER_PATH = ROOT / ".ai/knowledge/artifacts-ledger.jsonl"
+# Features live OUTSIDE ARTIFACTS_ROOT so all_entry_paths(), corpus_fingerprint() and the
+# artifact index never see them — a Feature is not a Salesforce artifact and must never be
+# citable as an entryRef. Their ledger is separate for the same reason it is separate in the
+# contract: the artifact ledger's stamp is folded into every projection's reuse key, so sharing
+# one file would discard the entire artifact index on every feature approval.
+FEATURES_ROOT = ROOT / ".ai/knowledge/features"
+FEATURE_LEDGER_PATH = ROOT / ".ai/knowledge/features-ledger.jsonl"
 REVIEW_ARTIFACT_ROOT = ROOT / "output/knowledge-approvals"
 SCHEMA_DIR = ROOT / "schemas"
 LOCAL_CONFIG = ROOT / "config/harness.local.json"
@@ -109,17 +116,22 @@ import contextlib
 def rooted(root: Path):
     """Bind module paths to a different repo root (work_record gates, unit tests)."""
     global ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH
-    saved = (ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH)
+    global FEATURES_ROOT, FEATURE_LEDGER_PATH
+    saved = (ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH,
+             FEATURES_ROOT, FEATURE_LEDGER_PATH)
     ROOT = Path(root).resolve()
     ARTIFACTS_ROOT = ROOT / ".ai/knowledge/artifacts"
     LEDGER_PATH = ROOT / ".ai/knowledge/artifacts-ledger.jsonl"
+    FEATURES_ROOT = ROOT / ".ai/knowledge/features"
+    FEATURE_LEDGER_PATH = ROOT / ".ai/knowledge/features-ledger.jsonl"
     REVIEW_ARTIFACT_ROOT = ROOT / "output/knowledge-approvals"
     LOCAL_CONFIG = ROOT / "config/harness.local.json"
     TAXONOMY_PATH = ROOT / ".ai/knowledge/keyword-taxonomy.md"
     try:
         yield
     finally:
-        ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH = saved
+        (ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH,
+         FEATURES_ROOT, FEATURE_LEDGER_PATH) = saved
 
 
 # --- strict canonical parser (contract §5.6) -------------------------------------------
@@ -278,11 +290,12 @@ def reviewed_content_digest(frontmatter: dict[str, Any], body: str) -> str:
 # --- ledger (contract §6.1) ------------------------------------------------------------
 
 
-def read_ledger() -> list[dict[str, Any]]:
-    if not LEDGER_PATH.exists():
+def read_ledger(path: Path | None = None) -> list[dict[str, Any]]:
+    ledger = path or LEDGER_PATH
+    if not ledger.exists():
         return []
     records = []
-    for index, line in enumerate(LEDGER_PATH.read_text(encoding="utf-8").splitlines(), 1):
+    for index, line in enumerate(ledger.read_text(encoding="utf-8").splitlines(), 1):
         if not line.strip():
             continue
         record = json.loads(line)
@@ -299,10 +312,12 @@ def ledger_latest(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return latest
 
 
-def append_ledger(entries: list[dict[str, Any]]) -> None:
-    records = read_ledger()
+def append_ledger(entries: list[dict[str, Any]], path: Path | None = None) -> None:
+    ledger = path or LEDGER_PATH
+    records = read_ledger(ledger)
     sequence = len(records)
-    with LEDGER_PATH.open("a", encoding="utf-8", newline="\n") as handle:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    with ledger.open("a", encoding="utf-8", newline="\n") as handle:
         for entry in entries:
             sequence += 1
             handle.write(json.dumps({"sequence": sequence, **entry}, sort_keys=True) + "\n")
@@ -1313,6 +1328,46 @@ def build_parser() -> argparse.ArgumentParser:
         "(collision checks always cover the whole corpus)",
     )
     check.set_defaults(func=command_entry_check)
+
+    propose = commands.add_parser("feature-propose", help="write a feature's boundary rule as a draft")
+    propose.add_argument("--slug", required=True)
+    propose.add_argument("--name", required=True)
+    propose.add_argument("--anchor", action="append", default=None)
+    propose.add_argument("--hub", action="append", default=None)
+    propose.add_argument("--depth", type=int, default=1)
+    propose.add_argument("--include", action="append", default=None)
+    propose.add_argument("--exclude", action="append", default=None)
+    propose.add_argument(
+        "--assurance-floor", default="source-exact",
+        choices=["source-exact", "source-derived-heuristic"],
+    )
+    propose.add_argument("--replace", action="store_true")
+    propose.set_defaults(func=command_feature_propose)
+
+    fdescribe = commands.add_parser("feature-describe", help="write what the feature IS")
+    fdescribe.add_argument("--slug", required=True)
+    fdescribe.add_argument("--purpose-file", required=True)
+    fdescribe.set_defaults(func=command_feature_describe)
+
+    fstatus = commands.add_parser("feature-status", help="lanes for every feature")
+    fstatus.add_argument("--slug", default=None)
+    fstatus.set_defaults(func=command_feature_status)
+
+    freview = commands.add_parser("feature-review", help="render the human review surface")
+    freview.add_argument("--slug", action="append", default=None)
+    freview.set_defaults(func=command_feature_review)
+
+    fapprove = commands.add_parser("feature-approve", help="digest-pinned approval of boundary rules")
+    fapprove.add_argument("--feature", action="append", default=None)
+    fapprove.set_defaults(func=command_feature_approve)
+
+    frevoke = commands.add_parser("feature-revoke", help="revoke an approved feature")
+    frevoke.add_argument("--slug", required=True)
+    frevoke.add_argument("--rationale", required=True)
+    frevoke.set_defaults(func=command_feature_revoke)
+
+    fcheck = commands.add_parser("feature-check", help="CI validation of features and their ledger")
+    fcheck.set_defaults(func=command_feature_check)
     return parser
 
 
@@ -1325,6 +1380,393 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
+
+
+# --- Feature Entries (contract §13) -----------------------------------------------------
+#
+# A Feature Entry approves a BOUNDARY RULE and a human description — never a member list.
+# That split is the whole design. Membership is a function of the rule AND of the package,
+# so storing it would mean every new artifact drifts every feature that could contain it,
+# and a reviewer would be re-approving a list they never read. Membership is recomputed on
+# demand and reported as an advisory; `feature-drift` says what moved since approval.
+
+
+FEATURE_SLUG_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
+FEATURE_SENTINEL = "<AGENT_FEATURE_DESCRIPTION>"
+
+
+def feature_identity(slug: str) -> str:
+    """`Feature:<slug>` — two segments, deliberately.
+
+    Three segments would match the artifact identity shape closely enough that
+    work_record.entry_relative_path's unpack succeeds and produces a path under
+    ARTIFACTS_ROOT that does not exist. Two segments cannot be unpacked that way, so a
+    Feature offered as an entryRef fails loudly instead of resolving to nothing."""
+
+    return f"Feature:{slug}"
+
+
+def feature_path(slug: str) -> Path:
+    if not FEATURE_SLUG_RE.match(slug):
+        raise StoreError(
+            f"feature slug {slug!r} must be lowercase alphanumeric with single hyphens"
+        )
+    if slug.upper().split("-")[0] in WINDOWS_RESERVED:
+        raise StoreError(f"feature slug {slug!r} starts with a Windows reserved device name")
+    return FEATURES_ROOT / f"{slug}.md"
+
+
+def all_feature_paths() -> list[Path]:
+    return sorted(FEATURES_ROOT.glob("*.md")) if FEATURES_ROOT.exists() else []
+
+
+def canonical_boundary(boundary: dict[str, Any]) -> dict[str, Any]:
+    """The rule in a form whose digest is stable under reordering.
+
+    Anchors and hubs are sets in meaning, so `[A, B]` and `[B, A]` are the same rule and must
+    not produce different digests — otherwise a cosmetic edit would demand re-approval."""
+
+    return {
+        "anchors": sorted(set(boundary.get("anchors") or [])),
+        "hubs": sorted(set(boundary.get("hubs") or [])),
+        "depth": int(boundary.get("depth", 1)),
+        "include": sorted(set(boundary.get("include") or [])),
+        "exclude": sorted(set(boundary.get("exclude") or [])),
+        "membershipAssuranceFloor": boundary.get("membershipAssuranceFloor") or "source-exact",
+    }
+
+
+def boundary_digest(boundary: dict[str, Any]) -> str:
+    return canonical_digest(canonical_boundary(boundary))
+
+
+def feature_reviewed_content_digest(frontmatter: dict[str, Any], body: str) -> str:
+    """What approval binds: the identity, the rule, the prose, the sensitivity.
+
+    Membership is absent by construction — that is what makes an approved feature immune to
+    package growth."""
+
+    return canonical_digest(
+        {
+            "identity": feature_identity(frontmatter["subject"]["slug"]),
+            "kind": "feature-entry",
+            "schemaVersion": frontmatter["schemaVersion"],
+            "boundaryDigest": boundary_digest(frontmatter["boundary"]),
+            "semanticsDigest": semantics_digest(body),
+            "sensitivity": frontmatter["sensitivity"],
+        }
+    )
+
+
+def validate_feature(frontmatter: dict[str, Any], body: str) -> list[str]:
+    problems: list[str] = []
+    schema = load_schema("knowledge-feature-entry.schema.json")
+    from jsonschema import Draft202012Validator
+
+    problems.extend(
+        error.message for error in Draft202012Validator(schema).iter_errors(frontmatter)
+    )
+    if SENTINEL_PATTERN.search(body):
+        problems.append("unfilled <AGENT_...> sentinel present (contract §13)")
+    if "## Purpose" not in body:
+        problems.append("body must carry a '## Purpose' section")
+    return problems
+
+
+def compute_feature_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Lane for one Feature Entry.
+
+    No source-fragment check: a Feature has no source. Its facts are the human's rule, so the
+    only things that can invalidate it are an edit to that rule, an edit to the prose, or a
+    ledger move."""
+
+    frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+    slug = frontmatter.get("subject", {}).get("slug", "")
+    identity = feature_identity(slug)
+    result: dict[str, Any] = {
+        "identity": identity,
+        "path": str(path.relative_to(ROOT)),
+        "problems": validate_feature(frontmatter, body),
+    }
+    if result["problems"] or frontmatter.get("lifecycle", {}).get("state") == "draft":
+        result["lane"] = "draft" if not result["problems"] else "not-effective"
+        result["reviewedContentDigest"] = (
+            feature_reviewed_content_digest(frontmatter, body) if not result["problems"] else None
+        )
+        result["boundaryDigest"] = (
+            boundary_digest(frontmatter["boundary"]) if not result["problems"] else None
+        )
+        return result
+
+    digest = feature_reviewed_content_digest(frontmatter, body)
+    record = latest.get(identity)
+    result["reviewedContentDigest"] = digest
+    result["boundaryDigest"] = boundary_digest(frontmatter["boundary"])
+    if record is None:
+        result["lane"] = "not-effective"
+        result["problems"].append("file claims approved but no ledger record approves it")
+    elif record.get("action") == "revoke":
+        result["lane"] = "revoked"
+    elif record.get("reviewedContentDigest") != digest:
+        result["lane"] = "not-effective"
+        result["problems"].append("content digest does not match the approved ledger record")
+    elif any(
+        frontmatter["approval"].get(field) != record.get(field)
+        for field in ("reviewedBy", "reviewedAt", "mechanism")
+    ):
+        result["lane"] = "not-effective"
+        result["problems"].append("in-file approval provenance mismatches the ledger record")
+    else:
+        result["lane"] = "approved-current"
+    return result
+
+
+def command_feature_propose(args: argparse.Namespace) -> dict[str, Any]:
+    """Write (or replace) a feature's boundary rule as a draft.
+
+    The rule is authored, not discovered. `feature-crawl` proposes a starting point, but what
+    lands here is a human's decision about where the feature ends — which is why depth alone
+    is not enough: on a 20-object package depth 2 already reaches 13 objects."""
+
+    assert_no_reparse_points()
+    path = feature_path(args.slug)
+    if path.exists() and not args.replace:
+        raise StoreError(f"{feature_identity(args.slug)} already exists; pass --replace to rewrite its rule")
+    boundary = {
+        "anchors": [item.strip() for item in (args.anchor or []) if item.strip()],
+        "hubs": [item.strip() for item in (args.hub or []) if item.strip()],
+        "depth": int(args.depth),
+        "include": [item.strip() for item in (args.include or []) if item.strip()],
+        "exclude": [item.strip() for item in (args.exclude or []) if item.strip()],
+        "membershipAssuranceFloor": args.assurance_floor,
+    }
+    if not boundary["anchors"]:
+        raise StoreError("a feature boundary needs at least one --anchor")
+    body = f"## Purpose\n\n{FEATURE_SENTINEL}\n"
+    if path.exists():
+        _previous_front, previous_body = split_entry(path.read_text(encoding="utf-8"))
+        if FEATURE_SENTINEL not in previous_body:
+            body = previous_body  # keep an authored description across a rule change
+    frontmatter: dict[str, Any] = {
+        "schemaVersion": 1,
+        "kind": "feature-entry",
+        "subject": {"slug": args.slug, "name": args.name},
+        "boundary": canonical_boundary(boundary),
+        "lifecycle": {"state": "draft", "contentDigest": None},
+        "limitations": [],
+        "keywords": [],
+        "candidateKeywords": [],
+        "sensitivity": "internal-sanitized",
+        "approval": {
+            "reviewedContentDigest": None, "reviewedBy": None,
+            "reviewedAt": None, "mechanism": None,
+        },
+    }
+    digest = feature_reviewed_content_digest(frontmatter, body)
+    frontmatter["lifecycle"]["contentDigest"] = digest
+    atomic_write(path, render_entry(frontmatter, body))
+    return {
+        "outcome": "PROPOSED",
+        "identity": feature_identity(args.slug),
+        "path": str(path.relative_to(ROOT)),
+        "boundary": frontmatter["boundary"],
+        "boundaryDigest": boundary_digest(frontmatter["boundary"]),
+        "reviewedContentDigest": digest,
+        "describedYet": FEATURE_SENTINEL not in body,
+    }
+
+
+def command_feature_describe(args: argparse.Namespace) -> dict[str, Any]:
+    """Write the human description of what the feature IS.
+
+    A boundary rule says which artifacts; it cannot say why they belong together. That is the
+    part no traversal can derive and the part a reviewer is really approving."""
+
+    assert_no_reparse_points()
+    path = feature_path(args.slug)
+    if not path.is_file():
+        raise StoreError(f"no feature to describe: {feature_identity(args.slug)}")
+    frontmatter, _previous = split_entry(path.read_text(encoding="utf-8"))
+    description = normalize_body(Path(args.purpose_file).read_text(encoding="utf-8"))
+    if not description.strip():
+        raise StoreError("the description file is empty")
+    if SENTINEL_PATTERN.search(description):
+        raise StoreError("the description still contains an <AGENT_...> sentinel")
+    body = f"## Purpose\n\n{description}"
+    frontmatter["lifecycle"] = {"state": "draft", "contentDigest": None}
+    frontmatter["approval"] = {
+        "reviewedContentDigest": None, "reviewedBy": None, "reviewedAt": None, "mechanism": None,
+    }
+    digest = feature_reviewed_content_digest(frontmatter, body)
+    frontmatter["lifecycle"]["contentDigest"] = digest
+    atomic_write(path, render_entry(frontmatter, body))
+    return {
+        "outcome": "DESCRIBED",
+        "identity": feature_identity(args.slug),
+        "reviewedContentDigest": digest,
+        "note": "rewriting a description returns the feature to draft; the previous approval covered the previous text",
+    }
+
+
+def command_feature_status(args: argparse.Namespace) -> dict[str, Any]:
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
+    wanted = feature_identity(args.slug) if getattr(args, "slug", None) else None
+    features = []
+    for path in all_feature_paths():
+        lane = compute_feature_lane(path, latest)
+        if wanted and lane["identity"] != wanted:
+            continue
+        features.append(lane)
+    return {"outcome": "STATUS", "features": features, "count": len(features)}
+
+
+def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
+    """Render what a human must read before approving, and the digest-pinned command."""
+
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
+    wanted = {feature_identity(slug) for slug in (args.slug or [])}
+    resolved = []
+    skipped = []
+    for path in all_feature_paths():
+        lane = compute_feature_lane(path, latest)
+        if wanted and lane["identity"] not in wanted:
+            continue
+        if lane["problems"]:
+            skipped.append({"identity": lane["identity"], "reasons": lane["problems"]})
+            continue
+        if lane["lane"] == "approved-current":
+            continue
+        frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+        resolved.append((lane["identity"], frontmatter, body, lane["reviewedContentDigest"]))
+    if not resolved:
+        return {"outcome": "NOTHING_TO_REVIEW", "skipped": skipped}
+    chunk_id = canonical_digest(sorted((identity, digest) for identity, _f, _b, digest in resolved))[7:19]
+    lines = [f"# Feature approval review — chunk {chunk_id}", "",
+             f"Features: {len(resolved)}", "",
+             "You are approving a BOUNDARY RULE and a description — not a member list. Membership "
+             "is recomputed from the rule, so adding an artifact to the package cannot change what "
+             "you approved here. `feature-drift` reports what membership did afterwards.", ""]
+    for identity, frontmatter, body, digest in resolved:
+        boundary = frontmatter["boundary"]
+        lines += [
+            f"## {identity}", "",
+            f"- name: {frontmatter['subject']['name']}",
+            f"- digest: `{digest}`",
+            f"- anchors: {', '.join(boundary['anchors']) or '(none)'}",
+            f"- hubs (kept as targets, never expanded): {', '.join(boundary['hubs']) or '(none)'}",
+            f"- depth: {boundary['depth']}",
+            f"- explicit include: {', '.join(boundary['include']) or '(none)'}",
+            f"- explicit exclude: {', '.join(boundary['exclude']) or '(none)'}",
+            f"- membership assurance floor: {boundary['membershipAssuranceFloor']}",
+            "", "### Attested body (exactly what approval covers)", "", body.strip(), "",
+        ]
+    REVIEW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+    artifact = REVIEW_ARTIFACT_ROOT / f"{chunk_id}-feature-review.md"
+    atomic_write(artifact, "\n".join(lines) + "\n")
+    command = "python scripts/knowledge_store.py feature-approve " + " ".join(
+        f"--feature {identity}:{digest}" for identity, _f, _b, digest in resolved
+    )
+    return {
+        "outcome": "REVIEW_READY",
+        "chunkId": chunk_id,
+        "reviewArtifact": str(artifact.relative_to(ROOT)),
+        "features": [identity for identity, _f, _b, _d in resolved],
+        "approveCommand": command,
+        "skipped": skipped,
+    }
+
+
+def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
+    assert_no_reparse_points()
+    pins: dict[str, str] = {}
+    for raw in args.feature or []:
+        identity, _, digest = raw.rpartition(":sha256:")
+        if not identity or not digest:
+            raise StoreError(f"malformed pin {raw!r}; expected Feature:<slug>:sha256:<digest>")
+        pins[identity] = f"sha256:{digest}"
+    if not pins:
+        raise StoreError("at least one --feature Feature:<slug>:sha256:<digest> pin is required")
+    reviewer = reviewer_identity()
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
+    resolved = []
+    for identity, pinned in sorted(pins.items()):
+        slug = identity.split(":", 1)[1] if identity.startswith("Feature:") else ""
+        path = feature_path(slug)
+        if not path.is_file():
+            raise StoreError(f"{identity}: no such feature")
+        lane = compute_feature_lane(path, latest)
+        if lane["problems"]:
+            raise StoreError(f"{identity}: not approvable — {'; '.join(lane['problems'])}")
+        if lane["reviewedContentDigest"] != pinned:
+            raise StoreError(
+                f"{identity}: pinned digest does not match current content — re-render the review "
+                "rather than retrying with a fresh digest"
+            )
+        resolved.append((identity, path, lane))
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    chunk_id = canonical_digest(sorted(pins.items()))[7:19]
+    records = []
+    for identity, path, lane in resolved:
+        frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+        frontmatter["lifecycle"] = {"state": "approved", "contentDigest": lane["reviewedContentDigest"]}
+        frontmatter["approval"] = {
+            "reviewedContentDigest": lane["reviewedContentDigest"],
+            "reviewedBy": reviewer, "reviewedAt": now,
+            "mechanism": "copilot-chat-entry-confirmation",
+        }
+        atomic_write(path, render_entry(frontmatter, body))
+        records.append({
+            "action": "approve", "identity": identity,
+            "reviewedContentDigest": lane["reviewedContentDigest"],
+            "boundaryDigest": lane["boundaryDigest"],
+            "semanticsDigest": semantics_digest(body),
+            "reviewedBy": reviewer, "reviewedAt": now,
+            "mechanism": "copilot-chat-entry-confirmation", "chunkId": chunk_id,
+        })
+    append_ledger(records, FEATURE_LEDGER_PATH)
+    return {
+        "outcome": "APPROVED", "chunkId": chunk_id,
+        "approved": [record["identity"] for record in records], "reviewedBy": reviewer,
+        "note": "the ledger records the boundary digest, never a member list",
+    }
+
+
+def command_feature_revoke(args: argparse.Namespace) -> dict[str, Any]:
+    assert_no_reparse_points()
+    identity = feature_identity(args.slug)
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
+    if identity not in latest or latest[identity].get("action") == "revoke":
+        raise StoreError(f"{identity}: nothing to revoke")
+    reviewer = reviewer_identity()
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    append_ledger([{
+        "action": "revoke", "identity": identity, "rationale": args.rationale,
+        "reviewedBy": reviewer, "reviewedAt": now,
+        "mechanism": "copilot-chat-entry-confirmation",
+    }], FEATURE_LEDGER_PATH)
+    return {"outcome": "REVOKED", "identity": identity, "rationale": args.rationale}
+
+
+def command_feature_check(args: argparse.Namespace) -> dict[str, Any]:
+    """CI integrity gate over the feature corpus and its ledger."""
+
+    assert_no_reparse_points()
+    records = read_ledger(FEATURE_LEDGER_PATH)
+    latest = ledger_latest(records)
+    problems: list[str] = []
+    seen: dict[str, str] = {}
+    for path in all_feature_paths():
+        lane = compute_feature_lane(path, latest)
+        problems.extend(f"{lane['path']}: {problem}" for problem in lane["problems"])
+        if lane["identity"] in seen:
+            problems.append(f"identity {lane['identity']} resolves to two files")
+        seen[lane["identity"]] = lane["path"]
+    for identity in latest:
+        if identity not in seen:
+            problems.append(f"ledger approves {identity} but no feature file round-trips to it")
+    if problems:
+        raise StoreError("feature-check failed:\n- " + "\n- ".join(problems))
+    return {"outcome": "PASS", "features": len(seen), "ledgerRecords": len(records)}
 
 
 if __name__ == "__main__":
