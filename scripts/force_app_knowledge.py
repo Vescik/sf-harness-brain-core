@@ -6196,6 +6196,40 @@ class ForceAppKnowledge:
             "dossierPath": self.relative(dossier),
         }
 
+    def entry_descriptions(self) -> dict[str, dict[str, str]]:
+        """`<MetadataType>:<FullName>` -> the entry's Purpose prose and its computed lane."""
+
+        try:
+            from scripts.knowledge_store import (
+                all_entry_paths, compute_lane, ledger_latest, read_ledger, rooted, split_entry,
+            )
+        except ModuleNotFoundError:
+            from knowledge_store import (  # type: ignore
+                all_entry_paths, compute_lane, ledger_latest, read_ledger, rooted, split_entry,
+            )
+
+        found: dict[str, dict[str, str]] = {}
+        with rooted(self.root):
+            latest = ledger_latest(read_ledger())
+            for path in all_entry_paths():
+                try:
+                    lane = compute_lane(path, latest)
+                    frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                purpose = ""
+                for block in body.split("## "):
+                    if block.startswith("Purpose"):
+                        purpose = block[len("Purpose"):].strip()
+                        break
+                if not purpose or purpose.startswith("<AGENT_"):
+                    continue
+                subject = frontmatter["subject"]
+                found[f"{subject['metadataType']}:{subject['fullName']}"] = {
+                    "purpose": purpose, "lane": lane["lane"],
+                }
+        return found
+
     def render_dossier(self, crawl: dict[str, Any], manifest: dict[str, Any]) -> Path:
         """Render the human-readable feature dossier from the crawl boundary and drafted claims."""
 
@@ -6210,10 +6244,22 @@ class ForceAppKnowledge:
                 text = claim["assertion"]["value"].get("description", "")
                 descriptions[str(claim["subject"]["identity"])] = text
 
+        # Descriptions come from Knowledge Entries where the type has one. Reading them only
+        # from drafted claims made the dossier useless the moment those types moved to entries:
+        # every one of 64 components rendered "description pending" while the entries held the
+        # text. Entry lanes are computed, never read from frontmatter, and the lane is shown so
+        # a draft is never presented as approved knowledge.
+        entry_descriptions = self.entry_descriptions()
+
         def describe(component_id: str) -> str:
+            entry = entry_descriptions.get(component_id)
+            if entry:
+                lane = entry["lane"]
+                suffix = "" if lane == "approved-current" else f" _({lane}, not approved knowledge)_"
+                return entry["purpose"].replace("\n", " ").strip() + suffix
             text = descriptions.get(component_id)
             if not text or text.startswith("<AGENT_"):
-                return "_description pending (fill the draft sentinel before proposing)_"
+                return "_no description: no Knowledge Entry and no drafted claim_"
             return text.replace("\n", " ").strip()
 
         def esc(value: Any) -> str:
