@@ -71,6 +71,17 @@ jobs:
           python scripts/knowledge_store.py entry-check
           python scripts/knowledge_search.py build
 
+      - name: Knowledge search freshness floor
+        # Every knowledge_search invocation pays this before any query work, and it grows with
+        # the corpus -- so the per-entry cost is what is budgeted, not a time at one fixture
+        # size (which any budget could meet by running the benchmark smaller).
+        #
+        # 2.67 us/entry is the plan's 40 ms ceiling at the 15k target. This runs on the matrix,
+        # so windows-latest is where the number that matters is measured: the team is
+        # Windows-only, and NTFS plus Defender make directory sweeps materially slower than the
+        # macOS figures this was developed against.
+        run: python scripts/knowledge_benchmark.py --entries 600 --repeats 5 --assert-floor-us 2.67
+
       - name: Report knowledge freshness (advisory)
         # Advisory only: expired/expiring claims are surfaced in the log for re-review
         # scheduling but never fail CI. A corrupt store already fails the validate step above.

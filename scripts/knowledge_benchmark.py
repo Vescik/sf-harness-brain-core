@@ -372,8 +372,36 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="knowledge_benchmark", description=__doc__)
     parser.add_argument("--entries", type=int, default=1000)
     parser.add_argument("--repeats", type=int, default=10)
+    parser.add_argument(
+        "--assert-floor-us",
+        type=float,
+        default=None,
+        help="fail if corpus_fingerprint costs more than this many microseconds per entry. "
+        "The freshness floor is paid by EVERY CLI invocation and grows linearly, so the "
+        "per-entry cost is the thing that scales -- a budget stated at one corpus size can "
+        "be met by running the benchmark smaller.",
+    )
     args = parser.parse_args(argv)
-    print(json.dumps(run(args.entries, args.repeats), indent=2, sort_keys=True))
+    result = run(args.entries, args.repeats)
+    if args.assert_floor_us is not None:
+        entries = result["fixture"]["entries"]
+        per_entry_us = result["queries"]["corpusFingerprint"]["p95Ms"] * 1000 / max(entries, 1)
+        result["floorBudget"] = {
+            "perEntryMicroseconds": round(per_entry_us, 2),
+            "budgetMicroseconds": args.assert_floor_us,
+            "projectedMsAt15k": round(per_entry_us * 15000 / 1000, 1),
+            "verdict": "PASS" if per_entry_us <= args.assert_floor_us else "OVER BUDGET",
+        }
+        print(json.dumps(result, indent=2, sort_keys=True))
+        if per_entry_us > args.assert_floor_us:
+            print(
+                f"OVER BUDGET: {per_entry_us:.2f} us/entry > {args.assert_floor_us} "
+                f"(projects to {per_entry_us * 15:.0f} ms at 15k entries)",
+                file=sys.stderr,
+            )
+            return 1
+        return 0
+    print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
 
