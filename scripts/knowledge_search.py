@@ -412,6 +412,7 @@ def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:
         "coverage": front.get("extractionCoverage", {}),
         "limitations": front.get("limitations", []),
         "candidateKeywords": front.get("candidateKeywords", []),
+        "purpose": purpose,
         "facets": facets,
         "edges": edges,
         "intentionalErrors": errors,
@@ -1747,7 +1748,8 @@ def run_context(args: argparse.Namespace) -> dict[str, Any]:
             if edge["source"] not in allowed:
                 excluded["lifecycle"] += 1
                 continue
-            incoming.append(edge)
+            source = documents.get(edge["source"])
+            incoming.append({**edge, "lifecycle": source["lane"] if source else None})
 
     def bucket(rows: list[dict[str, Any]], kinds: set[str] | None, invert: bool = False):
         chosen = [
@@ -1791,6 +1793,12 @@ def run_context(args: argparse.Namespace) -> dict[str, Any]:
         "for the source-side denominator."
     )
     gaps.extend(truncation_gaps(documents, {row["kind"] for row in incoming}))
+    non_current = [row for row in incoming if row.get("lifecycle") != "approved-current"]
+    if non_current:
+        gaps.append(
+            f"{len(non_current)} row(s) come from entries in opted-in lane(s); each row carries "
+            "its own `lifecycle` — they are not approved-current knowledge."
+        )
     gaps.extend(verify_anchor(document, states))
 
     return {

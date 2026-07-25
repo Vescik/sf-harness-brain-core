@@ -547,6 +547,26 @@ class ContextCommandTests(EntryFixtureMixin, unittest.TestCase):
         self.assertTrue(rows)
         self.assertTrue(all(row["hydrated"] for row in rows))
 
+    def test_subject_carries_the_purpose_prose(self) -> None:
+        # The projection tokenized purpose for ranking but never kept the prose, so the one
+        # field that answers "what does this do" was always null in the composed pack.
+        self.seed()
+        result = self.context("Flow:c:HarnessAlphaRouter")
+        self.assertIn("Kieruje", result["subject"]["purpose"] or "")
+
+    def test_every_served_row_carries_its_lane(self) -> None:
+        seeded = self.seed()
+        self.draft("Flow", "HarnessBetaDispatch", "Redraft, not approved.")
+        search.build_index()
+        opted = self.context(
+            "CustomField:c:HarnessBetaOrder__c.Case__c", state=["approved-current", "draft"]
+        )
+        rows = opted["parts"] + opted["permissions"] + opted["incoming"]
+        for row in rows:
+            self.assertIn("lifecycle", row)
+        if any(row["lifecycle"] != "approved-current" for row in rows):
+            self.assertTrue(any("opted-in lane" in gap for gap in opted["gaps"]))
+
     def test_parts_always_disclose_that_they_are_not_the_declared_composition(self) -> None:
         self.seed()
         result = self.context("CustomField:c:HarnessAlphaCase__c.Status__c")

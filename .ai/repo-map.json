@@ -644,7 +644,7 @@
     ".github/skills/fetch-test-case/SKILL.md": "sha256:56fc8adf313c98b5588890dd03eda7489673ee497c2b69efe5ccc1e4bdf2539e",
     ".github/skills/generate-playwright-test/SKILL.md": "sha256:603561c5ef314c5065b85331c8165cd8ebd79f6ed5d403c99139e5168d6d0806",
     ".github/skills/generate-release-handover/SKILL.md": "sha256:99e8c72ad4971af3bbfce343bf5bca3f1fe3231bed39d736f1fc2f5cd0fcbad1",
-    ".github/skills/generate-technical-documentation/SKILL.md": "sha256:cb38b93ef11ad465a18b0c3f9ff1f85853bdc38b339910fe79545f8c3345e31c",
+    ".github/skills/generate-technical-documentation/SKILL.md": "sha256:0cbaf1c6f85a96dc3ee118f52f662202008b14278c7d70f2a1b031cb4baf0206",
     ".github/skills/inventory-force-app/SKILL.md": "sha256:1f01b6b1aff5c27b538a5807f556f6b1efb6346af14769f623dc7392edb1c02f",
     ".github/skills/investigate-config-records/SKILL.md": "sha256:e056979d935455e02ea09d9f2d52dba59f11e39fbc83e8769f2b90fe910482e6",
     ".github/skills/investigate-object/SKILL.md": "sha256:864fa9f945627816f216062c96ded5ae7ca89430a415dc8196bcf908f996c4ca",
