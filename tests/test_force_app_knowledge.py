@@ -1475,6 +1475,38 @@ class ApexExtractionTests(unittest.TestCase):
             if reference["kind"] == "dml-object":
                 self.assertTrue(reference.get("heuristic"))
 
+    def test_constructed_classes_are_invoked_classes(self) -> None:
+        """`new X().run()` is the standard trigger-handler idiom and matched nothing.
+
+        The call regex needs an identifier immediately followed by `.`, so a constructor call
+        was invisible. That broke the first hop of every execution chain: traversing outward
+        from a trigger reached the object it operates on and stopped, leaving "how does this
+        work?" unanswerable for the most common shape in a Salesforce package."""
+
+        source = (
+            "trigger HarnessAlphaTrigger on HarnessAlphaCase__c(before insert) {\n"
+            "    new HarnessAlphaHandler().run();\n"
+            "}\n"
+        )
+        component = self.parse_source("HarnessAlphaTrigger", source, "ApexTrigger")
+        references = {(ref["kind"], ref["target"]) for ref in component["references"]}
+        self.assertIn(("invokes-class", "HarnessAlphaHandler"), references)
+        self.assertIn(("belongs-to", "HarnessAlphaCase__c"), references)
+
+    def test_construction_still_excludes_platform_types(self) -> None:
+        source = (
+            "public class HarnessAlphaHandler {\n"
+            "    public void run() {\n"
+            "        Map<Id, String> seen = new Map<Id, String>();\n"
+            "        HarnessAlphaQueueable job = new HarnessAlphaQueueable();\n"
+            "    }\n"
+            "}\n"
+        )
+        component = self.parse_source("HarnessAlphaHandler", source)
+        invoked = {ref["target"] for ref in component["references"] if ref["kind"] == "invokes-class"}
+        self.assertIn("HarnessAlphaQueueable", invoked)
+        self.assertNotIn("Map", invoked)
+
     def test_trigger_context_variable_seeding(self) -> None:
         component = self.parse_source("CaseTrigger", APEX_TRIGGER_SOURCE, "ApexTrigger")
         references = {(ref["kind"], ref["target"]) for ref in component["references"]}

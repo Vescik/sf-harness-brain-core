@@ -108,7 +108,18 @@ LABELS = """<?xml version="1.0" encoding="UTF-8"?>
 PATCHED = ("ROOT", "ARTIFACTS_ROOT", "LEDGER_PATH", "REVIEW_ARTIFACT_ROOT", "LOCAL_CONFIG", "TAXONOMY_PATH")
 
 
-class KnowledgeSearchTests(unittest.TestCase):
+class EntryFixtureMixin:
+    """Workspace, fixture sources and the draft/approve/search helpers.
+
+    Split out from the golden-query class so a new test class can reuse the setup without
+    also re-running ~35 golden queries. Five classes inheriting KnowledgeSearchTests ran the
+    whole suite five times (151 executions of 35 tests), and any fixture a subclass added in
+    setUp silently changed the corpus those inherited queries were written against.
+
+    New test classes inherit `EntryFixtureMixin, unittest.TestCase` — never another TestCase —
+    and add their own fixtures in their own setUp after super().setUp().
+    """
+
     maxDiff = None
 
     def setUp(self) -> None:
@@ -212,6 +223,10 @@ class KnowledgeSearchTests(unittest.TestCase):
             hit["artifactId"]
             for hit in result["approvedResults"] + result["nonCurrentResults"]
         ]
+
+
+class KnowledgeSearchTests(EntryFixtureMixin, unittest.TestCase):
+    """The golden-query suite itself. Nothing inherits from this class."""
 
     # --- golden queries ------------------------------------------------------------
 
@@ -432,19 +447,40 @@ class KnowledgeSearchTests(unittest.TestCase):
         with self.assertRaises(search.SearchError):
             self.search(identity="Flow:c:HarnessAlphaRouter")
 
+    def explain_args(self, identity, **kwargs):
+        args = argparse.Namespace(identity=identity, state=None, include_heuristic=False)
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return args
+
+    def impact_args(self, identity, **kwargs):
+        args = argparse.Namespace(
+            identity=identity, depth=1, direction="incoming", state=None, top=50,
+            include_heuristic=False,
+        )
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return args
+
     def test_explain_reports_incoming_and_outgoing_usage(self) -> None:
         self.seed()
-        result = search.run_explain(argparse.Namespace(identity="CustomField:c:HarnessAlphaCase__c.Status__c"))
+        result = search.run_explain(
+            self.explain_args("CustomField:c:HarnessAlphaCase__c.Status__c")
+        )
         self.assertEqual("EXPLAIN", result["outcome"])
         self.assertEqual("approved-current", result["lifecycle"])
         self.assertTrue(any(edge["source"] == "Flow:c:HarnessAlphaRouter" for edge in result["incoming"]))
 
-    def test_impact_is_bounded_and_labels_static_basis(self) -> None:
+    def test_impact_reports_its_depth_limit_instead_of_clamping_silently(self) -> None:
         self.seed()
-        result = search.run_impact(
-            argparse.Namespace(identity="HarnessAlphaCase__c", depth=5, include_heuristic=False)
+        result = search.run_impact(self.impact_args("HarnessAlphaCase__c", depth=5))
+        self.assertEqual(5, result["depthRequested"])
+        self.assertEqual(2, result["depthLimit"])
+        self.assertLessEqual(result["depthReached"], 2)
+        self.assertTrue(
+            any("reduced to the 2-hop limit" in gap for gap in result["gaps"]),
+            f"silent clamp: {result['gaps']}",
         )
-        self.assertEqual(2, result["depth"])  # hard-capped
         self.assertIn("not proof of absence", result["note"])
 
     def test_capabilities_lists_valid_facets_and_operators(self) -> None:
@@ -457,6 +493,34 @@ class KnowledgeSearchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestStructureTests(unittest.TestCase):
+    """No TestCase in this module may inherit another TestCase.
+
+    Inheriting the golden-query class to reuse its fixture re-ran the whole suite once per
+    subclass — 151 executions of 39 tests — and let a subclass's setUp additions silently
+    change the corpus the inherited queries were written against. Reuse the mixin instead.
+    """
+
+    def test_no_test_case_subclasses_another_test_case(self) -> None:
+        import inspect
+        import sys as _sys
+
+        module = _sys.modules[__name__]
+        cases = {
+            name: obj
+            for name, obj in inspect.getmembers(module, inspect.isclass)
+            if issubclass(obj, unittest.TestCase) and obj.__module__ == module.__name__
+        }
+        for name, case in sorted(cases.items()):
+            offenders = [
+                base.__name__ for base in case.__bases__ if base in cases.values()
+            ]
+            self.assertEqual(
+                [], offenders,
+                f"{name} inherits {offenders}; inherit EntryFixtureMixin, unittest.TestCase",
+            )
 
 
 class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
@@ -475,7 +539,7 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
         self.assertIn("not a certification", result["note"].lower())
 
 
-class IncrementalRebuildTests(KnowledgeSearchTests):
+class IncrementalRebuildTests(EntryFixtureMixin, unittest.TestCase):
     """Reuse must be a pure cache: identical logical index, never a stale lane."""
 
     def test_unchanged_entries_are_reused_and_new_ones_are_projected(self) -> None:
@@ -514,7 +578,7 @@ class IncrementalRebuildTests(KnowledgeSearchTests):
         self.assertEqual(0, full["reusedProjections"])
 
 
-class DraftLaneSearchTests(KnowledgeSearchTests):
+class DraftLaneSearchTests(EntryFixtureMixin, unittest.TestCase):
     """Draft entries must be searchable in their own lane, not silently dropped."""
 
     def test_undescribed_drafts_survive_hydration(self) -> None:
@@ -529,7 +593,7 @@ class DraftLaneSearchTests(KnowledgeSearchTests):
         self.assertEqual([], [gap for gap in result["gaps"] if "rebuild the index" in gap])
 
 
-class HeuristicExclusionDisclosureTests(KnowledgeSearchTests):
+class HeuristicExclusionDisclosureTests(EntryFixtureMixin, unittest.TestCase):
     """A narrowed answer must say it was narrowed.
 
     Once kind-level heuristics are marked honestly, a default relation query drops most of the
@@ -582,7 +646,7 @@ class HeuristicExclusionDisclosureTests(KnowledgeSearchTests):
         self.assertEqual([], [gap for gap in result["gaps"] if "were excluded" in gap])
 
 
-class ProjectorVersionTests(KnowledgeSearchTests):
+class ProjectorVersionTests(EntryFixtureMixin, unittest.TestCase):
     """A change to the projector must invalidate the index the old projector produced.
 
     Reuse was keyed on entry/source/ledger stamps only, so editing the lane logic kept every

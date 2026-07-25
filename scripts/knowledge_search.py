@@ -59,6 +59,13 @@ FIELD_WEIGHTS = {
     "sourcePath": 0.2,
 }
 LEXICAL_CANDIDATE_CAP = 2000
+# One vocabulary, per-command values. A single shared depth cannot serve both: reverse impact
+# saturates fast, while a feature tree needs trigger -> handler -> queueable -> event.
+DEPTH_LIMITS = {"impact": 2, "context": 1, "tree": 4, "drift": 4}
+TRAVERSAL_LIMITS = {"maxNodes": 2000, "maxFanout": 500}
+IMPACT_TOP_DEFAULT = 50
+# The relation kind that carries composition. Named once so `parts` and the tree agree.
+CONTAINMENT_KIND = "belongs-to"
 BM25_K1 = 1.2
 BM25_B = 0.75
 
@@ -472,6 +479,64 @@ def corpus_fingerprint() -> str:
     )
 
 
+def fold_target(target: str) -> str:
+    """Posting key for an edge target. Folded like facet keys are folded on write."""
+    return unicodedata.normalize("NFKC", target).casefold()
+
+
+def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
+    """Who points at each target, and what that target resolves to.
+
+    The old posting was `target -> [identity]`: it answered "does anything reference this" and
+    nothing else. The kind and the assurance — the two things that decide whether an edge may be
+    shown by default and what it means — had to be recovered by re-reading every source document,
+    which is why `explain` and `impact` scanned the whole corpus.
+
+    Resolution is computed here, once, rather than stored in entries: an entry may not assert
+    that its target exists, because that depends on another artifact. An unresolvable target is
+    kept and labelled, never dropped — "this points somewhere I have no entry for" is a finding,
+    and silently discarding it would make a partial graph look complete.
+    """
+
+    by_full_name: dict[str, list[str]] = defaultdict(list)
+    identities = set()
+    for item in projections:
+        identities.add(item["identity"])
+        full_name = item["facets"].get("fullName")
+        if full_name:
+            by_full_name[fold_target(str(full_name))].append(item["identity"])
+
+    by_target: dict[str, dict[str, Any]] = {}
+    for item in projections:
+        for edge in item["edges"]:
+            key = fold_target(edge["target"])
+            row = by_target.setdefault(
+                key, {"spellings": set(), "incoming": [], "targetIdentity": None, "resolution": "no-entry"}
+            )
+            row["spellings"].add(edge["target"])
+            row["incoming"].append([item["identity"], edge["kind"], edge["assurance"]])
+
+    for key, row in by_target.items():
+        candidates = by_full_name.get(key, [])
+        if not candidates and key in {fold_target(name) for name in identities}:
+            candidates = [name for name in identities if fold_target(name) == key]
+        if len(candidates) == 1:
+            row["targetIdentity"] = candidates[0]
+            row["resolution"] = "resolved"
+        elif len(candidates) > 1:
+            # Namespace twins. Guessing one would silently pick a package's artifact over the
+            # subscriber's; the caller is told instead.
+            row["resolution"] = "ambiguous"
+            row["candidates"] = sorted(candidates)
+        row["spellings"] = sorted(row["spellings"])
+        row["incoming"] = sorted(row["incoming"])
+
+    return {
+        "byTarget": by_target,
+        "byFullName": {name: sorted(ids) for name, ids in by_full_name.items()},
+    }
+
+
 def entry_set_digest(projections: list[dict[str, Any]]) -> str:
     payload = sorted(
         (item["identity"], item["path"], item["lane"], item["citation"]["entryDigest"] or "")
@@ -616,6 +681,7 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
                     facet_postings[key][str(entry).casefold()].append(item["identity"])
             for edge in item["edges"]:
                 relation_postings[edge["target"]].append(item["identity"])
+                relation_postings[fold_target(edge["target"])].append(item["identity"])
             seen_tokens = {token for field in item["fields"].values() for token in field}
             for token in seen_tokens:
                 token_postings[token].append(item["identity"])
@@ -631,6 +697,7 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
         },
         "tokens": {token: sorted(ids) for token, ids in token_postings.items()},
         "relations": {target: sorted(set(ids)) for target, ids in relation_postings.items()},
+        "reverse": build_relation_index(projections),
         "documentFrequency": dict(document_frequency),
         "averageFieldLength": {
             field: (sum(lengths) / len(lengths)) if lengths else 1.0
@@ -643,6 +710,7 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
         ("lanes", postings["lanes"]),
         ("facets", postings["facets"]),
         ("relations", postings["relations"]),
+        ("reverse", postings["reverse"]),
         ("tokens", postings["tokens"]),
         ("stats", {
             "documentFrequency": postings["documentFrequency"],
@@ -730,6 +798,8 @@ class DocumentStore:
         self.generation_dir = generation_dir
         self._cache: dict[str, dict[str, Any]] = {}
         self._postings: dict[str, Any] = {}
+        self.document_reads = 0
+        self.posting_bytes = 0
 
     def posting_file(self, name: str) -> dict[str, Any]:
         """Load one posting file on first use.
@@ -739,6 +809,10 @@ class DocumentStore:
         if name not in self._postings:
             path = self.generation_dir / f"{name}.json"
             self._postings[name] = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+            # Counted so a query can report how much index it touched. documentReads alone is
+            # blind to this: a regression that loaded every posting family per query — token
+            # postings reach ~15 MB at 15k entries — would not move that counter at all.
+            self.posting_bytes += path.stat().st_size if path.is_file() else 0
         return self._postings[name]
 
     @property
@@ -768,6 +842,7 @@ class DocumentStore:
         with self.path.open("rb") as handle:
             handle.seek(offset)
             document = json.loads(handle.read(length).decode("utf-8"))
+        self.document_reads += 1
         self._cache[identity] = document
         return document
 
@@ -792,6 +867,33 @@ class DocumentStore:
 
     def relation_ids(self, target: str) -> set[str]:
         return set(self.posting_file("relations").get(target, []))
+
+    def target_row(self, target: str) -> dict[str, Any]:
+        """Everything the index knows about one edge target: who points at it, what it is."""
+        reverse = self.posting_file("reverse").get("byTarget", {})
+        return reverse.get(fold_target(target), {
+            "spellings": [], "incoming": [], "targetIdentity": None, "resolution": "no-target"
+        })
+
+    def incoming_edges(
+        self, target: str, *, kinds: set[str] | None = None, include_heuristic: bool = False
+    ) -> list[dict[str, Any]]:
+        """Every edge pointing at `target`, one row per edge.
+
+        One row per EDGE, not per source: an entry that both queries and writes the same object
+        is two facts about it, and collapsing them to one hid half the answer."""
+
+        rows = []
+        for source, kind, assurance in self.target_row(target)["incoming"]:
+            if kinds is not None and kind not in kinds:
+                continue
+            if not include_heuristic and assurance != relation_kinds.SOURCE_EXACT:
+                continue
+            rows.append({"source": source, "kind": kind, "assurance": assurance})
+        return rows
+
+    def identities_for_full_name(self, full_name: str) -> list[str]:
+        return list(self.posting_file("reverse").get("byFullName", {}).get(fold_target(full_name), []))
 
 
 # --- query ----------------------------------------------------------------------------------
@@ -1215,18 +1317,78 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def source_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
+    """What could possibly have appeared as an edge source in this result.
+
+    Only entry-homed types produce entries, so Profile, Layout, FlexiPage, ApprovalProcess,
+    Workflow, DuplicateRule and the rest can never appear as a source however many of them
+    reference the anchor. A field referenced only by a Profile and a Layout reports zero
+    incoming edges — which reads as "nothing depends on it" unless the population is stated."""
+
+    return {
+        "entryHomedTypes": sorted(store.PROFILES),
+        "inCorpus": manifest.get("metadataTypeCounts", {}),
+        "note": (
+            "Only the metadata types listed in entryHomedTypes can appear as an edge source. "
+            "Profile, Layout, FlexiPage, ApprovalProcess, Workflow, DuplicateRule and other "
+            "non-entry-homed types are structurally absent from this result."
+        ),
+    }
+
+
+def lane_split(rows: list[dict[str, Any]], key: str = "lifecycle") -> tuple[list, list]:
+    """approved-current rows and opted-in-lane rows, never merged into one array."""
+    current = [row for row in rows if row.get(key) == "approved-current"]
+    other = [row for row in rows if row.get(key) != "approved-current"]
+    return current, other
+
+
+def _requested_states(args: argparse.Namespace) -> list[str]:
+    return list(getattr(args, "state", None) or ESTABLISHED_STATES)
+
+
 def run_explain(args: argparse.Namespace) -> dict[str, Any]:
     documents, manifest = load_index()
     document = documents.get(args.identity)
     if document is None:
         raise SearchError(f"no entry projection for {args.identity}")
-    targets = {document["identity"], document["facets"]["fullName"]}
-    incoming = [
-        {"source": other["identity"], "kind": edge["kind"], "assurance": edge["assurance"]}
-        for other in documents.load_many(documents.identities())
-        for edge in other["edges"]
-        if edge["target"] in targets
-    ]
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    include_heuristic = bool(getattr(args, "include_heuristic", False))
+
+    # Incoming edges come from the reverse posting rather than a full-corpus scan, and carry
+    # their lane so a revoked or tampered entry cannot be served as a dependency.
+    rows: list[dict[str, Any]] = []
+    excluded = {"lifecycle": 0, "heuristicEdge": 0}
+    seen_targets = {document["identity"], document["facets"].get("fullName")}
+    for target in sorted(name for name in seen_targets if name):
+        for edge in documents.incoming_edges(target, include_heuristic=True):
+            if edge["assurance"] != relation_kinds.SOURCE_EXACT and not include_heuristic:
+                excluded["heuristicEdge"] += 1
+                continue
+            if edge["source"] not in allowed:
+                excluded["lifecycle"] += 1
+                continue
+            source = documents.get(edge["source"])
+            rows.append({**edge, "lifecycle": source["lane"] if source else None})
+    rows.sort(key=lambda item: (item["source"], item["kind"], item["assurance"]))
+    current, non_current = lane_split(rows)
+
+    gaps: list[str] = []
+    if excluded["heuristicEdge"]:
+        gaps.append(
+            f"{excluded['heuristicEdge']} heuristic edge(s) excluded; add --include-heuristic."
+        )
+    if excluded["lifecycle"]:
+        gaps.append(
+            f"{excluded['lifecycle']} edge(s) came from entries outside {', '.join(states)}."
+        )
+    if non_current:
+        gaps.append(
+            f"{len(non_current)} incoming edge(s) are declared by entries in opted-in lane(s); "
+            "they are not approved-current knowledge and must not be cited as effective."
+        )
+
     return {
         "outcome": "EXPLAIN",
         "artifactId": document["identity"],
@@ -1236,7 +1398,16 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
         "coverage": document["coverage"],
         "limitations": document["limitations"],
         "outgoing": document["edges"],
-        "incoming": sorted(incoming, key=lambda item: (item["source"], item["kind"])),
+        "incoming": current,
+        "incomingNonCurrent": non_current,
+        "parts": documents.incoming_edges(
+            document["facets"].get("fullName") or document["identity"],
+            kinds={CONTAINMENT_KIND}, include_heuristic=include_heuristic,
+        ),
+        "sourceCoverage": source_coverage(manifest),
+        "excludedCounts": excluded,
+        "gaps": gaps,
+        "counts": {"documentReads": documents.document_reads, "postingBytesRead": documents.posting_bytes},
         "intentionalErrors": [
             {
                 "elementApiName": error["elementApiName"],
@@ -1252,44 +1423,137 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def run_impact(args: argparse.Namespace) -> dict[str, Any]:
+    """Reverse or forward traversal from an anchor, one chain per reached node.
+
+    Direction matters more than it looks. Reverse answers "what breaks if I change this" —
+    who points at the anchor. Forward answers "how does this work" — what the anchor invokes,
+    then what that invokes. Only reverse existed, so `impact` from an ApexTrigger returned zero
+    edges: nothing references a trigger. The outgoing edges were on the projection the whole
+    time; only the traversal was missing.
+    """
+
     documents, manifest = load_index()
-    depth = max(1, min(args.depth, 2))
-    all_documents = documents.load_many(documents.identities())
-    by_identity = {document["identity"]: document for document in all_documents}
-    frontier = {args.identity}
-    visited: set[str] = set()
-    paths: list[dict[str, Any]] = []
+    limit = DEPTH_LIMITS["impact"]
+    requested = int(getattr(args, "depth", 1) or 1)
+    depth = max(1, min(requested, limit))
+    direction = getattr(args, "direction", None) or "incoming"
+    include_heuristic = bool(getattr(args, "include_heuristic", False))
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    top = int(getattr(args, "top", None) or IMPACT_TOP_DEFAULT)
+
+    excluded = {"lifecycle": 0, "heuristicEdge": 0}
+    limits_hit: set[str] = set()
+    # `path` carries how a node was reached. A flat hop-2 row names an edge target that is only
+    # accidentally connectable to the anchor, so a reader cannot tell a real chain from a
+    # coincidence of naming.
+    chains: list[dict[str, Any]] = []
+    visited = {args.identity}
+    frontier = [{"node": args.identity, "path": [], "minAssurance": relation_kinds.SOURCE_EXACT}]
+
     for level in range(depth):
-        next_frontier: set[str] = set()
-        for document in all_documents:
-            for edge in document["edges"]:
-                if edge["target"] in frontier or edge["target"] in {
-                    by_identity[node]["facets"]["fullName"] for node in frontier if node in by_identity
-                }:
-                    if not args.include_heuristic and edge["assurance"] != "source-exact":
-                        continue
-                    if document["identity"] in visited:
-                        continue
-                    paths.append(
-                        {
-                            "source": document["identity"],
-                            "kind": edge["kind"],
-                            "target": edge["target"],
-                            "assurance": edge["assurance"],
-                            "hop": level + 1,
-                            "lifecycle": document["lane"],
-                        }
-                    )
-                    next_frontier.add(document["identity"])
-        visited |= frontier
-        frontier = next_frontier - visited
-        if not frontier:
+        next_frontier: list[dict[str, Any]] = []
+        for item in sorted(frontier, key=lambda entry: entry["node"]):
+            document = documents.get(item["node"])
+            names = {item["node"]}
+            if document:
+                full_name = document["facets"].get("fullName")
+                if full_name:
+                    names.add(str(full_name))
+            hops = []
+            if direction == "incoming":
+                for name in sorted(names):
+                    for edge in documents.incoming_edges(name, include_heuristic=True):
+                        hops.append((edge["source"], edge["kind"], name, edge["assurance"]))
+            else:
+                for edge in (document or {}).get("edges", []):
+                    row = documents.target_row(edge["target"])
+                    resolved = row.get("targetIdentity")
+                    hops.append((resolved or edge["target"], edge["kind"], edge["target"], edge["assurance"]))
+            if len(hops) > TRAVERSAL_LIMITS["maxFanout"]:
+                limits_hit.add("fanout")
+                hops = sorted(hops)[: TRAVERSAL_LIMITS["maxFanout"]]
+            for node, kind, via, assurance in sorted(hops):
+                if assurance != relation_kinds.SOURCE_EXACT and not include_heuristic:
+                    excluded["heuristicEdge"] += 1
+                    continue
+                reached = documents.get(node)
+                if reached is None:
+                    # Forward hop into something with no entry: kept, labelled, never dropped.
+                    lifecycle = None
+                elif node not in allowed:
+                    excluded["lifecycle"] += 1
+                    continue
+                else:
+                    lifecycle = reached["lane"]
+                if node in visited:
+                    continue
+                weakest = (
+                    relation_kinds.SOURCE_DERIVED_HEURISTIC
+                    if relation_kinds.SOURCE_DERIVED_HEURISTIC in (assurance, item["minAssurance"])
+                    else relation_kinds.SOURCE_EXACT
+                )
+                step = {"from": item["node"], "kind": kind, "to": node, "via": via, "assurance": assurance}
+                chains.append({
+                    "node": node, "hop": level + 1, "lifecycle": lifecycle,
+                    "resolved": reached is not None,
+                    "path": item["path"] + [step],
+                    "minAssurance": weakest,
+                })
+                next_frontier.append({"node": node, "path": item["path"] + [step], "minAssurance": weakest})
+                if len(chains) >= TRAVERSAL_LIMITS["maxNodes"]:
+                    limits_hit.add("nodes")
+                    break
+            if "nodes" in limits_hit:
+                break
+        visited |= {row["node"] for row in next_frontier}
+        frontier = next_frontier
+        if not frontier or "nodes" in limits_hit:
             break
+
+    chains.sort(key=lambda row: (row["hop"], row["node"]))
+    served = chains[:top]
+    if len(chains) > top:
+        limits_hit.add("top")
+    current, non_current = lane_split(served)
+
+    gaps: list[str] = []
+    if requested > limit:
+        gaps.append(f"depth {requested} was reduced to the {limit}-hop limit for impact.")
+    if excluded["heuristicEdge"]:
+        gaps.append(
+            f"{excluded['heuristicEdge']} heuristic hop(s) excluded. Execution chains are built "
+            "from inferred edges (invokes-class is regex-derived), so answering \"how does this "
+            "work\" needs --include-heuristic; each hop then carries its own assurance."
+        )
+    if excluded["lifecycle"]:
+        gaps.append(f"{excluded['lifecycle']} node(s) outside {', '.join(states)} were excluded.")
+    if non_current:
+        gaps.append(
+            f"{len(non_current)} node(s) served from opted-in lane(s); they are not "
+            "approved-current knowledge and must not be cited as effective."
+        )
+    if limits_hit:
+        gaps.append(f"traversal limits reached: {', '.join(sorted(limits_hit))}.")
+
     return {
         "outcome": "IMPACT",
         "anchor": args.identity,
-        "depth": depth,
-        "edges": sorted(paths, key=lambda item: (item["hop"], item["source"], item["kind"])),
+        "direction": direction,
+        "depthRequested": requested,
+        "depthLimit": limit,
+        "depthReached": max((row["hop"] for row in served), default=0),
+        "limitsHit": sorted(limits_hit),
+        "nodes": current,
+        "nodesNonCurrent": non_current,
+        "sourceCoverage": source_coverage(manifest),
+        "excludedCounts": excluded,
+        "gaps": gaps,
+        "counts": {
+            "documentReads": documents.document_reads,
+            "postingBytesRead": documents.posting_bytes,
+            "nodesServed": len(served),
+        },
         "note": "Static source-declared edges only; absence of an edge is not proof of absence.",
         "indexGeneration": manifest["generation"],
     }
@@ -1345,11 +1609,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     explain = commands.add_parser("explain", help="one artifact with usage and reverse usage")
     explain.add_argument("--identity", required=True)
+    explain.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    explain.add_argument("--include-heuristic", action="store_true")
     explain.set_defaults(func=run_explain)
 
-    impact = commands.add_parser("impact", help="bounded reverse-dependency traversal")
+    impact = commands.add_parser("impact", help="bounded dependency traversal, either direction")
     impact.add_argument("--identity", required=True)
     impact.add_argument("--depth", type=int, default=1)
+    impact.add_argument(
+        "--direction", default="incoming", choices=["incoming", "outgoing"],
+        help="incoming: who points at the anchor (what breaks if I change it). "
+        "outgoing: what the anchor reaches (how it works).",
+    )
+    impact.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    impact.add_argument("--top", type=int, default=IMPACT_TOP_DEFAULT)
     impact.add_argument("--include-heuristic", action="store_true")
     impact.set_defaults(func=run_impact)
 

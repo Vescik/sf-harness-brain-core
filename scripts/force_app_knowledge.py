@@ -137,6 +137,11 @@ SOQL_FROM_RE = re.compile(
 )
 DML_RE = re.compile(r"\b(insert|update|upsert|delete|undelete)\b", re.IGNORECASE)
 APEX_CALL_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]{2,})\.[A-Za-z_][A-Za-z0-9_]*\s*\(")
+# Construction, which the call regex above cannot see: it requires an identifier immediately
+# followed by `.`, so `new AssignmentTriggerHandler().run()` — the standard one-trigger-per-object
+# handler idiom — matched nothing. That made the first hop of every execution chain invisible:
+# `impact --direction outgoing` from a trigger reached the object it operates on and stopped.
+APEX_NEW_RE = re.compile(r"\bnew\s+([A-Z][A-Za-z0-9_]{2,})\s*\(")
 # Inline SOQL blocks for field-level extraction (standard fields included — the FROM object gives
 # the context that FORMULA_FIELD_RE lacks). Still a source-token heuristic: dynamic SOQL strings
 # and relationship paths are not resolved.
@@ -1605,7 +1610,7 @@ class ForceAppKnowledge:
         dml_operations = sorted({value.lower() for value in DML_RE.findall(source)})
         invoked = sorted(
             value
-            for value in set(APEX_CALL_RE.findall(source))
+            for value in set(APEX_CALL_RE.findall(source)) | set(APEX_NEW_RE.findall(source))
             if value not in self.apex_system_types and value != name
         )
         references.extend({"kind": "invokes-class", "target": value} for value in invoked)
