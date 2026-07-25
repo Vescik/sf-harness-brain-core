@@ -251,6 +251,13 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
                     )
                 )
 
+            def context_call() -> None:
+                search.run_context(
+                    argparse.Namespace(
+                        identity=field_identity, state=None, top=25, include_heuristic=True
+                    )
+                )
+
             def leak_sweep() -> None:
                 # Mirrors the validator's runtime-authority sweep over .ai/** (review R3-5).
                 for path in (temporary / ".ai").rglob("*"):
@@ -266,6 +273,7 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
                 "corpusFingerprint": timed(corpus_fingerprint_call, repeats),
                 "impactForwardD2": timed(impact_forward, repeats),
                 "explainWithParts": timed(explain_parts, repeats),
+                "contextPack": timed(context_call, repeats),
                 "validatorLeakSweep": timed(leak_sweep, max(1, repeats // 5)),
             }
             cache = search.cache_root()
