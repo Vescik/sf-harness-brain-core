@@ -1557,25 +1557,27 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def run_impact(args: argparse.Namespace) -> dict[str, Any]:
-    """Reverse or forward traversal from an anchor, one chain per reached node.
+def traverse(
+    documents: "DocumentStore",
+    anchor: str,
+    *,
+    depth: int,
+    direction: str,
+    allowed: set[str],
+    include_heuristic: bool,
+) -> dict[str, Any]:
+    """Breadth-first walk from one anchor, returning the node set and how each was reached.
 
-    Direction matters more than it looks. Reverse answers "what breaks if I change this" —
-    who points at the anchor. Forward answers "how does this work" — what the anchor invokes,
-    then what that invokes. Only reverse existed, so `impact` from an ApexTrigger returned zero
-    edges: nothing references a trigger. The outgoing edges were on the projection the whole
-    time; only the traversal was missing.
+    Extracted from run_impact so `impact`, `context` and (next) feature membership share one
+    traversal rather than three. Three implementations of a bounded, lane-filtered,
+    assurance-aware BFS would drift, and the plan's "one traversal vocabulary" rule exists
+    because the first two already had different limit names.
+
+    Returns nodes with `path` (the chain that reached them) and `minAssurance` (the weakest hop
+    in that chain — a chain is only as trustworthy as its weakest link), plus the exclusion
+    counters and which limits were hit. Nodes with no entry are kept and marked `resolved:
+    False`; dropping an unresolvable hop would make a partial graph look complete.
     """
-
-    documents, manifest = load_index()
-    limit = DEPTH_LIMITS["impact"]
-    requested = int(getattr(args, "depth", 1) or 1)
-    depth = max(1, min(requested, limit))
-    direction = getattr(args, "direction", None) or "incoming"
-    include_heuristic = bool(getattr(args, "include_heuristic", False))
-    states = _requested_states(args)
-    allowed = documents.lane_ids(states)
-    top = int(getattr(args, "top", None) or IMPACT_TOP_DEFAULT)
 
     excluded = {"lifecycle": 0, "heuristicEdge": 0}
     limits_hit: set[str] = set()
@@ -1583,8 +1585,8 @@ def run_impact(args: argparse.Namespace) -> dict[str, Any]:
     # accidentally connectable to the anchor, so a reader cannot tell a real chain from a
     # coincidence of naming.
     chains: list[dict[str, Any]] = []
-    visited = {args.identity}
-    frontier = [{"node": args.identity, "path": [], "minAssurance": relation_kinds.SOURCE_EXACT}]
+    visited = {anchor}
+    frontier = [{"node": anchor, "path": [], "minAssurance": relation_kinds.SOURCE_EXACT}]
 
     for level in range(depth):
         next_frontier: list[dict[str, Any]] = []
@@ -1647,6 +1649,34 @@ def run_impact(args: argparse.Namespace) -> dict[str, Any]:
             break
 
     chains.sort(key=lambda row: (row["hop"], row["node"]))
+    return {"nodes": chains, "excluded": excluded, "limitsHit": limits_hit}
+
+
+def run_impact(args: argparse.Namespace) -> dict[str, Any]:
+    """Reverse or forward traversal from an anchor, one chain per reached node.
+
+    Direction matters more than it looks. Reverse answers "what breaks if I change this" —
+    who points at the anchor. Forward answers "how does this work" — what the anchor invokes,
+    then what that invokes. Only reverse existed, so `impact` from an ApexTrigger returned zero
+    edges: nothing references a trigger. The outgoing edges were on the projection the whole
+    time; only the traversal was missing.
+    """
+
+    documents, manifest = load_index()
+    limit = DEPTH_LIMITS["impact"]
+    requested = int(getattr(args, "depth", 1) or 1)
+    depth = max(1, min(requested, limit))
+    direction = getattr(args, "direction", None) or "incoming"
+    include_heuristic = bool(getattr(args, "include_heuristic", False))
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    top = int(getattr(args, "top", None) or IMPACT_TOP_DEFAULT)
+
+    walk = traverse(
+        documents, args.identity, depth=depth, direction=direction,
+        allowed=allowed, include_heuristic=include_heuristic,
+    )
+    chains, excluded, limits_hit = walk["nodes"], walk["excluded"], walk["limitsHit"]
     served = chains[:top]
     if len(chains) > top:
         limits_hit.add("top")

@@ -9,6 +9,7 @@ handling, prompt-injection safety, and fail-closed index freshness.
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import os
 import shutil
@@ -768,6 +769,46 @@ class AnchorVerificationTests(EntryFixtureMixin, unittest.TestCase):
             {row["source"] for row in result["parts"]},
             "a revoked field is not a part of an approved object",
         )
+
+
+class TraversalReuseTests(EntryFixtureMixin, unittest.TestCase):
+    """One BFS, callable by anything that needs a bounded lane-filtered walk.
+
+    It was inline in run_impact, single-anchor, returning hits rather than a node set — so
+    feature membership would have been a second implementation of the same thing, and the two
+    would have drifted the way the first two limit vocabularies already had.
+    """
+
+    def test_traverse_returns_a_node_set_with_paths_and_weakest_assurance(self) -> None:
+        self.seed()
+        documents, _manifest = search.load_index()
+        walk = search.traverse(
+            documents, "HarnessAlphaCase__c", depth=2, direction="incoming",
+            allowed=documents.lane_ids(["approved-current"]), include_heuristic=True,
+        )
+        self.assertTrue(walk["nodes"])
+        for node in walk["nodes"]:
+            self.assertEqual(node["hop"], len(node["path"]))
+            self.assertIn(node["minAssurance"], (
+                relation_kinds.SOURCE_EXACT, relation_kinds.SOURCE_DERIVED_HEURISTIC
+            ))
+        self.assertEqual({"nodes", "excluded", "limitsHit"}, set(walk))
+
+    def test_traverse_honours_the_lane_filter_it_is_given(self) -> None:
+        self.seed()
+        documents, _manifest = search.load_index()
+        empty = search.traverse(
+            documents, "HarnessAlphaCase__c", depth=1, direction="incoming",
+            allowed=set(), include_heuristic=True,
+        )
+        self.assertEqual([], empty["nodes"])
+        self.assertTrue(empty["excluded"]["lifecycle"])
+
+    def test_impact_is_a_thin_caller_of_the_shared_walk(self) -> None:
+        # If impact ever grows its own BFS again, this drifts and the reuse is gone.
+        source = inspect.getsource(search.run_impact)
+        self.assertIn("traverse(", source)
+        self.assertNotIn("next_frontier", source)
 
 
 class TruncationDisclosureTests(unittest.TestCase):
