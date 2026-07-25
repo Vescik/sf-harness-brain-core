@@ -5114,6 +5114,7 @@ class ForceAppKnowledge:
             raise KnowledgeBuildError("force-app changed after inventory; rerun inventory")
 
         claims_root = self.root / ".ai/knowledge/claims"
+        homed_types = self.entry_home_types()
         items: list[dict[str, Any]] = []
         counts: Counter[str] = Counter()
         for component in inventory["components"]:
@@ -5138,7 +5139,14 @@ class ForceAppKnowledge:
                     "heuristic": heuristic,
                 }
                 canonical_path = claims_root / f"{claim_id}.yaml"
-                if canonical_path.is_file():
+                if component["metadataType"] in homed_types:
+                    # This component's relations live in its Knowledge Entry, so no relation
+                    # claim is owed. Counting them as `missing` made the skill's "loop until
+                    # zero missing" unreachable: draft() skips these components, so every pass
+                    # reported progress while writing nothing. Checked BEFORE the claim file so
+                    # a leftover draft cannot pull an entry-home component back into the loop.
+                    item["state"] = "homed-in-entry"
+                elif canonical_path.is_file():
                     record = yaml.safe_load(canonical_path.read_text(encoding="utf-8"))
                     item["revision"] = int(record["revision"])
                     status = record.get("status")
@@ -5180,6 +5188,56 @@ class ForceAppKnowledge:
             path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             result["path"] = self.relative(path)
         return result
+
+    def entry_edge_health(self, live_component_ids: set[str]) -> dict[str, Any]:
+        """Rot in the entry-side relation graph, which the claim-side check cannot see.
+
+        relation_health only inspects `verified` relation CLAIMS. For the ten entry-home types
+        there will never be any, so it reported HEALTHY unconditionally while entry edges went
+        stale underneath it — a clean bill of health over an unexamined graph.
+
+        Lanes are computed, never read: contract §4 is explicit that reading `lifecycle.state`
+        out of frontmatter does not establish approval. A file saying `approved` with no ledger
+        record is precisely the case that check exists to catch.
+        """
+
+        try:
+            from scripts.knowledge_store import (  # local import: keeps the CLI standalone
+                all_entry_paths, compute_lane, ledger_latest, read_ledger, rooted,
+            )
+        except ModuleNotFoundError:
+            from knowledge_store import (  # type: ignore
+                all_entry_paths, compute_lane, ledger_latest, read_ledger, rooted,
+            )
+
+        by_lane: Counter[str] = Counter()
+        findings: list[dict[str, Any]] = []
+        with rooted(self.root):
+            latest = ledger_latest(read_ledger())
+            for path in all_entry_paths():
+                try:
+                    lane = compute_lane(path, latest)
+                except Exception as error:  # unparsable entry is itself a finding
+                    findings.append({"path": str(path), "reason": f"entry does not parse: {error}"})
+                    continue
+                by_lane[lane["lane"]] += 1
+                if lane["lane"] not in {"approved-current", "approved-drifted"}:
+                    continue
+                for problem in lane["problems"]:
+                    findings.append(
+                        {"path": lane["path"], "identity": lane["identity"],
+                         "lifecycleState": lane["lane"], "reason": problem}
+                    )
+        return {
+            "entriesByLane": dict(sorted(by_lane.items())),
+            "findingCount": len(findings),
+            "findings": sorted(findings, key=lambda item: item.get("path", "")),
+            "note": (
+                "Lanes are computed from the ledger, not read from frontmatter. Only "
+                "approved-current and approved-drifted entries are inspected for edge rot; "
+                "drafts are unfinished work, not corruption."
+            ),
+        }
 
     def relation_health(self, write: bool = False) -> dict[str, Any]:
         """Read-only: verified relation claims whose source edge no longer exists in current source.
@@ -5242,6 +5300,7 @@ class ForceAppKnowledge:
             "sourceTreeDigest": inventory["sourceTreeDigest"],
             "orphanedCount": len(orphaned),
             "orphaned": orphaned,
+            "entryEdges": self.entry_edge_health(live_component_ids),
         }
         self.validate_record(
             result, "force-app-relation-health.schema.json", "force-app relation health"
@@ -5603,10 +5662,21 @@ class ForceAppKnowledge:
                 "bundles": [],
                 "limitations": [],
             }
+        # `drafted` counts what was WRITTEN, not what was selected. Reporting the selection
+        # made the loop invisible: with entry-home components in the worklist, draft() skipped
+        # every one of them and the manifest said `drafted: 50, remainingMissing: 532` over a
+        # manifest holding zero bundles and zero claims.
+        written = int(manifest.get("claimCount", 0))
         manifest["totalMissing"] = len(missing)
         manifest["heuristicSkipped"] = len(missing) - len(eligible)
-        manifest["drafted"] = len(claim_ids)
-        manifest["remainingMissing"] = len(missing) - len(claim_ids)
+        manifest["selected"] = len(claim_ids)
+        manifest["drafted"] = written
+        manifest["remainingMissing"] = len(missing) - written
+        if written != len(claim_ids):
+            manifest.setdefault("limitations", []).append(
+                f"selected {len(claim_ids)} candidate(s) but wrote {written}; the difference was "
+                "skipped by the drafter (entry-home components own their relations in entries)."
+            )
         return manifest
 
     def refresh(
@@ -6445,6 +6515,10 @@ def main(argv: Iterable[str] | None = None) -> int:
             result = builder.relation_health(args.write)
             summary = {
                 "orphanedCount": result["orphanedCount"],
+                # Surfaced in the summary because the claim-side count alone reported HEALTHY
+                # over an entry graph it never looked at.
+                "entryFindingCount": result["entryEdges"]["findingCount"],
+                "entriesByLane": result["entryEdges"]["entriesByLane"],
             }
             if "path" in result:
                 summary["path"] = result["path"]

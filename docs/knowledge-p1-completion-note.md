@@ -21,9 +21,15 @@ CustomField emits `belongs-to` on every field but mints **no** relation candidat
 `object-relation` claims instead. This is why the candidate count (16) and the edge count (109)
 differ — one symbol, two numbers, so both are stated here.
 
-**P5 asserts `582 + N_belongs_to` read from this note, never a literal.** Measured on the
-reference corpus after P1: `relations-worklist` reports **598 missing**, up from 582, exactly as
-predicted.
+**P5 asserts the count read from this note, never a literal.** Measured on the reference corpus
+after P1: `relations-worklist` reports **598 missing**, up from 582, exactly as predicted.
+
+**Post-P2 update.** P2's `APEX_NEW_RE` fix (constructor calls were invisible, so every execution
+chain broke at hop 1) added ~67 further `invokes-class` candidates, taking the total to **665**.
+After P5 all 665 are `homed-in-entry` and **0** are `missing`, so the update-relations loop
+terminates. The moving total is the reason this note exists: the number is a property of the
+corpus *and* of the extractor, and it changes whenever either does. Only `N_belongs_to = 16` is
+a fixed P1 output.
 
 ## Measured on the reference corpus
 

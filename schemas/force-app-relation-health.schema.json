@@ -1,35 +1,115 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:sf-harness-brain-core:force-app-relation-health.schema.json",
-  "title": "force-app orphaned relation-claim report",
-  "description": "Read-only diff of verified object-relation/component-relation claims against the current inventory's live reference edges, surfacing claims whose source component or edge no longer exists so a human can review them for stale-marking. Never mutates Knowledge.",
-  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "required": [
-    "schemaVersion", "kind", "generatedAt", "repositoryCommit", "sourceTreeDigest",
-    "orphanedCount", "orphaned"
-  ],
+  "description": "Read-only diff of verified object-relation/component-relation claims against the current inventory's live reference edges, surfacing claims whose source component or edge no longer exists so a human can review them for stale-marking. Never mutates Knowledge.",
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "kind": { "const": "force-app-relation-health" },
-    "generatedAt": { "type": "string", "format": "date-time" },
-    "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "sourceTreeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "orphanedCount": { "type": "integer", "minimum": 0 },
-    "orphaned": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["claimId", "claimType", "subjectIdentity", "reason", "revision"],
-        "properties": {
-          "claimId": { "type": "string", "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$" },
-          "claimType": { "enum": ["object-relation", "component-relation"] },
-          "subjectIdentity": { "type": "string", "minLength": 1 },
-          "reason": { "enum": ["component removed", "edge no longer present in source"] },
-          "revision": { "type": "integer", "minimum": 1 }
+    "entryEdges": {
+      "additionalProperties": false,
+      "description": "Entry-side relation-graph health. The claim-side orphan check cannot see it: for entry-home types there are no relation claims, so this file reported HEALTHY unconditionally.",
+      "properties": {
+        "entriesByLane": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "findingCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "findings": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "note": {
+          "type": "string"
         }
-      }
+      },
+      "required": [
+        "entriesByLane",
+        "findingCount",
+        "findings",
+        "note"
+      ],
+      "type": "object"
+    },
+    "generatedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "kind": {
+      "const": "force-app-relation-health"
+    },
+    "orphaned": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "claimId": {
+            "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$",
+            "type": "string"
+          },
+          "claimType": {
+            "enum": [
+              "object-relation",
+              "component-relation"
+            ]
+          },
+          "reason": {
+            "enum": [
+              "component removed",
+              "edge no longer present in source"
+            ]
+          },
+          "revision": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "subjectIdentity": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "claimId",
+          "claimType",
+          "subjectIdentity",
+          "reason",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "orphanedCount": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "repositoryCommit": {
+      "pattern": "^[0-9a-f]{40}$",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "sourceTreeDigest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
     }
-  }
+  },
+  "required": [
+    "schemaVersion",
+    "kind",
+    "generatedAt",
+    "repositoryCommit",
+    "sourceTreeDigest",
+    "orphanedCount",
+    "orphaned"
+  ],
+  "title": "force-app orphaned relation-claim report",
+  "type": "object"
 }
