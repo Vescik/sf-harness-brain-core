@@ -65,6 +65,7 @@ LEXICAL_CANDIDATE_CAP = 2000
 DEPTH_LIMITS = {"impact": 2, "context": 1, "tree": 4, "drift": 4}
 TRAVERSAL_LIMITS = {"maxNodes": 2000, "maxFanout": 500}
 IMPACT_TOP_DEFAULT = 50
+EXPLAIN_TOP_DEFAULT = 50
 # The relation kind that carries composition. Named once so `parts` and the tree agree.
 CONTAINMENT_KIND = "belongs-to"
 BM25_K1 = 1.2
@@ -1418,6 +1419,30 @@ def truncation_gaps(documents: "DocumentStore", kinds: Iterable[str]) -> list[st
     return gaps
 
 
+def verify_anchor(document: dict[str, Any], states: list[str]) -> list[str]:
+    """Gaps a caller must see before trusting the anchor's own projection.
+
+    The lane filter and hydration were applied to an artifact's EDGES and never to the artifact
+    itself, so `explain` and `context` served a revoked, drifted or silently tampered entry in
+    full — with its citation block, and its stale entryDigest — while `search` refused the same
+    entry. `context` is the step-1 lookup for eight consumer surfaces, so this was the widest
+    path by which the disposable index could be mistaken for authority.
+    """
+
+    gaps: list[str] = []
+    if document["lane"] not in states:
+        gaps.append(
+            f"ANCHOR: {document['identity']} is in lane '{document['lane']}', outside the "
+            f"requested {', '.join(states)}. Its facts are shown for inspection and are NOT "
+            "approved-current knowledge — do not cite them as effective."
+        )
+    _served, hydration_gaps = hydrate(
+        [{"artifactId": document["identity"], "citation": document["citation"]}]
+    )
+    gaps.extend(f"ANCHOR: {gap}" for gap in hydration_gaps)
+    return gaps
+
+
 def lane_split(rows: list[dict[str, Any]], key: str = "lifecycle") -> tuple[list, list]:
     """approved-current rows and opted-in-lane rows, never merged into one array."""
     current = [row for row in rows if row.get(key) == "approved-current"]
@@ -1471,6 +1496,20 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
             "they are not approved-current knowledge and must not be cited as effective."
         )
     gaps.extend(truncation_gaps(documents, {row["kind"] for row in rows}))
+    gaps.extend(verify_anchor(document, states))
+
+    # `parts` went through none of this: not lane-filtered, not capped. It served revoked
+    # entries as parts of an approved object with no marker at all.
+    parts_all = [
+        row for row in documents.incoming_edges(
+            document["facets"].get("fullName") or document["identity"],
+            kinds={CONTAINMENT_KIND}, include_heuristic=include_heuristic,
+        )
+        if row["source"] in allowed
+    ]
+    parts = sorted(parts_all, key=lambda row: row["source"])[:EXPLAIN_TOP_DEFAULT]
+    if len(parts_all) > len(parts):
+        gaps.append(f"{len(parts_all) - len(parts)} part(s) beyond the {EXPLAIN_TOP_DEFAULT} cap were not returned.")
 
     return {
         "outcome": "EXPLAIN",
@@ -1483,10 +1522,7 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
         "outgoing": document["edges"],
         "incoming": current,
         "incomingNonCurrent": non_current,
-        "parts": documents.incoming_edges(
-            document["facets"].get("fullName") or document["identity"],
-            kinds={CONTAINMENT_KIND}, include_heuristic=include_heuristic,
-        ),
+        "parts": parts,
         "sourceCoverage": source_coverage(manifest),
         "excludedCounts": excluded,
         "gaps": gaps,
@@ -1755,6 +1791,7 @@ def run_context(args: argparse.Namespace) -> dict[str, Any]:
         "for the source-side denominator."
     )
     gaps.extend(truncation_gaps(documents, {row["kind"] for row in incoming}))
+    gaps.extend(verify_anchor(document, states))
 
     return {
         "outcome": "CONTEXT",

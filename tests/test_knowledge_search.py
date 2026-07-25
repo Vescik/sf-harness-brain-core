@@ -628,6 +628,96 @@ class EmptyResultExplanationTests(EntryFixtureMixin, unittest.TestCase):
         self.assertTrue(result["gaps"], "a refusal must explain itself")
 
 
+class AnchorVerificationTests(EntryFixtureMixin, unittest.TestCase):
+    """The artifact you asked about gets the same scrutiny as the edges around it.
+
+    Lane filtering and hydration were applied to an artifact's EDGES and never to the artifact
+    itself, so explain and context served a revoked, drifted or tampered entry in full — with
+    its citation block and its stale entryDigest — while search refused the same entry. context
+    is the step-1 lookup for eight consumer surfaces, so this was the widest path by which the
+    disposable index could be mistaken for authority.
+    """
+
+    def explain(self, identity, **kwargs):
+        args = argparse.Namespace(identity=identity, state=None, include_heuristic=False)
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return search.run_explain(args)
+
+    def context(self, identity, **kwargs):
+        args = argparse.Namespace(identity=identity, state=None, top=25, include_heuristic=False)
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return search.run_context(args)
+
+    def anchor_gaps(self, result):
+        return [gap for gap in result["gaps"] if gap.startswith("ANCHOR:")]
+
+    def test_revoked_anchor_is_flagged_on_both_surfaces(self) -> None:
+        seeded = self.seed()
+        store.command_entry_revoke(
+            argparse.Namespace(identity=seeded["alpha"]["identity"], rationale="mistake")
+        )
+        search.build_index()
+        for name, result in (
+            ("explain", self.explain(seeded["alpha"]["identity"])),
+            ("context", self.context(seeded["alpha"]["identity"])),
+        ):
+            with self.subTest(surface=name):
+                gaps = self.anchor_gaps(result)
+                self.assertTrue(gaps, f"{name} served a revoked anchor silently")
+                self.assertTrue(any("not cite them as effective" in gap for gap in gaps))
+
+    def test_tampered_anchor_is_flagged_on_both_surfaces(self) -> None:
+        seeded = self.seed()
+        path = store.ROOT / seeded["alpha"]["path"]
+        stat = path.stat()
+        original = path.read_text(encoding="utf-8")
+        path.write_text(original.replace("kolejki", "kolejce"), encoding="utf-8")
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        for name, result in (
+            ("explain", self.explain(seeded["alpha"]["identity"])),
+            ("context", self.context(seeded["alpha"]["identity"])),
+        ):
+            with self.subTest(surface=name):
+                self.assertTrue(
+                    any("rebuild the index" in gap for gap in self.anchor_gaps(result)),
+                    f"{name} served a tampered anchor as current",
+                )
+
+    def test_a_current_anchor_raises_no_anchor_gap(self) -> None:
+        seeded = self.seed()
+        for name, result in (
+            ("explain", self.explain(seeded["alpha"]["identity"])),
+            ("context", self.context(seeded["alpha"]["identity"])),
+        ):
+            with self.subTest(surface=name):
+                self.assertEqual([], self.anchor_gaps(result))
+
+    def test_explain_parts_are_lane_filtered_like_every_other_served_row(self) -> None:
+        seeded = self.seed()
+        store.command_entry_revoke(
+            argparse.Namespace(identity=seeded["status"]["identity"], rationale="mistake")
+        )
+        search.build_index()
+        objects = self.temp / "force-app/main/default/objects/HarnessAlphaCase__c"
+        (objects / "HarnessAlphaCase__c.object-meta.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "    <label>Harness Alpha Case</label>\n</CustomObject>\n",
+            encoding="utf-8",
+        )
+        obj = self.draft("CustomObject", "HarnessAlphaCase__c", "Alpha cases.")
+        self.approve(obj)
+        search.build_index()
+        result = self.explain(obj["identity"])
+        self.assertNotIn(
+            seeded["status"]["identity"],
+            {row["source"] for row in result["parts"]},
+            "a revoked field is not a part of an approved object",
+        )
+
+
 class TruncationDisclosureTests(unittest.TestCase):
     """A capped edge list must be named, or a missing grant reads as an absent grant.
 

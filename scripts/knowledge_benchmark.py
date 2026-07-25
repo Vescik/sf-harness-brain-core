@@ -22,6 +22,7 @@ import argparse
 import json
 import platform
 import shutil
+import resource
 import statistics
 import sys
 import tempfile
@@ -56,7 +57,27 @@ FIELD_SOURCE = """<?xml version="1.0" encoding="UTF-8"?>
 # Mix, not Flow-only. A Flow-only corpus contains zero belongs-to edges at any scale, so it
 # cannot exercise `parts`, containment traversal, or anything built on them — every budget
 # measured on it would be measured on dead code paths.
-FIELD_SHARE = 3  # one CustomField per this many entries
+OBJECT_SOURCE = """<?xml version="1.0" encoding="UTF-8"?>
+<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">
+    <label>Bench Object {index}</label>
+    <sharingModel>ReadWrite</sharingModel>
+</CustomObject>
+"""
+
+APEX_SOURCE = """public with sharing class BenchHandler{index:06d} {{
+    public void run() {{
+        BenchHandler{next:06d} next = new BenchHandler{next:06d}();
+        next.run();
+    }}
+}}
+"""
+
+# Proportions matter as much as presence. A fixture with fields but no OBJECTS measures `parts`
+# on an anchor whose owner has no entry, i.e. an empty answer; one with no Apex chain measures a
+# forward traversal that stops at hop 1. Both were being timed and reported as budgets.
+PARTITIONS = 50          # distinct owning objects
+FIELD_SHARE = 3          # one CustomField per this many non-object entries
+APEX_SHARE = 5           # one ApexClass per this many non-object entries
 
 
 def synth_workspace(root: Path, entries: int) -> None:
@@ -67,10 +88,28 @@ def synth_workspace(root: Path, entries: int) -> None:
     profile_digest = "sha256:" + "0" * 64
     ledger_lines = []
     for index in range(entries):
-        owner = f"BenchObject{index % 50:03d}__c"
-        is_field = index % FIELD_SHARE == 0
-        if is_field:
-            metadata_type = "Flow" if False else "CustomField"
+        owner = f"BenchObject{index % PARTITIONS:03d}__c"
+        is_object = index < PARTITIONS
+        is_apex = not is_object and index % APEX_SHARE == 0
+        is_field = not is_object and not is_apex and index % FIELD_SHARE == 0
+        if is_object:
+            metadata_type = "CustomObject"
+            name = f"BenchObject{index:03d}__c"
+            objects_dir = root / f"force-app/main/default/objects/{name}"
+            objects_dir.mkdir(parents=True, exist_ok=True)
+            source_path = objects_dir / f"{name}.object-meta.xml"
+            source_path.write_text(OBJECT_SOURCE.format(index=index), encoding="utf-8")
+        elif is_apex:
+            metadata_type = "ApexClass"
+            name = f"BenchHandler{index:06d}"
+            classes_dir = root / "force-app/main/default/classes"
+            classes_dir.mkdir(parents=True, exist_ok=True)
+            source_path = classes_dir / f"{name}.cls"
+            source_path.write_text(
+                APEX_SOURCE.format(index=index, next=index + APEX_SHARE), encoding="utf-8"
+            )
+        elif is_field:
+            metadata_type = "CustomField"
             name = f"{owner}.Bench{index:06d}__c"
             fields_dir = root / f"force-app/main/default/objects/{owner}/fields"
             fields_dir.mkdir(parents=True, exist_ok=True)
@@ -83,11 +122,12 @@ def synth_workspace(root: Path, entries: int) -> None:
             source_path.write_text(FLOW_SOURCE.format(index=index), encoding="utf-8")
         relative = source_path.relative_to(root).as_posix()
         fragments = [{"path": relative, "sourceDigest": f"sha256:{file_digest(source_path)}"}]
-        profile = (
-            {"id": "salesforce.custom-field", "version": "1.0.0", "digest": profile_digest}
-            if is_field
-            else {"id": "salesforce.flow", "version": "1.0.0", "digest": profile_digest}
-        )
+        profile = {
+            "CustomObject": {"id": "salesforce.custom-object", "version": "1.0.0", "digest": profile_digest},
+            "CustomField": {"id": "salesforce.custom-field", "version": "1.0.0", "digest": profile_digest},
+            "ApexClass": {"id": "salesforce.apex", "version": "1.0.0", "digest": profile_digest},
+            "Flow": {"id": "salesforce.flow", "version": "1.0.0", "digest": profile_digest},
+        }[metadata_type]
         frontmatter: dict[str, Any] = {
             "schemaVersion": 1,
             "subject": {"metadataType": metadata_type, "fullName": name, "namespace": None},
@@ -101,26 +141,33 @@ def synth_workspace(root: Path, entries: int) -> None:
             },
             "source": {"fragments": fragments},
             "lifecycle": {"state": "approved", "contentDigest": "sha256:" + "0" * 64},
-            "typeFacts": (
-                {
-                    "object": owner,
-                    "type": "Text",
+            "typeFacts": {
+                "CustomObject": {"objectKind": "custom", "sharingModel": "ReadWrite"},
+                "CustomField": {
+                    "object": owner, "type": "Text",
+                    "references": [{"kind": "belongs-to", "target": owner, "assurance": "source-exact"}],
+                },
+                "ApexClass": {
+                    "kind": "ApexClass", "sharingModel": "with",
                     "references": [
-                        {"kind": "belongs-to", "target": owner, "assurance": "source-exact"}
+                        # A real chain: each handler constructs the next, so a forward traversal
+                        # actually reaches hop 2 and beyond instead of stopping immediately.
+                        {"kind": "invokes-class", "target": f"BenchHandler{index + APEX_SHARE:06d}",
+                         "assurance": "source-derived-heuristic"},
+                        {"kind": "object-token", "target": owner,
+                         "assurance": "source-derived-heuristic"},
                     ],
-                }
-                if is_field
-                else {
-                    "processType": "AutoLaunchedFlow",
-                    "status": "Active",
+                },
+                "Flow": {
+                    "processType": "AutoLaunchedFlow", "status": "Active",
                     "trigger": {"object": owner},
-                    "references": [
-                        {"kind": "operates-on", "target": owner, "assurance": "source-exact"}
-                    ],
-                }
-            ),
+                    "references": [{"kind": "operates-on", "target": owner, "assurance": "source-exact"}],
+                },
+            }[metadata_type],
             "extractionCoverage": {"typeFacts": "full"},
-            "assurance": {"typeFacts": "source-exact"},
+            "assurance": {
+                "typeFacts": "source-derived-heuristic" if metadata_type == "ApexClass" else "source-exact"
+            },
             "limitations": [],
             "keywords": [],
             "candidateKeywords": [],
@@ -230,15 +277,26 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
             def corpus_fingerprint_call() -> None:
                 search.corpus_fingerprint()
 
-            field_index = (entries // 2) - ((entries // 2) % FIELD_SHARE)
-            field_identity = (
-                f"CustomField:c:BenchObject{field_index % 50:03d}__c.Bench{field_index:06d}__c"
-            )
+            # Anchors are DISCOVERED, not computed. A formula that assumed the type mix silently
+            # produced an identity no fixture size actually contains, and the traversal it was
+            # meant to time then measured a raised exception or an empty answer.
+            store_documents, _manifest = search.load_index()
+            available = store_documents.identities()
+
+            def first_of(prefix: str) -> str | None:
+                return next((item for item in available if item.startswith(prefix)), None)
+
+            object_identity = first_of("CustomObject:")
+            apex_identity = first_of("ApexClass:")
+            # Prefer the object (its parts exercise inverted containment); fall back so tiny
+            # fixtures still run rather than crashing the smoke test.
+            parts_identity = object_identity or first_of("CustomField:") or available[0]
+            chain_identity = apex_identity or parts_identity
 
             def impact_forward() -> None:
                 search.run_impact(
                     argparse.Namespace(
-                        identity=field_identity,
+                        identity=chain_identity,
                         depth=2, direction="outgoing", state=None, top=50, include_heuristic=True,
                     )
                 )
@@ -247,14 +305,14 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
                 # Composition traversal: the path a Flow-only fixture could not exercise at all.
                 search.run_explain(
                     argparse.Namespace(
-                        identity=field_identity, state=None, include_heuristic=True,
+                        identity=parts_identity, state=None, include_heuristic=True,
                     )
                 )
 
             def context_call() -> None:
                 search.run_context(
                     argparse.Namespace(
-                        identity=field_identity, state=None, top=25, include_heuristic=True
+                        identity=parts_identity, state=None, top=25, include_heuristic=True
                     )
                 )
 
@@ -276,6 +334,10 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
                 "contextPack": timed(context_call, repeats),
                 "validatorLeakSweep": timed(leak_sweep, max(1, repeats // 5)),
             }
+            # Memory was required by the plan's own rule ("peakRssMb budgeted, not merely
+            # measured") and was not measured at all. A budget with no instrument is not a budget.
+            usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            peak_rss_mb = round(usage / (1024 * 1024 if sys.platform == "darwin" else 1024), 1)
             cache = search.cache_root()
             index_bytes = sum(item.stat().st_size for item in cache.rglob("*") if item.is_file())
             entry_bytes = sum(
@@ -287,6 +349,7 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
                     "generation": built["generation"],
                     "fixtureBuildMs": round(fixture_ms, 1),
                     "entryBytes": entry_bytes,
+                    "peakRssMb": peak_rss_mb,
                     "indexBytes": index_bytes,
                 },
                 "environment": {
