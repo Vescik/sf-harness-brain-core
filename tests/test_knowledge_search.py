@@ -495,6 +495,44 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class TruncationDisclosureTests(unittest.TestCase):
+    """A capped edge list must be named, or a missing grant reads as an absent grant.
+
+    The collector caps a PermissionSet's references at 300 and discards fieldPermissions
+    FIRST, so "which permission sets grant edit on this field?" silently omits every
+    permission set larger than that — the normal case in a managed package, and a security
+    question failing closed in the wrong direction.
+    """
+
+    class FakeStore:
+        def __init__(self, truncated):
+            self._truncated = truncated
+
+        def posting_file(self, name):
+            return {"truncatedSources": self._truncated} if name == "reverse" else {}
+
+    def test_gap_names_the_family_and_the_source_count(self) -> None:
+        store_stub = self.FakeStore({"fieldPermissions": ["PermissionSet:c:A", "PermissionSet:c:B"]})
+        gaps = search.truncation_gaps(store_stub, {"grants-field-edit"})
+        self.assertEqual(1, len(gaps))
+        self.assertIn("2 entr", gaps[0])
+        self.assertIn("fieldPermissions", gaps[0])
+        self.assertIn("absence is not proof of absence", gaps[0])
+
+    def test_unrelated_kinds_do_not_raise_the_gap(self) -> None:
+        store_stub = self.FakeStore({"fieldPermissions": ["PermissionSet:c:A"]})
+        self.assertEqual([], search.truncation_gaps(store_stub, {"belongs-to"}))
+
+    def test_nothing_truncated_is_silent(self) -> None:
+        self.assertEqual([], search.truncation_gaps(self.FakeStore({}), {"grants-field-edit"}))
+
+    def test_every_declared_family_maps_to_real_relation_kinds(self) -> None:
+        for family, kinds in search.TRUNCATION_FAMILY_KINDS.items():
+            with self.subTest(family=family):
+                unknown = kinds - relation_kinds.ALL_REF_KINDS
+                self.assertEqual(set(), unknown, f"{family} names kinds the collector never emits")
+
+
 class TestStructureTests(unittest.TestCase):
     """No TestCase in this module may inherit another TestCase.
 

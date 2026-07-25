@@ -134,6 +134,7 @@ PROFILE_FACETS = {
         "permissionSet.objectPermissionCount": "number",
         "permissionSet.fieldPermissionCount": "number",
         "permissionSet.referencesTruncated": "boolean",
+        "permissionSet.truncatedFamilies": "string",
     },
     "CustomObject": {
         "object.kind": "string",
@@ -280,6 +281,7 @@ def _permission_set_facets(front: dict[str, Any]) -> dict[str, Any]:
         "permissionSet.objectPermissionCount": facts.get("objectPermissionCount"),
         "permissionSet.fieldPermissionCount": facts.get("fieldPermissionCount"),
         "permissionSet.referencesTruncated": facts.get("referencesTruncated"),
+        "permissionSet.truncatedFamilies": facts.get("truncatedFamilies"),
     }
 
 
@@ -548,9 +550,22 @@ def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
         row["spellings"] = sorted(row["spellings"])
         row["incoming"] = sorted(row["incoming"])
 
+    # Sources whose own edge list was capped by the collector. The entry records this locally
+    # (typeFacts.referencesTruncated / truncatedFamilies) but nothing read it at query time, so
+    # "which permission sets grant edit on this field?" returned a complete-looking list that
+    # systematically omitted every PermissionSet with more than ~300 grants — and the collector
+    # discards fieldPermissions FIRST, so the security question failed closed the wrong way.
+    truncated: dict[str, list[str]] = {}
+    for item in projections:
+        families = item["facets"].get("permissionSet.truncatedFamilies")
+        if item["facets"].get("permissionSet.referencesTruncated"):
+            for family in (families or ["unspecified"]):
+                truncated.setdefault(str(family), []).append(item["identity"])
+
     return {
         "byTarget": by_target,
         "byFullName": {name: sorted(ids) for name, ids in by_full_name.items()},
+        "truncatedSources": {family: sorted(ids) for family, ids in truncated.items()},
     }
 
 
@@ -1353,6 +1368,38 @@ def source_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+TRUNCATION_FAMILY_KINDS = {
+    "fieldPermissions": {"grants-field-read", "grants-field-edit", "grants-field-permission"},
+    "objectPermissions": {"grants-object-permission", "grants-object-view-all", "grants-object-modify-all"},
+    "recordTypes": {"grants-record-type"},
+    "classAccesses": {"grants-class-access"},
+}
+
+
+def truncation_gaps(documents: "DocumentStore", kinds: Iterable[str]) -> list[str]:
+    """Warn when a kind in this result belongs to a family some source had capped.
+
+    A missing grant is indistinguishable from an absent grant, and the collector cuts
+    fieldPermissions first — so the security question fails closed in the wrong direction
+    unless the incompleteness is stated."""
+
+    truncated = documents.posting_file("reverse").get("truncatedSources", {})
+    if not truncated:
+        return []
+    wanted = set(kinds)
+    gaps = []
+    for family, sources in sorted(truncated.items()):
+        family_kinds = TRUNCATION_FAMILY_KINDS.get(family)
+        if wanted and family_kinds and not (wanted & family_kinds):
+            continue
+        gaps.append(
+            f"{len(sources)} entr(y/ies) had their {family} edge list capped by the collector; "
+            "edges of that family may be missing from this result and absence is not proof of "
+            "absence."
+        )
+    return gaps
+
+
 def lane_split(rows: list[dict[str, Any]], key: str = "lifecycle") -> tuple[list, list]:
     """approved-current rows and opted-in-lane rows, never merged into one array."""
     current = [row for row in rows if row.get(key) == "approved-current"]
@@ -1405,6 +1452,7 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
             f"{len(non_current)} incoming edge(s) are declared by entries in opted-in lane(s); "
             "they are not approved-current knowledge and must not be cited as effective."
         )
+    gaps.extend(truncation_gaps(documents, {row["kind"] for row in rows}))
 
     return {
         "outcome": "EXPLAIN",
@@ -1552,6 +1600,7 @@ def run_impact(args: argparse.Namespace) -> dict[str, Any]:
         )
     if limits_hit:
         gaps.append(f"traversal limits reached: {', '.join(sorted(limits_hit))}.")
+    gaps.extend(truncation_gaps(documents, {step["kind"] for row in served for step in row["path"]}))
 
     return {
         "outcome": "IMPACT",
@@ -1593,6 +1642,20 @@ def run_capabilities(args: argparse.Namespace) -> dict[str, Any]:
         "defaultStates": list(ESTABLISHED_STATES),
         "analyzerVersion": ANALYZER_VERSION,
         "supportedProfiles": sorted(PROFILE_FACETS),
+        # --relation-kind accepted any string and capabilities listed none, so the only way to
+        # learn the vocabulary was to guess or read the collector.
+        "relationKinds": sorted(relation_kinds.ALL_REF_KINDS),
+        "heuristicRelationKinds": sorted(relation_kinds.HEURISTIC_REF_KINDS),
+        "containmentKind": CONTAINMENT_KIND,
+        "directions": ["incoming", "outgoing"],
+        "depthLimits": dict(DEPTH_LIMITS),
+        "assuranceLanes": {
+            relation_kinds.SOURCE_EXACT: "declared in source; served by default",
+            relation_kinds.SOURCE_DERIVED_HEURISTIC: (
+                "inferred (regex-derived); excluded unless --include-heuristic. Execution chains "
+                "are built from these, so answering \"how does this work\" requires the flag."
+            ),
+        },
     }
 
 

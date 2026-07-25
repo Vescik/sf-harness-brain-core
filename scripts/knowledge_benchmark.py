@@ -45,6 +45,19 @@ FLOW_SOURCE = """<?xml version="1.0" encoding="UTF-8"?>
 </Flow>
 """
 
+FIELD_SOURCE = """<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Bench{index:06d}__c</fullName>
+    <label>Bench {index}</label>
+    <type>Text</type>
+</CustomField>
+"""
+
+# Mix, not Flow-only. A Flow-only corpus contains zero belongs-to edges at any scale, so it
+# cannot exercise `parts`, containment traversal, or anything built on them — every budget
+# measured on it would be measured on dead code paths.
+FIELD_SHARE = 3  # one CustomField per this many entries
+
 
 def synth_workspace(root: Path, entries: int) -> None:
     """Write `entries` approved entries with valid digests and ledger records."""
@@ -54,15 +67,31 @@ def synth_workspace(root: Path, entries: int) -> None:
     profile_digest = "sha256:" + "0" * 64
     ledger_lines = []
     for index in range(entries):
-        name = f"BenchFlow{index:06d}"
-        source_path = flows / f"{name}.flow-meta.xml"
-        source_path.write_text(FLOW_SOURCE.format(index=index), encoding="utf-8")
+        owner = f"BenchObject{index % 50:03d}__c"
+        is_field = index % FIELD_SHARE == 0
+        if is_field:
+            metadata_type = "Flow" if False else "CustomField"
+            name = f"{owner}.Bench{index:06d}__c"
+            fields_dir = root / f"force-app/main/default/objects/{owner}/fields"
+            fields_dir.mkdir(parents=True, exist_ok=True)
+            source_path = fields_dir / f"Bench{index:06d}__c.field-meta.xml"
+            source_path.write_text(FIELD_SOURCE.format(index=index), encoding="utf-8")
+        else:
+            metadata_type = "Flow"
+            name = f"BenchFlow{index:06d}"
+            source_path = flows / f"{name}.flow-meta.xml"
+            source_path.write_text(FLOW_SOURCE.format(index=index), encoding="utf-8")
         relative = source_path.relative_to(root).as_posix()
         fragments = [{"path": relative, "sourceDigest": f"sha256:{file_digest(source_path)}"}]
+        profile = (
+            {"id": "salesforce.custom-field", "version": "1.0.0", "digest": profile_digest}
+            if is_field
+            else {"id": "salesforce.flow", "version": "1.0.0", "digest": profile_digest}
+        )
         frontmatter: dict[str, Any] = {
             "schemaVersion": 1,
-            "subject": {"metadataType": "Flow", "fullName": name, "namespace": None},
-            "profile": {"id": "salesforce.flow", "version": "1.0.0", "digest": profile_digest},
+            "subject": {"metadataType": metadata_type, "fullName": name, "namespace": None},
+            "profile": profile,
             "scope": {
                 "sourceApiVersion": "64.0",
                 "sourceTreeDigest": store.canonical_digest(
@@ -72,18 +101,24 @@ def synth_workspace(root: Path, entries: int) -> None:
             },
             "source": {"fragments": fragments},
             "lifecycle": {"state": "approved", "contentDigest": "sha256:" + "0" * 64},
-            "typeFacts": {
-                "processType": "AutoLaunchedFlow",
-                "status": "Active",
-                "trigger": {"object": f"BenchObject{index % 50:03d}__c"},
-                "references": [
-                    {
-                        "kind": "operates-on",
-                        "target": f"BenchObject{index % 50:03d}__c",
-                        "assurance": "source-exact",
-                    }
-                ],
-            },
+            "typeFacts": (
+                {
+                    "object": owner,
+                    "type": "Text",
+                    "references": [
+                        {"kind": "belongs-to", "target": owner, "assurance": "source-exact"}
+                    ],
+                }
+                if is_field
+                else {
+                    "processType": "AutoLaunchedFlow",
+                    "status": "Active",
+                    "trigger": {"object": owner},
+                    "references": [
+                        {"kind": "operates-on", "target": owner, "assurance": "source-exact"}
+                    ],
+                }
+            ),
             "extractionCoverage": {"typeFacts": "full"},
             "assurance": {"typeFacts": "source-exact"},
             "limitations": [],
@@ -101,13 +136,13 @@ def synth_workspace(root: Path, entries: int) -> None:
         digest = store.reviewed_content_digest(frontmatter, body)
         frontmatter["approval"]["reviewedContentDigest"] = digest
         frontmatter["lifecycle"]["contentDigest"] = digest
-        path = store.entry_path("Flow", None, name)
+        path = store.entry_path(metadata_type, None, name)
         store.atomic_write(path, store.render_entry(frontmatter, body))
         ledger_lines.append(
             {
                 "sequence": index + 1,
                 "action": "approve",
-                "identity": store.identity_of("Flow", None, name),
+                "identity": store.identity_of(metadata_type, None, name),
                 "reviewedContentDigest": digest,
                 "semanticsDigest": store.semantics_digest(body),
                 "reviewedBy": "Bench Reviewer",
@@ -188,6 +223,34 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
                     )
                 )
 
+            def load_index_call() -> None:
+                # The floor every command pays before any query work: freshness check + index open.
+                search.load_index()
+
+            def corpus_fingerprint_call() -> None:
+                search.corpus_fingerprint()
+
+            field_index = (entries // 2) - ((entries // 2) % FIELD_SHARE)
+            field_identity = (
+                f"CustomField:c:BenchObject{field_index % 50:03d}__c.Bench{field_index:06d}__c"
+            )
+
+            def impact_forward() -> None:
+                search.run_impact(
+                    argparse.Namespace(
+                        identity=field_identity,
+                        depth=2, direction="outgoing", state=None, top=50, include_heuristic=True,
+                    )
+                )
+
+            def explain_parts() -> None:
+                # Composition traversal: the path a Flow-only fixture could not exercise at all.
+                search.run_explain(
+                    argparse.Namespace(
+                        identity=field_identity, state=None, include_heuristic=True,
+                    )
+                )
+
             def leak_sweep() -> None:
                 # Mirrors the validator's runtime-authority sweep over .ai/** (review R3-5).
                 for path in (temporary / ".ai").rglob("*"):
@@ -199,6 +262,10 @@ def run(entries: int, repeats: int) -> dict[str, Any]:
                 "textQuery": timed(text_query, repeats),
                 "facetQuery": timed(facet_query, repeats),
                 "relationQuery": timed(relation_query, repeats),
+                "loadIndex": timed(load_index_call, repeats),
+                "corpusFingerprint": timed(corpus_fingerprint_call, repeats),
+                "impactForwardD2": timed(impact_forward, repeats),
+                "explainWithParts": timed(explain_parts, repeats),
                 "validatorLeakSweep": timed(leak_sweep, max(1, repeats // 5)),
             }
             cache = search.cache_root()
