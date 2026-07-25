@@ -21,13 +21,14 @@ have been throughout; it found two blocking defects in code already reported as 
 | 2 | `explain.parts` — the composition primitive P4's membership is built on — had no lane filter and no cap, serving revoked entries as parts of an approved object | **fixed** |
 | 3 | The "mixed benchmark corpus" contained no CustomObject, ApexClass or ApexTrigger, so every traversal it existed to exercise was timing an **empty answer** | **fixed** (objects + a real Apex chain; verified reaching hop 2) |
 | 4 | `peakRssMb` was not instrumented anywhere, so the memory half of every R4 budget was unmeasurable | **fixed** |
-| 5 | `hydrate()` recomputes only `reviewedContentDigest`, which does not cover `source.fragments`, `scope` or `keywords` — an edit confined to those is invisible to both the coarse fingerprint and hydration | **open** |
-| 6 | The 40 ms freshness budget is unverified on `windows-latest`; the macOS measurement is a warm in-process loop, while the thing budgeted is the cold per-CLI-process floor (35.6 ms p95 at 15k = 89 % of budget on a *faster* platform) | **open** |
-| 7 | No reusable traversal exists for P4 to build `compute_membership` on — the BFS is inline in `run_impact`, single-anchor, and returns hits rather than a node set | **open, P4 design input** |
+| 5 | `hydrate()` recomputes only `reviewedContentDigest`, which does not cover `source.fragments`, `scope` or `keywords` — an edit confined to those is invisible to both the coarse fingerprint and hydration | **fixed** (whole-file digest; stronger *and* cheaper) |
+| 6 | The 40 ms freshness budget is unverified on `windows-latest`; the macOS measurement is a warm in-process loop, while the thing budgeted is the cold per-CLI-process floor | **fixed** (`--assert-floor-us` on the CI matrix; macOS 2.0 µs/entry → 30 ms projected, Windows answered by CI) |
+| 7 | No reusable traversal exists for P4 to build `compute_membership` on — the BFS is inline in `run_impact`, single-anchor, and returns hits rather than a node set | **fixed** (`traverse()`) |
 
-Findings 5–7 are why **P4 is not started**. 5 and 6 are correctness/measurement debt that P4 would
-inherit and amplify; 7 is a refactor P4 needs before it can honour the plan's "one traversal
-vocabulary" rule.
+**All seven blocking findings are closed.** The budget is expressed per entry rather than at one
+corpus size, because a budget stated at a fixture size can always be met by running the benchmark
+smaller — and it is asserted on the `windows-latest` matrix leg, since that is the team's platform
+and the one this work was *not* developed against.
 
 ## Notable non-blocking findings
 
