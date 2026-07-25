@@ -29,6 +29,13 @@ OBJECT_REF_KINDS = frozenset(
     {
         "relationship",
         "operates-on",
+        # Containment, child side only: "this artifact is declared inside that object". The
+        # parent side is derived by inverting this in the search index — knowing an object's
+        # children requires reading every other artifact, which no single entry may assert.
+        # Emitted in addition to `operates-on`, never instead of it: that kind means the owning
+        # object for a ValidationRule/RecordType/ApexTrigger but the *summarised child* object
+        # on a rollup CustomField, so it cannot carry containment.
+        "belongs-to",
         "object-token",
         "schema",
         "reads-field",

@@ -595,6 +595,12 @@ class ForceAppKnowledge:
                 seen_references.add((kind, target))
                 references.append({"kind": kind, "target": target})
 
+        # Containment. A plain Text/Number/Checkbox field emitted no references at all (63 of 93
+        # fields in a 189-component probe corpus), so composition was not a graph question: the
+        # owning object was reachable only through a per-type facet. This is the child side; the
+        # index inverts it. Not `operates-on`, which on a rollup names the summarised CHILD object.
+        add_reference("belongs-to", object_name)
+
         # Picklist vocabulary: local values, global value-set link, dependency wiring.
         value_set = next(
             (item for item in list(root) if local_name(item.tag) == "valueSet"), None
@@ -1534,6 +1540,7 @@ class ForceAppKnowledge:
                     "object": trigger_object,
                     "events": sorted(value.strip() for value in match.group(3).split(",")),
                 }
+                references.append({"kind": "belongs-to", "target": trigger_object})
                 references.append({"kind": "operates-on", "target": trigger_object})
         else:
             match = CLASS_RE.search(source)
@@ -2535,7 +2542,10 @@ class ForceAppKnowledge:
         name = direct_text(root, "fullName") or path.name.removesuffix(
             ".recordType-meta.xml"
         )
-        references: list[dict[str, Any]] = [{"kind": "operates-on", "target": object_name}]
+        references: list[dict[str, Any]] = [
+            {"kind": "belongs-to", "target": object_name},
+            {"kind": "operates-on", "target": object_name},
+        ]
         business_process = direct_text(root, "businessProcess")
         if business_process:
             references.append(
@@ -2809,6 +2819,9 @@ class ForceAppKnowledge:
         formula = direct_text(root, "errorConditionFormula") or ""
         references: list[dict[str, Any]] = []
         if object_name:
+            # Inside the guard: a validation rule is the one owned type whose owner may
+            # legitimately be absent (object_from_path raises and is caught above).
+            references.append({"kind": "belongs-to", "target": object_name})
             references.append({"kind": "operates-on", "target": object_name})
             # Cross-object chains resolve through repo lookups; bare tokens attribute to the
             # owning object only after matched chains are removed (no more misattributing
@@ -3982,7 +3995,10 @@ class ForceAppKnowledge:
                     values.append(
                         compact({"field": field, "value": sanitize_literal(raw_value)})
                     )
-        references: list[dict[str, Any]] = [{"kind": "operates-on", "target": type_name}]
+        references: list[dict[str, Any]] = [
+            {"kind": "belongs-to", "target": type_name},
+            {"kind": "operates-on", "target": type_name},
+        ]
         references.extend(
             {"kind": "references-field", "target": f"{type_name}.{field}"}
             for field in sorted(set(fields_populated))

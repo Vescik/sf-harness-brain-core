@@ -108,6 +108,12 @@ OBJECT_REF_KINDS = frozenset(
         "operates-on",
         "object-token",
         "relationship",
+        # Containment (collector 1.7.0): target is the object this artifact is declared inside.
+        # OBJECT and not FIELD — a FIELD classification also satisfies the kind contract (which
+        # only asserts FIELD ∪ OBJECT equals the crawl set), but claim_usage() would then add the
+        # bare object API name to usesFields, so `--uses-field Assignment__c` would start
+        # matching an object. tests/test_kind_contract.py pins the choice explicitly.
+        "belongs-to",
         "queries-object",
         "dml-object",
         "grants-object-permission",
