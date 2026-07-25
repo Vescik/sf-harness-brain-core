@@ -1944,6 +1944,11 @@ def compute_membership(
         node["resolved"] = document is not None
 
     members = sorted(nodes.values(), key=lambda item: (item["hop"], item["identity"]))
+    # An artifact can reach the boundary by several paths. Qualifying on ANY of them makes it a
+    # member, so it must not also be reported as excluded — listing it in both places reads as
+    # a contradiction and makes the below-floor count meaningless.
+    member_ids = set(nodes)
+    below_floor = [item for item in below_floor if item["identity"] not in member_ids]
     digest = store.canonical_digest(sorted(item["identity"] for item in members))
     return {
         "members": members,
@@ -2075,6 +2080,145 @@ def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+DOSSIER_ROOT_NAME = "output/feature-dossiers"
+
+
+def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
+    """Render a feature dossier from its APPROVED entry rather than from a crawl.
+
+    The crawl-driven dossier answered "what did a BFS reach from these anchors", which on a
+    20-object package meant 13 objects at depth 2 and no way to say which of them anyone
+    considered part of the feature. This one renders what a human approved — the boundary rule
+    and the description — plus the membership that rule currently produces, with every member
+    carrying why it is a member and how much that reason can be trusted.
+
+    The file is a generated view. It is never Knowledge and never citable: a reader who wants a
+    citable reference is pointed at the executor receipt, not at this table."""
+
+    documents, manifest = load_index()
+    frontmatter, body, lane = load_feature(args.feature)
+    boundary = frontmatter["boundary"]
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    membership = compute_membership(
+        documents, boundary, allowed=allowed,
+        include_heuristic=bool(getattr(args, "include_heuristic", False)),
+    )
+    purpose = body.split("## Purpose", 1)[-1].strip() if "## Purpose" in body else ""
+
+    def described(identity: str) -> tuple[str, str]:
+        document = documents.get(identity)
+        if document is None:
+            return ("_no Knowledge Entry in this index generation_", "absent")
+        text = (document.get("purpose") or "").replace("\n", " ").strip()
+        if not text:
+            return ("_entry exists but has no description_", document["lane"])
+        return (text, document["lane"])
+
+    by_type: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for node in membership["members"]:
+        by_type[node.get("metadataType") or "unresolved"].append(node)
+
+    described_count = sum(
+        1 for node in membership["members"] if described(node["identity"])[1] not in ("absent",)
+        and not described(node["identity"])[0].startswith("_")
+    )
+    lines = [
+        f"# Feature — {frontmatter['subject']['name']}",
+        "",
+        f"`{store.feature_identity(args.feature)}` · boundary rule lane: **{lane['lane']}**",
+        "",
+        "**This file is a generated view, not Knowledge.** It is never citable. What a human "
+        "approved is the boundary rule and the description below; the member list is recomputed "
+        "from that rule and is advisory. To cite a member, take the receipt from "
+        "`python scripts/knowledge_store.py entry-status --identity <Identity>`.",
+        "",
+        "## What this feature is",
+        "",
+        purpose or "_no description_",
+        "",
+        "## Approved boundary rule",
+        "",
+        "A feature boundary is a decision, not a radius: each traversal hop expands both along an "
+        "object's own lookups and along every field pointing at it, so depth alone cannot express "
+        "a feature.",
+        "",
+        "| Element | Value |",
+        "|---|---|",
+        f"| Anchors | {', '.join(f'`{item}`' for item in boundary['anchors']) or '—'} |",
+        f"| Hubs (kept as targets, never expanded) | {', '.join(f'`{item}`' for item in boundary['hubs']) or '—'} |",
+        f"| Depth | {boundary['depth']} |",
+        f"| Explicitly included | {', '.join(f'`{item}`' for item in boundary['include']) or '—'} |",
+        f"| Explicitly excluded | {', '.join(f'`{item}`' for item in boundary['exclude']) or '—'} |",
+        f"| Membership assurance floor | `{boundary['membershipAssuranceFloor']}` |",
+        "",
+        "## Members",
+        "",
+        f"{len(membership['members'])} artifact(s) meet the rule at or above the assurance floor; "
+        f"{described_count} carry a description.",
+        "",
+    ]
+    for metadata_type in sorted(by_type):
+        lines += [f"### {metadata_type}", "",
+                  "| Artifact | Why it belongs | Assurance | Lane | Description |",
+                  "|---|---|---|---|---|"]
+        for node in sorted(by_type[metadata_type], key=lambda item: item["identity"]):
+            text, node_lane = described(node["identity"])
+            member = node["membership"]
+            name = node["identity"].split(":")[-1]
+            escaped = text.replace("|", "\\|")
+            lines.append(
+                f"| `{name}` | {member['reason']} (hop {member['hop']}) | {member['assurance']} "
+                f"| {node_lane} | {escaped} |"
+            )
+        lines.append("")
+
+    below = membership["belowFloor"]
+    lines += ["## Reached only by inference", ""]
+    if below["count"]:
+        lines += [
+            f"{below['count']} artifact(s) reach this boundary only through regex-derived edges, "
+            f"below the `{below['assuranceFloor']}` floor. They are listed so their absence from "
+            "the member table is visible, not silent — an artifact that merely mentions an "
+            "object's name in source is not thereby part of the feature.",
+            "",
+        ] + [f"- `{identity}`" for identity in below["identities"]] + [""]
+    else:
+        lines += ["_None: every member reaches the boundary through a declared edge._", ""]
+
+    lines += [
+        "## What this view cannot tell you",
+        "",
+        "- Membership lists artifacts that have a Knowledge Entry in this index generation, not "
+        "the feature's true composition. Run `python scripts/knowledge_store.py entry-coverage` "
+        "for the source-side denominator.",
+        f"- Only these metadata types can appear at all: "
+        f"{', '.join(f'`{item}`' for item in sorted(store.PROFILES))}. Profile, Layout, FlexiPage, "
+        "ApprovalProcess, Workflow and other unprofiled types are structurally absent.",
+        "- Nothing here reflects the deployed org, only the repository source.",
+        "",
+        f"Index generation `{manifest['generation'][7:23]}`.",
+    ]
+
+    path = store.ROOT / DOSSIER_ROOT_NAME / f"{args.feature}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    store.atomic_write(path, "\n".join(lines) + "\n")
+    return {
+        "outcome": "DOSSIER",
+        "feature": store.feature_identity(args.feature),
+        "featureLane": lane["lane"],
+        "path": str(path.relative_to(store.ROOT)),
+        "members": len(membership["members"]),
+        "described": described_count,
+        "belowFloor": below["count"],
+        "gaps": (
+            []
+            if lane["lane"] == "approved-current"
+            else [f"rendered from a boundary rule in lane '{lane['lane']}', which nobody approved"]
+        ),
+    }
+
+
 def run_capabilities(args: argparse.Namespace) -> dict[str, Any]:
     facets = dict(GLOBAL_FACETS)
     if args.metadata_type:
@@ -2176,6 +2320,14 @@ def build_parser() -> argparse.ArgumentParser:
     drift.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
     drift.add_argument("--include-heuristic", action="store_true")
     drift.set_defaults(func=run_feature_drift)
+
+    dossier = commands.add_parser(
+        "feature-dossier", help="render a feature dossier from its approved boundary rule"
+    )
+    dossier.add_argument("--feature", required=True)
+    dossier.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    dossier.add_argument("--include-heuristic", action="store_true")
+    dossier.set_defaults(func=run_feature_dossier)
 
     capabilities = commands.add_parser("capabilities", help="valid facets, operators, modes")
     capabilities.add_argument("--metadata-type", default=None)

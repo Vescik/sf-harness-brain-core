@@ -299,6 +299,7 @@ KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
     "context": frozenset({"--identity", "--state", "--top", "--include-heuristic"}),
     "tree": frozenset({"--feature", "--state", "--include-heuristic"}),
     "feature-drift": frozenset({"--feature", "--state", "--include-heuristic"}),
+    "feature-dossier": frozenset({"--feature", "--state", "--include-heuristic"}),
     "capabilities": frozenset({"--metadata-type"}),
 }
 # Boolean flags take no value, so the parser must not skip the token after them. A flag missing

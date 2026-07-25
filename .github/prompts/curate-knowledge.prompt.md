@@ -65,6 +65,10 @@ field pointing at it. Depth alone cannot express a feature.
   - `python scripts/knowledge_store.py feature-status [--slug <slug>]` — lanes. Read-only.
   - `python scripts/knowledge_search.py tree --feature <slug> [--include-heuristic]` — current
     membership with each node's reason and assurance. Advisory: never approved.
+  - `python scripts/knowledge_search.py feature-dossier --feature <slug> [--include-heuristic]` —
+    render the human-readable dossier from the APPROVED rule: what the feature is, the rule
+    itself, members with why each belongs and how much that reason can be trusted, and the
+    artifacts reached only by inference. The file is a generated view and is never citable.
   - `python scripts/knowledge_search.py feature-drift --feature <slug>` — what membership did
     since approval. `changed: "unknown"` means no baseline is available on this machine, which
     is not the same as "nothing changed".

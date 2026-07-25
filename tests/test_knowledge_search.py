@@ -1047,3 +1047,94 @@ class ProjectorVersionTests(EntryFixtureMixin, unittest.TestCase):
         with self.assertRaises(search.SearchError) as raised:
             search.load_index()
         self.assertIn("INDEX STALE", str(raised.exception))
+
+
+class FeatureDossierTests(EntryFixtureMixin, unittest.TestCase):
+    """The dossier renders what a human approved, and is never itself citable."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        seeded = self.seed()
+        objects = self.temp / "force-app/main/default/objects/HarnessAlphaCase__c"
+        (objects / "HarnessAlphaCase__c.object-meta.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "    <label>Harness Alpha Case</label>\n</CustomObject>\n",
+            encoding="utf-8",
+        )
+        self.approve(self.draft("CustomObject", "HarnessAlphaCase__c", "Cases the alpha team handles."))
+        search.build_index()
+        self.seeded = seeded
+
+    def make_feature(self, **kwargs):
+        args = argparse.Namespace(
+            slug="alpha", name="Alpha", anchor=["HarnessAlphaCase__c"], hub=None, depth=1,
+            include=None, exclude=None, assurance_floor="source-exact", replace=False,
+        )
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        store.command_feature_propose(args)
+        purpose = self.temp / "fdesc.md"
+        purpose.write_text("Handling alpha cases end to end.", encoding="utf-8")
+        store.command_feature_describe(argparse.Namespace(slug="alpha", purpose_file=str(purpose)))
+
+    def approve_feature(self):
+        review = store.command_feature_review(argparse.Namespace(slug=["alpha"]))
+        pins = [part for part in review["approveCommand"].split() if part.startswith("Feature:")]
+        store.command_feature_approve(argparse.Namespace(feature=pins))
+
+    def dossier(self, **kwargs):
+        args = argparse.Namespace(feature="alpha", state=None, include_heuristic=False)
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return search.run_feature_dossier(args)
+
+    def test_dossier_renders_the_rule_the_prose_and_the_members(self) -> None:
+        self.make_feature()
+        self.approve_feature()
+        result = self.dossier()
+        text = (store.ROOT / result["path"]).read_text(encoding="utf-8")
+        self.assertIn("Approved boundary rule", text)
+        self.assertIn("Handling alpha cases end to end.", text)
+        self.assertIn("Membership assurance floor", text)
+        self.assertIn("belongs-to", text)
+
+    def test_dossier_says_it_is_not_citable_and_names_the_receipt(self) -> None:
+        self.make_feature()
+        self.approve_feature()
+        text = (store.ROOT / self.dossier()["path"]).read_text(encoding="utf-8")
+        self.assertIn("generated view, not Knowledge", text)
+        self.assertIn("never citable", text)
+        self.assertIn("entry-status --identity", text)
+
+    def test_an_unapproved_rule_is_reported_not_hidden(self) -> None:
+        self.make_feature()
+        result = self.dossier()
+        self.assertNotEqual("approved-current", result["featureLane"])
+        self.assertTrue(any("nobody approved" in gap for gap in result["gaps"]))
+
+    def test_a_member_is_never_also_listed_as_below_the_floor(self) -> None:
+        # An artifact can reach the boundary by several paths. Qualifying on any one makes it a
+        # member; listing it in both places reads as a contradiction and makes the below-floor
+        # count meaningless.
+        self.make_feature()
+        self.approve_feature()
+        documents, _manifest = search.load_index()
+        frontmatter, _body, _lane = search.load_feature("alpha")
+        membership = search.compute_membership(
+            documents, frontmatter["boundary"],
+            allowed=documents.lane_ids(["approved-current"]), include_heuristic=False,
+        )
+        members = {node["identity"] for node in membership["members"]}
+        self.assertEqual(
+            set(), members & set(membership["belowFloor"]["identities"])
+        )
+
+    def test_explicit_include_overrides_the_assurance_floor(self) -> None:
+        # The floor keeps inference out by default; `include` is how a human puts a specific
+        # artifact in on purpose.
+        self.make_feature()
+        before = self.dossier()["members"]
+        self.make_feature(include=["Flow:c:HarnessBetaDispatch"], replace=True)
+        after = self.dossier()["members"]
+        self.assertEqual(before + 1, after)
