@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -576,6 +577,55 @@ class ContextCommandTests(EntryFixtureMixin, unittest.TestCase):
         search.build_index()
         default = self.context("CustomField:c:HarnessBetaOrder__c.Case__c")
         self.assertNotIn(drafted["identity"], {row["source"] for row in default["incoming"]})
+
+
+class EmptyResultExplanationTests(EntryFixtureMixin, unittest.TestCase):
+    """An empty answer to an exact identity must say WHICH kind of empty it is.
+
+    Lane-filtered and absent look identical to a caller — an empty results array and, until
+    this, an empty gaps array. They are opposite findings: one means "revoked, one --state
+    away", the other means "no entry exists". Silence reads as the second.
+    """
+
+    def test_lane_filtered_identity_names_its_lane(self) -> None:
+        seeded = self.seed()
+        store.command_entry_revoke(
+            argparse.Namespace(identity=seeded["alpha"]["identity"], rationale="mistake")
+        )
+        search.build_index()
+        result = self.search(identity=seeded["alpha"]["identity"])
+        self.assertEqual([], self.ids(result))
+        self.assertTrue(
+            any("revoked" in gap and "--state" in gap for gap in result["gaps"]),
+            f"silently empty: {result['gaps']}",
+        )
+
+    def test_absent_identity_is_reported_as_a_missing_entry_not_a_missing_artifact(self) -> None:
+        self.seed()
+        result = self.search(identity="Flow:c:NoSuchFlowAtAll")
+        self.assertEqual([], self.ids(result))
+        self.assertTrue(any("absence of an ENTRY" in gap for gap in result["gaps"]))
+
+    def test_a_tampered_entry_is_refused_and_the_refusal_is_explained(self) -> None:
+        # The coarse corpus fingerprint cannot see an edit that preserves size and mtime; the
+        # guarantee is that hydration re-reads and digest-checks anything about to be served.
+        seeded = self.seed()
+        path = store.ROOT / seeded["alpha"]["path"]
+        stat = path.stat()
+        original = path.read_text(encoding="utf-8")
+        # Same byte length by construction, so neither size nor mtime can betray the edit.
+        tampered = original.replace("kolejki", "kolejce")
+        self.assertNotEqual(original, tampered)
+        self.assertEqual(len(original.encode()), len(tampered.encode()))
+        path.write_text(tampered, encoding="utf-8")
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        self.assertEqual(
+            search.corpus_fingerprint(), search.corpus_fingerprint(),
+            "fingerprint is deterministic",
+        )
+        result = self.search(identity=seeded["alpha"]["identity"])
+        self.assertEqual([], result["approvedResults"], "tampered content must never be served")
+        self.assertTrue(result["gaps"], "a refusal must explain itself")
 
 
 class TruncationDisclosureTests(unittest.TestCase):

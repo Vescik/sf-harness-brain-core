@@ -1307,6 +1307,24 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         if args.relation_anchor and not args.include_heuristic:
             relaxations.append("add --include-heuristic (separate assurance lane)")
 
+    if not results and args.identity:
+        # An exact identity that matched nothing is either absent or lane-filtered, and those are
+        # very different answers. Reporting neither — an empty result with an empty gaps array —
+        # is the worst of the three: it reads as "no such thing" when the entry is sitting in the
+        # index, revoked or drifted, one --state away.
+        known = documents.get(args.identity)
+        if known is not None:
+            gaps.append(
+                f"{args.identity} exists in this index in lane '{known['lane']}', which is outside "
+                f"the requested {', '.join(states)}. It was not served. Pass --state {known['lane']} "
+                "to see it, in its own bucket — it is not approved-current knowledge."
+            )
+        else:
+            gaps.append(
+                f"No entry in this index generation projects {args.identity}. That is absence of "
+                "an ENTRY, not absence of the artifact."
+            )
+
     served, hydration_gaps = hydrate(results[: args.top])
     gaps.extend(hydration_gaps)
     # `--state draft` (or any other lane opt-in) must not tip non-current content into a key
