@@ -18,6 +18,7 @@ from pathlib import Path
 
 from scripts import knowledge_search as search
 from scripts import knowledge_store as store
+from scripts import relation_kinds
 
 ALPHA_FLOW = """<?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -528,6 +529,59 @@ class DraftLaneSearchTests(KnowledgeSearchTests):
         self.assertEqual([], [gap for gap in result["gaps"] if "rebuild the index" in gap])
 
 
+class HeuristicExclusionDisclosureTests(KnowledgeSearchTests):
+    """A narrowed answer must say it was narrowed.
+
+    Once kind-level heuristics are marked honestly, a default relation query drops most of the
+    graph — 44 of 50 edges for a hub object in the probe corpus. Reporting that only inside
+    excludedCounts made a heavily narrowed answer read exactly like a complete one.
+    """
+
+    APEX = (
+        "public with sharing class HarnessAlphaSelector {\n"
+        "    public List<HarnessAlphaCase__c> all() {\n"
+        "        return [SELECT Id FROM HarnessAlphaCase__c];\n"
+        "    }\n"
+        "}\n"
+    )
+
+    def seed_with_apex(self):
+        """The shared fixture is Flow + CustomField, which emit only structural kinds.
+
+        The ApexClass is written here rather than into the shared fixture so the golden suite
+        keeps running against the corpus it was written for."""
+
+        classes = self.temp / "force-app/main/default/classes"
+        classes.mkdir(parents=True, exist_ok=True)
+        (classes / "HarnessAlphaSelector.cls").write_text(self.APEX, encoding="utf-8")
+        seeded = self.seed()
+        apex = self.draft("ApexClass", "HarnessAlphaSelector", "Reads alpha cases for the router.")
+        self.approve(apex)
+        search.build_index()
+        return seeded
+
+    def test_excluded_heuristic_edges_are_reported_as_a_gap(self) -> None:
+        self.seed_with_apex()
+        result = self.search(relation_anchor="HarnessAlphaCase__c", relation_kind="object-token")
+        self.assertTrue(
+            result["excludedCounts"].get("heuristicEdge"),
+            "fixture no longer produces a heuristic edge; the test proves nothing",
+        )
+        self.assertTrue(
+            any("were excluded" in gap and "--include-heuristic" in gap for gap in result["gaps"]),
+            f"silently narrowed result: {result['gaps']}",
+        )
+
+    def test_no_disclosure_gap_when_the_caller_already_opted_in(self) -> None:
+        self.seed_with_apex()
+        result = self.search(
+            relation_anchor="HarnessAlphaCase__c", relation_kind="object-token",
+            include_heuristic=True,
+        )
+        self.assertEqual(["ApexClass:c:HarnessAlphaSelector"], self.ids(result))
+        self.assertEqual([], [gap for gap in result["gaps"] if "were excluded" in gap])
+
+
 class ProjectorVersionTests(KnowledgeSearchTests):
     """A change to the projector must invalidate the index the old projector produced.
 
@@ -540,6 +594,24 @@ class ProjectorVersionTests(KnowledgeSearchTests):
         original = search._CODE_FINGERPRINT
         self.addCleanup(setattr, search, "_CODE_FINGERPRINT", original)
         search._CODE_FINGERPRINT = "sha256:" + "e" * 64
+
+    def test_the_kind_vocabulary_is_part_of_the_fingerprint(self) -> None:
+        """Moving a kind into HEURISTIC_REF_KINDS changes what entries assert.
+
+        If the vocabulary module is outside code_fingerprint's tuple, that edit changes no
+        fingerprinted byte, every projection is reused as fresh, and the index keeps serving the
+        `source-exact` marker the edit was made to correct."""
+
+        search._CODE_FINGERPRINT = None
+        self.addCleanup(setattr, search, "_CODE_FINGERPRINT", None)
+        before = search.code_fingerprint()
+        source = Path(relation_kinds.__file__)
+        original = source.read_bytes()
+        self.addCleanup(lambda: source.write_bytes(original))
+        with source.open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n# fingerprint probe\n")
+        search._CODE_FINGERPRINT = None
+        self.assertNotEqual(before, search.code_fingerprint())
 
     def test_moved_projector_discards_the_previous_generation(self) -> None:
         self.seed()

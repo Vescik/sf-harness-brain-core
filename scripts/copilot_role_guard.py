@@ -252,7 +252,7 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-revoke": frozenset({"--identity", "--rationale"}),
     "entry-status": frozenset({"--identity"}),
     "entry-coverage": frozenset(),
-    "entry-check": frozenset(),
+    "entry-check": frozenset({"--changed-since"}),
 }
 
 
@@ -282,7 +282,15 @@ KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
     "impact": frozenset({"--identity", "--depth", "--include-heuristic"}),
     "capabilities": frozenset({"--metadata-type"}),
 }
-KNOWLEDGE_SEARCH_VALUELESS_FLAGS = frozenset({"--check", "--include-heuristic"})
+# Boolean flags take no value, so the parser must not skip the token after them. A flag missing
+# from these sets is a fail-open, not a cosmetic slip: the guard skips the next token unvalidated,
+# so `build --full --rm` was allowed outright. tests/test_guard_parser_contract.py derives these
+# from argparse (`nargs == 0`) so a future store_true cannot be forgotten.
+KNOWLEDGE_SEARCH_VALUELESS_FLAGS = frozenset({"--check", "--full", "--include-heuristic"})
+# Empty because no knowledge_store subcommand declares a boolean yet. The constant and its
+# branch in knowledge_store_command_allowed exist so the first one cannot fail open the way
+# `--full` did on the search side; the arity-derived contract test is what will require it here.
+KNOWLEDGE_STORE_VALUELESS_FLAGS: frozenset[str] = frozenset()
 
 
 def knowledge_search_command_allowed(parts: list[str], role: str) -> bool:
@@ -322,6 +330,9 @@ def knowledge_store_command_allowed(parts: list[str], role: str) -> bool:
             return False
         if "=" in token:
             flag = token.split("=", 1)[0]
+            index += 1
+        elif token in KNOWLEDGE_STORE_VALUELESS_FLAGS:
+            flag = token
             index += 1
         else:
             flag = token

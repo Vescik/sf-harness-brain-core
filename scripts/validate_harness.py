@@ -23,6 +23,10 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_COUNTS = {"agents": 6, "prompts": 24, "skills": 25, "instructions": 3}
+# Budget for each grounding subprocess below. entry-check re-digests every source fragment at
+# roughly 3.5 ms per entry, so a corpus in the low tens of thousands is the constraint here, not
+# the code. Raise this deliberately from a measurement — never to silence a timeout.
+GROUNDING_TIMEOUT_SECONDS = 120
 # Reserved, deliberately synthetic identifiers owned by this harness's test fixtures.
 # They may appear only under tests/ and evals/fixtures; runtime authority surfaces
 # (.github, .ai, config, schemas, scripts) must never depend on or mention them.
@@ -869,7 +873,21 @@ def check_grounding_contracts(audit: Audit) -> None:
         [sys.executable, "scripts/knowledge_registry.py", "render-indexes", "--check"],
         [sys.executable, "scripts/knowledge_store.py", "entry-check"],
     ):
-        completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=30, check=False)
+        try:
+            completed = subprocess.run(
+                command, cwd=ROOT, text=True, capture_output=True, timeout=GROUNDING_TIMEOUT_SECONDS, check=False
+            )
+        except subprocess.TimeoutExpired:
+            # An uncaught TimeoutExpired here surfaces as a bare traceback in two gates at once
+            # (harness-ci.yml runs the same commands), attributable to nothing. entry-check costs
+            # ~3.5 ms per entry, so this becomes reachable as the corpus grows rather than when
+            # the code changes — the failure has to name itself.
+            audit.require(
+                False,
+                f"grounding command timed out after {GROUNDING_TIMEOUT_SECONDS}s: {' '.join(command[1:])} "
+                "— narrow it with `entry-check --changed-since <ref>` or raise the budget deliberately",
+            )
+            continue
         audit.require(completed.returncode == 0, f"grounding command failed: {' '.join(command[1:])}: {completed.stderr.strip() or completed.stdout.strip()}")
 
     runtime_roots = (ROOT / ".github", ROOT / ".ai", ROOT / "config", ROOT / "schemas", ROOT / "scripts")

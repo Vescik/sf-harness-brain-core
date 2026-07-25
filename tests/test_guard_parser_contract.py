@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import unittest
+import unittest.mock
 
 from scripts import copilot_role_guard as guard
 from scripts import force_app_knowledge
@@ -137,6 +138,59 @@ class GuardParserContractTests(unittest.TestCase):
             guard.KNOWLEDGE_STORE_MUTATION_COMMANDS,
             set(guard.KNOWLEDGE_STORE_COMMAND_FLAGS),
         )
+
+    def valueless_flags(self, parser: argparse.ArgumentParser) -> set[str]:
+        """Every `store_true`-style flag any subcommand of this parser declares."""
+        found: set[str] = set()
+        for subparser in subcommand_parsers(parser).values():
+            for action in subparser._actions:
+                if action.option_strings and action.nargs == 0:
+                    found.update(
+                        option for option in action.option_strings if option.startswith("--")
+                    )
+        return found - {"--help"}
+
+    def test_valueless_flag_sets_cover_every_boolean_the_parsers_declare(self) -> None:
+        # A boolean missing from these sets is a fail-open: the guard skips the token after it
+        # without validating, so `build --full --rm` was allowed outright. Deriving the
+        # expectation from argparse means a future store_true cannot be forgotten by hand.
+        for label, parser, declared in (
+            ("knowledge_search", knowledge_search.build_parser(), guard.KNOWLEDGE_SEARCH_VALUELESS_FLAGS),
+            ("knowledge_store", knowledge_store.build_parser(), guard.KNOWLEDGE_STORE_VALUELESS_FLAGS),
+        ):
+            with self.subTest(cli=label):
+                self.assertLessEqual(
+                    self.valueless_flags(parser),
+                    set(declared),
+                    f"{label}: boolean flags missing from the valueless set fail open",
+                )
+
+    def test_a_token_after_a_boolean_flag_is_still_validated(self) -> None:
+        # The membership test above cannot catch a missing branch in the guard's own loop: the
+        # flag would legitimately sit in the set while the loop skipped past the token after it.
+        # This is the behavioural pin. `build --full --rm` was allowed outright before the fix.
+        role = sorted(guard.KNOWLEDGE_MUTATION_ROLES)[0]
+        self.assertFalse(guard.knowledge_search_command_allowed(["build", "--full", "--rm"], role))
+        self.assertTrue(guard.knowledge_search_command_allowed(["build", "--full"], role))
+        # A flag that genuinely takes a value still consumes it.
+        self.assertTrue(
+            guard.knowledge_store_command_allowed(["entry-check", "--changed-since", "HEAD"], role)
+        )
+
+    def test_the_store_guard_has_the_branch_its_first_boolean_will_need(self) -> None:
+        # knowledge_store declares no boolean yet, so this exercises the loop against a
+        # simulated one. Without the branch the guard consumes `--rm` as `--flag`'s value and
+        # returns True — the exact fail-open the search guard shipped with.
+        role = sorted(guard.KNOWLEDGE_MUTATION_ROLES)[0]
+        with unittest.mock.patch.dict(
+            guard.KNOWLEDGE_STORE_COMMAND_FLAGS, {"entry-status": frozenset({"--flag"})}
+        ), unittest.mock.patch.object(
+            guard, "KNOWLEDGE_STORE_VALUELESS_FLAGS", frozenset({"--flag"})
+        ):
+            self.assertTrue(guard.knowledge_store_command_allowed(["entry-status", "--flag"], role))
+            self.assertFalse(
+                guard.knowledge_store_command_allowed(["entry-status", "--flag", "--rm"], role)
+            )
 
     def test_query_flag_constants_stay_consistent(self) -> None:
         self.assertLessEqual(guard.KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS, guard.KNOWLEDGE_QUERY_FLAGS)

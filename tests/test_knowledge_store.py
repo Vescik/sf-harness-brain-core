@@ -7,7 +7,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 from scripts import knowledge_store as store
+from scripts import relation_kinds
 
 FLOW_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -700,6 +703,113 @@ class AdapterFaithfulnessTests(unittest.TestCase):
         self.assertIn("between 0 and 100", carried["errorCatalog"][0]["errorMessage"])
         # A validation rule's message is not a Flow Custom Error and never enters that index.
         self.assertEqual([], errors)
+
+
+class EdgeAssuranceTests(unittest.TestCase):
+    """A kind-level heuristic must never be stored as source-exact.
+
+    The collector sets its per-edge `heuristic` flag only for kinds that are heuristic
+    *sometimes* (`queries-object` is structural from Flow XML, regex-derived from Apex). Reading
+    only that flag meant kinds that are heuristic *always* — object-token, invokes-class,
+    var-field-ref, soql-field — were stored source-exact: 414 of 595 edges in a 189-component
+    probe corpus. The marker is inside factsDigest, so a human approved the false claim, and
+    SAFE-CLAIM-001 v2 would then ground a work record on a regex match against a comment.
+    """
+
+    def test_kind_level_heuristics_are_never_stored_as_source_exact(self) -> None:
+        component = {
+            "metadataType": "ApexClass",
+            "facts": {},
+            "references": [
+                {"kind": kind, "target": "Whatever__c"}
+                for kind in sorted(relation_kinds.HEURISTIC_REF_KINDS)
+            ],
+        }
+        carried, _errors, assurance = store.ADAPTERS["ApexClass"](component)
+        for edge in carried["references"]:
+            with self.subTest(kind=edge["kind"]):
+                self.assertEqual(relation_kinds.SOURCE_DERIVED_HEURISTIC, edge["assurance"])
+        self.assertEqual(relation_kinds.SOURCE_DERIVED_HEURISTIC, assurance["typeFacts"])
+
+    def test_structural_kinds_stay_exact_unless_the_collector_flags_the_edge(self) -> None:
+        component = {
+            "metadataType": "ApexClass",
+            "facts": {},
+            "references": [
+                {"kind": "operates-on", "target": "A__c"},
+                # queries-object is structural from Flow XML and heuristic from an Apex regex,
+                # so the per-edge flag carries what the kind alone cannot.
+                {"kind": "queries-object", "target": "B__c"},
+                {"kind": "queries-object", "target": "C__c", "heuristic": True},
+            ],
+        }
+        carried, _errors, _assurance = store.ADAPTERS["ApexClass"](component)
+        by_target = {edge["target"]: edge["assurance"] for edge in carried["references"]}
+        self.assertEqual(relation_kinds.SOURCE_EXACT, by_target["A__c"])
+        self.assertEqual(relation_kinds.SOURCE_EXACT, by_target["B__c"])
+        self.assertEqual(relation_kinds.SOURCE_DERIVED_HEURISTIC, by_target["C__c"])
+
+    def test_flow_edges_use_the_same_rule_as_every_other_type(self) -> None:
+        # The Flow adapter is bespoke and derived assurance independently, which is exactly how
+        # two implementations of one rule drift apart.
+        carried, _errors, assurance = store.flow_type_facts(
+            {"facts": {"processType": "AutoLaunchedFlow", "status": "Active"},
+             "references": [{"kind": "launches-flow", "target": "Other"}]}
+        )
+        self.assertEqual(
+            relation_kinds.SOURCE_DERIVED_HEURISTIC, carried["references"][0]["assurance"]
+        )
+        self.assertEqual(relation_kinds.SOURCE_DERIVED_HEURISTIC, assurance["typeFacts"])
+
+    def test_every_declared_kind_resolves_to_a_declared_assurance(self) -> None:
+        for kind in sorted(relation_kinds.ALL_REF_KINDS):
+            with self.subTest(kind=kind):
+                self.assertIn(
+                    relation_kinds.edge_assurance(kind),
+                    (relation_kinds.SOURCE_EXACT, relation_kinds.SOURCE_DERIVED_HEURISTIC),
+                )
+
+
+class ProfileSchemaCoverageTests(unittest.TestCase):
+    """Every fact an adapter carries must be declared by its profile schema.
+
+    typeFacts is additionalProperties:false, so an undeclared fact does not degrade — it fails
+    the draft outright. Six such facts shipped undetected (summaryFilterFields,
+    lookupFilterPresent, lookupFilterFields, externalSharingModel, compactLayoutAssignment,
+    picklistScopes) because AdapterFaithfulnessTests proves pass-through but never validates the
+    result against the schema that has to accept it.
+    """
+
+    SAMPLES = {
+        "CustomField": {
+            "object": "A__c", "type": "Summary", "summaryOperation": "sum",
+            "summaryForeignKey": "B__c.A__c", "summarizedField": "B__c.Hours__c",
+            "summaryFilterFields": ["B__c.Active__c"], "lookupFilterPresent": True,
+            "lookupFilterFields": ["B__c.Status__c"],
+        },
+        "CustomObject": {
+            "objectKind": "custom", "sharingModel": "ReadWrite",
+            "externalSharingModel": "Private", "compactLayoutAssignment": "SYSTEM",
+        },
+        "RecordType": {
+            "object": "A__c", "active": True,
+            "picklistScopes": [{"picklist": "Status__c", "valueCount": 3, "defaults": ["New"]}],
+        },
+    }
+
+    def test_adapter_output_validates_against_the_profile_schema(self) -> None:
+        for metadata_type, facts in self.SAMPLES.items():
+            with self.subTest(metadataType=metadata_type):
+                carried, errors, _assurance = store.ADAPTERS[metadata_type](
+                    {"metadataType": metadata_type, "facts": facts, "references": []}
+                )
+                schema = store.load_schema(store.PROFILES[metadata_type]["schema"])
+                payload = {"typeFacts": carried, "intentionalErrors": errors}
+                problems = sorted(
+                    error.message
+                    for error in Draft202012Validator(schema).iter_errors(payload)
+                )
+                self.assertEqual([], problems, f"{metadata_type}: {problems}")
 
 
 class AgentDescriptionTests(KnowledgeStoreTests):

@@ -36,9 +36,11 @@ sys.path.insert(0, str(ROOT))
 
 try:
     from scripts import knowledge_store as store
+    from scripts import relation_kinds
     from scripts.text_analysis import ANALYZER_VERSION, analyze, fold_diacritics
 except ModuleNotFoundError:  # invoked as `python scripts/knowledge_search.py`
     import knowledge_store as store  # type: ignore
+    import relation_kinds  # type: ignore
     from text_analysis import ANALYZER_VERSION, analyze, fold_diacritics  # type: ignore
 
 INDEX_SCHEMA_VERSION = 1
@@ -428,12 +430,17 @@ def code_fingerprint() -> str:
     Observed: draft entries kept the null citation digest written before the fix, so hydration
     dropped every relation hit as "entry changed since the index was built" while the entries
     were in fact untouched. A stat stamp cannot see a code change, so the code is part of the
-    key: edit the projector and the previous generation is discarded automatically."""
+    key: edit the projector and the previous generation is discarded automatically.
+
+    relation_kinds is in the tuple even though nothing here derives assurance from it: the
+    vocabulary decides what an entry ASSERTS, so moving a kind into HEURISTIC_REF_KINDS changes
+    stored edges. Without it in the key, that edit would change no fingerprinted byte and every
+    cached projection would be reused as fresh — serving the old `source-exact` marker."""
 
     global _CODE_FINGERPRINT
     if _CODE_FINGERPRINT is None:
         parts = []
-        for module in (sys.modules[__name__], store, sys.modules[analyze.__module__]):
+        for module in (sys.modules[__name__], store, relation_kinds, sys.modules[analyze.__module__]):
             path = Path(getattr(module, "__file__", "") or "")
             digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "absent"
             parts.append((path.name, digest))
@@ -1172,6 +1179,16 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
     # named `approvedResults`: a consumer reading that key is entitled to treat every hit in
     # it as effective approved knowledge. Opted-in lanes are served in their own bucket, each
     # hit still carrying its `lifecycle`.
+    if excluded.get("heuristicEdge") and not args.include_heuristic:
+        # Reporting the count only in excludedCounts was survivable while almost nothing was
+        # excluded. Once kind-level heuristics are marked honestly, a default relation query
+        # drops most of the graph — 44 of 50 edges for a hub object in the probe corpus — and a
+        # silently narrowed answer reads exactly like a complete one.
+        gaps.append(
+            f"{excluded['heuristicEdge']} heuristic edge(s) were excluded; they are inferred "
+            "(regex-derived), not declared. Add --include-heuristic to see them, in their own "
+            "assurance lane."
+        )
     current = [hit for hit in served if hit["lifecycle"] == "approved-current"]
     non_current = [hit for hit in served if hit["lifecycle"] != "approved-current"]
     if non_current:

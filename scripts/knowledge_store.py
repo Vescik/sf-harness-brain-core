@@ -35,8 +35,10 @@ sys.path.insert(0, str(ROOT))
 
 try:
     from scripts.knowledge_registry import canonical_digest
+    from scripts.relation_kinds import edge_assurance
 except ModuleNotFoundError:  # invoked as `python scripts/knowledge_store.py`
     from knowledge_registry import canonical_digest  # type: ignore
+    from relation_kinds import edge_assurance  # type: ignore
 
 ARTIFACTS_ROOT = ROOT / ".ai/knowledge/artifacts"
 LEDGER_PATH = ROOT / ".ai/knowledge/artifacts-ledger.jsonl"
@@ -359,7 +361,14 @@ def approved_taxonomy_terms() -> set[str]:
     return terms
 
 
-def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def compute_lane(path: Path, latest: dict[str, dict[str, Any]], deep: bool = True) -> dict[str, Any]:
+    """Effectiveness lane for one entry.
+
+    `deep=False` skips only the source-fragment re-digest, which is the expensive part and the
+    one an external authority (git) can vouch for. Everything cheap — schema validation, path
+    round-trip, ledger provenance, digest pinning — always runs, and the returned lane says
+    which mode produced it so a caller can never mistake a narrow check for a full one."""
+
     text = path.read_text(encoding="utf-8")
     frontmatter, body = split_entry(text)
     subject = frontmatter["subject"]
@@ -411,8 +420,14 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any
         result["problems"].append("in-file approval provenance mismatches the ledger record")
     else:
         current_facts = facts_digest(frontmatter)
-        regenerated = regenerate_fragment_digest(frontmatter)
-        result["lane"] = "approved-current" if regenerated else "approved-drifted"
+        if deep:
+            regenerated = regenerate_fragment_digest(frontmatter)
+            result["lane"] = "approved-current" if regenerated else "approved-drifted"
+        else:
+            # Source drift was not re-checked, so the lane is asserted, not proven. Say so in the
+            # result rather than reporting approved-current on an unverified fragment set.
+            result["lane"] = "approved-current"
+            result["fragmentCheck"] = "skipped"
         result["factsDigest"] = current_facts
     result["sourceTreeDigest"] = frontmatter["scope"]["sourceTreeDigest"]
     result["profile"] = f"{frontmatter['profile']['id']}@{frontmatter['profile']['version'].split('.', 1)[0]}"
@@ -476,7 +491,7 @@ def flow_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dic
         {
             "kind": ref["kind"],
             "target": ref["target"],
-            "assurance": "source-derived-heuristic" if ref.get("heuristic") else "source-exact",
+            "assurance": edge_assurance(ref["kind"], bool(ref.get("heuristic"))),
         }
         for ref in component.get("references", [])
     ]
@@ -604,12 +619,20 @@ def custom_field_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], 
 
 
 def _edges(component: dict[str, Any]) -> list[dict[str, Any]]:
-    """Collector references as profile edges, with per-edge assurance preserved."""
+    """Collector references as profile edges, with assurance derived from the kind vocabulary.
+
+    Reading only the collector's per-edge `heuristic` flag was a laundering bug: the flag is set
+    for kinds that are heuristic only *sometimes* (`queries-object` is structural from Flow XML
+    and regex-derived from Apex), never for kinds that are heuristic *always* (`object-token`,
+    `invokes-class`, `var-field-ref`, `soql-field`). Measured on a 189-component probe corpus,
+    414 of 595 edges therefore claimed `source-exact` for a regex match — inside factsDigest,
+    so a human approved the claim, and SAFE-CLAIM-001 v2 would ground a work record on it."""
+
     return [
         {
             "kind": reference["kind"],
             "target": reference["target"],
-            "assurance": "source-derived-heuristic" if reference.get("heuristic") else "source-exact",
+            "assurance": edge_assurance(reference["kind"], bool(reference.get("heuristic"))),
         }
         for reference in component.get("references", [])
     ]
@@ -1199,14 +1222,52 @@ def command_entry_status(args: argparse.Namespace) -> dict[str, Any]:
     return {"outcome": "STATUS", "entries": lanes}
 
 
-def command_entry_check(_args: argparse.Namespace) -> dict[str, Any]:
+def changed_entry_paths(ref: str) -> set[str] | None:
+    """Entry files git reports as changed since `ref`, or None if git cannot answer.
+
+    Git is the authority on what changed, which is what makes the narrow check safe. A stamp
+    manifest cannot do this job: one under `.cache/` is git-ignored so CI is always cold, one
+    keyed on mtime is inert because `git checkout` rewrites mtimes, and a committed one is
+    forgeable — an agent could mark a tampered entry unchanged and skip it past the gate."""
+
+    import subprocess
+
+    relative = ARTIFACTS_ROOT.relative_to(ROOT).as_posix()
+    try:
+        completed = subprocess.run(
+            ["git", "diff", "--name-only", ref, "--", relative],
+            cwd=ROOT, text=True, capture_output=True, check=False, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    return {line.strip() for line in completed.stdout.splitlines() if line.strip()}
+
+
+def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
+    """Whole-corpus integrity gate. `--changed-since` narrows only the per-entry work.
+
+    `compute_lane` re-digests every source fragment, so a full check is ~3.5 ms per entry and
+    crosses the CI subprocess timeout somewhere near 8.7k entries. `--changed-since <ref>` skips
+    that work for entries git reports as untouched. The cross-entry checks — identity collision
+    and case-fold collision — always run over the whole corpus: they only parse identities, and
+    narrowing them would silently stop detecting the collisions they exist to catch. An
+    unanswerable ref degrades to a full check, never to a pass."""
+
     assert_no_reparse_points()
     latest = ledger_latest(read_ledger())
+    ref = getattr(args, "changed_since", None)
+    changed = changed_entry_paths(ref) if ref else None
     problems: list[str] = []
     seen_identities: dict[str, str] = {}
     seen_casefold: dict[str, str] = {}
+    skipped = 0
     for path in all_entry_paths():
-        lane = compute_lane(path, latest)
+        relative = path.relative_to(ROOT).as_posix()
+        narrow = changed is not None and relative not in changed
+        lane = compute_lane(path, latest, deep=not narrow)
+        skipped += 1 if narrow else 0
         problems.extend(f"{lane['path']}: {problem}" for problem in lane["problems"])
         identity = lane["identity"]
         if identity in seen_identities:
@@ -1218,7 +1279,17 @@ def command_entry_check(_args: argparse.Namespace) -> dict[str, Any]:
         seen_casefold[folded] = lane["path"]
     if problems:
         raise StoreError("entry-check failed:\n- " + "\n- ".join(problems))
-    return {"outcome": "PASS", "entries": len(seen_identities), "ledgerRecords": len(read_ledger())}
+    result: dict[str, Any] = {
+        "outcome": "PASS",
+        "entries": len(seen_identities),
+        "ledgerRecords": len(read_ledger()),
+    }
+    if ref:
+        result["changedSince"] = ref
+        result["fragmentChecksSkipped"] = skipped
+        if changed is None:
+            result["gap"] = f"git could not report changes since {ref}; every entry was checked in full"
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1273,6 +1344,12 @@ def build_parser() -> argparse.ArgumentParser:
     coverage.set_defaults(func=command_entry_coverage)
 
     check = commands.add_parser("entry-check", help="CI validation of all entries and the ledger")
+    check.add_argument(
+        "--changed-since",
+        default=None,
+        help="git ref: re-digest source fragments only for entries changed since it "
+        "(collision checks always cover the whole corpus)",
+    )
     check.set_defaults(func=command_entry_check)
     return parser
 

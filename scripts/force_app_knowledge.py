@@ -25,6 +25,24 @@ try:
 except ModuleNotFoundError:  # imported as scripts.force_app_knowledge by unit tests
     from scripts.schema_format import FORMAT_CHECKER
 
+# The reference-kind vocabulary lives in a leaf module so knowledge_store and knowledge_search can
+# read it without importing this 6.5k-line collector — see scripts/relation_kinds.py. Re-exported
+# here because every existing caller and tests/test_kind_contract.py read them off this module.
+try:
+    from relation_kinds import (  # noqa: F401
+        ALL_REF_KINDS,
+        HEURISTIC_REF_KINDS,
+        OBJECT_REF_KINDS,
+        edge_assurance,
+    )
+except ModuleNotFoundError:  # imported as scripts.force_app_knowledge by unit tests
+    from scripts.relation_kinds import (  # noqa: F401
+        ALL_REF_KINDS,
+        HEURISTIC_REF_KINDS,
+        OBJECT_REF_KINDS,
+        edge_assurance,
+    )
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT / "force-app"
@@ -195,94 +213,6 @@ APEX_SYSTEM_TYPES = frozenset(
     }
 )
 
-# Reference kinds whose target names an object (its head token before any `.field`). Used by the
-# feature crawl to associate an automation/UI component with the objects it touches. subflow,
-# action, apex-method, apex-controller, invokes-apex, invokes-class, and related-list targets name
-# automations/methods/related lists, not objects.
-OBJECT_REF_KINDS = frozenset(
-    {
-        "relationship",
-        "operates-on",
-        "object-token",
-        "schema",
-        "reads-field",
-        "writes-field",
-        "references-field",
-        "places-field",
-        "grants-field-permission",
-        "queries-object",
-        "dml-object",
-        "grants-object-permission",
-        "soql-field",
-        "var-field-ref",
-        "filters-field",
-        "picklist-dependency",
-        "grants-field-read",
-        "grants-field-edit",
-        "grants-object-view-all",
-        "grants-object-modify-all",
-        "serves-object",
-    }
-)
-# Reference kinds derived via regex source-token heuristics rather than structural XML/JS parsing
-# (Apex object tokens and invoked-class names). Best-effort: dynamic references and unresolved
-# variable types may be missing or approximate. Drives component-relation claims' heuristic flag
-# and assurance level. Kinds emitted both structurally and heuristically (queries-object from Flow
-# XML vs Apex SOQL regex) are not listed here — those references carry a per-edge heuristic flag.
-HEURISTIC_REF_KINDS = frozenset(
-    {
-        "object-token",
-        "invokes-class",
-        "soql-field",
-        "var-field-ref",
-        "callout-endpoint",
-        # FlexiPage flow wiring is detected by property-name pattern (flowName/flowApiName).
-        "launches-flow",
-    }
-)
-# Canonical vocabulary of every reference kind this extractor can emit. knowledge_registry.py
-# classifies the same kinds into FIELD/OBJECT/INVOKE/EXTERNAL sets for usage derivation; the two
-# vocabularies must not drift — tests/test_kind_contract.py pins the invariants between them.
-ALL_REF_KINDS = OBJECT_REF_KINDS | frozenset(
-    {
-        "subflow",
-        "action",
-        "apex-method",
-        "apex-controller",
-        "invokes-apex",
-        "invokes-class",
-        "related-list",
-        "uses-value-set",
-        "sends-alert",
-        "uses-template",
-        "uses-named-credential",
-        "callout-endpoint",
-        "uses-workflow-action",
-        "uses-business-process",
-        "uses-matching-rule",
-        "uses-label",
-        "embeds-component",
-        "displays-component",
-        "launches-flow",
-        "overrides-view",
-        "grants-class-access",
-        "grants-custom-permission",
-        "grants-record-type",
-        "grants-flow-access",
-        "grants-user-permission",
-        "assigns-layout",
-        "shares-with",
-        "assigns-to",
-        "uses-external-credential",
-        "references-auth-provider",
-        "grants-to-profile",
-        "grants-to-permission-set",
-        "references-custom-permission",
-        "includes-permission-set",
-        "mutes-permission-set",
-        "reports-to",
-    }
-)
 AUTOMATION_TYPES = frozenset(
     {
         "Flow",

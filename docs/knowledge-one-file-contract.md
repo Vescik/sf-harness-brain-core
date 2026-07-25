@@ -202,13 +202,30 @@ fragment-scope digest (§2.1) is computable before any commit exists.
 | Body prose edited | `semanticsDigest` changes → state forced to `draft` |
 | Source fragment changed → facts regenerate differently | `approved-drifted`; re-approval shows executor-rendered diff |
 | Collector bump, identical canonical assertions (incl. reordered arrays) | nothing — stays `approved-current` |
-| Collector bump, changed assertion OR coverage/assurance regression | `approved-drifted` (only affected entries) |
+| Collector bump, changed assertion OR coverage/assurance regression | `approved-drifted` (only affected entries) — **NOT IMPLEMENTED, see below** |
 | Profile MAJOR bump | `approved-drifted` until re-approval; MINOR/PATCH stays current |
 | `sensitivity` flip | `reviewedContentDigest` changes → re-approval required |
 | `notes`/`candidateKeywords` edits | stays current (advisory) |
 | `keywords` edit | stays current, but only executor-mediated + ledger-logged |
 | Frontmatter `state`/approval block hand-edited | recomputation or ledger mismatch → not effective |
 | Old approved bytes restored (git revert/restore) | ledger-latest check fails → `revoked`/not current (§6.1; review R1-1) |
+
+**Unimplemented row — collector/assurance drift (recorded 2026-07-25).** `compute_lane` decides
+`approved-current` vs `approved-drifted` solely from `regenerate_fragment_digest`, which compares
+**source-file bytes**. Nothing re-runs the collector, nothing diffs assurance, and no entry records
+a collector version. So a change that alters what the collector *derives* from unchanged bytes —
+notably an assurance regression — moves no lane and is never surfaced.
+
+Two consequences worth stating plainly, because reading this matrix would otherwise suggest the
+opposite:
+
+- Ordering is the **only** control over a vocabulary or assurance change, not belt-and-braces. Such
+  a change must land before the affected entries are approved; afterwards it is invisible.
+- The rule that derives an edge's assurance from its kind therefore has exactly one implementation
+  (`relation_kinds.edge_assurance`, called only from the store's adapters). A second derivation at
+  projection time could disagree with an approved entry forever, with nothing to detect it.
+
+Making collector-version and assurance drift detectable is open work, not a shipped guarantee.
 
 ### 5.6. Canonical parse specification (review R1-4)
 
