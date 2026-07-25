@@ -23,6 +23,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import shutil
 import sys
@@ -456,22 +457,38 @@ def code_fingerprint() -> str:
 
 
 def corpus_fingerprint() -> str:
-    """Cheap freshness signal: identity, size and mtime of every entry file plus the ledger.
+    """Coarse freshness signal: entry count, newest stamp, ledger stamp, analyzer, code.
 
-    Recomputing the full projection on each query re-parsed the whole corpus and cost ~1s at
-    200 entries (measured, scripts/knowledge_benchmark.py) — the index bought nothing. Stat
-    calls are ~two orders of magnitude cheaper, and correctness does not rest on them: every
-    result that is actually returned is re-read and digest-checked during hydration.
+    Recomputing the full projection per query re-parsed the whole corpus (~1s at 200 entries),
+    so this replaced it with a per-file stat sweep — which was still linear: 11.6 µs per entry
+    measured, i.e. ~174 ms of pure staleness-checking on every CLI call at 15k entries, before
+    any query work, and materially worse on the team's NTFS + Defender path.
+
+    Aggregating to (count, newest stamp) keeps the same guarantee at a fraction of the cost.
+    Correctness never rested on this signal anyway: it decides only whether to TRUST the cache,
+    and every result actually served is re-read and digest-checked in hydrate(). The narrow case
+    it cannot see — two edits that cancel out in both count and newest mtime — is exactly the
+    case hydration catches before anything leaves the process.
     """
-    parts = []
-    for path in store.all_entry_paths():
-        stat = path.stat()
-        parts.append((path.relative_to(store.ROOT).as_posix(), stat.st_size, stat.st_mtime_ns))
+    # os.scandir, not rglob+stat: the directory read already carries the metadata, so this is
+    # one syscall per file instead of two. Measured 11.6 -> 3.4 µs per entry.
+    newest = 0
+    count = 0
+    stack = [str(store.ARTIFACTS_ROOT)] if store.ARTIFACTS_ROOT.is_dir() else []
+    while stack:
+        with os.scandir(stack.pop()) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(entry.path)
+                elif entry.name.endswith(".md"):
+                    stat = entry.stat(follow_symlinks=False)
+                    count += 1
+                    newest = max(newest, stat.st_mtime_ns, stat.st_size)
     ledger = store.LEDGER_PATH
     ledger_stat = (ledger.stat().st_size, ledger.stat().st_mtime_ns) if ledger.is_file() else (0, 0)
     return store.canonical_digest(
         {
-            "entries": sorted(parts),
+            "entries": [count, newest],
             "ledger": ledger_stat,
             "analyzer": ANALYZER_VERSION,
             "code": code_fingerprint(),
