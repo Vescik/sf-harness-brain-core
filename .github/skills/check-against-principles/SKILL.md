@@ -22,10 +22,15 @@ identity when applicable, and accepted design/approval hashes. Reject unspecifie
 1. Validate work state, handoff target/revision, approval binding, and affected-artifact list.
 2. Load the governed rule registry and check Tier 1 package constraints, Tier 2 organization policy,
    and Tier 3 Salesforce practice in order. Apply precedence only to competing prescriptions.
-3. Discover, then require. First query Knowledge for each affected artifact
-   (`python scripts/knowledge_registry.py query --subject-identity <ApiName>`, and `--uses-object` /
-   `--uses-field` for dependents) to establish the baseline of verified facts the design must address —
-   do not rely only on what the author happened to cite. Then, for every material factual premise,
+3. Discover, then require. First establish the baseline of facts the design must address — do not
+   rely only on what the author happened to cite. Query both layers:
+   - `python scripts/knowledge_search.py context --identity <Identity>` for each affected
+     artifact (source-declared facts, parts, dependents, permission grants, in one call);
+   - `python scripts/knowledge_registry.py query --subject-identity <ApiName>` for org/business
+     facts, **and `--uses-object` / `--uses-field` for dependents of unprofiled types** —
+     Workflow, ApprovalProcess, Layout, FieldSet and the rest have no entry, so dropping this
+     query would make them invisible to the check while the result still looked clean.
+   An empty result from either layer is a recorded gap, never proof that nothing depends on it. Then, for every material factual premise,
    require a `verified`, fresh, scope-matched, uncontested claim backed by the claim-type evidence
    policy. Proposals and model inference are not trusted facts. When a cited handoff carries claim
    references, `python scripts/knowledge_registry.py verify-citations --envelope <path>` reports any

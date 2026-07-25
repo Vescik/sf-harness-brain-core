@@ -28,11 +28,17 @@ For BRD attachments:
    behavior from title alone.
 3. Build a two-way requirement↔Story matrix with `covered | partial | absent | ambiguous` and a
    rationale. Identify gaps and orphan Stories; an enabler is a review item, not an automatic error.
-4. Check Tier 1 constraints and Known Limitations for affected package surfaces. Query the registry
-   for each affected object rather than only reading the static view: `python
-   scripts/knowledge_registry.py query --subject-identity <ApiName> --claim-type package-limitation`
-   and `--uses-object <Object>` for dependent automations. Treat only effective claims as facts;
-   record an explicit gap when Knowledge is empty.
+4. Check Tier 1 constraints and Known Limitations for affected package surfaces. Query both
+   layers for each affected object rather than only reading the static view:
+   - `python scripts/knowledge_search.py context --identity <Identity>` — parts, dependents and
+     permission grants for the ten entry-homed types, with their coverage denominator;
+   - `python scripts/knowledge_registry.py query --subject-identity <ApiName> --claim-type
+     package-limitation` for vendor/package facts, **and `--uses-object <Object>`** for dependent
+     automations of unprofiled types (Workflow, ApprovalProcess, Layout, AuraDefinitionBundle…).
+     Those have no entry, so dropping this query would hide them from a release gate while the
+     result still read as a clean bill of health.
+   Treat only effective claims as facts. An empty result from either layer is a recorded gap and
+   is NEVER proof that nothing depends on the component.
 5. Save all mandatory sections using the Feature Health template and the output envelope.
 
 ## Verdict

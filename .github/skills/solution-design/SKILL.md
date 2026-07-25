@@ -31,9 +31,14 @@ Goal: assemble every fact the design will stand on, with sources, before proposi
 4. Principles: from the three loaded instruction files, list the rule IDs plausibly applicable to
    this change (managed-package MP-*, organization ORG-*, platform SF-*). This list is the
    verification checklist for Phase 3.
-5. Knowledge: query verified claims for each named component
-   (`python scripts/knowledge_registry.py query --subject-identity <ApiName>` or `--domain`), and
-   read [known limitations](../../../.ai/knowledge/known-limitations.md). Note claim freshness.
+5. Knowledge, both layers, in this order:
+   - **repository-source facts** — `python scripts/knowledge_search.py context --identity <Identity>`
+     for each named component. One call returns its purpose, parts, incoming/outgoing usage,
+     permission grants, coverage and citations. `NO_ENTRY` means no *entry* exists, not that the
+     artifact does not — it never licenses inference.
+   - **org, runtime, business, package and vendor facts** — `python scripts/knowledge_registry.py
+     query --subject-identity <ApiName>` or `--domain`. Entries cannot answer these.
+   - read [known limitations](../../../.ai/knowledge/known-limitations.md). Note claim freshness.
 6. Salesforce reality:
    - `review_org_identity` must return `VERIFIED` before any org-derived fact is used.
    - `review_installed_packages` for package context; `review_object_contract` for each candidate

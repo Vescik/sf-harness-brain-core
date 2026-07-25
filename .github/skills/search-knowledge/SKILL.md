@@ -26,6 +26,12 @@ metadata type, namespace, domain, claim type, environment/org scope.
 ## Procedure
 
 1. **Repository-source questions — query entries first.** Never grep entry Markdown by hand.
+   - **everything about one artifact, in one call:**
+     `python scripts/knowledge_search.py context --identity <MetadataType>:<ns|c>:<FullName>` —
+     purpose, `parts` (what it is made of), incoming usage, permission grants, outgoing edges,
+     coverage and citations. This is the default first lookup; the narrower commands below are
+     follow-ups. `NO_ENTRY` means no *entry* exists, not that the artifact does not; `AMBIGUOUS`
+     lists the namespace twins and is never resolved by picking the top one.
    - exact artifact: `python scripts/knowledge_search.py search --identity <MetadataType>:<ns|c>:<FullName>`
      (a bare API name that exists in several namespaces returns `AMBIGUOUS` — pass `--namespace`,
      never pick the top score yourself)
@@ -36,8 +42,17 @@ metadata type, namespace, domain, claim type, environment/org scope.
    - dependencies: `--relation-anchor <Object.Field|Identity> [--relation-kind writes-field]
      [--direction incoming|outgoing]`; heuristic edges stay out unless `--include-heuristic`
    - one artifact in full: `python scripts/knowledge_search.py explain --identity <Identity>`
-     (facets, outgoing/incoming usage, coverage, limitations) and
-     `impact --identity <Identity> [--depth 1-2]` for reverse dependencies
+     (facets, outgoing/incoming usage, coverage, limitations)
+   - **"what breaks if I change this?"** —
+     `impact --identity <Identity> --direction incoming [--depth 1-2]`
+   - **"how does this work?"** —
+     `impact --identity <Identity> --direction outgoing --depth 2 --include-heuristic`.
+     The flag is required, not optional: an execution chain runs along `invokes-class`, which is
+     regex-derived, so the default source-exact filter returns no chain at all. Every hop carries
+     its own `assurance` and the path carries `minAssurance` — report the chain as inferred, never
+     as declared.
+   - `python scripts/knowledge_search.py capabilities` lists the relation kinds, which of them are
+     heuristic, the two directions and the per-command depth limits — do not guess them.
    - pasted error message: `search --mode intentional-flow-error --text "<exact message>"` —
      matches only author-declared Flow Custom Errors. `No intentional Flow error matched.` is a
      real answer; it never licenses guessing a fault path or a platform exception.

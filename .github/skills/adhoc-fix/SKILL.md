@@ -36,10 +36,14 @@ human deploy.
 2. Read the retrieved source and confirm the diagnosis against it — the exact element, formula,
    or connector that is wrong. If the retrieved state contradicts the diagnosis, stop and report
    instead of guessing.
-3. Consult Knowledge for dependents before touching the component:
-   `python scripts/knowledge_registry.py query --subject-identity <component>` and the
-   `--uses-object`/`--uses-field` searches, so the fix does not break a consumer you did not know
-   about.
+3. Consult Knowledge for dependents before touching the component, both layers:
+   - `python scripts/knowledge_search.py context --identity <Identity>` — who reads, writes and
+     grants access to it today, with per-edge assurance;
+   - `python scripts/knowledge_registry.py query --subject-identity <component>` plus the
+     `--uses-object`/`--uses-field` searches, which stay the only home for dependents of
+     unprofiled types.
+   An empty result from either layer is a recorded gap and is NEVER proof that nothing depends on
+   this component.
 4. Make the smallest coherent edit in `force-app/`. Match the existing metadata style; change the
    defective element, not the surrounding structure.
 5. Verify what can be verified locally: the XML parses, the changed element is the only
