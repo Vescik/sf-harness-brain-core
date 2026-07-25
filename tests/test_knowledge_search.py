@@ -495,6 +495,89 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class ContextCommandTests(EntryFixtureMixin, unittest.TestCase):
+    """One composed call must subsume the six it replaces, without loosening any of them."""
+
+    def context(self, identity, **kwargs):
+        args = argparse.Namespace(
+            identity=identity, state=None, top=25, include_heuristic=False
+        )
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return search.run_context(args)
+
+    def test_context_returns_parts_usage_and_coverage_in_one_call(self) -> None:
+        self.seed()
+        result = self.context("CustomField:c:HarnessAlphaCase__c.Status__c")
+        self.assertEqual("CONTEXT", result["outcome"])
+        self.assertEqual("approved-current", result["lifecycle"])
+        self.assertTrue(any(row["source"] == "Flow:c:HarnessAlphaRouter" for row in result["incoming"]))
+        self.assertIn("entriesByType", result["partsCoverage"])
+        self.assertIn("entryHomedTypes", result["sourceCoverage"])
+
+    OBJECT_SOURCE = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+        "    <label>Harness Alpha Case</label>\n"
+        "    <sharingModel>ReadWrite</sharingModel>\n"
+        "</CustomObject>\n"
+    )
+
+    def test_object_parts_come_from_inverted_containment(self) -> None:
+        self.seed()
+        objects = self.temp / "force-app/main/default/objects/HarnessAlphaCase__c"
+        (objects / "HarnessAlphaCase__c.object-meta.xml").write_text(
+            self.OBJECT_SOURCE, encoding="utf-8"
+        )
+        obj = self.draft("CustomObject", "HarnessAlphaCase__c", "Cases handled by the alpha team.")
+        self.approve(obj)
+        search.build_index()
+        result = self.context(obj["identity"])
+        self.assertTrue(result["parts"], "the object should reach its fields through belongs-to")
+        for row in result["parts"]:
+            self.assertEqual(search.CONTAINMENT_KIND, row["kind"])
+
+    def test_served_rows_are_the_hydrated_rows(self) -> None:
+        # Hydrating before capping spent the budget on rows nobody sees and left the rows the
+        # caller may cite unverified.
+        self.seed()
+        result = self.context("CustomField:c:HarnessAlphaCase__c.Status__c")
+        rows = result["parts"] + result["permissions"] + result["incoming"]
+        self.assertTrue(rows)
+        self.assertTrue(all(row["hydrated"] for row in rows))
+
+    def test_parts_always_disclose_that_they_are_not_the_declared_composition(self) -> None:
+        self.seed()
+        result = self.context("CustomField:c:HarnessAlphaCase__c.Status__c")
+        self.assertTrue(
+            any("not the object's declared composition" in gap for gap in result["gaps"]),
+            "a partial list is more misleading than an empty one",
+        )
+
+    def test_missing_entry_is_not_reported_as_a_missing_artifact(self) -> None:
+        self.seed()
+        result = self.context("Flow:c:NoSuchFlow")
+        self.assertEqual("NO_ENTRY", result["outcome"])
+        self.assertFalse(result["entryExists"])
+        self.assertTrue(any("absence of an ENTRY" in gap for gap in result["gaps"]))
+
+    def test_namespace_twins_are_reported_not_guessed(self) -> None:
+        self.seed()
+        twin = self.draft("Flow", "HarnessAlphaRouter", "Namespaced twin.", namespace="pkg")
+        self.approve(twin)
+        search.build_index()
+        result = self.context("HarnessAlphaRouter")
+        self.assertEqual("AMBIGUOUS", result["outcome"])
+        self.assertEqual(2, len(result["candidates"]))
+
+    def test_lane_opt_in_is_required_for_draft_sources(self) -> None:
+        self.seed()
+        drafted = self.draft("Flow", "HarnessBetaDispatch", "Redraft, not approved.")
+        search.build_index()
+        default = self.context("CustomField:c:HarnessBetaOrder__c.Case__c")
+        self.assertNotIn(drafted["identity"], {row["source"] for row in default["incoming"]})
+
+
 class TruncationDisclosureTests(unittest.TestCase):
     """A capped edge list must be named, or a missing grant reads as an absent grant.
 

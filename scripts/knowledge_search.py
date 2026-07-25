@@ -1625,6 +1625,151 @@ def run_impact(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+PERMISSION_KINDS = {
+    kind for kinds in TRUNCATION_FAMILY_KINDS.values() for kind in kinds
+} | {"grants-flow-access", "grants-custom-permission", "grants-user-permission"}
+CONTEXT_TOP_DEFAULT = 25
+
+
+def run_context(args: argparse.Namespace) -> dict[str, Any]:
+    """Everything about one artifact, in one call.
+
+    Answering "tell me about X" took six heterogeneous queries — identity lookup, a facet query
+    per child type, incoming relations, outgoing relations, impact, permission grants — each
+    with its own shape and its own lane semantics, and two of them (ValidationRule, RecordType)
+    had no object facet at all, so the owner had to be read out of a fullName prefix by hand.
+
+    Sections are capped BEFORE hydration, not after. Hydrating first and capping second spent
+    the budget on rows the caller never sees and left the rows they are invited to cite
+    unverified — inverting the point of the budget.
+    """
+
+    documents, manifest = load_index()
+    document = documents.get(args.identity)
+    if document is None:
+        candidates = documents.identities_for_full_name(args.identity)
+        if len(candidates) == 1:
+            document = documents.get(candidates[0])
+        elif len(candidates) > 1:
+            return {
+                "outcome": "AMBIGUOUS",
+                "query": args.identity,
+                "candidates": sorted(candidates),
+                "gaps": [
+                    "A bare name that exists in several namespaces is never resolved by ranking; "
+                    "pass the full <MetadataType>:<ns|c>:<FullName> identity."
+                ],
+                "indexGeneration": manifest["generation"],
+            }
+    if document is None:
+        return {
+            "outcome": "NO_ENTRY",
+            "query": args.identity,
+            "entryExists": False,
+            "gaps": [
+                f"No Knowledge Entry projects {args.identity} in this index generation. That is "
+                "absence of an ENTRY, not absence of the artifact — check `entry-coverage` for "
+                "the source-side denominator."
+            ],
+            "indexGeneration": manifest["generation"],
+        }
+
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    include_heuristic = bool(getattr(args, "include_heuristic", False))
+    top = int(getattr(args, "top", None) or CONTEXT_TOP_DEFAULT)
+    names = {document["identity"]}
+    full_name = document["facets"].get("fullName")
+    if full_name:
+        names.add(str(full_name))
+
+    incoming: list[dict[str, Any]] = []
+    excluded = {"lifecycle": 0, "heuristicEdge": 0, "cap": 0}
+    for name in sorted(names):
+        for edge in documents.incoming_edges(name, include_heuristic=True):
+            if edge["assurance"] != relation_kinds.SOURCE_EXACT and not include_heuristic:
+                excluded["heuristicEdge"] += 1
+                continue
+            if edge["source"] not in allowed:
+                excluded["lifecycle"] += 1
+                continue
+            incoming.append(edge)
+
+    def bucket(rows: list[dict[str, Any]], kinds: set[str] | None, invert: bool = False):
+        chosen = [
+            row for row in rows
+            if kinds is None or ((row["kind"] in kinds) is not invert)
+        ]
+        chosen.sort(key=lambda row: (row["kind"], row["source"]))
+        if len(chosen) > top:
+            excluded["cap"] += len(chosen) - top
+        return chosen[:top]
+
+    parts = bucket(incoming, {CONTAINMENT_KIND})
+    permissions = bucket(incoming, PERMISSION_KINDS)
+    other_incoming = bucket(incoming, {CONTAINMENT_KIND} | PERMISSION_KINDS, invert=True)
+
+    # Hydration runs over what SURVIVED the cap, so a served row is a verified row.
+    served_sources = {row["source"] for row in parts + permissions + other_incoming}
+    hydrated, hydration_gaps = hydrate(
+        [
+            {"artifactId": identity, "citation": documents.get(identity)["citation"]}
+            for identity in sorted(served_sources)
+            if documents.get(identity)
+        ]
+    )
+    verified = {hit["artifactId"] for hit in hydrated}
+    for row in parts + permissions + other_incoming:
+        row["hydrated"] = row["source"] in verified
+
+    gaps = list(hydration_gaps)
+    if excluded["heuristicEdge"]:
+        gaps.append(
+            f"{excluded['heuristicEdge']} heuristic edge(s) excluded; add --include-heuristic."
+        )
+    if excluded["lifecycle"]:
+        gaps.append(f"{excluded['lifecycle']} edge(s) came from entries outside {', '.join(states)}.")
+    if excluded["cap"]:
+        gaps.append(f"{excluded['cap']} row(s) beyond --top {top} were not returned.")
+    gaps.append(
+        "`parts` lists artifacts that have a Knowledge Entry in this index generation, not the "
+        "object's declared composition. Run `python scripts/knowledge_store.py entry-coverage` "
+        "for the source-side denominator."
+    )
+    gaps.extend(truncation_gaps(documents, {row["kind"] for row in incoming}))
+
+    return {
+        "outcome": "CONTEXT",
+        "artifactId": document["identity"],
+        "lifecycle": document["lane"],
+        "subject": {
+            "facets": document["facets"],
+            "purpose": document.get("purpose"),
+            "assurance": document["assurance"],
+            "coverage": document["coverage"],
+            "limitations": document["limitations"],
+            "citation": document["citation"],
+        },
+        "parts": parts,
+        "partsCoverage": {
+            "basis": f"inverted {CONTAINMENT_KIND} edges in this index generation",
+            "entriesByType": manifest.get("metadataTypeCounts", {}),
+        },
+        "permissions": permissions,
+        "incoming": other_incoming,
+        "outgoing": document["edges"],
+        "intentionalErrors": document["intentionalErrors"],
+        "sourceCoverage": source_coverage(manifest),
+        "excludedCounts": excluded,
+        "gaps": gaps,
+        "counts": {
+            "documentReads": documents.document_reads,
+            "postingBytesRead": documents.posting_bytes,
+        },
+        "indexGeneration": manifest["generation"],
+    }
+
+
 def run_capabilities(args: argparse.Namespace) -> dict[str, Any]:
     facets = dict(GLOBAL_FACETS)
     if args.metadata_type:
@@ -1705,6 +1850,15 @@ def build_parser() -> argparse.ArgumentParser:
     impact.add_argument("--top", type=int, default=IMPACT_TOP_DEFAULT)
     impact.add_argument("--include-heuristic", action="store_true")
     impact.set_defaults(func=run_impact)
+
+    context = commands.add_parser(
+        "context", help="one composed pack for an artifact: parts, usage, permissions, coverage"
+    )
+    context.add_argument("--identity", required=True)
+    context.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    context.add_argument("--top", type=int, default=CONTEXT_TOP_DEFAULT)
+    context.add_argument("--include-heuristic", action="store_true")
+    context.set_defaults(func=run_context)
 
     capabilities = commands.add_parser("capabilities", help="valid facets, operators, modes")
     capabilities.add_argument("--metadata-type", default=None)
