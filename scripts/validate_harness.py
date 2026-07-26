@@ -23,9 +23,10 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_COUNTS = {"agents": 6, "prompts": 24, "skills": 25, "instructions": 3}
-# Budget for each grounding subprocess below. entry-check re-digests every source fragment at
-# roughly 3.5 ms per entry, so a corpus in the low tens of thousands is the constraint here, not
-# the code. Raise this deliberately from a measurement — never to silence a timeout.
+# Budget for each grounding subprocess below. entry-check parses and validates every entry at
+# roughly 4.5 ms per entry (measured at 9 000), so a corpus in the low tens of thousands is the
+# constraint here, not the code. Raise this deliberately from a measurement — never to silence a
+# timeout.
 GROUNDING_TIMEOUT_SECONDS = 120
 # Reserved, deliberately synthetic identifiers owned by this harness's test fixtures.
 # They may appear only under tests/ and evals/fixtures; runtime authority surfaces
@@ -694,6 +695,142 @@ def check_secret_signatures(audit: Audit) -> None:
             audit.require(pattern.search(text) is None, f"{name}: high-confidence secret signature detected")
 
 
+KNOWLEDGE_MASTER_PLAN = "docs/knowledge-master-plan-2026-07-25.md"
+# §7's two consumer sets, and the reason they are read out of the plan instead of listed here.
+# The gate this replaces counted a list assembled beside it — a list that included
+# `search-knowledge`, which owns the command menu and is not a Set A consumer — so it was green
+# while measuring the wrong thing. Parsing the plan means moving a surface between sets, or
+# renaming one, fails here in the plan's own words rather than silently.
+SET_A_CALL = "knowledge_search.py context --identity"
+# The second half of a correct step-1 lookup. `context --identity` without the re-read rule lets
+# an agent cite a row carrying `hydrated: false`, which contract §14.2 rules uncitable — the
+# retrieval defect P0–P4 made visible, re-introduced at the last hop. Wave 2 claimed the rule was
+# present in all eight Set A surfaces when it was present in two, so §7 asserts both tokens.
+SET_A_HYDRATION_RULE = "hydrated"
+SET_B_CALL = "knowledge_registry.py query"
+UNPROFILED_TYPE_CALLS = ("--uses-object", "--uses-field")
+
+
+def plan_consumer_set(plan_text: str, label: str) -> tuple[int | None, list[str]]:
+    """Backticked surface names from §7's `- **Set X — …**: …` bullet, and its declared count.
+
+    Flag names (`--uses-object`) are dropped: the bullet mixes surfaces with the flags Set B
+    retains, and only the surfaces resolve to a file."""
+
+    bullet = re.search(
+        rf"^- \*\*{re.escape(label)} —.*?(?=^- \*\*|^\s*$)",
+        plan_text,
+        re.MULTILINE | re.DOTALL,
+    )
+    if bullet is None:
+        return None, []
+    text = " ".join(bullet.group(0).split())
+    # The bold intro can itself contain backticks (`context --identity`), so the surface list
+    # starts at the first colon after the intro closes, never at the first colon in the bullet.
+    tail = text[text.index("**", text.index("**") + 2) + 2:]
+    colon = tail.index(":")
+    declared = re.search(r"\((\d+) surfaces\)", tail[:colon])
+    names = [name for name in re.findall(r"`([^`]+)`", tail[colon + 1:]) if not name.startswith("-")]
+    return (int(declared.group(1)) if declared else None, names)
+
+
+def consumer_surface_path(root: Path, name: str) -> Path:
+    """A §7 surface name resolved to its file — agents by filename, skills by directory."""
+
+    if name.endswith(".agent.md"):
+        return root / ".github/agents" / name
+    return root / ".github/skills" / name / "SKILL.md"
+
+
+def check_knowledge_consumer_sets(audit: Audit, root: Path = ROOT) -> None:
+    """§7: "Both counts are asserted. Neither is allowed to move silently."
+
+    Set A is the step-1 *source* lookup that must run through the entry index; Set B is the
+    layer-2 registry call the same section protects, because dropping it would make every
+    unprofiled type invisible to a coverage gate with no gap line. Both were verified by hand
+    for three audits running, which is the mode of verification this assertion exists to end.
+    """
+
+    plan_path = root / KNOWLEDGE_MASTER_PLAN
+    if not plan_path.is_file():
+        audit.require(False, f"{KNOWLEDGE_MASTER_PLAN} is missing; the P6 consumer sets are unpinned")
+        return
+    plan_text = plan_path.read_text(encoding="utf-8")
+
+    declared_a, set_a = plan_consumer_set(plan_text, "Set A")
+    declared_b, set_b = plan_consumer_set(plan_text, "Set B")
+    audit.require(
+        bool(set_a) and bool(set_b),
+        f"{KNOWLEDGE_MASTER_PLAN} §7 no longer names Set A / Set B in the parsed shape "
+        f"(`- **Set A — …**: `surface`, …`); the consumer gate cannot measure anything",
+    )
+    if not set_a or not set_b:
+        return
+    audit.require(
+        declared_a == len(set_a),
+        f"{KNOWLEDGE_MASTER_PLAN} §7 declares {declared_a} Set A surfaces but names "
+        f"{len(set_a)}: {', '.join(set_a)}",
+    )
+    overlap = sorted(set(set_a) & set(set_b))
+    audit.require(
+        not overlap,
+        f"§7 Set A and Set B must stay disjoint — a surface cannot be both the step-1 entry "
+        f"lookup and a preserved layer-2 call: {', '.join(overlap)}",
+    )
+
+    for name in set_a:
+        path = consumer_surface_path(root, name)
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        audit.require(
+            SET_A_CALL in text,
+            f"§7 Set A ({len(set_a)} surfaces): {relative(path)} no longer runs "
+            f"`{SET_A_CALL}` as its step-1 source lookup — §8's gate is {len(set_a)} of "
+            f"{len(set_a)}, so this moves the count without moving the plan",
+        )
+        audit.require(
+            SET_A_HYDRATION_RULE in text,
+            f"§7 Set A ({len(set_a)} surfaces): {relative(path)} names the step-1 command but "
+            f"not the `{SET_A_HYDRATION_RULE}` re-read rule — an agent may then cite a row "
+            f"contract §14.2 rules uncitable, which is the half of the lookup wave 2 claimed "
+            f"without counting",
+        )
+    for name in set_b:
+        path = consumer_surface_path(root, name)
+        text = path.read_text(encoding="utf-8") if path.is_file() else ""
+        audit.require(
+            SET_B_CALL in text,
+            f"§7 Set B ({len(set_b)} surfaces, each with its stated reason): {relative(path)} "
+            f"dropped its `{SET_B_CALL}` call — §7 preserves the two-layer rule, so converting "
+            f"this one is a completeness regression, not progress",
+        )
+
+    # The fourth Set B clause is not a surface but a retention: "every --uses-object /
+    # --uses-field call retained for unprofiled types". Assert it through the types §7 names,
+    # so a surface that quietly drops the flags takes its stated reason down with it.
+    retaining = {
+        relative(path): path.read_text(encoding="utf-8")
+        for path in sorted((root / ".github").rglob("*.md"))
+        if any(flag in path.read_text(encoding="utf-8") for flag in UNPROFILED_TYPE_CALLS)
+    }
+    named_types = re.search(
+        r"Dropping them would make (.+?) and every other unprofiled type invisible",
+        " ".join(plan_text.split()),
+    )
+    audit.require(
+        named_types is not None,
+        f"{KNOWLEDGE_MASTER_PLAN} §7 no longer names the unprofiled types Set B protects",
+    )
+    if named_types is None:
+        return
+    for metadata_type in [part.strip() for part in named_types.group(1).split(",")]:
+        audit.require(
+            any(metadata_type in text for text in retaining.values()),
+            f"§7 Set B: no surface retaining `--uses-object`/`--uses-field` still names "
+            f"{metadata_type} — dropping it makes that type invisible to a coverage gate "
+            f"with no gap line",
+        )
+
+
 def check_skill_commands(audit: Audit) -> None:
     """Guarded-command instructions in skills must be role-guard-valid and cross-OS.
 
@@ -872,6 +1009,11 @@ def check_grounding_contracts(audit: Audit) -> None:
         [sys.executable, "scripts/knowledge_registry.py", "validate"],
         [sys.executable, "scripts/knowledge_registry.py", "render-indexes", "--check"],
         [sys.executable, "scripts/knowledge_store.py", "entry-check"],
+        # feature-check belongs to CI rather than to a person (§6), and a CI-only gate that no
+        # CI step runs is not a gate: the live tree failed feature-check while the validator
+        # reported PASS. It shares the loop's TimeoutExpired handler deliberately — a second
+        # grounding subprocess is exactly what §0.3 required that handler for.
+        [sys.executable, "scripts/knowledge_store.py", "feature-check"],
     ):
         try:
             completed = subprocess.run(
@@ -984,6 +1126,7 @@ def main() -> int:
     check_secret_signatures(audit)
     check_python_yaml_safety(audit)
     check_skill_commands(audit)
+    check_knowledge_consumer_sets(audit)
     if audit.errors:
         print(f"FAIL: harness validation ({len(audit.errors)} errors, {audit.checks} checks)")
         for message in audit.errors:

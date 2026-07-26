@@ -227,7 +227,11 @@ FORCE_APP_COMMAND_FLAGS = {
 # One-file Knowledge Entry executor (docs/knowledge-one-file-contract.md v1.1). Reads are
 # available to every role; mutations require the knowledge mutation roles, all writes flow
 # through the executor (the artifacts path itself is governed), and the safety hook answers
-# `ask` for entry-approve/entry-revoke with mechanism copilot-chat-entry-confirmation.
+# `ask` for the four approval/revocation commands — its pattern is
+# `(?:entry|feature)-(?:approve|revoke)`, one alternation over both record kinds, because a
+# Feature approval is the same act as an entry approval. The other four commands in
+# KNOWLEDGE_STORE_MUTATION_COMMANDS (entry-draft, entry-describe, feature-propose,
+# feature-describe) write no approval record and are gated by the mutation role alone.
 # tests/test_guard_parser_contract.py diffs these flags against knowledge_store.build_parser.
 # entry-review only renders a review artifact under output/; it mutates no Knowledge, so it
 # stays outside the mutation set while still being a curator/investigator-shaped action.
@@ -292,12 +296,14 @@ KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
             "--top",
         }
     ),
-    "explain": frozenset({"--identity", "--state", "--include-heuristic"}),
+    "explain": frozenset({"--identity", "--state", "--top", "--include-heuristic"}),
     "impact": frozenset(
         {"--identity", "--depth", "--direction", "--state", "--top", "--include-heuristic"}
     ),
-    "context": frozenset({"--identity", "--state", "--top", "--include-heuristic"}),
-    "tree": frozenset({"--feature", "--state", "--include-heuristic"}),
+    "context": frozenset(
+        {"--identity", "--state", "--top", "--include-heuristic", "--direction"}
+    ),
+    "tree": frozenset({"--feature", "--state", "--include-heuristic", "--direction"}),
     "feature-drift": frozenset({"--feature", "--state", "--include-heuristic"}),
     "feature-dossier": frozenset({"--feature", "--state", "--include-heuristic"}),
     "capabilities": frozenset({"--metadata-type"}),

@@ -561,6 +561,12 @@ ENTRY_HOME_CLAIM_TYPES = frozenset(
 ENTRY_REF_FIELDS = frozenset(
     {"entryId", "reviewedContentDigest", "factsDigest", "sourceTreeDigest", "profile"}
 )
+# Contract §8.1: an entryRef grounds positive presence assertions only for sections marked
+# source-exact with extractionCoverage: full. Both halves are required — a heuristic section
+# is not observation, and a partial one cannot carry the enumeration §8.1's second clause
+# reserves for machine-emitted completeness.
+GROUNDING_ASSURANCE = "source-exact"
+GROUNDING_COVERAGE = "full"
 
 
 def _knowledge_store():
@@ -640,6 +646,38 @@ def _assert_not_shadowed(root: Path, claim_id: str, expected: dict[str, Any]) ->
             )
 
 
+def _assert_entry_is_groundable(root: Path, entry_id: str) -> None:
+    """Refuse an entry whose sections contract §8.1 will not ground.
+
+    The lane says the entry still matches its source; assurance says what reading the source
+    proved. Both are digest-bound and both are approved, but only the lane was ever checked
+    here — so a work record could ground "class X operates on Y" on a regex match over a
+    comment. An entryRef names no section, it binds the whole entry, so every populated
+    section it could be read against has to qualify. Markers are read from the approved
+    frontmatter, never from the caller's reference, for the same reason the digests are."""
+
+    store = _knowledge_store()
+    try:
+        text = (root / entry_relative_path(root, entry_id)).read_text(encoding="utf-8")
+        frontmatter, _body = store.split_entry(text)
+    except (OSError, ValueError, store.StoreError) as exc:
+        raise WorkRecordError(f"Knowledge entry is unreadable: {entry_id}") from exc
+    assurance = frontmatter.get("assurance") or {}
+    coverage = frontmatter.get("extractionCoverage") or {}
+    for section in sorted(set(assurance) | set(coverage)):
+        marker = assurance.get(section, "<missing>")
+        extent = coverage.get(section, "<missing>")
+        if marker == GROUNDING_ASSURANCE and extent == GROUNDING_COVERAGE:
+            continue
+        raise WorkRecordError(
+            f"Knowledge entry section {section} is not groundable "
+            f"(assurance {marker}, extractionCoverage {extent}): {entry_id}; "
+            f"contract §8.1 grounds positive assertions only on sections marked "
+            f"{GROUNDING_ASSURANCE} with extractionCoverage: {GROUNDING_COVERAGE} — "
+            f"ground this on a claimRef with its own evidence instead"
+        )
+
+
 def validate_entry_refs(
     root: Path,
     references: list[dict[str, Any]],
@@ -666,6 +704,10 @@ def validate_entry_refs(
                 raise WorkRecordError(
                     f"Knowledge entry is not approved-current (lane {lane['lane']}): {entry_id}"
                 )
+            # Assurance gates the same boundary as the lane and only where the lane does: a
+            # record already carrying a heuristic ref stays loadable and reportable, it just
+            # cannot reach a state that asserts the ref grounds anything (contract §8.1).
+            _assert_entry_is_groundable(root, entry_id)
         elif lane["lane"] not in {"approved-current", "approved-drifted"}:
             raise WorkRecordError(
                 f"Knowledge entry is not approved (lane {lane['lane']}): {entry_id}"
@@ -2029,6 +2071,9 @@ def command_bind_entry(args: argparse.Namespace) -> dict[str, Any]:
         raise WorkRecordError(
             f"Knowledge entry is not approved-current (lane {lane['lane']}): {args.entry_id}"
         )
+    # Refuse at bind time, not only at the SAFE gate: a designer who cannot ground on this
+    # entry needs to hear it while there is still time to reach for other evidence.
+    _assert_entry_is_groundable(root, args.entry_id)
     reference = {
         "entryId": args.entry_id,
         "reviewedContentDigest": lane["reviewedContentDigest"],

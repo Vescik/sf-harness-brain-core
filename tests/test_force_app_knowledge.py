@@ -61,6 +61,16 @@ def write(path: Path, value: str) -> None:
     path.write_text(value, encoding="utf-8")
 
 
+def lookup_field(name: str, target: str) -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">'
+        f"<fullName>{name}</fullName><label>{name}</label><type>Lookup</type>"
+        f"<referenceTo>{target}</referenceTo><relationshipName>{name}Rel</relationshipName>"
+        "</CustomField>\n"
+    )
+
+
 class ForceAppKnowledgeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="force-app-knowledge-")
@@ -3510,3 +3520,308 @@ class NestedSourceLayoutTests(unittest.TestCase):
                 apex = components["ApexClass"][0]
                 self.assertEqual("62.0", apex["facts"].get("apiVersion"))
                 self.assertTrue(apex["references"], "nested Apex must still yield usage references")
+
+
+ENTRY_EDGE_APEX_SOURCE = """public with sharing class HarnessEngagementService {
+    public void link(Id engagementId) {
+        HarnessEngagement__c engagement = [SELECT Id, Invoice__c FROM HarnessEngagement__c];
+        engagement.Invoice__c = null;
+        update engagement;
+    }
+}
+"""
+
+
+class EntryEdgeHealthTests(unittest.TestCase):
+    """`relation-health` must report entry-side orphans, not just count lanes.
+
+    The completion audit proved the orphan half absent by AST — `entry_edge_health` never
+    referenced its own `live_component_ids` parameter — and by execution: deleting an entire
+    referenced CustomObject from live source still reported `findingCount: 0`. These tests are
+    that reproduction, so a regression cannot pass them by counting lanes alone.
+    """
+
+    def setUp(self) -> None:
+        import argparse
+
+        import scripts.knowledge_store as store
+
+        self.store = store
+        self.argparse = argparse
+        temporary = tempfile.TemporaryDirectory(prefix="entry-edge-health-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        base = self.root / "force-app/main/default"
+        write(base / "objects/HarnessEngagement__c/HarnessEngagement__c.object-meta.xml", OBJECT_XML)
+        # Two lookups from the same object: one to a package-local target that a deletion can
+        # settle, one to the standard `Account` that live source can never settle.
+        write(
+            base / "objects/HarnessEngagement__c/fields/Invoice__c.field-meta.xml",
+            lookup_field("Invoice__c", "HarnessInvoice__c"),
+        )
+        write(
+            base / "objects/HarnessEngagement__c/fields/Account__c.field-meta.xml",
+            lookup_field("Account__c", "Account"),
+        )
+        write(base / "objects/HarnessInvoice__c/HarnessInvoice__c.object-meta.xml", OBJECT_XML)
+        # An Apex class carries the case the four original tests could not see: its extractors
+        # emit BARE `__c` tokens (`Invoice__c`), while a live field is only ever indexed under
+        # `Object.Field`. Every one of the 164 false orphans on the reference corpus had this
+        # shape, so the fixture has to contain it or the diff is only ever tested on the shape
+        # that already worked.
+        write(base / "classes/HarnessEngagementService.cls", ENTRY_EDGE_APEX_SOURCE)
+        (self.root / "schemas").mkdir()
+        for name in (
+            "knowledge-claim.schema.json",
+            "knowledge-evidence.schema.json",
+            "force-app-knowledge-inventory.schema.json",
+            "force-app-relation-health.schema.json",
+            "knowledge-entry.schema.json",
+            "knowledge-profile-customfield.schema.json",
+        ):
+            shutil.copy2(ROOT / "schemas" / name, self.root / "schemas" / name)
+        (self.root / "config").mkdir()
+        shutil.copy2(ROOT / "config/knowledge-policy.json", self.root / "config/knowledge-policy.json")
+        (self.root / "config/harness.local.json").write_text(
+            json.dumps({"knowledge": {"chatReviewer": "Reviewer Person"}}), encoding="utf-8"
+        )
+        (self.root / ".ai/knowledge/claims").mkdir(parents=True)
+        self.purpose = self.root / "purpose.md"
+        self.purpose.write_text("Links an engagement to its invoice.", encoding="utf-8")
+        self.commit("fixture")
+        self.builder = ForceAppKnowledge(self.root)
+        self.builder.inventory()
+
+    def commit(self, message: str) -> None:
+        for command in (
+            ["git", "init", "-q"],
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", message],
+        ):
+            subprocess.run(command, cwd=self.root, check=True, capture_output=True)
+
+    def approved_entry(self, full_name: str, metadata_type: str = "CustomField") -> str:
+        """Draft and approve one entry through the governed store commands."""
+
+        with self.store.rooted(self.root):
+            drafted = self.store.command_entry_draft(
+                self.argparse.Namespace(
+                    metadata_type=metadata_type,
+                    full_name=full_name,
+                    namespace=None,
+                    purpose_file=str(self.purpose),
+                    source_api_version="64.0",
+                    candidate_keyword=None,
+                )
+            )
+            self.store.command_entry_approve(
+                self.argparse.Namespace(
+                    entry=[f"{drafted['identity']}:{drafted['reviewedContentDigest']}"]
+                )
+            )
+        return drafted["identity"]
+
+    def drop_invoice_object(self) -> None:
+        shutil.rmtree(self.root / "force-app/main/default/objects/HarnessInvoice__c")
+        self.commit("delete HarnessInvoice__c")
+        self.builder.inventory()  # the health report refuses a stale inventory
+
+    def test_deleted_edge_target_is_reported_as_an_orphan(self) -> None:
+        self.approved_entry("HarnessEngagement__c.Invoice__c")
+        healthy = self.builder.relation_health()["entryEdges"]
+        self.assertEqual({"approved-current": 1}, healthy["entriesByLane"])
+        self.assertEqual(0, healthy["findingCount"], healthy["findings"])
+
+        self.drop_invoice_object()
+        report = self.builder.relation_health()["entryEdges"]
+        # The audit's own reproduction: the lane count is unchanged, so a check that only
+        # counted lanes would still say HEALTHY here.
+        self.assertEqual({"approved-current": 1}, report["entriesByLane"])
+        self.assertEqual(1, report["findingCount"], report["findings"])
+        finding = report["findings"][0]
+        self.assertEqual("CustomField:c:HarnessEngagement__c.Invoice__c", finding["identity"])
+        self.assertEqual("approved-current", finding["lifecycleState"])
+        self.assertEqual("relationship", finding["kind"])
+        self.assertEqual("HarnessInvoice__c", finding["target"])
+        self.assertEqual("HarnessInvoice__c", finding["missingComponent"])
+        # Same two reason strings as the claim-side orphan list, so the report has one dialect.
+        self.assertEqual("edge no longer present in source", finding["reason"])
+        self.assertIn(
+            finding["reason"],
+            {"component removed", "edge no longer present in source"},
+        )
+
+    def test_targets_source_cannot_settle_are_never_called_orphans(self) -> None:
+        # `Account` is absent from force-app by nature. Reporting it would make the orphan
+        # list unreadable — every lookup to a standard object would be permanent rot.
+        self.approved_entry("HarnessEngagement__c.Account__c")
+        entry = self.root / ".ai/knowledge/artifacts/CustomField/c/HarnessEngagement__c%2EAccount__c.md"
+        # The edge is really stored — silence here is a decision, not an empty graph.
+        self.assertIn("target: Account\n", entry.read_text(encoding="utf-8"))
+        report = self.builder.relation_health()["entryEdges"]
+        self.assertEqual(0, report["findingCount"], report["findings"])
+
+    def test_removed_subject_component_is_reported_before_its_edges(self) -> None:
+        self.approved_entry("HarnessEngagement__c.Invoice__c")
+        shutil.rmtree(self.root / "force-app/main/default/objects/HarnessEngagement__c/fields")
+        self.commit("delete the described fields")
+        self.builder.inventory()
+        report = self.builder.relation_health()["entryEdges"]
+        reasons = {finding["reason"] for finding in report["findings"]}
+        self.assertIn("component removed", reasons)
+        # An entry whose own subject is gone is one finding, not one per stale edge.
+        self.assertNotIn("edge no longer present in source", reasons)
+
+    def test_a_bare_field_name_behind_a_heuristic_edge_is_not_an_orphan(self) -> None:
+        """The 164-false-positive defect, in one entry.
+
+        `object-token` emits the token the regex found — `Invoice__c`, with no owner — while the
+        live field is `HarnessEngagement__c.Invoice__c`. Diffed against the full names alone the
+        bare token matches nothing and every field an Apex class touches is reported removed
+        while its file sits in source. The four tests this class shipped with used `Object.Field`
+        targets exclusively, which is exactly why none of them saw it.
+        """
+
+        identity = self.approved_entry("HarnessEngagementService", "ApexClass")
+        entry = self.root / ".ai/knowledge/artifacts/ApexClass/c/HarnessEngagementService.md"
+        body = entry.read_text(encoding="utf-8")
+        self.assertIn("target: Invoice__c\n", body, "fixture must store the bare-name edge")
+        self.assertIn("kind: object-token", body)
+
+        report = self.builder.relation_health()["entryEdges"]
+        self.assertEqual(0, report["findingCount"], report["findings"])
+        self.assertNotIn(identity, {finding.get("identity") for finding in report["findings"]})
+        # Present, not merely unreported: the name was settled against the live field index.
+        self.assertIn("0 approved-entry edge targets were left undecidable", report["note"])
+
+    def test_a_clean_fully_approved_corpus_reports_no_orphans(self) -> None:
+        """Nothing deleted, every draftable component approved: the orphan count is zero.
+
+        This is the audit's reproduction at fixture scale, and it counts the STORE's set of
+        draftable types rather than a list assembled here — a gate that counts its own list can
+        be green and mean nothing. On the 189-component reference package the same measurement
+        read 164 before this fix and 0 after.
+        """
+
+        inventory = self.builder.load_inventory()
+        draftable = self.builder.entry_draftable_types()
+        components = [
+            component
+            for component in inventory["components"]
+            if component["metadataType"] in draftable
+        ]
+        self.assertGreater(len(components), 3, "fixture must span more than one metadata type")
+        for component in components:
+            self.approved_entry(component["name"], component["metadataType"])
+
+        report = self.builder.relation_health()["entryEdges"]
+        self.assertEqual({"approved-current": len(components)}, report["entriesByLane"])
+        self.assertEqual(0, report["findingCount"], report["findings"])
+        self.assertIn("0 approved-entry edge targets were left undecidable", report["note"])
+
+    def test_an_undecidable_target_is_disclosed_rather_than_claimed(self) -> None:
+        """A bare heuristic token that matches nothing settles nothing, and says so.
+
+        One deletion reaches the same entry down two edges. `var-field-ref` wrote the owner into
+        its target (`HarnessEngagement__c.Invoice__c`), so that one is settled and reported.
+        `object-token` wrote the bare token, which after the deletion could be that field, a
+        field on any other object, or a name the regex read out of a string literal — so it is
+        disclosed as a population instead of being claimed (a false positive) or dropped (a
+        false negative, which is what made the lane count mean nothing).
+        """
+
+        self.approved_entry("HarnessEngagementService", "ApexClass")
+        (self.root / "force-app/main/default/objects/HarnessEngagement__c/fields/Invoice__c.field-meta.xml").unlink()
+        self.commit("delete the Invoice__c field")
+        self.builder.inventory()
+
+        report = self.builder.relation_health()["entryEdges"]
+        self.assertEqual(1, report["findingCount"], report["findings"])
+        self.assertEqual("var-field-ref", report["findings"][0]["kind"])
+        self.assertEqual(
+            "HarnessEngagement__c.Invoice__c", report["findings"][0]["missingComponent"]
+        )
+        self.assertIn(
+            "1 approved-entry edge target(s) across 1 name(s) are UNDECIDABLE", report["note"]
+        )
+        self.assertIn("Names: Invoice__c.", report["note"])
+
+    def test_a_declared_edge_target_is_still_decidable_when_a_field_shares_its_name(self) -> None:
+        """The live-field index must not swallow a genuine orphan.
+
+        A lookup's `relationship` target is an object because its kind says so, so a same-named
+        field elsewhere cannot stand in for it — otherwise the fix for the false positives would
+        have bought silence on the true ones.
+        """
+
+        base = self.root / "force-app/main/default"
+        write(
+            base / "objects/HarnessEngagement__c/fields/HarnessInvoice__c.field-meta.xml",
+            lookup_field("HarnessInvoice__c", "Account"),
+        )
+        self.commit("add a field named after the invoice object")
+        self.builder.inventory()
+        self.approved_entry("HarnessEngagement__c.Invoice__c")
+        self.drop_invoice_object()
+
+        report = self.builder.relation_health()["entryEdges"]
+        findings = [
+            finding for finding in report["findings"] if finding.get("kind") == "relationship"
+        ]
+        self.assertEqual(1, len(findings), report["findings"])
+        self.assertEqual("HarnessInvoice__c", findings[0]["missingComponent"])
+        self.assertEqual("source-exact", findings[0]["assurance"])
+
+    def test_lane_is_computed_so_an_unledgered_entry_is_never_diffed(self) -> None:
+        # Contract §4: reading `lifecycle.state` out of frontmatter never establishes approval.
+        # A file that says `approved` with no ledger record is quarantined, and its edges are
+        # not worth diffing — the entry itself is not trusted.
+        self.approved_entry("HarnessEngagement__c.Invoice__c")
+        (self.root / ".ai/knowledge/artifacts-ledger.jsonl").write_text("", encoding="utf-8")
+        self.drop_invoice_object()
+        report = self.builder.relation_health()["entryEdges"]
+        self.assertEqual({"not-effective": 1}, report["entriesByLane"])
+        reasons = {finding["reason"] for finding in report["findings"]}
+        self.assertIn("approved state without any ledger record (quarantined)", reasons)
+        self.assertNotIn("edge no longer present in source", reasons)
+
+
+class ModuleStructureTests(unittest.TestCase):
+    def test_no_class_defines_the_same_method_twice(self) -> None:
+        """A redefined method is a silent deletion of the first one.
+
+        A second `entry_home_types` added for the dossier shadowed the gated one `draft()`
+        calls, so drafting skipped every entry-profiled component in a repo with zero entries
+        — every repo today — and `feature-draft` returned an empty manifest. Nothing failed;
+        the manifest was simply empty. Python will not warn, so this does.
+        """
+
+        import ast
+
+        source = (ROOT / "scripts/force_app_knowledge.py").read_text(encoding="utf-8")
+        duplicates = []
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            seen: set[str] = set()
+            for item in node.body:
+                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if item.name in seen:
+                    duplicates.append(f"{node.name}.{item.name} (line {item.lineno})")
+                seen.add(item.name)
+        self.assertEqual([], duplicates)
+
+
+class CollectorVersionTests(unittest.TestCase):
+    def test_collector_version_is_past_the_belongs_to_expansion(self) -> None:
+        """The one number that lets a future auditor date a factsDigest move.
+
+        P1 added the `belongs-to` emitters and the Apex `new` detector, so entries extracted
+        before and after it are not interchangeable. 1.6.0 could not tell them apart.
+        """
+
+        from scripts.force_app_knowledge import COLLECTOR_VERSION
+
+        version = tuple(int(part) for part in COLLECTOR_VERSION.split("."))
+        self.assertGreaterEqual(version, (1, 7, 0), COLLECTOR_VERSION)

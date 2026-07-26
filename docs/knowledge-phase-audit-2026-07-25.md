@@ -1,6 +1,26 @@
 # Phase audit — shipped phases, and P4's entry gate
 
-Date: 2026-07-25 · Status: **P4 remains BLOCKED** · Scope: P0, P1, P2, P3, P5, P6
+Date: 2026-07-25 · Status: ~~**P4 remains BLOCKED**~~ → **superseded; P4 has since merged and its
+entry gate is discharged** · Scope: P0, P1, P2, P3, P5, P6
+
+> **Correction, 2026-07-25 (wave 2).** The status line above was true when written and is not true
+> now. P4 merged in `7db8b51` and `0edc9c1`, and the seven blocking findings this document lists as
+> the entry gate were closed before it did. The successor record is
+> **`docs/knowledge-completion-audit-2026-07-25.md`**, which re-verified every gate in the master
+> plan by execution across P0–P6; P4's own gate is re-verified in
+> **`docs/knowledge-p4-completion-note.md`**. Read those two for current status. This document is
+> kept unedited below because the record of what was broken, and of how the discipline degraded, is
+> the reason the successor audit exists at all.
+>
+> **`[UPDATED 2026-07-26, wave 4.]` All three findings marked **Open** below have since closed:**
+> `explain` gained `--top`; `relation-health`'s orphan half now diffs entry edges against the live
+> component set; and the dossier's no-description fallback — narrowed in wave 3, closed in wave 4 —
+> now names `entry-draft`/`entry-describe` as the remedy for each of the two absences it
+> distinguishes. **Do not read status from this document**, and do not quote a number from it: the
+> successor audit's § Disposition is the single place status lives, it carries the evidence for each
+> row, and every performance figure in the project is now restated there under one named method
+> (M1). The figures below — including finding 6's "macOS 2.0 µs/entry → 30 ms projected" — are the
+> readings as taken then, on a benchmark that has since been rewritten to measure cold processes.
 
 Three lenses (gate completeness, cross-phase regression, P4 readiness) re-verified every shipped
 phase **by execution** against a 189-component reference corpus and a synthetic benchmark. All

@@ -1,8 +1,45 @@
 # Master implementation plan — Knowledge relations, composition and the feature tree
 
-Date: 2026-07-25 · Status: **owner decisions settled (§9), ready to implement** · Supersedes the phasing in
-`docs/knowledge-usefulness-plan-2026-07-24.md` (that document remains the strategic rationale;
-this one is the executable plan)
+Date: 2026-07-25 · Status: ~~**owner decisions settled (§9), ready to implement**~~ → **P0–P6 have
+shipped on `knowledge-relations-p0-p6`; this document is now the gate list they are audited
+against, not a forward plan.** Current state lives in one place —
+`docs/knowledge-completion-audit-2026-07-25.md` § Disposition — and nowhere in this file. ·
+Supersedes the phasing in `docs/knowledge-usefulness-plan-2026-07-24.md` (that document remains the
+strategic rationale; this one is the executable plan)
+
+> **Measurement corrections, 2026-07-25 (waves 2 and 3).** Four numbers below were measured against
+> the code as it stood when they were written and no longer reproduce. Every one of them is
+> corrected **in place** and marked `[CORRECTED …]`, with the old value kept struck through, because
+> a plan whose numbers cannot be reproduced teaches the next implementer to trust commit messages
+> instead — which is how this project acquired three audits. **No gate value changed**; only
+> denominators and one share moved.
+>
+> | Where | Was | Is | Effect on the gate |
+> |---|---|---|---|
+> | §0.1, §8 row 1, P0 gate | 414 of 595 laundered | 0 of **481** kind-level-heuristic edges, in a corpus of **771** stored / **662** non-`belongs-to` | none — the gate value is **0 laundered**, and it is met |
+> | R6, golden (c), §9.1 | 58 of 59 forward-chain edges are `invokes-class` | **481 of 589 (82 %)** forward edges in the depth-2 Apex closure are kind-level heuristic; `invokes-class` alone is 125 (21 %) | none — R6's rule stands, on a larger margin |
+> | §7 "≈596" vs §8 "≈598" | disagreed with each other | both now defer to `docs/knowledge-p1-completion-note.md`, which is the plan's own designated home for a moving number | none — the bar was always "read from the note" |
+> | R6, golden (c) — **wave 3** | `AssignmentTrigger` returns "2 nodes instead of 19" (wave 2's own re-grounding) | **8 citable `nodes` → 1** without `--include-heuristic`; the 19/2 was the *row* count of the whole payload, unhydrated half included | none — R6's rule reproduces strongly; only the figure moved |
+>
+> **The standing rule this third drift bought.** Every figure in this plan states the **corpus**, the
+> **exact command**, the **platform**, and — for anything a command returns — **which key of the
+> payload it counts**.
+>
+> **`[EXTENDED 2026-07-26, wave 4.]`** The platform was implicit, and a fourth figure drifted
+> without it. Every budget in §4.2, §5 and §6 below is **stated** for 15 k on `windows-latest` and
+> has only ever been **measured** at 3 000 entries on macOS — two different claims, and this plan
+> will not let them read as one. The measured side lives under one named method, M1, in
+> `docs/knowledge-completion-audit-2026-07-25.md` § Disposition, together with every open item and
+> what would close it. **This document states gates; it states no status.**
+> Three numbers in a row drifted here, and the third drifted *inside the wave that was correcting the
+> other two*: not because anyone measured carelessly, but because "nodes" meant a different thing to
+> each reader. A figure without its method is a quotation, and this document has now taught that
+> lesson three times.
+>
+> Re-measured on the reference corpus (189 components from `~/Desktop/salesforce_test_data`,
+> drafted, described and approved into a temp root via `knowledge_store.rooted()`, then indexed:
+> 189/189 `approved-current`). The commands are recorded in `docs/knowledge-p4-completion-note.md`
+> §"How these numbers were produced", and R6 carries its own command and payload key inline.
 
 ## How this plan was produced, and what changed
 
@@ -16,7 +53,7 @@ I independently re-verified the four load-bearing findings rather than taking th
 
 | Claim | My verification | Result |
 |---|---|---|
-| 70 % of stored edges launder heuristic inference as `source-exact` | scanned the 189-entry probe index against `HEURISTIC_REF_KINDS` | **414 of 595 edges** stored `source-exact`; **0** stored honestly |
+| 70 % of stored edges launder heuristic inference as `source-exact` | scanned the 189-entry probe index against `HEURISTIC_REF_KINDS` | ~~**414 of 595 edges**~~ stored `source-exact`; **0** stored honestly — `[CORRECTED: 481 of 771, see §0.1]` |
 | Every traversal is reverse-only, so "how does X work?" is unanswerable | `impact --identity ApexTrigger:c:AssignmentTrigger --depth 2` | **0 edges**; yet `explain` shows the trigger's 2 outgoing edges — data present, traversal missing |
 | A per-query freshness floor grows linearly with the corpus | timed `corpus_fingerprint()` over the probe corpus | 2.19 ms / 189 entries = **11.6 µs per entry** → **~174 ms per CLI call at 15 k** on macOS, worse on NTFS+Defender |
 | The CI gate dies on a timeout as the corpus grows | read `scripts/validate_harness.py:867-873` | `subprocess.run(..., timeout=30)` with **no `except`** — an uncaught `TimeoutExpired`, not a legible failure |
@@ -56,9 +93,14 @@ floor cannot fail and is not a budget.
 population it drew from. A partial list is more misleading than an empty one.
 
 **R6 — Heuristic stays opt-out, and the honest answer may require the flag.** After P0 §0.1,
-`invokes-class` is correctly marked heuristic — and **58 of 59 forward-chain edges in the probe
-corpus are `invokes-class`** (measured). So the execution chain of golden question (c) is a
-*heuristic product*. The resolution is not to weaken the default:
+`invokes-class` is correctly marked heuristic — and ~~**58 of 59 forward-chain edges in the probe
+corpus are `invokes-class`**~~ **`[CORRECTED 2026-07-25]` 481 of the 589 distinct forward edges
+reachable within depth 2 of an Apex anchor are kind-level heuristic — 82 %, of which
+`invokes-class` is 125 (21 %) and `object-token` 253 (43 %)**. Method, so it is reproducible:
+depth-2 forward walk from every one of the 57 `ApexClass`/`ApexTrigger` anchors in the reference
+corpus, counting each distinct `(from, kind, to)` edge once. The old figure is stale or from a
+different denominator; it also named the wrong kind as the load-bearing one. So the execution chain
+of golden question (c) is a *heuristic product*. The resolution is not to weaken the default:
 
 - traversals keep excluding non-`source-exact` edges by default;
 - `--include-heuristic` is **required** to answer (c), and the acceptance table says so;
@@ -67,6 +109,41 @@ corpus are `invokes-class`** (measured). So the execution chain of golden questi
 - whenever the default filter drops hops, the result emits a **mandatory** gap naming
   `excluded.heuristicEdge` and the flag that would surface them. Silence is what turns an
   opt-out default into a false negative.
+
+**The rule survives the correction with a larger margin than it was written on.** Re-measured the
+consequence rather than the ratio. ~~Without `--include-heuristic`, `AssignmentTrigger` returns
+**2 nodes instead of 19**, and **53 of the 57 Apex anchors lose at least one node**, four of them
+dropping from 35–83 nodes to zero.~~ **`[CORRECTED 2026-07-25, wave 3 — the figure, not the rule.
+The old one counted rows and called them nodes, and counted the unhydrated half of the payload as
+answer.]`**
+
+**Corpus:** 189 components from `~/Desktop/salesforce_test_data`, drafted, described and approved
+into a temp root via `knowledge_store.rooted()`, then indexed — 189/189 `approved-current`.
+**Command**, golden question (c)'s own anchor, run against that root:
+
+```
+python scripts/knowledge_search.py impact --identity ApexTrigger:c:AssignmentTrigger \
+    --direction outgoing --depth 2 --include-heuristic
+```
+
+| What is counted | With `--include-heuristic` | Default (source-exact only) |
+|---|---|---|
+| `nodes` — citable: resolved, approved-current, `hydrated: true` | **11 rows / 8 distinct nodes** | **2 rows / 1 distinct node** |
+| `nodesNonCurrent` — `resolved: false`, `hydrated: false`, no lane | 8 rows / 8 nodes | 0 |
+| whole payload | 19 rows / 16 distinct nodes | 2 rows / 1 node |
+
+Identical at `--depth 3` and `--depth 4` (the walk exhausts at `depthReached: 2`) and at
+`--top 200`. The old "2 instead of 19" reproduces exactly — as the **row** count of the whole
+payload, unhydrated half included. That is the one number a reader must not take as the answer,
+because contract §14.2 rules an unhydrated row uncitable. Counted as this plan counts
+everywhere else, the collapse is **8 citable nodes → 1**.
+
+Across all 57 `ApexClass`/`ApexTrigger` anchors, same command and root: **52 lose at least one
+citable node** without the flag and **47 fall to zero**, the largest being
+`ApexClass:c:BillingEngineServiceTest` at **27 → 0**. That is the evidence for requiring the flag:
+not that one kind dominates, but that the default answer to "how does this work?" is empty or
+near-empty for almost every Apex anchor, which is exactly the false negative the mandatory gap
+exists to name.
 
 **R7 — One vocabulary, per-command values.** `DEPTH_LIMITS = {impact: 2, context: 1, tree: 4,
 drift: 4}` — one constant, four values. Depth values are semantic requirements, not benchmark
@@ -83,7 +160,17 @@ None of this is in the strategic plan. All of it is live defect in merged code.
 `knowledge_store._edges` (`scripts/knowledge_store.py:606-615`) derives edge assurance from the
 per-edge `heuristic` flag only. The collector never sets that flag for kind-level heuristics, so
 every `object-token`, `invokes-class`, `var-field-ref` and `soql-field` edge is stored
-`source-exact`. Measured: **414 of 595 probe edges**, 0 stored honestly.
+`source-exact`. Measured: ~~**414 of 595 probe edges**~~, 0 stored honestly.
+
+**`[CORRECTED 2026-07-25]` The denominators moved; the defect and the gate did not.** Re-measured
+on the same 189-component corpus after P0–P6 shipped: **771** stored edges, of which **662** are
+not `belongs-to` (P1's kind did not exist when 595 was taken) and **481** are kind-level heuristic.
+The per-kind breakdown reproduces verbatim for three of the four kinds — `object-token` 253,
+`var-field-ref` 78, `soql-field` 25 — and the entire delta is `invokes-class` **58 → 125**, because
+P2's `APEX_NEW_RE` made constructor calls visible. So the population of edges that *would* be
+laundered grew by 67 while the number actually laundered stayed **0**. Read the gate as "**0**
+kind-level-heuristic edges stored `source-exact`", never as a ratio: a ratio to a corpus is not a
+budget, and this is precisely the escape R4 forbids elsewhere in this plan.
 
 Consequences, in order of severity:
 
@@ -227,7 +314,8 @@ it would pass with `--full` legitimately in the set. So P0 also ships a **behavi
 line anchor in the area specs is a working-tree offset. Commit before P1 starts.
 
 **P0 gate:** full suite green; `validate_harness.py` PASS; a test asserting no kind-level-heuristic
-edge is stored `source-exact`; probe re-scan reports **0 laundered edges of 595** (from 414); both
+edge is stored `source-exact`; probe re-scan reports ~~**0 laundered edges of 595** (from 414)~~
+`[CORRECTED 2026-07-25: 0 laundered, out of 481 kind-level-heuristic edges in 771 stored]`; both
 guard fail-opens return `False`; mutating the leaf's vocabulary discards the previous index
 generation.
 
@@ -454,10 +542,18 @@ commands.
   through the ordinary Write path with no refusal — a direct breach of "agents never self-approve".
 - **Where the membership baseline lives, given §6 ruled it out of the ledger.** The ledger record
   pins a **`membershipDigest` only** — a digest is not a member list and cannot re-approve on
-  drift. The identity list lives in `.cache/`. On a Windows team with per-developer caches the
-  normal case is a machine that never held the approver's cache, so `feature-drift` with an absent
-  or foreign baseline returns `baseline: null`, **`changed: "unknown"`** and a gap naming the
-  reason — **never `changed: false`**, which is the exact inversion §6 exists to prevent.
+  drift. The identity list lives in `.cache/`, written by `tree`.
+  ~~On a Windows team with per-developer caches the normal case is a machine that never held the
+  approver's cache, so `feature-drift` with an absent or foreign baseline returns `baseline: null`,
+  **`changed: "unknown"`** and a gap naming the reason.~~ **`[CORRECTED 2026-07-25, wave 3: this
+  bullet disagreed with contract §13.7 and with the shipped `run_feature_drift`.]`** The two homes
+  answer two different questions and conflating them is what makes the command useless on exactly
+  the machine that needs it: **`changed` comes from the ledger digest**, so it still answers on a
+  machine that never held the approver's cache — the normal Windows case — and an absent or foreign
+  cache withholds only the **added/removed detail**, reported as a gap naming the remedy. `changed`
+  is **`"unknown"`** when the ledger pins no `membershipDigest` or the feature is not approved, and
+  is **never `false`** for a missing baseline, which is the exact inversion §6 exists to prevent.
+  **Contract §13.7 is the normative statement of this split; this bullet must not disagree with it.**
 - **`feature-approve` may succeed with a stale or absent index**, recording a null baseline. A
   governed human approval must not be blocked by a disposable cache.
 - **The public-surface requirement.** A live test requires every `knowledge_store` subcommand to
@@ -480,8 +576,14 @@ counters can never exceed what was written; `relation-health` gains an entry-edg
 computed through `compute_lane`, **not** a raw frontmatter read, because contract §4 is explicit
 that reading frontmatter never establishes approval (a file with `state: approved` and no ledger
 record, or a revoked entry, would otherwise be reported as approved); `render_dossier` reads
-descriptions from approved entries. Acceptance bar is **`582 + N_belongs_to`** homed-in-entry
-(≈596), not 582 — the draft's number predated P1.
+descriptions from approved entries. Acceptance bar is **`582 + N_belongs_to`** homed-in-entry,
+not 582 — the draft's number predated P1. ~~(≈596)~~ **`[CORRECTED 2026-07-25]` No parenthetical
+figure. §7 said ≈596 and §8 said ≈598 for the same quantity, and both were wrong by the time P5
+ran: the corpus figure is 665, because P2's `APEX_NEW_RE` minted ~67 further `invokes-class`
+candidates after either number was written. The count is a property of the corpus *and* of the
+extractor and moves whenever either does — which is why this plan told P5 to read
+`docs/knowledge-p1-completion-note.md` rather than a literal. Only `N_belongs_to = 16` is fixed.
+Read the note; assert against the note; never restate the total here.**
 
 **P6.** Rewire the consumer surfaces — **11 files / 12 occurrences** of `knowledge_registry.py
 query`, not the 7 the strategic plan stated. Two-layer rule preserved, with one correction:
@@ -503,6 +605,23 @@ exactly what §7 protects:
 
 Both counts are asserted. Neither is allowed to move silently.
 
+**Each Set A surface owes two things, and the gate must count both.** `context --identity` is only
+half of a correct step-1 lookup: a row carrying `hydrated: false` failed re-reading and is not a
+fact (contract §14.2), so a surface that names the command but not the rule lets an agent cite a
+row the index could not re-read — the retrieval defect P0–P4 spent four phases making visible,
+re-introduced at the last hop. **`[ADDED 2026-07-25, wave 3.]`** This is not hypothetical: wave 2
+reported the rule present in all eight Set A surfaces and `grep -rl hydrated .github/` returned
+**two** — a claim about a set, made without counting the set, which is the failure mode §7 already
+exists to stop. The gate therefore asserts **two tokens per Set A surface** — `context --identity`
+and `hydrated` — over the surfaces this section names, never over a list kept beside it. The whole
+check is that `grep -rl hydrated .github/` returns the eight Set A surfaces plus `search-knowledge`.
+**`[ENFORCED 2026-07-26, wave 4.]`** Both tokens are now actually asserted:
+`validate_harness.check_knowledge_consumer_sets` carries `SET_A_CALL` **and**
+`SET_A_HYDRATION_RULE = "hydrated"`, one `audit.require` each over the set parsed from this
+section — 8 surfaces × 2 = 16 assertions, and `grep -rl hydrated .github/` returns exactly the 9
+files named above. Until then the second token was stated here and checked nowhere, which is the
+same shape as the defect it describes.
+
 Neither phase may describe a generated view as citable: the dossier and search results carry
 "obtain the citable ref with `entry-status --identity`", never a hand-built `entryRef` (the
 projection's `profileDigest` is a content digest and `validate_entry_refs` rejects it outright).
@@ -517,7 +636,7 @@ Golden questions, traced end to end:
 |---|---|---|---|---|
 | a | What is `Assignment__c` made of? | 3 different query shapes; VR/RecordType need reading a `fullName` prefix | one call, uniform, **with the coverage denominator** | P1+P2+P3 |
 | b | What breaks if I change `Health_Score__c`? | works; depth silently clamped; no hop provenance; serves revoked entries | chain, per-hop assurance, reported limits, `sourceCoverage`, lane-filtered | P2 |
-| c | How does conflict detection work? | **0 edges** — reverse-only traversal | forward chain, execution order — **with `--include-heuristic`, per-hop + path `minAssurance`** (58/59 chain edges are `invokes-class`, correctly heuristic after P0) | P2 §4.1 |
+| c | How does conflict detection work? | **0 edges** — reverse-only traversal | forward chain, execution order — **with `--include-heuristic`, per-hop + path `minAssurance`** (~~58/59 chain edges are `invokes-class`~~ `[CORRECTED 2026-07-25: 82 % of the forward closure is kind-level heuristic; without the flag `AssignmentTrigger`'s citable `nodes` collapse from 8 to 1 — corpus, command and payload key in R6]`) | P2 §4.1 |
 | d | Which permission sets grant edit? | multiplicity collapsed; >300-grant sets silently missing | all edges + mandatory truncation gap | P2 |
 | e | What is in the feature, and what is only inferred? | 23/29 heuristic members shown flat and unlabelled | per-node assurance; below-floor summarised; **heuristic members require the flag** | P0+P4 |
 | f | Is there approved knowledge at all? | lanes separated | preserved | — |
@@ -526,11 +645,11 @@ Structural gates:
 
 | Gate | Today | Required |
 |---|---|---|
-| Edges laundering heuristic as source-exact | **414 / 595** | **0** (P0) |
+| Edges laundering heuristic as source-exact | ~~**414 / 595**~~ `[CORRECTED: 481 kind-level-heuristic edges of 771 stored, all laundered before P0]` | **0** (P0) — an absolute count, never a ratio |
 | CustomField entries with zero outgoing edges | 63 / 93 | **0** (P1) |
 | CustomObject entries reachable by composition | 0 of 20 (leaves) | **20 of 20 return non-empty `parts`** via inverted `belongs-to` (P2 — never an outgoing-edge count, see §3) |
 | Guard fail-open on a boolean flag | `build --full --rm` → **True** | `False` in both guards (P0) |
-| `relations-worklist` missing | 582, loop cannot terminate | 0 missing / `582 + N_belongs_to` (≈598) homed-in-entry, read from the P1 note |
+| `relations-worklist` missing | 582, loop cannot terminate | 0 missing / `582 + N_belongs_to` homed-in-entry, **read from `docs/knowledge-p1-completion-note.md`, never from a literal** — ~~(≈598)~~ `[CORRECTED 2026-07-25: parenthetical removed; it disagreed with §7's ≈596 and both predate the post-P2 total of 665 the note records]` |
 | `relations-draft` counter honesty | reports 50, writes 0 | never exceeds `claimCount` |
 | `relation-health` on rotting entry edges | `HEALTHY` unconditionally | lane-computed, orphans reported |
 | Dossier descriptions | 64 / 64 "pending" | from approved entries |
@@ -567,11 +686,23 @@ All seven blocking decisions are closed. They are now constraints on implementat
 | D6 | Membership-delta command name | **`feature-drift`** | The existing public `/feature-health` slash command (agent `test-strategist`, ADO Feature/BRD story coverage) is untouched. Name is consistent with the `approved-drifted` lane vocabulary |
 | D7 | Contract section number | **§13; §12 reserved for parity certification** | The pre-existing dangling reference at line 398 keeps its intended meaning and needs no edit. Every shipped executor error string, schema `description` and skill line cites §13 |
 
-**Still open (non-blocking, decide during implementation):** collector version bump to 1.7.0
-(inert but conventional); node/fanout/row/time traversal limits (set them from the P2 benchmark —
-**depth values are NOT among them**, they are semantic requirements fixed by R7);
+**Still open (non-blocking, decide during implementation):** ~~collector version bump to 1.7.0
+(inert but conventional)~~; ~~node/fanout/row/time traversal limits (set them from the P2
+benchmark)~~ — **depth values are NOT among them**, they are semantic requirements fixed by R7;
 `impact --format` default (recommend `chain`); whether `explain`/`impact` survive P3 (recommend
 keep, revisit after P6 shows whether any consumer still calls them).
+
+**`[CLOSED 2026-07-26, wave 4 — the two struck items above.]`** `COLLECTOR_VERSION` is `1.7.0`.
+The traversal limits are now **set from the P2 benchmark**, which is what this line asked for and
+what the completion audit called chosen constants: `knowledge_benchmark.traversal_observations`
+walks the shipped `traverse()` over a hub / chain / leaf regime, `TRAVERSAL_LIMIT_BASIS` states one
+uniform rule — no limit below **3×** the worst legitimate walk projected to 15 k — and
+`assert_traversal_limits` re-checks it on every `--assert-command-budgets` run. Shipped:
+`TRAVERSAL_LIMITS = {"maxNodes": 5000, "maxFanout": 2000, "maxSeconds": 2.0}`. The **time** limit
+this line asked for now exists; a walk that trips it is disclosed through the same vocabulary as
+the others, `limitsHit: ["time"]`, and it sits deliberately above every per-command p95 ceiling
+because it terminates pathology rather than budgeting latency. Measurement and headroom: see
+`docs/knowledge-completion-audit-2026-07-25.md` § Disposition (Method M1).
 
 ### 9.1 Gap-analysis outcome (2026-07-25)
 
@@ -598,7 +729,8 @@ was most likely to trust:
 
 Two were genuine design gaps neither the strategic plan nor the area specs caught:
 
-- After P0 marks `invokes-class` heuristic, **58 of 59 forward-chain edges** become opt-in, so
+- After P0 marks `invokes-class` heuristic, ~~**58 of 59 forward-chain edges**~~ `[CORRECTED: 82 %
+  of the depth-2 forward closure — see R6]` become opt-in, so
   golden question (c) needed an explicit assurance policy (**R6**) rather than an implied answer.
 - Six facts the collector emits are rejected by three profile schemas (§0.5), so `entry-draft`
   fails on normal shapes. My probe corpus contains none of them — the same way the CustomField

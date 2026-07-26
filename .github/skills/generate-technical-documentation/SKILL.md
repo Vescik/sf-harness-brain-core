@@ -30,7 +30,12 @@ large or heterogeneous. Do not infer which manifest members belong to the work i
    [search-knowledge skill](../search-knowledge/SKILL.md), both layers:
    - `python scripts/knowledge_search.py context --identity <Identity>` — what the source
      declares, what the artifact is made of, what depends on it, and who grants access, in one
-     call. This is the step-1 lookup for the ten entry-homed types.
+     call. This is the step-1 lookup for the ten entry-homed types. Document from `parts`,
+     `permissions` and `incoming`, the approved-current buckets; rows from lanes opened with
+     `--state` arrive in the `partsNonCurrent` / `permissionsNonCurrent` / `incomingNonCurrent`
+     siblings and are documented as gaps, not as facts. `incoming` and `outgoing` are keyed by
+     relation kind, so iterate the keys — a missing kind is silence, never an absence proof. A row
+     carrying `hydrated: false` failed re-reading; document it as a gap, never as a fact.
    - `python scripts/knowledge_registry.py query --subject-identity <ApiName>` for org, runtime,
      business and vendor facts, plus `--uses-object <Object>` / `--uses-field <Object.Field>` to
      surface dependent automations of unprofiled types for the impact section — Workflow,
@@ -60,6 +65,15 @@ package/vendor facts, cited as `claimRef` + `evidenceRef`. Where an approved ent
 subject it shadows a metadata-repository claim about the same fact (SAFE-CLAIM-001 v2) — cite
 the entry. Absence, deployed state, and semantics are never grounded by an entry, and a missing
 search hit is never proof of absence.
+
+An entry can be approved, current and still refuse to ground a claim: contract §8.1 grounds only
+sections marked `source-exact` with full coverage, and the executor enforces that when the
+`entryRef` is bound. **Apex-layer entries generally cannot be cited as positive grounding** —
+their facts are regex-derived and honestly marked heuristic. Measured on the 189-component
+reference package: 48 of 52 ApexClass, 5 of 5 ApexTrigger, 3 of 93 CustomField and 2 of 2
+ValidationRule entries are refused. Read them for orientation, report the fact as inferred, and
+ground it on a claim with its own evidence. The refusal is the contract working, not a tooling
+failure — never retry it with a different ref shape.
 
 ## Return
 

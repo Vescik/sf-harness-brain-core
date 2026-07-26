@@ -38,12 +38,22 @@ human deploy.
    instead of guessing.
 3. Consult Knowledge for dependents before touching the component, both layers:
    - `python scripts/knowledge_search.py context --identity <Identity>` — who reads, writes and
-     grants access to it today, with per-edge assurance;
+     grants access to it today, with per-edge assurance. `parts`, `permissions` and `incoming`
+     hold the approved-current rows; the `*NonCurrent` siblings are opted-in lanes and are
+     reported as unknowns in the fix note, never as dependents you have accounted for. `incoming`
+     and `outgoing` are keyed by relation kind — iterate the keys, and treat a missing kind as
+     silence rather than as "nothing depends on this". A row with `hydrated: false` failed
+     re-reading — it is an unknown in the fix note, never a dependent you have accounted for;
    - `python scripts/knowledge_registry.py query --subject-identity <component>` plus the
      `--uses-object`/`--uses-field` searches, which stay the only home for dependents of
      unprofiled types.
    An empty result from either layer is a recorded gap and is NEVER proof that nothing depends on
-   this component.
+   this component. When the fix note cites a repository fact, cite what the executor gives you,
+   not what the view shows: obtain the citable ref with `python scripts/knowledge_store.py
+   entry-status --identity <Identity>`; a `context` pack is never itself citable. Apex-layer
+   entries generally cannot be cited as positive grounding — contract §8.1 grounds only sections
+   marked `source-exact` with full coverage, and Apex facts are regex-derived — so for an Apex
+   defect quote the retrieved source you read in step 2 and report the entry as inferred.
 4. Make the smallest coherent edit in `force-app/`. Match the existing metadata style; change the
    defective element, not the surrounding structure.
 5. Verify what can be verified locally: the XML parses, the changed element is the only

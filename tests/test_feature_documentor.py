@@ -161,6 +161,157 @@ class FeatureCrawlTests(unittest.TestCase):
         self.assertIn("HarnessInvoice__c", crawl["hubStopList"])
 
 
+APPROVAL_XML = (
+    '<?xml version="1.0" encoding="UTF-8"?>\n'
+    '<ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">'
+    "<active>true</active><label>HarnessEngagement Approval</label>"
+    "<entryCriteria><criteriaItems><field>HarnessEngagement__c.Name</field></criteriaItems></entryCriteria>"
+    "<approvalStep><name>Step_1</name></approvalStep></ApprovalProcess>\n"
+)
+
+
+class DossierDescriptionTests(unittest.TestCase):
+    """The dossier must name the remedy that matches the state it found.
+
+    The fallback used to print "no Knowledge Entry and no drafted claim" against a component
+    whose entry was on disk and merely undescribed — telling a human to author a file that
+    already exists instead of running `entry-describe`. Four states, four sentences, and a
+    reader who follows any of them gets a command that works.
+    """
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory(prefix="dossier-description-")
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name).resolve()
+        base = self.root / "force-app/main/default"
+        write(base / "objects/HarnessEngagement__c/HarnessEngagement__c.object-meta.xml", obj("HarnessEngagement"))
+        # Flow has a Knowledge Entry home; ApprovalProcess does not. Both are drafted a
+        # component-description claim, so both exercise the entry-less half of the fallback.
+        write(base / "flows/HarnessEngagement_After_Save.flow-meta.xml", FLOW_XML)
+        write(
+            base
+            / "approvalProcesses/HarnessEngagement__c.HarnessEngagement_Approval.approvalProcess-meta.xml",
+            APPROVAL_XML,
+        )
+        shutil.copytree(ROOT / "schemas", self.root / "schemas")
+        (self.root / "config").mkdir()
+        shutil.copy2(ROOT / "config/knowledge-policy.json", self.root / "config/knowledge-policy.json")
+        (self.root / "config/harness.local.json").write_text(
+            '{"knowledge": {"chatReviewer": "Reviewer Person"}}', encoding="utf-8"
+        )
+        (self.root / ".ai/knowledge/claims").mkdir(parents=True)
+        self.purpose = self.root / "purpose.md"
+        self.purpose.write_text("Stamps the engagement summary after save.", encoding="utf-8")
+        for command in (
+            ["git", "init", "-q"],
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"],
+        ):
+            subprocess.run(command, cwd=self.root, check=True, capture_output=True)
+        self.builder = ForceAppKnowledge(self.root)
+        self.builder.inventory()
+        self.builder.feature_crawl("HarnessBilling", ["HarnessEngagement__c"], depth=1)
+        self.drafted = self.builder.feature_draft("HarnessBilling", OBSERVED_AT)
+
+    def dossier(self) -> str:
+        """Re-render from the persisted crawl so each state is read off the same boundary."""
+
+        import json
+
+        crawl = json.loads(self.builder.crawl_path("harnessbilling").read_text(encoding="utf-8"))
+        self.builder.render_dossier(crawl, self.drafted["manifest"])
+        return (self.root / self.drafted["dossierPath"]).read_text(encoding="utf-8")
+
+    def flow_row(self, text: str) -> str:
+        return next(line for line in text.splitlines() if "`HarnessEngagement_After_Save`" in line)
+
+    def approve_flow_entry(self, body: str | None = None) -> None:
+        """Approve the Flow entry through the governed commands, optionally with a blank Purpose."""
+
+        import argparse
+
+        import scripts.knowledge_store as store
+
+        with store.rooted(self.root):
+            drafted = store.command_entry_draft(
+                argparse.Namespace(
+                    metadata_type="Flow",
+                    full_name="HarnessEngagement_After_Save",
+                    namespace=None,
+                    purpose_file=str(self.purpose),
+                    source_api_version="64.0",
+                    candidate_keyword=None,
+                )
+            )
+            store.command_entry_approve(
+                argparse.Namespace(entry=[f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+            )
+            if body is None:
+                return
+            path = self.root / drafted["path"]
+            frontmatter, _previous = store.split_entry(path.read_text(encoding="utf-8"))
+            digest = store.reviewed_content_digest(frontmatter, body)
+            store.atomic_write(path, store.render_entry(frontmatter, body))
+            store.command_entry_approve(argparse.Namespace(entry=[f"{drafted['identity']}:{digest}"]))
+
+    def describe_claim(self, identity: str, description: str) -> None:
+        """Replace the drafted description sentinel with real prose."""
+
+        for bundle in self.drafted["manifest"]["bundles"]:
+            path = self.root / bundle.get("claimFile", "")
+            if not bundle.get("claimFile"):
+                continue
+            claim = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if claim["claimType"] != "component-description" or claim["subject"]["identity"] != identity:
+                continue
+            claim["assertion"]["value"]["description"] = description
+            path.write_text(yaml.safe_dump(claim, sort_keys=True), encoding="utf-8")
+            return
+        self.fail(f"no drafted component-description claim for {identity}")
+
+    def test_no_entry_and_no_claim_names_the_type_appropriate_remedy(self) -> None:
+        text = self.dossier()
+        self.assertIn(
+            "_no description: no Knowledge Entry and no drafted claim — "
+            "run `entry-draft` then `entry-describe`_",
+            self.flow_row(text),
+        )
+        # A type with no entry home must never be told to run `entry-draft`: the command
+        # refuses it, so the instruction would fail in the reader's hands.
+        approval = next(
+            line for line in text.splitlines() if "HarnessEngagement_Approval`" in line
+        )
+        self.assertIn("this type has no entry home; describe it in a claim", approval)
+        self.assertNotIn("entry-draft", approval)
+
+    def test_a_described_entry_renders_its_purpose_with_no_remedy(self) -> None:
+        self.approve_flow_entry()
+        row = self.flow_row(self.dossier())
+        self.assertIn("Stamps the engagement summary after save.", row)
+        self.assertNotIn("entry-describe", row)
+        self.assertNotIn("no Knowledge Entry", row)
+
+    def test_an_undescribed_entry_sends_the_reader_to_entry_describe(self) -> None:
+        # The audit's reproduction: blank one approved entry's Purpose.
+        self.approve_flow_entry(body="## Purpose\n")
+        row = self.flow_row(self.dossier())
+        self.assertIn(
+            "_no description: the approved-current Knowledge Entry has no Purpose — "
+            "run `entry-describe`_",
+            row,
+        )
+        # The old text sent them to author an entry that is already on disk.
+        self.assertNotIn("no Knowledge Entry and no drafted claim", row)
+        self.assertNotIn("entry-draft", row)
+
+    def test_a_claim_covers_an_undescribed_entry_but_still_names_the_gap(self) -> None:
+        self.describe_claim("Flow:HarnessEngagement_After_Save", "Drafted claim prose.")
+        self.approve_flow_entry(body="## Purpose\n")
+        row = self.flow_row(self.dossier())
+        self.assertIn("Drafted claim prose.", row)
+        self.assertIn("approved-current Knowledge Entry has no Purpose: run `entry-describe`", row)
+
+
 class FeatureIndexTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="feature-index-")

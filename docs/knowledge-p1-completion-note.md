@@ -3,6 +3,16 @@
 Date: 2026-07-25 · Required output of P1, consumed by P5's acceptance bar
 (`docs/knowledge-master-plan-2026-07-25.md` §3, §7, §8)
 
+> **This note is the designated home for one moving number and nothing else.** It records P1's
+> counts so P5 can assert against a note rather than a literal; it records no project status.
+> Current status, every open item and what would close it live in exactly one place:
+> `docs/knowledge-completion-audit-2026-07-25.md` § Disposition.
+>
+> Every count here is a **graph shape**, not a timing: it is a property of the corpus and the
+> extractor, reproducible on any platform, and it was last reproduced on macOS (wave 3). No figure
+> on this page depends on the `windows-latest` measurements the rest of the project is still
+> waiting for.
+
 ## N_belongs_to = 16
 
 Definition (master plan §3): **new `component-relation` candidates minted by `belongs-to`**,
@@ -34,6 +44,17 @@ a fixed P1 output.
 ## Measured on the reference corpus
 
 189 components from `~/Desktop/salesforce_test_data`, all drafted as entries, indexed.
+
+**How, so the next reader can reproduce it rather than quote it** (the plan's standing rule after
+three figures drifted): the corpus is discovered with `ForceAppKnowledge(root).inventory()` filtered
+to `knowledge_store.PROFILES`, drafted with `entry-draft`, described, approved with `entry-approve`
+and indexed with `knowledge_search build` — all under `knowledge_store.rooted(<temp>)`, never the
+repository. Edge counts below are read off the built index by walking every document's `edges`.
+
+`[REPRODUCED 2026-07-25, wave 3]` on a corpus rebuilt from scratch by that recipe: **771** stored
+edges, **109** `belongs-to` with the per-type split below verbatim (CustomField 93, RecordType 7,
+ApexTrigger 5, ValidationRule 2, CustomMetadata 2), **662** non-`belongs-to`, **0** CustomField
+entries with zero outgoing edges, **20** CustomObject entries with zero outgoing edges.
 
 | Measurement | Before P1 | After P1 |
 |---|---|---|

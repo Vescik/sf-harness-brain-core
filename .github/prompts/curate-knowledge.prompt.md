@@ -75,8 +75,10 @@ field pointing at it. Depth alone cannot express a feature.
   - Approval goes through [approve-knowledge-drafts](../skills/approve-knowledge-drafts/SKILL.md):
     `feature-review` renders the rule and the prose, and the human confirms
     `feature-approve --feature Feature:<slug>:sha256:<digest>` in chat.
-  - `python scripts/knowledge_store.py feature-revoke --slug <slug> --rationale "<reason>"` and
-    `feature-check` (CI integrity gate over features and their ledger).
+  - `python scripts/knowledge_store.py feature-revoke --slug <slug> --rationale "<reason>"`.
+  - `feature-check` is not part of this workflow: `validate_harness.py` runs it as the CI
+    integrity gate over features and their ledger. CI runs it; you do not. If it fails, the
+    failure names the feature file and the contract section — fix that, do not re-run it by hand.
 
 What approval binds is the RULE and the description — never the member list. Membership depends
 on the package as well as the rule, so storing it would mean every new artifact drifts every

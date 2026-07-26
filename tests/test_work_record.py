@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import importlib.util
 import io
@@ -22,6 +23,34 @@ SPEC = importlib.util.spec_from_file_location("work_record", ROOT / "scripts" / 
 assert SPEC and SPEC.loader
 work_record = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(work_record)
+
+# Sources for the citation-boundary fixture. The Apex class earns a source-derived-heuristic
+# typeFacts marker (its object references are regex-derived), the field earns source-exact
+# (its belongs-to edge is read straight off the path). Both are approved-current, so the only
+# difference the refusal can be reacting to is assurance.
+SEAM_APEX_CLASS = """public with sharing class HarnessSeamService {
+    public static void run() {
+        List<HarnessSeamCase__c> rows = [SELECT Id FROM HarnessSeamCase__c];
+        update rows;
+    }
+}
+"""
+
+SEAM_APEX_META = """<?xml version="1.0" encoding="UTF-8"?>
+<ApexClass xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apiVersion>64.0</apiVersion>
+    <status>Active</status>
+</ApexClass>
+"""
+
+SEAM_FIELD = """<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Status__c</fullName>
+    <label>Status</label>
+    <type>Picklist</type>
+    <required>true</required>
+</CustomField>
+"""
 
 
 class WorkRecordTests(unittest.TestCase):
@@ -334,6 +363,65 @@ class WorkRecordTests(unittest.TestCase):
             *arguments,
         )
 
+    def seed_knowledge_entries(self) -> dict[str, str]:
+        """Approve one heuristic and one source-exact entry in the record's own workspace.
+
+        Seeded per test rather than in setUp: drafting runs the collector over force-app, which
+        every other test in this class pays for nothing."""
+        from scripts import knowledge_store
+
+        shutil.copytree(ROOT / "schemas", self.root / "schemas", dirs_exist_ok=True)
+        config_path = self.root / "config" / "harness.local.json"
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        config["knowledge"] = {"chatReviewer": "Reviewer Person"}
+        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        classes = self.root / "force-app" / "main" / "default" / "classes"
+        classes.mkdir(parents=True, exist_ok=True)
+        (classes / "HarnessSeamService.cls").write_text(SEAM_APEX_CLASS, encoding="utf-8")
+        (classes / "HarnessSeamService.cls-meta.xml").write_text(SEAM_APEX_META, encoding="utf-8")
+        fields = self.root / "force-app" / "main" / "default" / "objects" / "HarnessSeamCase__c" / "fields"
+        fields.mkdir(parents=True, exist_ok=True)
+        (fields / "Status__c.field-meta.xml").write_text(SEAM_FIELD, encoding="utf-8")
+        purpose = self.root / "artifacts" / "seam-purpose.md"
+        purpose.write_text("Fixture component for the citation-boundary tests.", encoding="utf-8")
+
+        identities: dict[str, str] = {}
+        with knowledge_store.rooted(self.root):
+            for metadata_type, full_name in (
+                ("ApexClass", "HarnessSeamService"),
+                ("CustomField", "HarnessSeamCase__c.Status__c"),
+            ):
+                drafted = knowledge_store.command_entry_draft(
+                    argparse.Namespace(
+                        metadata_type=metadata_type,
+                        full_name=full_name,
+                        namespace=None,
+                        purpose_file=str(purpose),
+                        source_api_version="64.0",
+                        candidate_keyword=None,
+                    )
+                )
+                knowledge_store.command_entry_approve(
+                    argparse.Namespace(
+                        entry=[f"{drafted['identity']}:{drafted['reviewedContentDigest']}"]
+                    )
+                )
+                identities[metadata_type] = drafted["identity"]
+        return identities
+
+    def entry_reference(self, entry_id: str) -> dict[str, str]:
+        from scripts import knowledge_store
+
+        lane = knowledge_store.lane_for_identity(self.root, entry_id)
+        self.assertEqual("approved-current", lane["lane"], entry_id)
+        return {
+            "entryId": entry_id,
+            "reviewedContentDigest": lane["reviewedContentDigest"],
+            "factsDigest": lane["factsDigest"],
+            "sourceTreeDigest": lane["sourceTreeDigest"],
+            "profile": lane["profile"],
+        }
+
     def initialize(self) -> dict:
         arguments = [
             "init",
@@ -546,6 +634,67 @@ class WorkRecordTests(unittest.TestCase):
         self.assertEqual(component["packageVersion"], "3.4.0")
         self.assertNotEqual(bound["scopeHash"], current["scopeHash"])
         self.assertEqual(record["claimRefs"][0]["sha256"], work_record.file_hash(self.claim_path))
+
+    def test_entry_grounding_requires_source_exact_sections_with_full_coverage(self) -> None:
+        identities = self.seed_knowledge_entries()
+        exact = self.entry_reference(identities["CustomField"])
+        heuristic = self.entry_reference(identities["ApexClass"])
+        # The half of §8.1 that already worked keeps working, unchanged.
+        work_record.validate_entry_refs(self.root, [exact], require_current=True)
+        with self.assertRaises(work_record.WorkRecordError) as caught:
+            work_record.validate_entry_refs(self.root, [heuristic], require_current=True)
+        message = str(caught.exception)
+        self.assertIn(identities["ApexClass"], message)
+        self.assertIn("typeFacts", message)
+        self.assertIn("source-derived-heuristic", message)
+        self.assertIn("§8.1", message)
+        # Mirrors the drift half of this boundary: the looser gate stays loose, so a record
+        # bound before the rule existed still loads and reports rather than becoming unopenable.
+        work_record.validate_entry_refs(self.root, [heuristic], require_current=False)
+
+    def test_partial_coverage_is_refused_even_when_the_section_is_source_exact(self) -> None:
+        identities = self.seed_knowledge_entries()
+        entry_id = identities["CustomField"]
+        path = self.root / work_record.entry_relative_path(self.root, entry_id)
+        path.write_text(
+            path.read_text(encoding="utf-8").replace("  typeFacts: full", "  typeFacts: partial"),
+            encoding="utf-8",
+        )
+        # Asserted against the predicate directly: rewriting coverage breaks the digest, so the
+        # lane check upstream would refuse first, for the wrong reason.
+        with self.assertRaises(work_record.WorkRecordError) as caught:
+            work_record._assert_entry_is_groundable(self.root, entry_id)
+        self.assertIn("extractionCoverage partial", str(caught.exception))
+
+    def test_bind_entry_refuses_an_entry_that_cannot_ground(self) -> None:
+        current = self.initialize()
+        identities = self.seed_knowledge_entries()
+        error = self.run_error(
+            "bind-entry",
+            "--record-id",
+            self.record_id,
+            "--expected-revision",
+            str(current["recordRevision"]),
+            "--expected-record-hash",
+            current["recordHash"],
+            "--role",
+            "solution-designer",
+            "--entry-id",
+            identities["ApexClass"],
+        )
+        self.assertIn("§8.1", error)
+        self.command(
+            "bind-entry",
+            current,
+            "--role",
+            "solution-designer",
+            "--entry-id",
+            identities["CustomField"],
+        )
+        record = work_record.load_record(self.root, self.record_id)
+        self.assertEqual(
+            [identities["CustomField"]], [item["entryId"] for item in record["entryRefs"]]
+        )
 
     def test_claim_file_drift_invalidates_the_exact_binding(self) -> None:
         self.bind_claim(self.initialize())

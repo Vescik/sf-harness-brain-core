@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sf-harness-brain-core/schemas/knowledge-feature-entry.schema.json",
   "title": "Feature Entry v1",
-  "description": "A human-approved BOUNDARY RULE for a feature, plus a human description of what the feature is. Membership is never stored: it is recomputed from the rule against the current index, so adding an artifact to the package cannot drift an approved feature. What a reviewer approves is the rule and the prose.",
+  "description": "A human-approved BOUNDARY RULE for a feature, plus a human description of what the feature is. Membership is never stored: it is recomputed from the rule against the current index, so adding an artifact to the package cannot drift an approved feature. What a reviewer approves is the rule and the prose. Governing section: docs/knowledge-one-file-contract.md §13.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -34,7 +34,7 @@
           "type": "string",
           "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
           "maxLength": 60,
-          "description": "Identity is `Feature:<slug>` — two segments. Three would satisfy work_record.entry_relative_path's unpack and resolve to a path under ARTIFACTS_ROOT that does not exist, failing silently instead of loudly."
+          "description": "Identity is `Feature:<slug>` — two segments (contract §13.2). Three would satisfy work_record.entry_relative_path's unpack and resolve to a path under ARTIFACTS_ROOT that does not exist, failing silently instead of loudly."
         },
         "name": {
           "type": "string",
@@ -47,7 +47,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["anchors", "depth"],
-      "description": "The rule, not its result. Measured on a 20-object package: depth 1 from one anchor reaches 3 objects, depth 2 reaches 13, depth 4 saturates at 17 — because each hop expands BOTH along the object's own lookups and along every field that points AT it. Depth alone therefore cannot express a feature; anchors, hubs and explicit overrides are what make the boundary a decision rather than a radius.",
+      "description": "The rule, not its result (contract §13.1). Measured on a 20-object package: depth 1 from one anchor reaches 3 objects, depth 2 reaches 13, depth 4 saturates at 17 — because each hop expands BOTH along the object's own lookups and along every field that points AT it. Depth alone therefore cannot express a feature; anchors, hubs and explicit overrides are what make the boundary a decision rather than a radius.",
       "properties": {
         "anchors": {
           "type": "array",
@@ -103,7 +103,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["reviewedContentDigest", "reviewedBy", "reviewedAt", "mechanism"],
-      "description": "Mirrors the ledger, which is authoritative. No membership list appears here or in the ledger: a permanent human-attributed approval record must not carry cross-artifact identities the reviewer was explicitly told they were not approving, derived from a cache that is never authority.",
+      "description": "Mirrors the separate .ai/knowledge/features-ledger.jsonl, which is authoritative (contract §13.4/§13.5). No membership list appears here or in the ledger: a permanent human-attributed approval record must not carry cross-artifact identities the reviewer was explicitly told they were not approving, derived from a cache that is never authority. The ledger pins a membershipDigest instead — a digest cannot re-approve on drift (contract §13.7).",
       "properties": {
         "reviewedContentDigest": { "type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$" },
         "reviewedBy": { "type": ["string", "null"] },

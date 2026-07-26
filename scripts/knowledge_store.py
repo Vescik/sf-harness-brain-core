@@ -230,11 +230,21 @@ def entry_path(metadata_type: str, namespace: str | None, full_name: str) -> Pat
     return path
 
 
-def assert_no_reparse_points() -> None:
-    knowledge_root = ROOT / ".ai/knowledge"
-    for path in knowledge_root.rglob("*"):
+def assert_no_reparse_points(root: Path | None = None) -> None:
+    """Refuse a symlink/junction anywhere under the tree a command is about to write.
+
+    Scoped, because the walk is the command's own cost: a single-file feature-status or
+    feature-propose paying an rglob over a 15 k-entry artifact corpus is a scale defect, and the
+    artifact corpus is not what those commands write anyway. Each caller passes the root it
+    governs, so the check still covers every path it can create (§6, R4)."""
+
+    base = root if root is not None else ROOT / ".ai/knowledge"
+    if not base.exists():
+        return
+    scope = base.relative_to(ROOT).as_posix() if base.is_relative_to(ROOT) else str(base)
+    for path in base.rglob("*"):
         if path.is_symlink():
-            raise StoreError(f"reparse point/symlink under .ai/knowledge: {path} (contract §3)")
+            raise StoreError(f"reparse point/symlink under {scope}: {path} (contract §3)")
 
 
 # --- digests (contract §5) -------------------------------------------------------------
@@ -376,13 +386,14 @@ def approved_taxonomy_terms() -> set[str]:
     return terms
 
 
-def compute_lane(path: Path, latest: dict[str, dict[str, Any]], deep: bool = True) -> dict[str, Any]:
-    """Effectiveness lane for one entry.
+def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Effectiveness lane for one entry — always the full check.
 
-    `deep=False` skips only the source-fragment re-digest, which is the expensive part and the
-    one an external authority (git) can vouch for. Everything cheap — schema validation, path
-    round-trip, ledger provenance, digest pinning — always runs, and the returned lane says
-    which mode produced it so a caller can never mistake a narrow check for a full one."""
+    There is deliberately no partial mode. One existed, skipping the source-fragment re-digest
+    on the theory that it was the expensive part; profiling at 9 000 entries put the cost in
+    YAML parsing and jsonschema validation instead and left the re-digest out of the top frames
+    entirely, so the partial mode bought ~2 % while returning a lane that was asserted rather
+    than proven. `entry-check --changed-since` now skips whole entries instead."""
 
     text = path.read_text(encoding="utf-8")
     frontmatter, body = split_entry(text)
@@ -434,16 +445,9 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]], deep: bool = Tru
         result["lane"] = "not-effective"
         result["problems"].append("in-file approval provenance mismatches the ledger record")
     else:
-        current_facts = facts_digest(frontmatter)
-        if deep:
-            regenerated = regenerate_fragment_digest(frontmatter)
-            result["lane"] = "approved-current" if regenerated else "approved-drifted"
-        else:
-            # Source drift was not re-checked, so the lane is asserted, not proven. Say so in the
-            # result rather than reporting approved-current on an unverified fragment set.
-            result["lane"] = "approved-current"
-            result["fragmentCheck"] = "skipped"
-        result["factsDigest"] = current_facts
+        regenerated = regenerate_fragment_digest(frontmatter)
+        result["lane"] = "approved-current" if regenerated else "approved-drifted"
+        result["factsDigest"] = facts_digest(frontmatter)
     result["sourceTreeDigest"] = frontmatter["scope"]["sourceTreeDigest"]
     result["profile"] = f"{frontmatter['profile']['id']}@{frontmatter['profile']['version'].split('.', 1)[0]}"
     return result
@@ -1205,32 +1209,82 @@ def changed_entry_paths(ref: str) -> set[str] | None:
     Git is the authority on what changed, which is what makes the narrow check safe. A stamp
     manifest cannot do this job: one under `.cache/` is git-ignored so CI is always cold, one
     keyed on mtime is inert because `git checkout` rewrites mtimes, and a committed one is
-    forgeable — an agent could mark a tampered entry unchanged and skip it past the gate."""
+    forgeable — an agent could mark a tampered entry unchanged and skip it past the gate.
+
+    Untracked files are counted as changed, and that is not a detail: `git diff` reports only
+    tracked paths, so a brand-new entry — the single most common thing to check — is invisible
+    to it. `--others` without `--exclude-standard` on purpose: an entry hidden behind a gitignore
+    rule must be checked, not excused. Either subprocess failing yields None, which degrades the
+    caller to a full check."""
 
     import subprocess
 
     relative = ARTIFACTS_ROOT.relative_to(ROOT).as_posix()
+    changed: set[str] = set()
+    for command in (
+        ["git", "diff", "--name-only", ref, "--", relative],
+        ["git", "ls-files", "--others", "--", relative],
+    ):
+        try:
+            completed = subprocess.run(
+                command, cwd=ROOT, text=True, capture_output=True, check=False, timeout=30,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if completed.returncode != 0:
+            return None
+        changed |= {line.strip() for line in completed.stdout.splitlines() if line.strip()}
+    return changed
+
+
+PLAIN_SAFE_NAME_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def identity_from_entry_path(path: Path) -> str | None:
+    """The entry's identity read off its path alone, or None when the path cannot prove it.
+
+    `entry_path()` derives the path FROM the identity, so the mapping inverts whenever
+    `safe_name` had nothing to escape, truncate or disambiguate — the ordinary case, since
+    Salesforce API names are ASCII identifiers. A percent-escape, the 100-char cut or a
+    Windows-reserved stem all add or lose bytes, and returning None there is what keeps the
+    narrow check honest: an entry whose identity its path cannot prove is opened and parsed
+    rather than assumed."""
+
     try:
-        completed = subprocess.run(
-            ["git", "diff", "--name-only", ref, "--", relative],
-            cwd=ROOT, text=True, capture_output=True, check=False, timeout=30,
-        )
-    except (OSError, subprocess.SubprocessError):
+        parts = path.relative_to(ARTIFACTS_ROOT).parts
+    except ValueError:
         return None
-    if completed.returncode != 0:
+    if len(parts) != 3 or not parts[2].endswith(".md"):
         return None
-    return {line.strip() for line in completed.stdout.splitlines() if line.strip()}
+    metadata_type, namespace, full_name = parts[0], parts[1], parts[2][:-3]
+    if not PLAIN_SAFE_NAME_RE.fullmatch(full_name):
+        return None
+    try:
+        if entry_path(metadata_type, namespace, full_name) != path:
+            return None
+    except StoreError:
+        return None
+    return identity_of(metadata_type, namespace, full_name)
 
 
 def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
     """Whole-corpus integrity gate. `--changed-since` narrows only the per-entry work.
 
-    `compute_lane` re-digests every source fragment, so a full check is ~3.5 ms per entry and
-    crosses the CI subprocess timeout somewhere near 8.7k entries. `--changed-since <ref>` skips
-    that work for entries git reports as untouched. The cross-entry checks — identity collision
-    and case-fold collision — always run over the whole corpus: they only parse identities, and
-    narrowing them would silently stop detecting the collisions they exist to catch. An
-    unanswerable ref degrades to a full check, never to a pass."""
+    The per-entry pass is the cost, and it is not where the first version of this command looked
+    for it. Profiled at 9 000 entries: `split_entry` (YAML) and `validate_entry` (jsonschema)
+    dominate, while `regenerate_fragment_digest` — the only thing the narrow mode used to skip —
+    does not reach the top frames at all. That mode saved 2 %, inside noise. `--changed-since
+    <ref>` therefore skips the WHOLE per-entry pass for entries git reports as untouched.
+
+    The cross-entry checks — identity collision and case-fold collision — still run over the
+    whole corpus; a per-entry skip would silently destroy them (§0.3). They need only an
+    identity and a path, and `identity_from_entry_path` reads the identity back off the path
+    without opening the file, which is what makes the wider skip possible.
+
+    What the skip rests on, stated because it is the whole safety argument: git — not a
+    forgeable manifest — says these bytes are the bytes at <ref>, and <ref> was itself checked
+    in full. An unanswerable ref degrades to a full check, never to a pass, and `--full` (no
+    flag) stays the default the nightly and CI runs use. Read-only either way."""
 
     assert_no_reparse_points()
     latest = ledger_latest(read_ledger())
@@ -1242,18 +1296,24 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
     skipped = 0
     for path in all_entry_paths():
         relative = path.relative_to(ROOT).as_posix()
-        narrow = changed is not None and relative not in changed
-        lane = compute_lane(path, latest, deep=not narrow)
-        skipped += 1 if narrow else 0
-        problems.extend(f"{lane['path']}: {problem}" for problem in lane["problems"])
-        identity = lane["identity"]
+        identity = (
+            identity_from_entry_path(path)
+            if changed is not None and relative not in changed
+            else None
+        )
+        if identity is not None:
+            skipped += 1
+        else:
+            lane = compute_lane(path, latest)
+            identity = lane["identity"]
+            problems.extend(f"{relative}: {problem}" for problem in lane["problems"])
         if identity in seen_identities:
-            problems.append(f"identity {identity} resolves to two files: {seen_identities[identity]} and {lane['path']}")
-        seen_identities[identity] = lane["path"]
-        folded = lane["path"].casefold()
-        if folded in seen_casefold and seen_casefold[folded] != lane["path"]:
-            problems.append(f"case-fold collision: {seen_casefold[folded]} vs {lane['path']}")
-        seen_casefold[folded] = lane["path"]
+            problems.append(f"identity {identity} resolves to two files: {seen_identities[identity]} and {relative}")
+        seen_identities[identity] = relative
+        folded = relative.casefold()
+        if folded in seen_casefold and seen_casefold[folded] != relative:
+            problems.append(f"case-fold collision: {seen_casefold[folded]} vs {relative}")
+        seen_casefold[folded] = relative
     if problems:
         raise StoreError("entry-check failed:\n- " + "\n- ".join(problems))
     result: dict[str, Any] = {
@@ -1263,7 +1323,7 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
     }
     if ref:
         result["changedSince"] = ref
-        result["fragmentChecksSkipped"] = skipped
+        result["entriesSkipped"] = skipped
         if changed is None:
             result["gap"] = f"git could not report changes since {ref}; every entry was checked in full"
     return result
@@ -1528,7 +1588,7 @@ def command_feature_propose(args: argparse.Namespace) -> dict[str, Any]:
     lands here is a human's decision about where the feature ends — which is why depth alone
     is not enough: on a 20-object package depth 2 already reaches 13 objects."""
 
-    assert_no_reparse_points()
+    assert_no_reparse_points(FEATURES_ROOT)
     path = feature_path(args.slug)
     if path.exists() and not args.replace:
         raise StoreError(f"{feature_identity(args.slug)} already exists; pass --replace to rewrite its rule")
@@ -1582,7 +1642,7 @@ def command_feature_describe(args: argparse.Namespace) -> dict[str, Any]:
     A boundary rule says which artifacts; it cannot say why they belong together. That is the
     part no traversal can derive and the part a reviewer is really approving."""
 
-    assert_no_reparse_points()
+    assert_no_reparse_points(FEATURES_ROOT)
     path = feature_path(args.slug)
     if not path.is_file():
         raise StoreError(f"no feature to describe: {feature_identity(args.slug)}")
@@ -1676,8 +1736,53 @@ def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def approval_membership_digest(boundary: dict[str, Any]) -> dict[str, Any]:
+    """The digest of the membership this rule produces right now, and what qualifies it.
+
+    §6 lets the approval record pin a `membershipDigest` and nothing more — a digest is not a
+    member list and cannot re-approve on drift, which is the whole reason the identity list
+    lives in the disposable `.cache/` instead. Without this pin `feature-drift` could only ever
+    answer "unknown", which is what shipped.
+
+    The digest is None rather than an exception when no index is reachable: §6 requires
+    feature-approve to succeed with a stale or absent index, because a governed human approval
+    must not be blocked by a disposable cache. Null is legible downstream — `feature-drift`
+    reports `changed: "unknown"` with the reason and never `false`.
+
+    Truncation is carried out with it (§6 correction 3). The traversal is deterministic, so a
+    digest over a truncated prefix is a real answer — but only if it is named as one at the
+    moment it is pinned, rather than discovered later by whoever compares against it.
+
+    The parameters are the BASELINE's, not a caller's: a digest is only comparable with one
+    recomputed the same way, so the incoming traversal, the drift depth limit, the default
+    established lane and the rule's own assurance floor are fixed here to match what
+    `feature-drift` recomputes."""
+
+    try:  # local import: the index reader, and knowledge_search imports this module
+        from scripts import knowledge_search
+    except ModuleNotFoundError:  # invoked as `python scripts/knowledge_store.py`
+        import knowledge_search  # type: ignore
+    try:
+        documents, _manifest = knowledge_search.load_index()
+        membership = knowledge_search.compute_membership(
+            documents,
+            boundary,
+            allowed=documents.lane_ids(knowledge_search.ESTABLISHED_STATES),
+            include_heuristic=False,
+            direction=knowledge_search.BASELINE_DIRECTION,
+            depth_limit=knowledge_search.DEPTH_LIMITS["drift"],
+        )
+    except knowledge_search.SearchError as error:
+        return {"membershipDigest": None, "unreachable": str(error), "limitsHit": []}
+    return {
+        "membershipDigest": membership["membershipDigest"],
+        "unreachable": None,
+        "limitsHit": membership["limitsHit"],
+    }
+
+
 def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
-    assert_no_reparse_points()
+    assert_no_reparse_points(FEATURES_ROOT)
     pins: dict[str, str] = {}
     for raw in args.feature or []:
         identity, _, digest = raw.rpartition(":sha256:")
@@ -1706,8 +1811,16 @@ def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     chunk_id = canonical_digest(sorted(pins.items()))[7:19]
     records = []
+    unpinned: list[str] = []
+    truncated: list[str] = []
     for identity, path, lane in resolved:
         frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+        membership = approval_membership_digest(frontmatter["boundary"])
+        membership_digest = membership["membershipDigest"]
+        if membership["unreachable"]:
+            unpinned.append(f"{identity}: {membership['unreachable']}")
+        elif membership["limitsHit"]:
+            truncated.append(f"{identity}: {', '.join(membership['limitsHit'])}")
         frontmatter["lifecycle"] = {"state": "approved", "contentDigest": lane["reviewedContentDigest"]}
         frontmatter["approval"] = {
             "reviewedContentDigest": lane["reviewedContentDigest"],
@@ -1720,19 +1833,42 @@ def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
             "reviewedContentDigest": lane["reviewedContentDigest"],
             "boundaryDigest": lane["boundaryDigest"],
             "semanticsDigest": semantics_digest(body),
+            # A digest, never a list: it says WHETHER membership moved, and cannot re-approve
+            # the artifacts it summarises. The list `feature-drift` needs to say WHICH moved is
+            # written to `.cache/` by `tree`. Null when no index was reachable at approval time.
+            "membershipDigest": membership_digest,
             "reviewedBy": reviewer, "reviewedAt": now,
             "mechanism": "copilot-chat-entry-confirmation", "chunkId": chunk_id,
         })
     append_ledger(records, FEATURE_LEDGER_PATH)
-    return {
+    result = {
         "outcome": "APPROVED", "chunkId": chunk_id,
         "approved": [record["identity"] for record in records], "reviewedBy": reviewer,
-        "note": "the ledger records the boundary digest, never a member list",
+        "note": "the ledger records the boundary and membership digests, never a member list",
     }
+    gaps: list[str] = []
+    if unpinned:
+        # Approval is not blocked by a missing cache, but the consequence has to be visible at
+        # the moment it is incurred rather than discovered later as a `changed: "unknown"`.
+        gaps.append(
+            "No membershipDigest could be pinned for " + "; ".join(unpinned)
+            + ". `feature-drift` will answer changed: \"unknown\" — never false — until the "
+            "feature is re-approved against a reachable index (`knowledge_search.py build`)."
+        )
+    if truncated:
+        gaps.append(
+            "The membership traversal hit its limits for " + "; ".join(truncated)
+            + ", so the pinned digest covers a deterministic PREFIX of the membership rather "
+            "than all of it, and `feature-drift` will answer "
+            "`changedWithinTruncatedPrefix` instead of `changed`."
+        )
+    if gaps:
+        result["gaps"] = gaps
+    return result
 
 
 def command_feature_revoke(args: argparse.Namespace) -> dict[str, Any]:
-    assert_no_reparse_points()
+    assert_no_reparse_points(FEATURES_ROOT)
     identity = feature_identity(args.slug)
     latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
     if identity not in latest or latest[identity].get("action") == "revoke":
@@ -1750,7 +1886,7 @@ def command_feature_revoke(args: argparse.Namespace) -> dict[str, Any]:
 def command_feature_check(args: argparse.Namespace) -> dict[str, Any]:
     """CI integrity gate over the feature corpus and its ledger."""
 
-    assert_no_reparse_points()
+    assert_no_reparse_points(FEATURES_ROOT)
     records = read_ledger(FEATURE_LEDGER_PATH)
     latest = ledger_latest(records)
     problems: list[str] = []
