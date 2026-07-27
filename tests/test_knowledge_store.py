@@ -708,6 +708,57 @@ class AdapterFaithfulnessTests(unittest.TestCase):
         # A validation rule's message is not a Flow Custom Error and never enters that index.
         self.assertEqual([], errors)
 
+    def test_a_custom_error_behind_a_decision_renders_its_guard_path(self) -> None:
+        """The collector emits `paths` as paths of hop OBJECTS, not of strings.
+
+        `" -> ".join(path)` raised `TypeError: sequence item 0: expected str instance, dict found`
+        on the first real Flow whose custom error sat behind a decision — an unhandled crash, so
+        the entry could not be drafted at all. Every fixture Flow put its error on the trigger
+        path with no decision above it, which is why 80 real components found this and the pilot
+        did not."""
+
+        component = {
+            "metadataType": "Flow",
+            "facts": {
+                "processType": "AutoLaunchedFlow",
+                "status": "Active",
+                "errorCatalog": [
+                    {
+                        "component": "Invalid_Class_Change",
+                        "kind": "custom-error",
+                        "errorMessage": "This status change is not allowed.",
+                        "triggerContext": "Service_Request__c / CreateAndUpdate / RecordBeforeSave",
+                        "paths": [
+                            [{"decision": "Validate_Status_Change", "default": True}],
+                            [
+                                {"decision": "Route_By_Type", "outcome": "Escalated",
+                                 "outcomeLabel": "Escalated ticket"},
+                                {"decision": "Validate_Status_Change", "outcome": "Blocked"},
+                            ],
+                        ],
+                    }
+                ],
+            },
+        }
+        _carried, errors, _assurance = store.ADAPTERS["Flow"](component)
+        self.assertEqual(1, len(errors))
+        self.assertEqual(
+            [
+                "Validate_Status_Change [default]",
+                "Route_By_Type [Escalated ticket] -> Validate_Status_Change [Blocked]",
+            ],
+            errors[0]["reachability"]["decisionGuards"],
+        )
+
+    def test_an_unrecognised_decision_hop_degrades_instead_of_raising(self) -> None:
+        # A guard string is disclosure; losing the whole entry to gain punctuation is the wrong
+        # trade, so an unexpected hop shape falls back rather than crashing the draft.
+        self.assertEqual("", store.render_decision_path([{"unexpected": "shape"}]))
+        self.assertEqual("A -> B", store.render_decision_path(
+            [{"decision": "A"}, {"decision": "B"}]
+        ))
+        self.assertEqual("not-a-path", store.render_decision_path("not-a-path"))
+
 
 class EdgeAssuranceTests(unittest.TestCase):
     """A kind-level heuristic must never be stored as source-exact.

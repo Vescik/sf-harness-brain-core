@@ -517,6 +517,42 @@ def collector_component(metadata_type: str, full_name: str) -> dict[str, Any]:
 _OPERATION_KINDS = {"lookup": "recordLookup", "create": "recordCreate", "update": "recordUpdate", "delete": "recordDelete"}
 
 
+def render_decision_path(path: Any) -> str:
+    """One reachability path, rendered for the profile's `decisionGuards: [string]`.
+
+    The collector emits `paths` as a list of PATHS, each a list of hop OBJECTS
+    (`{decision, outcome?, outcomeLabel?, conditions?, default?}`, force_app_knowledge.py:960-966).
+    Joining those with `" -> ".join(...)` raised `TypeError: sequence item 0: expected str
+    instance, dict found` on the first real Flow that declared a custom error behind a decision —
+    an unhandled crash, not a degraded fact, so the whole entry could not be drafted. The pilot
+    never hit it because its fixture errors sit on the trigger path with no decision above them.
+
+    A hop renders as the decision name, qualified by the branch that reaches it: the outcome label
+    when there is one, the API outcome name otherwise, and `default` for the else-branch. An
+    unrecognised hop degrades to its decision name rather than raising — a guard string is
+    disclosure, and losing the whole entry to gain a punctuation mark is the wrong trade.
+    """
+
+    if not isinstance(path, list):
+        return str(path)
+    steps: list[str] = []
+    for hop in path:
+        if not isinstance(hop, dict):
+            steps.append(str(hop))
+            continue
+        decision = str(hop.get("decision") or "").strip()
+        if not decision:
+            continue
+        branch = hop.get("outcomeLabel") or hop.get("outcome")
+        if branch:
+            steps.append(f"{decision} [{branch}]")
+        elif hop.get("default"):
+            steps.append(f"{decision} [default]")
+        else:
+            steps.append(decision)
+    return " -> ".join(steps)
+
+
 def flow_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
     facts = component.get("facts", {})
     references = [
@@ -595,7 +631,7 @@ def flow_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dic
             ),
             "reachability": {
                 "triggerContext": item.get("triggerContext") or "not-derived",
-                "decisionGuards": [" -> ".join(p) if isinstance(p, list) else str(p) for p in item.get("paths", [])],
+                "decisionGuards": [render_decision_path(p) for p in item.get("paths", [])],
                 "truncated": bool(item.get("pathsTruncated")),
             },
             "basis": "source-declared",

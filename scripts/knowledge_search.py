@@ -1781,8 +1781,14 @@ def traverse(
     direction: str,
     allowed: set[str],
     include_heuristic: bool,
+    stop_at: set[str] | None = None,
 ) -> dict[str, Any]:
     """Breadth-first walk from one anchor, returning the node set and how each was reached.
+
+    `stop_at` is the caller's stop-list, matched against a reached node's identity AND its
+    `fullName`: such a node is kept as an edge target and never expanded through (feature
+    `hubs`, contract §13.1). `depth` is honoured exactly — `depth=0` walks no levels at all,
+    which is what "anchors only" has to mean for the caller that offers its anchors itself.
 
     Extracted from run_impact so `impact`, `context` and (next) feature membership share one
     traversal rather than three. Three implementations of a bounded, lane-filtered,
@@ -1809,6 +1815,12 @@ def traverse(
     # coincidence of naming.
     chains: list[dict[str, Any]] = []
     visited = {anchor}
+    # Nodes the stop-list kept but did not expand, and the stop-list entries that actually fired.
+    # `halted` joins `visited` so a stop node is offered once, not once per branch that reaches it;
+    # `stopped_names` is reported, because a boundary that silently drops a hop reads as a boundary
+    # that had nothing there.
+    halted: set[str] = set()
+    stopped_names: set[str] = set()
     frontier = [{"node": anchor, "path": [], "minAssurance": relation_kinds.SOURCE_EXACT}]
 
     for level in range(depth):
@@ -1870,13 +1882,23 @@ def traverse(
                     "path": item["path"] + [step],
                     "minAssurance": weakest,
                 })
-                next_frontier.append({"node": node, "path": item["path"] + [step], "minAssurance": weakest})
+                reached_names = {node}
+                if reached is not None:
+                    reached_full = reached["facets"].get("fullName")
+                    if reached_full:
+                        reached_names.add(str(reached_full))
+                hit = reached_names & stop_at if stop_at else set()
+                if hit:
+                    stopped_names |= hit
+                    halted.add(node)
+                else:
+                    next_frontier.append({"node": node, "path": item["path"] + [step], "minAssurance": weakest})
                 if len(chains) >= TRAVERSAL_LIMITS["maxNodes"]:
                     limits_hit.add("nodes")
                     break
             if limits_hit & {"nodes", "time"}:
                 break
-        visited |= {row["node"] for row in next_frontier}
+        visited |= {row["node"] for row in next_frontier} | halted
         frontier = next_frontier
         if not frontier or limits_hit & {"nodes", "time"}:
             break
@@ -1885,6 +1907,7 @@ def traverse(
     return {
         "nodes": chains,
         "excluded": excluded,
+        "stoppedAt": sorted(stopped_names),
         "limitsHit": limits_hit,
         # Deliberately free of any elapsed time: `feature-drift` digests what this walk produces,
         # and a clock reading in the return value would make two identical walks compare unequal.
@@ -2290,6 +2313,10 @@ def compute_membership(
     heuristic_ok = floor == relation_kinds.SOURCE_DERIVED_HEURISTIC or include_heuristic
     depth = max(0, min(int(boundary.get("depth", 1)), depth_limit))
     excluded_ids = set(boundary.get("exclude") or [])
+    # `hubs` is inside `boundaryDigest` and §13.7 states this traversal honours it, so it has to
+    # do something: a hub is kept as an edge target and never expanded through. Distinct from
+    # `exclude`, which removes the artifact from the answer entirely.
+    hub_names = {str(name) for name in (boundary.get("hubs") or []) if name}
 
     nodes: dict[str, dict[str, Any]] = {}
 
@@ -2307,14 +2334,16 @@ def compute_membership(
     # its last anchor happened to be small — and `feature-drift` compares digests, so an
     # undisclosed truncation there is a comparison of two prefixes presented as an answer.
     limits_hit: set[str] = set()
+    stopped_at: set[str] = set()
     for anchor_name in sorted(set(boundary.get("anchors") or [])):
         for identity in documents.identities_for_full_name(anchor_name):
             offer(identity, "anchor", "human-declared", 0, [])
         walk = traverse(
-            documents, anchor_name, depth=max(depth, 1), direction=direction,
-            allowed=allowed, include_heuristic=True,
+            documents, anchor_name, depth=depth, direction=direction,
+            allowed=allowed, include_heuristic=True, stop_at=hub_names or None,
         )
         limits_hit |= set(walk["limitsHit"])
+        stopped_at |= set(walk["stoppedAt"])
         for node in walk["nodes"]:
             weakest = node["minAssurance"]
             if weakest != relation_kinds.SOURCE_EXACT and not heuristic_ok:
@@ -2356,6 +2385,9 @@ def compute_membership(
             "identitiesTruncated": max(0, len(below_floor_ids) - BELOW_FLOOR_IDENTITY_CAP),
         },
         "direction": direction,
+        # Which declared hubs actually stopped a hop. A rule whose hubs never fire is a rule the
+        # reviewer approved for a reason that did not happen, and only the walk can say so.
+        "hubs": {"declared": sorted(hub_names), "stoppedAt": sorted(stopped_at)},
         "limitsHit": sorted(limits_hit),
         # The member set and therefore the digest cover a deterministic PREFIX of the boundary,
         # not all of it. Every caller that compares digests has to say so (§6 correction 3).
@@ -2499,6 +2531,14 @@ def run_tree(args: argparse.Namespace) -> dict[str, Any]:
         gaps.append(
             f"{len(non_current)} member(s) are not approved-current knowledge."
         )
+    idle_hubs = sorted(set(result["hubs"]["declared"]) - set(result["hubs"]["stoppedAt"]))
+    if idle_hubs:
+        gaps.append(
+            f"{len(idle_hubs)} declared hub(s) stopped no hop on this walk "
+            f"({', '.join(idle_hubs)}). A hub only fires where the traversal would otherwise "
+            f"expand through it, so an idle hub is a rule element carrying no weight — not "
+            "evidence that it is holding the boundary in."
+        )
     if result["truncated"]:
         gaps.append(
             f"traversal limits reached ({', '.join(result['limitsHit'])}), so this membership is "
@@ -2526,6 +2566,7 @@ def run_tree(args: argparse.Namespace) -> dict[str, Any]:
         "members": current,
         "membersNonCurrent": non_current,
         "belowFloor": result["belowFloor"],
+        "hubs": result["hubs"],
         "membershipDigest": result["membershipDigest"],
         "direction": direction,
         "truncated": result["truncated"],

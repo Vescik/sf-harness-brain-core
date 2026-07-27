@@ -1410,7 +1410,9 @@ class TraversalReuseTests(EntryFixtureMixin, unittest.TestCase):
             self.assertIn(node["minAssurance"], (
                 relation_kinds.SOURCE_EXACT, relation_kinds.SOURCE_DERIVED_HEURISTIC
             ))
-        self.assertEqual({"nodes", "excluded", "limitsHit", "observed"}, set(walk))
+        self.assertEqual({"nodes", "excluded", "stoppedAt", "limitsHit", "observed"}, set(walk))
+        # No stop-list was passed, so nothing was kept-but-unexpanded.
+        self.assertEqual([], walk["stoppedAt"])
 
     def test_traverse_honours_the_lane_filter_it_is_given(self) -> None:
         self.seed()
@@ -3071,6 +3073,54 @@ class FeatureBaselineDriftTests(EntryFixtureMixin, unittest.TestCase):
         two commands walking different distances."""
 
         self.assertEqual(search.DEPTH_LIMITS["tree"], search.DEPTH_LIMITS["drift"])
+
+    def test_depth_zero_is_anchors_and_declared_includes_only(self) -> None:
+        """`depth: 0` is documented as "anchors only" and executed one full BFS level.
+
+        `compute_membership` clamped the rule to 0 and then called `traverse(depth=max(depth, 1))`,
+        so the narrowest boundary a human can write reached every artifact pointing at the anchor.
+        The value is inside `boundaryDigest`: a reviewer approved "anchors only" and got a hop."""
+
+        self.seed_two_hop_feature()
+        self.make_feature(depth=0, replace=True)
+        identities = {member["identity"] for member in self.membership(include_heuristic=True)["members"]}
+        self.assertIn("CustomObject:c:HarnessAlphaCase__c", identities)
+        self.assertNotIn(
+            "ApexClass:c:HarnessAlphaSelector", identities,
+            "depth 0 still walked a level — the anchor's incoming edges are not 'anchors only'",
+        )
+
+    def test_a_hub_is_kept_as_a_member_but_never_expanded_through(self) -> None:
+        """§13.7 states this traversal honours `hubs`; it read the key nowhere.
+
+        `hubs` sits inside `boundaryDigest` and renders in the dossier as "kept as targets, never
+        expanded", so a reviewer approved a stop-list that `tree`, `feature-dossier` and
+        `feature-drift` all ignored. The fixture chain is service → selector → object, so stopping
+        at the selector must keep the selector and drop the service."""
+
+        self.seed_two_hop_feature()
+        self.make_feature(depth=2, hub=["HarnessAlphaSelector"], replace=True)
+        result = self.membership(include_heuristic=True)
+        identities = {member["identity"] for member in result["members"]}
+        self.assertIn(
+            "ApexClass:c:HarnessAlphaSelector", identities,
+            "a hub is an edge target that is kept, not an exclusion",
+        )
+        self.assertNotIn(
+            "ApexClass:c:HarnessAlphaService", identities,
+            "the walk expanded through a declared hub",
+        )
+        self.assertEqual(["HarnessAlphaSelector"], result["hubs"]["declared"])
+        self.assertEqual(["HarnessAlphaSelector"], result["hubs"]["stoppedAt"])
+
+    def test_a_declared_hub_that_never_fires_is_reported_as_such(self) -> None:
+        # A rule whose hubs never stop a hop is a rule approved for a reason that did not happen;
+        # only the walk can say so, and silence reads as "the hub worked".
+        self.seed_two_hop_feature()
+        self.make_feature(depth=2, hub=["HarnessNotInThisGraph__c"], replace=True)
+        result = self.membership(include_heuristic=True)
+        self.assertEqual(["HarnessNotInThisGraph__c"], result["hubs"]["declared"])
+        self.assertEqual([], result["hubs"]["stoppedAt"])
 
     def test_a_forward_tree_is_exploratory_and_writes_no_baseline(self) -> None:
         # §4.1 threads the direction into `tree`; the approved membership digest is defined on
