@@ -497,7 +497,89 @@ the lane in the filename or refuse to overwrite. **M.**
 - **Deleting the four "idle" hubs.** They are inert only because of B1; after that fix they become
   the load-bearing part of the rule. The gap text needs correcting, not the boundary.
 
-## 10. Standing blockers
+## 10. Execution round 2 — the recommended path, run
+
+Six commits on `knowledge-relations-p0-p6`. Every regression test was confirmed failing against the
+previous code before the fix landed.
+
+| Commit | What |
+|---|---|
+| `d0b09c1` | D1, D2, D6 + 5 tests |
+| `519c196` | the 80-entry store, 1 feature, session records moved out of gitignored `output/` |
+| `0b41706` | **B1** — an object can join a boundary through its own field |
+| `3212c1b` | **B2 + hyphens** — stop reporting a lane-filtered match as an absence |
+| `806e6cb` | `limitations` write path |
+| `f749626` | 90 limitations populated across 69 entries |
+
+### B1 — the measured before and after
+
+| | depth 1 | depth 2 | depth 3 |
+|---|---|---|---|
+| before | 27 members, 2 objects | 27, identical | 27, identical |
+| after | 27 members, 2 objects | 31, **6 objects** | 46, 6 objects |
+
+Depth is a real ladder again: anchors and their parts → the related objects → those objects' own
+fields. The owner-ward step carries `ownerWard: True` and the membership reason is
+`contains-member`, because labelling it `belongs-to` would tell a reviewer that `Service_Task__c`
+belongs to `Service_Request__c` — the relationship inverted.
+
+### B2 and hyphens — verified on the real store
+
+`search --text mpsaCard` used to return nothing and say *"No lexical match"* about an entry sitting
+in the index. It now reports *"1 entr(ies) matched this query lexically and were then excluded"*,
+offers `mpsaCard` itself as the draft candidate, and labels the list `draftCandidatesBasis:
+query-ranked`. Gibberish returns an empty list and the honest no-match gap.
+
+`semicolon`, `delimited` and `semicolon-delimited` all now reach the same entry. `ANALYZER_VERSION`
+1.0.0 → 1.1.0 forces the rebuild.
+
+### `limitations` — 90 across 69 entries, prose untouched
+
+Every one lifted from a sentence a describer had already written; none invented. The 11 entries
+whose prose names no boundary of the source were left empty deliberately. **The prose is
+byte-identical across all 69 rewritten files** — `semanticsDigest` was recomputed and compared per
+file against `HEAD`.
+
+Done before first approval by design: `limitations` is inside `factsDigest`, so adding it afterwards
+would have invalidated 69 approvals and cost a second full reading pass.
+
+### The feature split — decided by arithmetic
+
+| boundary | depth 2 | depth 3 |
+|---|---|---|
+| `Service_Request__c` alone | 16 | 26 |
+| `Ticket__c` alone | 15 | 20 |
+| both anchors together | **31** | **46** |
+
+16 + 15 = 31 and 26 + 20 = 46: **zero shared members.** The single `service-delivery` draft was a
+union of two disjoint clusters, not a boundary. Replaced by:
+
+- **`Feature:service-request`** — `Service_Request__c` + `Service_Task__c` + `Time_Log__c`, 26 members
+- **`Feature:ticketing`** — `Ticket__c` + `Ticket_Comment__c` + `Category__c`, 20 members
+
+Both at depth 3, `source-exact` floor, hubs declared. The draft was removed rather than repurposed:
+`feature-revoke` refused it (*"nothing to revoke"* — no approval to revoke), the features ledger had
+zero records, so nothing dangled. Both descriptions state the zero-overlap measurement and say that
+merging them is a deliberate decision, not a default.
+
+Declared hubs still fire on nothing in this package, and `run_tree` says so. That is correct: a hub
+stops a walk that would otherwise expand through it, and no standard object here carries a field
+pointing at an anchor.
+
+### Left for the human
+
+Read each review artifact, run its pinned command: **4 entry chunks + 2 features**.
+Sheet: `output/knowledge-approvals/APPROVE-2026-07-27.md` (regenerated — every digest moved when
+limitations landed, so any command captured earlier is stale).
+
+### Not done, deliberately
+
+F2 (function words scoring, verdict still OK), F3 (no snippet in any retrieval surface), F4
+(`feature-dossier` overwriting without `--state`), the unresolved-edge report, `entry-readiness`,
+runtime status on rows, `assurance.typeFacts` as a facet. All real, none blocking approval, none
+carrying a digest deadline. They sit in §9 for after the first approval.
+
+## 11. Standing blockers
 
 | | |
 |---|---|
