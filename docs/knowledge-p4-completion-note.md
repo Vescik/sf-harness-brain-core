@@ -154,12 +154,12 @@ size. Payload key for every cell: `commandBudgets.traversals.<name>`.
 
 | Traversal | noise floor (`minMs`) | budget | p95 (`p95Ms`) | budget | peak RSS | budget | Verdict |
 |---|---|---|---|---|---|---|---|
-| freshness floor | — (asserted as a per-entry rate) | `--assert-floor-us 5.0` | — | — | **27.3 MB** | **80 MB** | PASS |
-| `impact` | 19.8 ms | 70 ms | 21.0 ms | 200 ms | 31.8 MB | 96 MB | PASS |
-| `context` | 92.2 ms | 300 ms | **97.7 ms** | **500 ms** | 32.8 MB | 96 MB | PASS |
-| `tree` | 15.5 ms | **60 ms** | 16.3 ms | **250 ms** | 32.8 MB | 96 MB | PASS |
-| `feature-drift` | 15.2 ms | **60 ms** | 15.9 ms | **250 ms** | 32.8 MB | 96 MB | PASS |
-| `explain` *(beyond the plan's five)* | 14.2 ms | 60 ms | 15.4 ms | 200 ms | 32.7 MB | 96 MB | PASS |
+| freshness floor | — (asserted as a per-entry rate) | `--assert-floor-us 5.0` | — | — | **0.1 MB** | **4 MB** | PASS |
+| `impact` | 19.8 ms | 70 ms | 21.0 ms | 200 ms | see below | 20 MB | PASS |
+| `context` | 92.2 ms | 300 ms | **97.7 ms** | **500 ms** | see below | 20 MB | PASS |
+| `tree` | 15.5 ms | **60 ms** | 16.3 ms | **250 ms** | see below | 20 MB | PASS |
+| `feature-drift` | 15.2 ms | **60 ms** | 15.9 ms | **250 ms** | see below | 20 MB | PASS |
+| `explain` *(beyond the plan's five)* | 14.2 ms | 60 ms | 15.4 ms | 200 ms | see below | 20 MB | PASS |
 
 `impact`, `context` and `explain` additionally hold a 1 000 000-byte `postingBytesRead` ceiling and
 each read **785 484 bytes** on this run. That quantity is deterministic for a given fixture — the
@@ -223,3 +223,11 @@ python scripts/knowledge_search.py impact --identity ApexTrigger:c:AssignmentTri
 `resolved: false` and `hydrated: false`; **2 rows over 1 node** without the flag. Unchanged at
 `--depth 3`, `--depth 4` and `--top 200`. Which key is counted is the whole difference between this
 figure and the one it replaces, so it is stated rather than implied — see the plan's R6.
+
+**Wave 5 supersedes every memory figure in this table.** The ceilings above were process totals
+derived on macOS; the first `ubuntu-latest` run reported the same 106.3 MB for the floor sweep and
+all five traversals, because the total is dominated by interpreter and import cost that every probe
+pays identically. The budgeted quantity is now what a command ADDS over its post-import baseline:
+measured floor 0.1 MB, impact 4.7, explain 5.6, tree 5.6, context 5.7, drift 5.7 MB, against
+ceilings of 4 MB (floor) and 20 MB (commands). See
+`docs/knowledge-completion-audit-2026-07-25.md` § Corrections to this audit's own text.

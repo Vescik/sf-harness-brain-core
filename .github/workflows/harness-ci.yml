@@ -87,15 +87,23 @@ jobs:
         # and the peak RSS of a warm benchmark process would be dominated by fixture writing
         # and the index build rather than by the command a user runs.
         #
-        # THE MEMORY HALF, AND WHAT IS ACTUALLY PROVEN. --assert-command-budgets now covers all
-        # five traversals the plan names, INCLUDING the freshness floor: §4.2 asks for a
-        # `peakRssMb` that is "budgeted, not merely measured", and the floor's peak was measured
-        # and printed by every run while being asserted by nothing. Its ceiling is
-        # FLOOR_BUDGET = 80 MB, from 26.6-27.2 MB measured over 102 fresh corpus_fingerprint
-        # processes at 3000 entries, plus headroom for the 44.7-48.1 MB a process pays when it
-        # has to compile the imported modules itself -- which is why the "Compile Python
-        # controls" step above matters to this one: it warms __pycache__, and without it the
-        # first cold probe process carries the CPython compiler.
+        # THE MEMORY HALF, AND WHAT IS ACTUALLY PROVEN. --assert-command-budgets covers all five
+        # traversals the plan names, INCLUDING the freshness floor: §4.2 asks for a memory figure
+        # "budgeted, not merely measured", and the floor's was measured and printed by every run
+        # while being asserted by nothing.
+        #
+        # The budgeted quantity is what a command ADDS over its own post-import baseline, not the
+        # process total. The first ubuntu-latest run of this gate failed six budgets at once with
+        # the SAME 106.3 MB for the floor sweep and all five traversals -- because the total is
+        # dominated by the interpreter and the import graph, which every probe pays identically,
+        # and because the ceilings had been derived on macOS (27-33 MB). A number that is equal
+        # for a directory sweep and a full traversal cannot detect a regression in either, and
+        # one derived from a single platform's allocator is not a property of this code.
+        # Measured as a delta (macOS, 3000 entries, 21 fresh processes per probe): floor 0.1 MB,
+        # commands 4.7-5.7 MB. Ceilings: FLOOR_BUDGET 4 MB, commands 20 MB. The floor's is the
+        # discriminating one -- a floor that stopped being a stat sweep and started materialising
+        # the corpus it stats lands at ~5 MB and fails. Process totals are still reported per
+        # probe as `processRssMb`, with their scope spelled out, and gated by nothing.
         #
         # What is NOT proven: every one of those numbers is macOS, and on windows-latest the
         # instrument itself is different code --

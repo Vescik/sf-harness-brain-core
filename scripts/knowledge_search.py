@@ -2445,7 +2445,7 @@ def write_membership_baseline(
             "ledger's membershipDigest, not from this file."
         ),
     }, indent=2, sort_keys=True) + "\n")
-    return {"written": True, "path": str(path.relative_to(store.ROOT))}
+    return {"written": True, "path": store.relative_path(path)}
 
 
 def run_tree(args: argparse.Namespace) -> dict[str, Any]:
@@ -2821,7 +2821,7 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
         "outcome": "DOSSIER",
         "feature": store.feature_identity(args.feature),
         "featureLane": lane["lane"],
-        "path": str(path.relative_to(store.ROOT)),
+        "path": store.relative_path(path),
         "members": len(membership["members"]),
         "described": described_count,
         "belowFloor": below["count"],

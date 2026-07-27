@@ -512,6 +512,24 @@ status. None of them is a known defect.
 
 ### Corrections to this audit's own text
 
+**Wave 5 — the ceilings the first CI run falsified, and why they were unfalsifiable before it.**
+Every memory ceiling recorded above (floor 80 MB, commands 96 MB) was a *process total*, derived on
+macOS. The first `ubuntu-latest` run of this gate failed six budgets at once, reporting the **same
+106.3 MB** for the freshness-floor sweep and all five traversals — because that number is dominated
+by the interpreter and this module's import graph, which every probe pays identically, and because
+Linux/CPython 3.12 costs ~3× what macOS/3.9 does for the same work. A figure equal for a directory
+sweep and a full traversal cannot detect a regression in either; the budget was green on one
+platform and meaningless on both.
+
+Wave 5 rebased the memory half on what a command **adds** over its own post-import baseline — a
+property of this code rather than of the host's allocator. Measured (Method M1, 3 000 entries, 21
+fresh processes per probe): **floor 0.1 MB; impact 4.7; explain 5.6; tree 5.6; context 5.7; drift
+5.7.** Ceilings are now **4 MB for the floor** and **20 MB per command**, and the floor's is the
+discriminating one: a floor that stopped being a stat sweep and began materialising the corpus it
+stats lands at ~5 MB and fails. Process totals are still reported per probe as `processRssMb`, with
+their scope stated, and gated by nothing. **Every "96 MB"/"80 MB" figure in the rows above is
+superseded by this paragraph**; the latency, posting-byte and traversal-limit figures are unchanged.
+
 **Wave 4, and the irony is worth recording.** `knowledge_benchmark.FLOOR_BUDGET` has read
 `{"peakRssMb": 80.0}` since the day it was written, with its own comment deriving 80 from
 26.6–27.2 MB steady state plus the 44.7–48.1 MB compile path. Wave 3's B3 disposition row said

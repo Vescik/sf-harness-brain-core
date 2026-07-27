@@ -196,6 +196,25 @@ class EntryFixtureMixin:
 
     # --- helpers -------------------------------------------------------------------
 
+    def tamper_in_place(self, path, old: str, new: str) -> None:
+        """Edit a file's bytes without moving its size or mtime.
+
+        The point of a tamper test is to reach hydration: the coarse corpus fingerprint must
+        not be able to see the edit, so that what refuses the entry is the digest check on the
+        bytes about to be served. Writes BYTES rather than text, because `write_text` goes
+        through a newline-translating layer that turns every \\n into \\r\\n on Windows — so a
+        replacement that is the same length in memory grows the file on disk, the fingerprint's
+        byte total sees it, and the query dies with INDEX STALE before hydration is ever
+        reached. Same length in memory is not the same length on disk.
+        """
+        stat = path.stat()
+        original = path.read_bytes()
+        tampered = original.replace(old.encode("utf-8"), new.encode("utf-8"))
+        self.assertNotEqual(original, tampered, "tamper fixture no longer matches the entry")
+        self.assertEqual(len(original), len(tampered), "tamper must not move the byte count")
+        path.write_bytes(tampered)
+        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
     def purpose(self, text: str) -> str:
         path = self.temp / f"purpose-{abs(hash(text))}.md"
         path.write_text(text, encoding="utf-8")
@@ -855,14 +874,8 @@ class EmptyResultExplanationTests(EntryFixtureMixin, unittest.TestCase):
         # guarantee is that hydration re-reads and digest-checks anything about to be served.
         seeded = self.seed()
         path = store.ROOT / seeded["alpha"]["path"]
-        stat = path.stat()
-        original = path.read_text(encoding="utf-8")
-        # Same byte length by construction, so neither size nor mtime can betray the edit.
-        tampered = original.replace("kolejki", "kolejce")
-        self.assertNotEqual(original, tampered)
-        self.assertEqual(len(original.encode()), len(tampered.encode()))
-        path.write_text(tampered, encoding="utf-8")
-        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        # Same byte length on disk by construction, so neither size nor mtime can betray it.
+        self.tamper_in_place(path, "kolejki", "kolejce")
         self.assertEqual(
             search.corpus_fingerprint(), search.corpus_fingerprint(),
             "fingerprint is deterministic",
@@ -932,11 +945,7 @@ class AnchorVerificationTests(EntryFixtureMixin, unittest.TestCase):
 
     def test_tampered_anchor_is_flagged_on_every_surface(self) -> None:
         seeded = self.seed()
-        path = store.ROOT / seeded["alpha"]["path"]
-        stat = path.stat()
-        original = path.read_text(encoding="utf-8")
-        path.write_text(original.replace("kolejki", "kolejce"), encoding="utf-8")
-        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        self.tamper_in_place(store.ROOT / seeded["alpha"]["path"], "kolejki", "kolejce")
         for name, result in self.surfaces(seeded["alpha"]["identity"]):
             with self.subTest(surface=name):
                 self.assertTrue(
@@ -973,11 +982,7 @@ class AnchorVerificationTests(EntryFixtureMixin, unittest.TestCase):
         # A tampered dependency row that context catches (hydrated: false + gap) was served by
         # impact with no marker at all.
         seeded = self.seed()
-        path = store.ROOT / seeded["alpha"]["path"]
-        stat = path.stat()
-        original = path.read_text(encoding="utf-8")
-        path.write_text(original.replace("kolejki", "kolejce"), encoding="utf-8")
-        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        self.tamper_in_place(store.ROOT / seeded["alpha"]["path"], "kolejki", "kolejce")
         result = self.impact("HarnessAlphaCase__c")
         rows = result["nodes"] + result["nodesNonCurrent"]
         tampered = [row for row in rows if row["node"] == seeded["alpha"]["identity"]]
@@ -1076,23 +1081,21 @@ class AnchorVerificationTests(EntryFixtureMixin, unittest.TestCase):
 
         seeded = self.seed()
         path = store.ROOT / seeded["alpha"]["path"]
-        stat = path.stat()
         original = path.read_text(encoding="utf-8")
         digest_line = next(
             line for line in original.splitlines() if "sourceDigest: sha256:" in line
         )
-        tampered = original.replace(
-            digest_line, digest_line[:-8] + ("0" * 8 if not digest_line.endswith("0" * 8) else "f" * 8)
+        rewritten_line = digest_line[:-8] + (
+            "0" * 8 if not digest_line.endswith("0" * 8) else "f" * 8
         )
+        tampered = original.replace(digest_line, rewritten_line)
         self.assertNotEqual(original, tampered, "fixture no longer exercises the case")
-        self.assertEqual(len(original), len(tampered), "the edit must be invisible to byte count")
         self.assertEqual(
             store.reviewed_content_digest(*store.split_entry(original)),
             store.reviewed_content_digest(*store.split_entry(tampered)),
             "precondition: this edit is invisible to reviewedContentDigest",
         )
-        path.write_text(tampered, encoding="utf-8")
-        os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        self.tamper_in_place(path, digest_line, rewritten_line)
 
         result = self.explain(seeded["alpha"]["identity"])
         self.assertTrue(
@@ -1867,9 +1870,9 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
 
     @staticmethod
     def budget_result(
-        per_entry_us: float, peak_rss_mb: float | None, command_ms: float = 1.0,
+        per_entry_us: float, command_rss_mb: float | None, command_ms: float = 1.0,
         entries: int | None = None, posting_bytes: int = 1000,
-        floor_peak_rss_mb: float | None = 27.0,
+        floor_rss_mb: float | None = 0.1,
         observed_fanout: int = 59, observed_nodes: int = 236, observed_walk_ms: float = 15.23,
     ) -> dict:
         """Minimal `run()` output, so the budget arithmetic is testable without a real run."""
@@ -1888,16 +1891,22 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
                 "projectedMsAt15k": per_entry_us * 15,
                 "projectedMsAt15kFromMin": per_entry_us * 15,
                 # The floor's memory comes from its OWN probe, so the double keeps it separate
-                # from the command peak: one shared number could not tell a floor regression
+                # from the command delta: one shared number could not tell a floor regression
                 # from a command regression, which is the distinction the new row exists to make.
-                "peakRssMb": floor_peak_rss_mb,
+                # `commandRssMb` is what the sweep ADDS over its post-import baseline -- the
+                # budgeted quantity; `peakRssMb` is the process total, reported but never gated.
+                "commandRssMb": floor_rss_mb,
+                "peakRssMb": None if floor_rss_mb is None else floor_rss_mb + 27.0,
+                "peakRssScope": "test double",
                 "peakRssSource": "test double",
             },
-            "coldContext": {"peakRssMb": peak_rss_mb, "peakRssSource": "test double"},
+            "coldContext": {"peakRssMb": command_rss_mb, "peakRssSource": "test double"},
             "coldCommands": {
                 name: {
                     "processes": 5, "p95Ms": command_ms, "minUs": command_ms * 1000,
-                    "peakRssMb": peak_rss_mb, "peakRssSource": "test double",
+                    "commandRssMb": command_rss_mb,
+                    "peakRssMb": None if command_rss_mb is None else command_rss_mb + 27.0,
+                    "peakRssScope": "test double", "peakRssSource": "test double",
                 }
                 for name in knowledge_benchmark.COMMAND_BUDGETS
             },
@@ -2024,7 +2033,7 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
 
         from scripts import knowledge_benchmark
 
-        noisy = self.budget_result(2.0, 32.0)
+        noisy = self.budget_result(2.0, 5.7)
         noisy["coldFloor"]["perEntryUs"] = 40.0  # a tail sample, not a slower sweep
         noisy["coldFloor"]["projectedMsAt15k"] = 600.0
         with mock.patch.object(knowledge_benchmark, "run", lambda *_: noisy):
@@ -2076,7 +2085,7 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
             with self.subTest(traversal=name):
                 # Every row states a memory ceiling: R4 names latency AND memory, and the audit
                 # found 0 of 5 traversals with one.
-                self.assertGreater(knowledge_benchmark.TRAVERSAL_BUDGETS[name]["peakRssMb"], 0)
+                self.assertGreater(knowledge_benchmark.TRAVERSAL_BUDGETS[name]["commandRssMb"], 0)
         for name, budget in knowledge_benchmark.COMMAND_BUDGETS.items():
             with self.subTest(command=name):
                 self.assertGreater(budget["p95Ms"], 0)
@@ -2089,8 +2098,8 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
         # to say so, or a reader sees one ceiling and concludes the other half is unenforced.
         self.assertNotIn("minMs", knowledge_benchmark.FLOOR_BUDGET)
         self.assertLess(
-            knowledge_benchmark.FLOOR_BUDGET["peakRssMb"],
-            min(budget["peakRssMb"] for budget in knowledge_benchmark.COMMAND_BUDGETS.values()),
+            knowledge_benchmark.FLOOR_BUDGET["commandRssMb"],
+            min(budget["commandRssMb"] for budget in knowledge_benchmark.COMMAND_BUDGETS.values()),
             "the floor opens no posting family and hydrates nothing, so its ceiling must sit "
             "below every command that pays it -- otherwise it is the command ceiling in disguise",
         )
@@ -2130,10 +2139,10 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
 
         from scripts import knowledge_benchmark
 
-        over = knowledge_benchmark.FLOOR_BUDGET["peakRssMb"] + 1.0
+        over = knowledge_benchmark.FLOOR_BUDGET["commandRssMb"] + 1.0
         with mock.patch.object(
             knowledge_benchmark, "run",
-            lambda *_: self.budget_result(2.0, 32.0, floor_peak_rss_mb=over),
+            lambda *_: self.budget_result(2.0, 5.7, floor_rss_mb=over),
         ):
             code, stderr = self.run_main(["--assert-command-budgets"])
         self.assertEqual(1, code, "a ceiling that cannot fail is not a budget (R4)")
@@ -2141,12 +2150,12 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
         # The quantity is named, with both sides of the comparison: a failure that says only
         # "over budget" sends a reader back to the benchmark to find out what moved.
         self.assertIn(f"{over:.1f} MB > ", stderr)
-        self.assertIn(f"{knowledge_benchmark.FLOOR_BUDGET['peakRssMb']} MB", stderr)
+        self.assertIn(f"{knowledge_benchmark.FLOOR_BUDGET['commandRssMb']} MB", stderr)
 
         # And the same measurement inside the ceiling is a pass, so the gate is not simply red.
         with mock.patch.object(
             knowledge_benchmark, "run",
-            lambda *_: self.budget_result(2.0, 32.0, floor_peak_rss_mb=27.0),
+            lambda *_: self.budget_result(2.0, 5.7, floor_rss_mb=0.1),
         ):
             code, stderr = self.run_main(["--assert-command-budgets"])
         self.assertEqual(0, code, stderr)
@@ -2330,7 +2339,7 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
         from scripts import knowledge_benchmark
 
         with mock.patch.object(
-            knowledge_benchmark, "run", lambda *_: self.budget_result(2.0, 32.0)
+            knowledge_benchmark, "run", lambda *_: self.budget_result(2.0, 5.7)
         ):
             code, stderr = self.run_main(["--assert-command-budgets"])
         self.assertEqual(0, code, stderr)
@@ -2343,7 +2352,7 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
         from scripts import knowledge_benchmark
 
         with mock.patch.object(
-            knowledge_benchmark, "run", lambda *_: self.budget_result(2.0, 32.0, entries=200)
+            knowledge_benchmark, "run", lambda *_: self.budget_result(2.0, 5.7, entries=200)
         ):
             code, stderr = self.run_main(["--assert-command-budgets"])
         self.assertEqual(1, code)
@@ -2362,7 +2371,7 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
         # platform without one, but the log has to say the ceiling went unverified.
         with mock.patch.object(
             knowledge_benchmark, "run",
-            lambda *_: self.budget_result(2.0, None, floor_peak_rss_mb=None),
+            lambda *_: self.budget_result(2.0, None, floor_rss_mb=None),
         ):
             code, stderr = self.run_main(["--assert-command-budgets"])
         self.assertEqual(0, code)

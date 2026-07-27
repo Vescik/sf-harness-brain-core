@@ -222,10 +222,23 @@ def safe_name(full_name: str, identity: str) -> str:
     return stem
 
 
+def relative_path(path: Path) -> str:
+    """Repo-relative path as DATA: always forward slashes, on every platform.
+
+    `relative_path(path)` renders backslashes on Windows, which is the team's only
+    platform. Every path this executor emits is compared against, or pasted next to, a path
+    built elsewhere with `as_posix()` — `work_record.entry_relative_path` is one — so the two
+    forms silently stop matching there and nowhere else. Path separators are a rendering
+    detail of the local filesystem; a citation is a record, and its form must not depend on
+    which machine wrote it.
+    """
+    return path.relative_to(ROOT).as_posix()
+
+
 def entry_path(metadata_type: str, namespace: str | None, full_name: str) -> Path:
     identity = identity_of(metadata_type, namespace, full_name)
     path = ARTIFACTS_ROOT / metadata_type / (namespace or "c") / f"{safe_name(full_name, identity)}.md"
-    if len(str(path.relative_to(ROOT))) > PATH_BUDGET:
+    if len(relative_path(path)) > PATH_BUDGET:
         raise StoreError(f"derived path exceeds {PATH_BUDGET}-char budget for {identity}")
     return path
 
@@ -400,7 +413,7 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any
     subject = frontmatter["subject"]
     identity = identity_of(subject["metadataType"], subject.get("namespace"), subject["fullName"])
     expected = entry_path(subject["metadataType"], subject.get("namespace"), subject["fullName"])
-    result = {"identity": identity, "path": str(path.relative_to(ROOT)), "problems": validate_entry(frontmatter, body)}
+    result = {"identity": identity, "path": relative_path(path), "problems": validate_entry(frontmatter, body)}
     if path.resolve() != expected.resolve():
         result["lane"] = "not-effective"
         result["problems"].append(f"path/identity round-trip failed (expected {expected.relative_to(ROOT)})")
@@ -798,7 +811,7 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "DRAFTED",
         "identity": identity_of(metadata_type, args.namespace, args.full_name),
-        "path": str(path.relative_to(ROOT)),
+        "path": relative_path(path),
         "reviewedContentDigest": frontmatter["lifecycle"]["contentDigest"],
     }
 
@@ -1017,7 +1030,7 @@ def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "DESCRIBED",
         "identity": args.identity,
-        "path": str(path.relative_to(ROOT)),
+        "path": relative_path(path),
         "reviewedContentDigest": frontmatter["lifecycle"]["contentDigest"],
         "previousApprovalInvalidated": was_approved,
         "sentences": len(sentences),
@@ -1111,7 +1124,7 @@ def command_entry_review(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "REVIEW_READY" if not caps else "CHUNK_TOO_LARGE",
         "chunkId": chunk_id,
-        "reviewArtifact": str(artifact.relative_to(ROOT)),
+        "reviewArtifact": relative_path(artifact),
         "entries": len(resolved),
         "classification": classification,
         "capViolations": caps,
@@ -1545,7 +1558,7 @@ def compute_feature_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[
     identity = feature_identity(slug)
     result: dict[str, Any] = {
         "identity": identity,
-        "path": str(path.relative_to(ROOT)),
+        "path": relative_path(path),
         "problems": validate_feature(frontmatter, body),
     }
     if result["problems"] or frontmatter.get("lifecycle", {}).get("state") == "draft":
@@ -1628,7 +1641,7 @@ def command_feature_propose(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "PROPOSED",
         "identity": feature_identity(args.slug),
-        "path": str(path.relative_to(ROOT)),
+        "path": relative_path(path),
         "boundary": frontmatter["boundary"],
         "boundaryDigest": boundary_digest(frontmatter["boundary"]),
         "reviewedContentDigest": digest,
@@ -1729,7 +1742,7 @@ def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "REVIEW_READY",
         "chunkId": chunk_id,
-        "reviewArtifact": str(artifact.relative_to(ROOT)),
+        "reviewArtifact": relative_path(artifact),
         "features": [identity for identity, _f, _b, _d in resolved],
         "approveCommand": command,
         "skipped": skipped,
