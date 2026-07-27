@@ -3090,6 +3090,52 @@ class FeatureBaselineDriftTests(EntryFixtureMixin, unittest.TestCase):
             "depth 0 still walked a level — the anchor's incoming edges are not 'anchors only'",
         )
 
+    def test_an_object_joins_through_the_containment_edge_of_its_own_field(self) -> None:
+        """Before this, NO object but an anchor could ever be a member.
+
+        An object is reached only through the containment edge of one of its own parts, and that
+        edge points away from an incoming walk — so the walk reached `HarnessBetaOrder__c.Case__c`
+        and stopped, one hop short of the object that field lives on. Measured on the first real
+        store: `Service_Task__c`, `Time_Log__c`, `Ticket_Comment__c` and `Category__c` were all
+        absent while their own fields were members, IDENTICALLY at depth 1, 2 and 3 — which is
+        also why `depth` bought nothing and `hubs` had no hop to stop."""
+
+        self.seed()
+        objects = self.temp / "force-app/main/default/objects/HarnessBetaOrder__c"
+        (objects / "HarnessBetaOrder__c.object-meta.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "    <label>Harness Beta Order</label>\n"
+            "    <sharingModel>ReadWrite</sharingModel>\n"
+            "</CustomObject>\n",
+            encoding="utf-8",
+        )
+        self.approve(self.draft("CustomObject", "HarnessBetaOrder__c", "Orders the beta team dispatches."))
+        search.build_index()
+
+        self.make_feature(depth=1)
+        shallow = {m["identity"] for m in self.membership(include_heuristic=True)["members"]}
+        self.assertIn("CustomField:c:HarnessBetaOrder__c.Case__c", shallow)
+        self.assertNotIn(
+            "CustomObject:c:HarnessBetaOrder__c", shallow,
+            "the owning object is two hops away; depth 1 must not reach it",
+        )
+
+        self.make_feature(depth=2, replace=True)
+        members = self.membership(include_heuristic=True)["members"]
+        owner = next(
+            (m for m in members if m["identity"] == "CustomObject:c:HarnessBetaOrder__c"), None
+        )
+        self.assertIsNotNone(owner, "an object still cannot be reached through its own field")
+        self.assertEqual(
+            "contains-member", owner["membership"]["reason"],
+            "reached because it OWNS a member; calling that 'belongs-to' inverts the relationship",
+        )
+        self.assertTrue(
+            any(step.get("ownerWard") for step in owner["membership"]["path"]),
+            "the owner-ward direction is not recorded on the step that took it",
+        )
+
     def test_a_hub_is_kept_as_a_member_but_never_expanded_through(self) -> None:
         """§13.7 states this traversal honours `hubs`; it read the key nowhere.
 

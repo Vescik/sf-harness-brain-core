@@ -1845,17 +1845,32 @@ def traverse(
             if direction == "incoming":
                 for name in sorted(names):
                     for edge in documents.incoming_edges(name, include_heuristic=True):
-                        hops.append((edge["source"], edge["kind"], name, edge["assurance"]))
+                        hops.append((edge["source"], edge["kind"], name, edge["assurance"], False))
+                # An object is reached ONLY through the containment edge of one of its own parts,
+                # and that edge points away from an incoming walk. Without this hop no object but
+                # an anchor could ever be reached: measured on a real boundary, `Service_Task__c`,
+                # `Time_Log__c`, `Ticket_Comment__c` and `Category__c` were all absent while their
+                # own fields were members, identically at depth 1, 2 and 3 — so `depth` bought
+                # nothing and `hubs` had no hop to stop. The inversion already existed twice, in
+                # `run_explain` and `run_context`; it was missing from the shared walk.
+                for edge in (document or {}).get("edges", []):
+                    if edge["kind"] != CONTAINMENT_KIND:
+                        continue
+                    row = documents.target_row(edge["target"])
+                    hops.append((
+                        row.get("targetIdentity") or edge["target"],
+                        edge["kind"], edge["target"], edge["assurance"], True,
+                    ))
             else:
                 for edge in (document or {}).get("edges", []):
                     row = documents.target_row(edge["target"])
                     resolved = row.get("targetIdentity")
-                    hops.append((resolved or edge["target"], edge["kind"], edge["target"], edge["assurance"]))
+                    hops.append((resolved or edge["target"], edge["kind"], edge["target"], edge["assurance"], False))
             observed_fanout = max(observed_fanout, len(hops))
             if len(hops) > TRAVERSAL_LIMITS["maxFanout"]:
                 limits_hit.add("fanout")
                 hops = sorted(hops)[: TRAVERSAL_LIMITS["maxFanout"]]
-            for node, kind, via, assurance in sorted(hops):
+            for node, kind, via, assurance, owner_ward in sorted(hops):
                 if assurance != relation_kinds.SOURCE_EXACT and not include_heuristic:
                     excluded["heuristicEdge"] += 1
                     continue
@@ -1876,6 +1891,12 @@ def traverse(
                     else relation_kinds.SOURCE_EXACT
                 )
                 step = {"from": item["node"], "kind": kind, "to": node, "via": via, "assurance": assurance}
+                if owner_ward:
+                    # The containment edge was followed towards the OWNER, not towards the part.
+                    # `kind` stays honest — it is the same `belongs-to` edge — so the direction has
+                    # to be on the step, or a reader cannot tell "contains a member" from
+                    # "is a member's part" and the membership reason inverts.
+                    step["ownerWard"] = True
                 chains.append({
                     "node": node, "hop": level + 1, "lifecycle": lifecycle,
                     "resolved": reached is not None,
@@ -2350,7 +2371,13 @@ def compute_membership(
                 below_floor.append({"identity": node["node"], "assurance": weakest})
                 continue
             kinds = {step["kind"] for step in node["path"]}
-            reason = CONTAINMENT_KIND if CONTAINMENT_KIND in kinds else "references-member"
+            if any(step.get("ownerWard") for step in node["path"]):
+                # Reached because it OWNS a member, not because it is one. Labelling this
+                # `belongs-to` would tell a reviewer that Service_Task__c belongs to
+                # Service_Request__c, which is the relationship inverted.
+                reason = "contains-member"
+            else:
+                reason = CONTAINMENT_KIND if CONTAINMENT_KIND in kinds else "references-member"
             offer(node["node"], reason, weakest, node["hop"], node["path"])
 
     for identity in sorted(set(boundary.get("include") or [])):
