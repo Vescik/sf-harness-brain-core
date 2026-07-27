@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:47704651c5ff7d158f16f88240c7cf2f2ef00d5f4bfa5a30ba8d53c3f65e7fbe
+  contentDigest: sha256:3805cead73e1569444e0cff7475e62b118a1996fff9bc494d2963db66d0d6a0b
   state: draft
-limitations: []
+limitations:
+- No ServiceBinding__mdt records are checked into this repository, so which logical
+  names resolve to which implementation classes cannot be read from source.
+- The production wiring this class exists to serve is not visible in this repository,
+  where nothing outside ServiceLocatorTest calls resolve.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

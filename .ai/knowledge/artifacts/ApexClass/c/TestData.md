@@ -11,9 +11,14 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:ea8706ff55f231d3136ab7fb00b39ec19bb8f3e10583b41d2e92d6f58b65f48b
+  contentDigest: sha256:7e243f8500069e70fd22bd0e788be5cf8d4cf10e566720262416c3ab6b3fe6a8
   state: draft
-limitations: []
+limitations:
+- The per-module test-data factory classes the header says build on this base are
+  absent and no class here calls TestData, so its intended callers are not visible
+  in this repository.
+- The three capability permission sets wired into the full-access helper are not in
+  this repository, so what access they grant cannot be read from source.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

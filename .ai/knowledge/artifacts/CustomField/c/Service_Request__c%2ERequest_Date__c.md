@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:61a68fb422341df76b9cd3e7b51323bcecd975f10b66553760e8515effa145ae
+  contentDigest: sha256:7af586e0f83f3115a00ce64eedf16dd10811214c5d930f816ae9aed8de981e92
   state: draft
-limitations: []
+limitations:
+- The source shows nothing that consumes this value, so what the request date is meant
+  to drive cannot be read from this repository.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

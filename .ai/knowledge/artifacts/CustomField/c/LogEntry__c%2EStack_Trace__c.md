@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:926010c62d93242d5b753b287a3648376950fcd53ff7a38fe9aedd48e0e6a76c
+  contentDigest: sha256:20bf85500298f7084b623ce7786edaa780b4cb947c4b088fe961f442c232a74d
   state: draft
-limitations: []
+limitations:
+- No test in this repository asserts on the trace contents, so what a stored stack
+  trace actually holds cannot be established from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

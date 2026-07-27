@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:f8aff58a68c566c6deb3e1bae9e0bb5446c9ab9ccecad0d7bebd59e6b217c49d
+  contentDigest: sha256:c5979ed8579cead9ca93fe915a7d47f1fe091b3c60909e7fa80878ca300616a2
   state: draft
-limitations: []
+limitations:
+- The only consumer visible here is a Lightning record page, so anything outside this
+  repository that populates or reads the link cannot be seen from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:db4d9951388cd96dbada36f18a8c99cc534aa09a2b941915ee63bddb90ba6ca1
+  contentDigest: sha256:924f9a6f94b8f0673730d8630563a8d7899ccfb25af0b4c620c98b2b542f955c
   state: draft
-limitations: []
+limitations:
+- This field is subscriber-controlled, so which namespace an installing org actually
+  points a shipped binding at cannot be read from this repository.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

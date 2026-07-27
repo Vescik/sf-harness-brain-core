@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:528b3502abfb1acca2d315ed1d9bb17fe4ee2a0acc78819e118a78f7895eb36b
+  contentDigest: sha256:e5cd2aedfb886a810d20793f009c34438619b42eada50481e453d23e8b14aa42
   state: draft
-limitations: []
+limitations:
+- No binding records ship in this repository, so which logical service names are bound
+  to which implementation classes cannot be read from source.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

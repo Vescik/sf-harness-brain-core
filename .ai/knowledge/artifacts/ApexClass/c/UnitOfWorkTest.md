@@ -11,9 +11,14 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:0c761e087ef2ecd0fb4f2c65aef885d4d943e52522d3746d31b635a251e1f63c
+  contentDigest: sha256:91513d4fc776c6c47b997ac40ac3a6bc84da180351e08cd6cba75b1f0bc66874
   state: draft
-limitations: []
+limitations:
+- Every case builds the unit of work through the system-mode factory, so this entry
+  cannot establish how the default user-mode CRUD and field-level enforcement path
+  behaves.
+- The savepoint rollback on a failed commit and the publish-after-commit event handling
+  are not exercised here, so this entry cannot establish those two behaviours of commitWork.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:be4b1cf19ebc1fd4f29a0823f500f2f4afb345b7a2b63a791ff5edd00f0b7a70
+  contentDigest: sha256:6ba572d80b780f9de80870b99985f6895d4b39076e12a64a70ef6ef54ffce940
   state: draft
-limitations: []
+limitations:
+- No Apex, flow, validation rule, record page, or permission set in this repository
+  touches the field, so who may approve an entry, at what point, and what an approval
+  unlocks downstream cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

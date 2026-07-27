@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:e0e93502aef72ff0b568670451018483ccdf8cd16b1a91c3f589ec2d1fec85c1
+  contentDigest: sha256:600dc67749c4379848501d43d9f30f1b3b74f3702368d2a2e3fa3dd6ee81e82e
   state: draft
-limitations: []
+limitations:
+- Which flags are switched on is held in FeatureFlag__mdt records rather than in this
+  class, so which behaviours the gate currently permits cannot be read from this source.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

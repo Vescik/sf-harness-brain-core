@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:83834efa7db0de09647260852aa52d66c0d9876e283e72fb4c1bc6187a97a2f2
+  contentDigest: sha256:63bab92cb3f055fea10c80b12fc3ae39b053b3e1d615fe2f8c800cd75500b589
   state: draft
-limitations: []
+limitations:
+- The listed rows come from the running org's global describe and its own domain,
+  so which objects a search actually returns cannot be read from this repository's
+  source.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

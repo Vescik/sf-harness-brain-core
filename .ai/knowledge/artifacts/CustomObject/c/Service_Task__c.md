@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:65ed62f48d2aab4634665f4f98ec1414a55200630af1aec012c006e6b062d7a4
+  contentDigest: sha256:b515c7ea40a0c5e001791a66d9440eac8d9f4976535da3acb7a38fb80d692a63
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository references the object, so how tasks are created, how
+  their status relates to the parent request's status, and how booked hours relate
+  to the request's estimate cannot be read from source.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

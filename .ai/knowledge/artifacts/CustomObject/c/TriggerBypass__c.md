@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:2ca62d7043c85f9e4a156467765b264242907a6999e7cf9ca362b986fa32e0c6
+  contentDigest: sha256:3b6e357763b1b6a089d07d3e628b7db0a5be703b8429d98d527182c88ed1c299
   state: draft
-limitations: []
+limitations:
+- The bypass values are data rather than packaged metadata and are toggled per org
+  by admins, so which handlers are actually bypassed anywhere is not in this repository.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:5c27da29633625d7c5cec1130e98e52a3c20163ceff436d9df8eda1e16a61995
+  contentDigest: sha256:1103e60d556af7d12ec4efeee6adc39d52eaca3d78aee6ec3abb8fece8e2241f
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository sets, clears, or validates the assignment, so how a technician
+  is actually chosen in practice cannot be established from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

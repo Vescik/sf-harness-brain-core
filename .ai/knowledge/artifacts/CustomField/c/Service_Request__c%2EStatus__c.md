@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:b62854caf84e4e5393b7155c188a9e46dca6973fa67efd7e0fb73ad7189290b0
+  contentDigest: sha256:333a4b3bd12c8026a7c199a00e6b72971050c35d2d9033aab9e4b96a3b283a38
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository defines which field drives the path component the record
+  page header carries.
+- The Status value set is org-wide and not defined in this repository, so the business
+  meaning behind the stored status codes cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

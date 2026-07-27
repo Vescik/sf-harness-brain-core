@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:9da047160f9321a234f8c9da5062629e4c6b37b5b504530d86d27bd9ee1d089c
+  contentDigest: sha256:890e39dff4d7c62d8d84b571d82712ff199f8d329604c4a09949998a9794e74d
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository consumes the field and it carries no description or help
+  text, so the field name is the only evidence of intent.
+- What the hours are measured from and measured to is not established anywhere in
+  the source, so the intended SLA semantics cannot be read from this repository.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

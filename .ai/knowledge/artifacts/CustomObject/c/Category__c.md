@@ -11,9 +11,16 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:1dcb14e9ae50acf0f6107a95b58a7c86384d8b2487525ff13e79b24b32d698ea
+  contentDigest: sha256:166ad1c278bf3894ee700c7c66dd62128215b5fd331ce892b0d0c726493a70c9
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository reads the SLA hours value, so whatever would enforce
+  or report on an SLA is not visible from source.
+- The object carries no description and has reporting and search disabled, so the
+  source gives no indication of who is meant to maintain these records.
+- The source does not explain why the Category field on Ticket points at the standard
+  ProductCategory object rather than at this one, so the intended join between the
+  two cannot be read here.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

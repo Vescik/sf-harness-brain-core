@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:fbf5a19c79a3974682d09d8ab1e378f99197a16a67ff2ff89f511b82f345379c
+  contentDigest: sha256:2e3bf8179fc4bb2c52acb5809568a2865e6e5118ab7942651c23c0288c505696
   state: draft
-limitations: []
+limitations:
+- No flag records ship in this repository, so the set of flags actually in use is
+  not visible from source.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

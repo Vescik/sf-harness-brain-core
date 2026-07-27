@@ -11,9 +11,15 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:4536c55fc8008ee7546134bfcb3e857d819128a6a00a272d3a37881569bba242
+  contentDigest: sha256:1222eaf6c7a92589b97e9f20f62fc23e0ea8be6465d343168844d5e53831c431
   state: draft
-limitations: []
+limitations:
+- No Apex, Flow, validation rule, layout or permission set in the repository reads
+  this field, so whether it drives display, notification or any access decision is
+  not visible from source.
+- Nothing in the repository populates or checks this field, so the value is whatever
+  the writing process supplies and is not guaranteed to match the created-by user
+  on the record.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

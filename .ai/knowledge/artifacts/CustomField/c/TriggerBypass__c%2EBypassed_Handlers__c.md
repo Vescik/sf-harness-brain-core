@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:65d65daaaa81448fb65239268d1a7b3d1cebad982b556009b58bfa2cbda7f5b2
+  contentDigest: sha256:55b1a040371c61455e57d6cbb41505a30d7fa347a6bd760914d5604508a81204
   state: draft
-limitations: []
+limitations:
+- The bypass list is admin-editable data on a hierarchy custom setting rather than
+  packaged configuration, so which handlers are actually bypassed in any org cannot
+  be read from this repository.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

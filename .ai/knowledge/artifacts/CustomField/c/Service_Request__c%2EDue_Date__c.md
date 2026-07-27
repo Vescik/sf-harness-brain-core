@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:d0955c1894b8f01200db33f3a392f071666eb8a2f37418226640d9ed901fa215
+  contentDigest: sha256:982dc028c2cebc718e2a7a3c5ed51c32b74f1e2611fad75198aa671b52e01b8c
   state: draft
-limitations: []
+limitations:
+- What the due date is meant to drive is not visible in this repository, since no
+  Apex, flow, or validation rule here reads it.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

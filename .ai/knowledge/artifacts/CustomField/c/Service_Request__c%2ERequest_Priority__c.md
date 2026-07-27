@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:097420818b9f03835512c5a4cff477e2ae964f8936435384197833dc48bc2ee7
+  contentDigest: sha256:3bb7c1721f75a50ac81ab8a4b6f3340fc0a1a44c57efbb63f1388609fe696e2e
   state: draft
-limitations: []
+limitations:
+- The Priority value set is org-wide and not defined in this repository, so the options
+  a user can actually pick cannot be read from source.
+- Whether priority is meant to drive routing, queue ordering, or a response target
+  is not something the source shows.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:e543ad626e6ed72553476be6d64fa2a5a34d895b1f5817cfc0bd9cea3fdfdc9b
+  contentDigest: sha256:f0ceee5416eea2e7f9e1b5a25b5fc18e9c662215b4829d75942cad41ecd56cc9
   state: draft
-limitations: []
+limitations:
+- No validation rule, flow or Apex in this repository reads or writes the field, so
+  whether anything outside repository source consumes the description is not visible
+  here.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

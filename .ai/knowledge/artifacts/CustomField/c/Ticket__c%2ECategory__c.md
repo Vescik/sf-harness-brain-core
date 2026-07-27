@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:56dcc90064a4b41c282732e8abf1c2746e97a53f37cafa75a63b729e33f22a01
+  contentDigest: sha256:5828fd42f50b64146455a53c7d45fbd86cd9bd5004e16b09790698e63034d882
   state: draft
-limitations: []
+limitations:
+- Beyond the record page and one InvalidDraft flow nothing in this repository reads
+  the field, so whether the classification drives any working behaviour is not visible
+  from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

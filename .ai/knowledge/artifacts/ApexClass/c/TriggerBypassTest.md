@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:a1a24aadc0c84a7682dcd1655cd418fa2be02454e934feae762be4635f9ff390
+  contentDigest: sha256:22f39574533844bea90a26c1d99d20f4c5aa135ca4dec1fabc8fed98af35fbc7
   state: draft
-limitations: []
+limitations:
+- This test substitutes the setting through the test-visible override, so it cannot
+  establish that case-insensitive handler-name matching or the real hierarchy custom
+  setting lookup behave as described.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

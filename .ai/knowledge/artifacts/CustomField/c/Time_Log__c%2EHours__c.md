@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:b5e867c091cf573237381d97837a354e5b8e53a8c22e7339aad9740ee9aa30dc
+  contentDigest: sha256:865b6a15a8cf8cdb9e0a8b81e72d7f9c3418f2dfd17b05de9f4468a88ec286e6
   state: draft
-limitations: []
+limitations:
+- No component in this repository reads or aggregates the value, so any comparison
+  of logged hours against Service_Request__c.Estimated_Hours__c happens outside this
+  metadata and cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

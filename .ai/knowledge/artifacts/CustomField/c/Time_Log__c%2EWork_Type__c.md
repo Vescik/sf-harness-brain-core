@@ -11,9 +11,14 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:9d854b28b9095317cfb3e03861eaa65076837dc41654d7bf54ae753dde8fd5c3
+  contentDigest: sha256:2e778db1dae5131266f07b54802b029e3b6367e8c9d80e92a45b6645b7f08baf
   state: draft
-limitations: []
+limitations:
+- No Apex class, Flow, validation rule, or layout in this repository reads or writes
+  the field, so what consumes the classification downstream, such as billing, rate
+  selection, or reporting, is not shown by the source.
+- The Work_Type value set is not present in this repository, so which labour categories
+  the picklist permits cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

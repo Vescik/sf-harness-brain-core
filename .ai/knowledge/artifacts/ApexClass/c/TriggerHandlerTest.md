@@ -11,9 +11,14 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:c431ff23f057121b6d3cc4e526e93a6e21b7048d16383225c4421c8dcb379963
+  contentDigest: sha256:70332be0ba6ad6cf20a9e35a2c623ea63acf569352af9dfe6a901aa196e82957
   state: draft
-limitations: []
+limitations:
+- The FeatureFlags and TriggerBypass bypass paths that validateRun also consults are
+  not exercised by this test, so their effect on run cannot be established from it.
+- The tests drive the handler through its test-visible context setter rather than
+  a real trigger, so behaviour under an actual trigger invocation is not established
+  here.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

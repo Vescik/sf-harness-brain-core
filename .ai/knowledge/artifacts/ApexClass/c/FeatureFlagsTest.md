@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:add7351659af9917cf0fc4a533e5904862c5c7df9376ca212a694b46316e7e20
+  contentDigest: sha256:0facfa57dbcc699010ded3a5eab0a69ba403be37bac843126f64ba7366d97841
   state: draft
-limitations: []
+limitations:
+- All three tests run off the mock map, so this entry cannot establish that the real
+  metadata path — cache population and the active check on the record — behaves as
+  FeatureFlags describes.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

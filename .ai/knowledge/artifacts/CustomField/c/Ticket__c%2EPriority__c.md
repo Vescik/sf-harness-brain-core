@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:fee3bc1e97548d8763bd9b6af6f3778b06c6a943defa88078c53db7203bec1a6
+  contentDigest: sha256:7fb4c12a7a6d870c13faac5150f71b88047b066974af254caf5f5e081206ce41
   state: draft
-limitations: []
+limitations:
+- The Priority value set is not part of this repository, so the meaning and ordering
+  of its codes cannot be read from the source here.
+- The source shows no working automation that fills the field, so how a priority is
+  actually set on a ticket is not visible here.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

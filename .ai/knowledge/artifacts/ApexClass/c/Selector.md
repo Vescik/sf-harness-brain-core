@@ -11,9 +11,14 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:a6748868dbb7ce72322a262bc5ef651622fdcc369074a3273881846417d32667
+  contentDigest: sha256:7e4508c00a1f566c6fb2e2d4e06a7b100b88139ac43cd0170a78b5b22667ff2f
   state: draft
-limitations: []
+limitations:
+- The system-mode counterpart method the class header describes is not defined here,
+  so how the package's rare system-mode reads are performed cannot be read from this
+  class.
+- This repository contains no subclass of Selector, so what a real selector declares
+  and queries is not visible from the source.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

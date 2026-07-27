@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:5c5189d82c6e233d5e11532e3b5636d925ab33e540a03ecdb590a62ab279b2f0
+  contentDigest: sha256:93a5fd8ea8280096dc08b17cb3e29127aa9f30b6e78f279ccdc7a329f2944be1
   state: draft
-limitations: []
+limitations:
+- The system-mode insert and the swallowing of the flush's own DML errors are not
+  covered by these tests, so this entry cannot establish that either behaves as Logger
+  claims.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

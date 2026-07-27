@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:0794ce1290cafdcc1dfc96bb0c46e9cb15dc4065f9519267186f3435d3bf0f38
+  contentDigest: sha256:3c3f408bd5c0ec0bc776abec5484b6fb9a6aba00a3471ae835d14d7372ec0ecd
   state: draft
-limitations: []
+limitations:
+- This repository contains no triggers and no handler subclass other than the test
+  one, so the live consumers this framework dispatches for are not visible in source.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

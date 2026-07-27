@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:633cef969b51b7096e1d3c3a928799fad650d24e97ca11064b4921e6b9771b97
+  contentDigest: sha256:19e9ea1f9b6e73367ff423222e3baf3c14a1308d7533ba2792d12a67bbc549c9
   state: draft
-limitations: []
+limitations:
+- Neither the field nor the object states what the description should contain, so
+  the expected content cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:4b65ba3a659cec9671e7bda2f76b5f187ac7252b26e100f8dbb5f9249bd45841
+  contentDigest: sha256:6c4fd6c180af68c6d54a8fda5363e94c7a873254900a9e8655c2339c9f528817
   state: draft
-limitations: []
+limitations:
+- Statuses, priorities and service types are coded values drawn from global value
+  sets that are not in this repository, so what codes such as s_1 and s_6 stand for
+  cannot be read from source.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

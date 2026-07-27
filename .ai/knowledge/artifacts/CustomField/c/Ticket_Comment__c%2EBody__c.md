@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:975e7d3173efe449dff932c44d5790b6530e67b15f127bece8d1da4d68f85d56
+  contentDigest: sha256:c7ba11187913680bb8de9a56dbf41110eda96ec4cca12fac2befab2bda4a8d91
   state: draft
-limitations: []
+limitations:
+- Nothing in the repository reads or writes this field, so any interface or process
+  that captures and renders comment text lives outside this repository.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

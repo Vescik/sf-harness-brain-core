@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:02a358977ad79a925b72e499670a2280f7bf2f4048432e550e08a417acb68fa2
+  contentDigest: sha256:6afa84e4fc191a009972a7ae44c5f7a326efec04e2e35de6824839621b821661
   state: draft
-limitations: []
+limitations:
+- No Apex, flow, or record page in this repository reads the field, so any grouping
+  of time logs into a week, a month, or a billing period happens outside the metadata
+  committed here and cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

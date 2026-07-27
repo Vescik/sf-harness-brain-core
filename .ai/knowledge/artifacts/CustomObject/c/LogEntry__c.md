@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:2859dfaca289cbdfaf84a3bb9145cc378a8229e9d12f6b881ea69e6d18128696
+  contentDigest: sha256:cbaa96db62ace24df654af8f59fa939265b58ff7d5ae8444c806ca48aa0217b1
   state: draft
-limitations: []
+limitations:
+- The only reads of the object in this repository are in tests, so how these rows
+  are consumed operationally and how long they are retained cannot be read from source.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

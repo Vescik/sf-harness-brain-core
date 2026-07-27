@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:bc14542af236c2fca03836461cb748d17f6d0253bb62484662f3ee45a537a221
+  contentDigest: sha256:cc1f1b0ebfdb7d5c83f207552c536bb97af960e8e9f4656b44632fac9648bfc0
   state: draft
-limitations: []
+limitations:
+- This test declares its own interface and implementation inline, so it cannot establish
+  that the metadata-driven binding lookup, the namespace fallback, or the unloadable-class
+  failure behave as described.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

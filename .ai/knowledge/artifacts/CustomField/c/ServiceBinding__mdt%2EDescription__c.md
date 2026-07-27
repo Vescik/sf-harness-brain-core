@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:6198c1127bdb09ca648bb3f7d209c06b48677aa941fcb355aa537e3ad59a4f5c
+  contentDigest: sha256:7133d826dc44c6ae8ef3709972091c39bc2e28789d8cd13d3d37584f3a0ba7c2
   state: draft
-limitations: []
+limitations:
+- No code in this repository reads this field, so the maintainers who actually consume
+  the note are not visible in source.
+- The source does not say whether every binding record is expected to carry a description.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

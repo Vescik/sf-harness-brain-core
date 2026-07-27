@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:86dcfc9ca83fe63ef6656340afca4e1c217b9fa5d86b2806aafe1490847927f5
+  contentDigest: sha256:5b544561deef410ab220252faf4e0e4a77251e43fd20d465fe9c94cecc666581
   state: draft
-limitations: []
+limitations:
+- The Status picklist draws on a global value set that is not present in this repository,
+  so the source cannot confirm that the two literal values the rule tests still match
+  the stored picklist values.
 profile:
   digest: sha256:baaa5f69a92d0b991b9a11f226acc297c7d5373a4b65dd97ddb7359315277c4d
   id: salesforce.validation-rule

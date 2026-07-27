@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:d6ae6dd3fef6575ffe137fc03391ce249a0e40c6a87df7386abaf45d125dbe31
+  contentDigest: sha256:a2fa2eb3130a4ae68bd00390d1e388259f14433357650b5c07551710f1bf0320
   state: draft
-limitations: []
+limitations:
+- No code in this repository queries or filters on this field, so whoever reads the
+  correlated log rows is not visible in source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

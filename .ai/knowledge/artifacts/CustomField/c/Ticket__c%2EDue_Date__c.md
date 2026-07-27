@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:b72bc9c25a011009de46e543ef32828390b03dd186eb61e22591d9ea5bccad60
+  contentDigest: sha256:f3b0ff3863040810f4575be0b4cb8ef63d2892ed717a81389c6c7deee825ebee
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository derives the value and no source here connects the Category
+  SLA Hours field to it, so how a due date is actually arrived at is not visible from
+  source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

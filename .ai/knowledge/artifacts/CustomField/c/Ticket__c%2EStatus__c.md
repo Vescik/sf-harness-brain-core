@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:ad08230ccd4d194dd6ffabbd97ff46b01d9226b74b3d8ec8b66237a5343248a8
+  contentDigest: sha256:5fb62e6d5f45588955e05a4d87d6368df555699fba984ab9846744d2b55a76ba
   state: draft
-limitations: []
+limitations:
+- The shared Status value set is not committed to this repository, so the full list
+  of stages a ticket can reach is not visible from source.
+- The two validation rules are the only stage discipline the source shows, so whether
+  any further ordering of stages is enforced elsewhere cannot be read from this repository.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

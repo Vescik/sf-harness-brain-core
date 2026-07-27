@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:6255fdd577cc649b9c49b5b854967cf67e97b7a6668fd9bb5a2a0c8e44b84b32
+  contentDigest: sha256:fda8fddb46ead273654123bf0e76b1af93ada68b91016468d8b448eb7703f662
   state: draft
-limitations: []
+limitations:
+- No Apex, Flow, validation rule or layout in the repository branches on this value,
+  so nothing here shows the classification driving any downstream behaviour.
+- The shared Task Type value set is not part of this repository, so which classifications
+  this field offers cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

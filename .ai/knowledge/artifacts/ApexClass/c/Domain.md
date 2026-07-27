@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:98a4856bdfc64e347b6b81f1dc1c4cb50ff2119fb6d3b6d9abdf0d3abb8a5700
+  contentDigest: sha256:7a8cf3360ea68f11911a6f863911dbee63b61768bdc0cf7d5535fd8bfb4e1ad9
   state: draft
-limitations: []
+limitations:
+- No subclass of Domain exists in this repository, so what a concrete domain does
+  with the trigger records and the prior-version map cannot be read from source.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

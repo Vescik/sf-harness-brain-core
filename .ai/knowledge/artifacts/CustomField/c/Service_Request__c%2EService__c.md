@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:a2baa19f101f25865618ed47202652b2126f27ef1a03e42c9fc2b41e3602b784
+  contentDigest: sha256:b5a249f543228334ad4ca587757e837319087c5792262cddbc17b71838e3b4d2
   state: draft
-limitations: []
+limitations:
+- Nothing in this package branches on the field, so what the classification is used
+  for once it is set is not visible here.
+- The Service_Type value set is org-wide and not defined in this repository, so the
+  available categories cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

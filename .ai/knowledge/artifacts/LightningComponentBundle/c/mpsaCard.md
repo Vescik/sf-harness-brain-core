@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:d147a1aa8bfb36d30047c922a8a6d62edf638114a31f57ea1ec9187639a517bf
+  contentDigest: sha256:992c5d83c3fbcdbe9ebe0b45b19595fb56e807d313f56ee15aeb537b79f464d2
   state: draft
-limitations: []
+limitations:
+- The Meridian PSA feature cards this component was written to back are not present
+  in this repository, so the components that supply its heading, icon and body content
+  are not visible from source.
 profile:
   digest: sha256:4079767dca7e9e993e95ed4b123539dda1e3554890aa28d7ff72224e5344aa64
   id: salesforce.lightning-component

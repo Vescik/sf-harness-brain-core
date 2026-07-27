@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:814c406fd7c78f33f31b94a72c3a50d3c76b6abd1059e3b106c87109b74e0e23
+  contentDigest: sha256:89d6d099be76bf02ac3bb2aa64addd53ba74000db56ab3564a2e2d27cef5fbcd
   state: draft
-limitations: []
+limitations:
+- The field description calls this a master switch for all Meridian PSA triggers,
+  but this repository only shows it reaching handlers routed through TriggerHandler,
+  so its reach beyond those cannot be established from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

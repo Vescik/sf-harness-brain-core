@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:f27b17d9ddd7efb8c9f37f6918d1bdc57635c3a0e701c8a7cf93dd42042ad639
+  contentDigest: sha256:00a6f5bb7013e4a512fad205387d0406c2bebf0fda855ee00882abafd6ec359a
   state: draft
-limitations: []
+limitations:
+- Whether the estimate is meant for scheduling, quoting, or variance reporting is
+  not something the source shows.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

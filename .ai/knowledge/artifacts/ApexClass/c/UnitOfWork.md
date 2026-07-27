@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:685d6b4fe19e9d0bebb8a4630b1bc4fec995b75312d9dcdc56861d9e600ef1e8
+  contentDigest: sha256:44f3082590b642feae24adfa0888f377fc4ea53e8460bb5f6fe199f64c1b2c50
   state: draft
-limitations: []
+limitations:
+- Only the test class constructs UnitOfWork in this repository, so the production
+  callers the pattern exists to serve are not visible in source.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

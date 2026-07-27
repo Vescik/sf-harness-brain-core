@@ -11,9 +11,14 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:de3268dfd2ce4bce9b3719e3c5fe4a45a4e16a19d946749e4b43d9a76d7c123d
+  contentDigest: sha256:65805bd0959620d015c8e990612c556bec643d5429c00451357ec27344f369e6
   state: draft
-limitations: []
+limitations:
+- Nothing in the repository reads or writes this field, so what advances a task from
+  one state to the next, and whether it is meant to influence the parent request status,
+  is not shown in source.
+- The shared Status value set is not present in this repository, so which task states
+  this field permits cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

@@ -11,9 +11,13 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:9df7b07faf4ceb0f034755c2bfc75be3663414397f18f579014fdc0d08f32884
+  contentDigest: sha256:76c731d68a8f80ae0d14652187e01c345f5d46431c1c17a5cc33246c7c69e079
   state: draft
-limitations: []
+limitations:
+- The bypass values live in a hierarchy custom setting that is admin-editable org
+  data, so which handlers are actually bypassed cannot be read from this repository.
+- The source shows only the read side of the setting and never writes it, so what
+  populates the bypass list is not visible here.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex

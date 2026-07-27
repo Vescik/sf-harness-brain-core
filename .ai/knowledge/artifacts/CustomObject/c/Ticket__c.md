@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:3af007c1fb932c3bf0ca5e3869a508f87832fcff7b90622a17a8fcfd759df819
+  contentDigest: sha256:c8761b187e1bc0375d4a817dda3ed5d1d7c975ce6cd70a7f6c00f0d12155b8a8
   state: draft
-limitations: []
+limitations:
+- Source shows that the category lookup targets the standard ProductCategory object
+  rather than this repository's Category object and that the record page is labelled
+  Request Item, but not whether either naming mismatch is intentional.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

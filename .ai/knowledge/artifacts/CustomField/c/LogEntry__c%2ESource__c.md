@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:edc0ff23c15d5f01fe565ef0a6d01b1f220f373f77991b8d6e9fd8ea78688e82
+  contentDigest: sha256:7271e621ad5896341ae40813b6d01c485cc90a3fe43173a670130d9104c222d5
   state: draft
-limitations: []
+limitations:
+- Nothing in the source constrains this value to a real class name, so a stored value
+  cannot be relied on to identify the class that emitted the row.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

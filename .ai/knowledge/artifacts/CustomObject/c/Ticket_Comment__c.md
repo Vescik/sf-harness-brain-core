@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:542b1ab03fddc51600d8130bf5643458f0117a9eaf9313b37db1eaf0f3888e09
+  contentDigest: sha256:a250165b4c5c56777ea5658439efe17f8c01907fbe19cce6924522bca38bf547
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository reads the internal flag, so what marking a comment internal
+  is meant to change is not visible in the source.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

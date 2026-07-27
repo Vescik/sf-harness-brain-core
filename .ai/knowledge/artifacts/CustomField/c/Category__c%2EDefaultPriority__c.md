@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:29de01e2f74c52063093d30d5362b3cebfc68db7a188a241e2404a52ebf537a0
+  contentDigest: sha256:578ae49b835da3bb96599ac5d5ff535961e02aeae492278af082b3566e1411c5
   state: draft
-limitations: []
+limitations:
+- The only reader in this repository is a flow stored as an invalid draft that never
+  writes the value back, so what this field drives at runtime cannot be established
+  from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

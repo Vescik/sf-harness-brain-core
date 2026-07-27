@@ -28,9 +28,11 @@ intentionalErrors:
     truncated: false
 keywords: []
 lifecycle:
-  contentDigest: sha256:66838d4841042673401518010a66edba7d1fa3a89c4f48d5a197949bb26c0ff9
+  contentDigest: sha256:27ae67de4fd93000c8496f1b8711923971732d25cce439ec2643a1497f491343
   state: draft
-limitations: []
+limitations:
+- Status codes s_1..s_6 come from a value set that is not in this repository, so which
+  business statuses the allowed transitions permit cannot be read from source.
 profile:
   digest: sha256:0cac1405840a5cd6ceb010714f644864e0e1859d4bc4106c3e2a459a2a0b31a7
   id: salesforce.flow

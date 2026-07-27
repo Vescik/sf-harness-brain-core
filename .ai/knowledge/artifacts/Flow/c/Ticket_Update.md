@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:dff5693d03662fa964a793229bb45c18e02a028073007d7f0d474eff9828df5c
+  contentDigest: sha256:9d5d8b85ab95d24044549260ab589ba47087ac289f95cf935fd0e9e31de1a35f
   state: draft
-limitations: []
+limitations:
+- What this flow would actually write cannot be read from the source, since the update
+  element names a field literally called null__NotFound and the intended behaviour
+  survives only in the element labels.
 profile:
   digest: sha256:0cac1405840a5cd6ceb010714f644864e0e1859d4bc4106c3e2a459a2a0b31a7
   id: salesforce.flow

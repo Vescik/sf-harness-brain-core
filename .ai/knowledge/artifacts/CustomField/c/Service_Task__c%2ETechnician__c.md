@@ -11,9 +11,14 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:12d7e1daf6756d5cb219bebfe72892b588c4de4de4a2429b5a82ee399c4e8331
+  contentDigest: sha256:eda95542ff947d10075cc44864439b60c15d27f24d2fb9b48c5842104efec153
   state: draft
-limitations: []
+limitations:
+- No Apex, Flow, validation rule, layout or permission set in the repository reads
+  this field, so any assignment, sharing or reporting behaviour built on it lives
+  outside this repository.
+- The source does not distinguish whether this names the person assigned to do the
+  work or the person who actually did it.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:b5570b861ae23f2a53db20d06829d882767508e907c94a70a187dcaaee018495
+  contentDigest: sha256:38b1364592b62c5943cb098292caa5a9e838fe40ed816f5569f5ae93c4cd7ad5
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository reads or writes the object, so who approves a time log
+  entry and what approval unlocks is not visible in the source.
 profile:
   digest: sha256:850a05f5e27ba994b11c25331c7b63a6c5721b2d16723e4d4897afa3bcf72b23
   id: salesforce.custom-object

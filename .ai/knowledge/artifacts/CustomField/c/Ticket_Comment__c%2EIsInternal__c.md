@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:18b383b7fd3dcc76eb1e52b01e7f45f16cad72663a5ff176eefeed3016eec813
+  contentDigest: sha256:e819f667a8ecb30928fedf902184030f8add1edd000dc372e34775447479714b
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository consumes this field, so what being internal is supposed
+  to change, such as who may read the comment or whether it is hidden from a customer-facing
+  view, is not visible in source and would have to be confirmed with the owner.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:72632241efb884215e0fd637886ada39fe06f9bdbb7e535203fc148a757fc445
+  contentDigest: sha256:155e8fd21ad57a67831400df5701318531a9e1f5421174a9051acff15cd82099
   state: draft
-limitations: []
+limitations:
+- No Apex, Flow, validation rule or layout in the repository reads or writes this
+  field, so whether it is meant to feed billing, capacity or reporting is not shown
+  in source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

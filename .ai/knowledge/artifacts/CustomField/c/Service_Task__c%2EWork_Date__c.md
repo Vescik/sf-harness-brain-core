@@ -11,9 +11,14 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:e629ee409e92bd293733ef6811a72713a0875036c01963f5b28c2928c3f5c18f
+  contentDigest: sha256:7e6517c535386f46503a38f547ec71bc1d4ab3d568626cc450878feed4aabe51
   state: draft
-limitations: []
+limitations:
+- Any scheduling or timesheet logic that depends on this field is not visible in this
+  repository.
+- The source does not say whether this is the day the work is scheduled for or the
+  day it was performed, and there is no default, validation or consumer in the repository
+  to settle the question.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

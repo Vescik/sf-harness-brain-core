@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:51e4e4165adcfbf6b2047f2df9bbc1679f9c2cc9b32b9c5f5c584a6831db9f44
+  contentDigest: sha256:0cc296ebc82031e31dc35089a7f6f235bcf496e1e442161c31565f4ce1d7c0b4
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository reads or writes this lookup, so what attaching a Category
+  to a Ticket is meant to mean is not shown by the source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

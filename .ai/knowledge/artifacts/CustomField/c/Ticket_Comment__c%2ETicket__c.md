@@ -11,9 +11,11 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:9593706d8730d6f7d368c0345af322c6fd47616c338149ecde95e6887b8807dd
+  contentDigest: sha256:342e883a4093d3530aaef1ad76c38b4f2630d112483f71519d2e41b43aadbce8
   state: draft
-limitations: []
+limitations:
+- No flow or Apex in this repository populates the link, so which ticket a comment
+  is attached to is set by whatever creates the record and cannot be read from source.
 profile:
   digest: sha256:32e8b969d158d223b90242bbc860f5d2edffeb6897a40d9d4a9795fc7518cd5a
   id: salesforce.custom-field

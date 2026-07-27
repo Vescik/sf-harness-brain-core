@@ -11,9 +11,12 @@ extractionCoverage:
   typeFacts: full
 keywords: []
 lifecycle:
-  contentDigest: sha256:04d945ffa31f4ef94f798926c701dc26cb0dff3abe82ac169fafbb097f32360b
+  contentDigest: sha256:7ddf6c09584438f03c0052ad17990580404687f84b4ceb1037b66e3895a496ae
   state: draft
-limitations: []
+limitations:
+- Nothing in this repository enqueues through AsyncOrchestrator, so the scheduling
+  conflict detection, billing generation and sync consumers its header names are not
+  visible here.
 profile:
   digest: sha256:44befc9f4bd46b9096290865218f48ded970545375c83ba8a8ba463c5bace3b6
   id: salesforce.apex
