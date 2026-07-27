@@ -104,6 +104,36 @@ class KindContractTests(unittest.TestCase):
             self.assertIn(kind, force_app_knowledge.ALL_REF_KINDS)
             self.assertNotIn(kind, force_app_knowledge.OBJECT_REF_KINDS)
 
+    def test_belongs_to_is_classified_as_an_object_kind_not_a_field_kind(self) -> None:
+        """The generic contract above admits FIELD as well, and FIELD would be wrong.
+
+        `test_crawl_object_kinds_match_registry_field_and_object_sets` only asserts that
+        FIELD ∪ OBJECT equals the crawl set, so putting `belongs-to` in FIELD_REF_KINDS leaves
+        the whole suite green. But claim_usage() adds a FIELD-classified target to `usesFields`
+        as well as to its owning object, so `--uses-field Assignment__c` would start matching an
+        object name and usesFields would be permanently polluted. Hence an explicit pin.
+        """
+
+        self.assertIn("belongs-to", knowledge_registry.OBJECT_REF_KINDS)
+        self.assertNotIn("belongs-to", knowledge_registry.FIELD_REF_KINDS)
+        self.assertIn("belongs-to", force_app_knowledge.OBJECT_REF_KINDS)
+        self.assertNotIn(
+            "belongs-to",
+            force_app_knowledge.HEURISTIC_REF_KINDS,
+            "containment is read from the artifact's own path/declaration, never inferred",
+        )
+
+    def test_belongs_to_usage_contributes_to_objects_only(self) -> None:
+        usage = knowledge_registry.KnowledgeRegistry.claim_usage(
+            {
+                "claimType": "component-relation",
+                "subject": {"kind": "relation", "identity": "ApexTrigger:X->belongs-to->A__c"},
+                "assertion": {"predicate": "belongs-to", "value": {"target": "A__c"}},
+            }
+        )
+        self.assertEqual(["A__c"], usage["objects"])
+        self.assertEqual([], usage["fields"])
+
     def test_all_kinds_is_complete_over_extractor_sets(self) -> None:
         self.assertLessEqual(
             force_app_knowledge.OBJECT_REF_KINDS, force_app_knowledge.ALL_REF_KINDS

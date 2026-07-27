@@ -5,9 +5,13 @@ import json
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
+from jsonschema import Draft202012Validator
+
 from scripts import knowledge_store as store
+from scripts import relation_kinds
 
 FLOW_XML = """<?xml version="1.0" encoding="UTF-8"?>
 <Flow xmlns="http://soap.sforce.com/2006/04/metadata">
@@ -89,7 +93,8 @@ VALIDATION_RULE = """<?xml version="1.0" encoding="UTF-8"?>
 </ValidationRule>
 """
 
-PATCHED = ("ROOT", "ARTIFACTS_ROOT", "LEDGER_PATH", "REVIEW_ARTIFACT_ROOT", "LOCAL_CONFIG", "TAXONOMY_PATH")
+PATCHED = ("ROOT", "ARTIFACTS_ROOT", "LEDGER_PATH", "REVIEW_ARTIFACT_ROOT", "LOCAL_CONFIG",
+           "TAXONOMY_PATH", "FEATURES_ROOT", "FEATURE_LEDGER_PATH")
 
 
 class KnowledgeStoreTests(unittest.TestCase):
@@ -103,6 +108,8 @@ class KnowledgeStoreTests(unittest.TestCase):
         store.REVIEW_ARTIFACT_ROOT = self.temp / "output/knowledge-approvals"
         store.LOCAL_CONFIG = self.temp / "config/harness.local.json"
         store.TAXONOMY_PATH = self.temp / ".ai/knowledge/keyword-taxonomy.md"
+        store.FEATURES_ROOT = self.temp / ".ai/knowledge/features"
+        store.FEATURE_LEDGER_PATH = self.temp / ".ai/knowledge/features-ledger.jsonl"
         self.addCleanup(lambda: [setattr(store, k, v) for k, v in self._saved.items()])
         flow_dir = self.temp / "force-app/main/default/flows"
         flow_dir.mkdir(parents=True)
@@ -702,6 +709,186 @@ class AdapterFaithfulnessTests(unittest.TestCase):
         self.assertEqual([], errors)
 
 
+class EdgeAssuranceTests(unittest.TestCase):
+    """A kind-level heuristic must never be stored as source-exact.
+
+    The collector sets its per-edge `heuristic` flag only for kinds that are heuristic
+    *sometimes* (`queries-object` is structural from Flow XML, regex-derived from Apex). Reading
+    only that flag meant kinds that are heuristic *always* — object-token, invokes-class,
+    var-field-ref, soql-field — were stored source-exact: 414 of 595 edges in a 189-component
+    probe corpus. The marker is inside factsDigest, so a human approved the false claim, and
+    SAFE-CLAIM-001 v2 would then ground a work record on a regex match against a comment.
+    """
+
+    def test_kind_level_heuristics_are_never_stored_as_source_exact(self) -> None:
+        component = {
+            "metadataType": "ApexClass",
+            "facts": {},
+            "references": [
+                {"kind": kind, "target": "Whatever__c"}
+                for kind in sorted(relation_kinds.HEURISTIC_REF_KINDS)
+            ],
+        }
+        carried, _errors, assurance = store.ADAPTERS["ApexClass"](component)
+        for edge in carried["references"]:
+            with self.subTest(kind=edge["kind"]):
+                self.assertEqual(relation_kinds.SOURCE_DERIVED_HEURISTIC, edge["assurance"])
+        self.assertEqual(relation_kinds.SOURCE_DERIVED_HEURISTIC, assurance["typeFacts"])
+
+    def test_structural_kinds_stay_exact_unless_the_collector_flags_the_edge(self) -> None:
+        component = {
+            "metadataType": "ApexClass",
+            "facts": {},
+            "references": [
+                {"kind": "operates-on", "target": "A__c"},
+                # queries-object is structural from Flow XML and heuristic from an Apex regex,
+                # so the per-edge flag carries what the kind alone cannot.
+                {"kind": "queries-object", "target": "B__c"},
+                {"kind": "queries-object", "target": "C__c", "heuristic": True},
+            ],
+        }
+        carried, _errors, _assurance = store.ADAPTERS["ApexClass"](component)
+        by_target = {edge["target"]: edge["assurance"] for edge in carried["references"]}
+        self.assertEqual(relation_kinds.SOURCE_EXACT, by_target["A__c"])
+        self.assertEqual(relation_kinds.SOURCE_EXACT, by_target["B__c"])
+        self.assertEqual(relation_kinds.SOURCE_DERIVED_HEURISTIC, by_target["C__c"])
+
+    def test_flow_edges_use_the_same_rule_as_every_other_type(self) -> None:
+        # The Flow adapter is bespoke and derived assurance independently, which is exactly how
+        # two implementations of one rule drift apart.
+        carried, _errors, assurance = store.flow_type_facts(
+            {"facts": {"processType": "AutoLaunchedFlow", "status": "Active"},
+             "references": [{"kind": "launches-flow", "target": "Other"}]}
+        )
+        self.assertEqual(
+            relation_kinds.SOURCE_DERIVED_HEURISTIC, carried["references"][0]["assurance"]
+        )
+        self.assertEqual(relation_kinds.SOURCE_DERIVED_HEURISTIC, assurance["typeFacts"])
+
+    def test_every_declared_kind_resolves_to_a_declared_assurance(self) -> None:
+        for kind in sorted(relation_kinds.ALL_REF_KINDS):
+            with self.subTest(kind=kind):
+                self.assertIn(
+                    relation_kinds.edge_assurance(kind),
+                    (relation_kinds.SOURCE_EXACT, relation_kinds.SOURCE_DERIVED_HEURISTIC),
+                )
+
+
+class ProfileSchemaCoverageTests(unittest.TestCase):
+    """Every fact an adapter carries must be declared by its profile schema.
+
+    typeFacts is additionalProperties:false, so an undeclared fact does not degrade — it fails
+    the draft outright. Six such facts shipped undetected (summaryFilterFields,
+    lookupFilterPresent, lookupFilterFields, externalSharingModel, compactLayoutAssignment,
+    picklistScopes) because AdapterFaithfulnessTests proves pass-through but never validates the
+    result against the schema that has to accept it.
+    """
+
+    SAMPLES = {
+        "CustomField": {
+            "object": "A__c", "type": "Summary", "summaryOperation": "sum",
+            "summaryForeignKey": "B__c.A__c", "summarizedField": "B__c.Hours__c",
+            "summaryFilterFields": ["B__c.Active__c"], "lookupFilterPresent": True,
+            "lookupFilterFields": ["B__c.Status__c"],
+        },
+        "CustomObject": {
+            "objectKind": "custom", "sharingModel": "ReadWrite",
+            "externalSharingModel": "Private", "compactLayoutAssignment": "SYSTEM",
+        },
+        "RecordType": {
+            "object": "A__c", "active": True,
+            "picklistScopes": [{"picklist": "Status__c", "valueCount": 3, "defaults": ["New"]}],
+        },
+        "Flow": {
+            "processType": "AutoLaunchedFlow", "status": "Active",
+            "object": "A__c", "triggerType": "RecordAfterSave", "recordTriggerType": "Update",
+            "variables": [
+                {"name": "record", "dataType": "SObject", "objectType": "A__c",
+                 "isInput": True, "isOutput": False, "isCollection": False}
+            ],
+            "dataOperations": [{"operation": "update", "object": "A__c", "element": "Set_Status"}],
+            "errorCatalog": [
+                {"kind": "custom-error", "component": "Block_Discount",
+                 "componentLabel": "Block Discount", "errorMessage": "Discount too high: $Label.Cap",
+                 "resolvedErrorMessage": "Discount too high: 20%",
+                 "isFieldError": True, "fieldSelection": "Status__c",
+                 "triggerContext": "after-save", "paths": [["Decision", "Yes"]],
+                 "pathsTruncated": True}
+            ],
+        },
+        "ApexClass": {
+            "declarationKind": "class", "sharingModel": "with sharing",
+            "superclass": "BaseHandler", "interfaces": ["Queueable"], "isTest": False,
+            "annotations": ["@AuraEnabled"], "description": "Routes alpha cases.",
+            "apiVersion": "64.0", "status": "Active", "soqlObjects": ["A__c"],
+            "dmlOperations": ["update"], "dmlTargets": {"A__c": ["update"]},
+        },
+        "ApexTrigger": {
+            "object": "A__c", "events": ["after update"], "annotations": [],
+            "apiVersion": "64.0", "status": "Active", "soqlObjects": ["A__c"],
+            "dmlOperations": ["insert"], "dmlTargets": {"B__c": ["insert"]},
+            "description": "Delegates to the handler.",
+        },
+        "ValidationRule": {
+            "object": "A__c", "active": True, "errorDisplayField": "Status__c",
+            "errorMessagePresent": True,
+            "errorCatalog": [
+                {"component": "Status_Required", "kind": "validation-rule",
+                 "errorMessage": "Status is required.", "fieldSelection": "Status__c",
+                 "condition": "ISBLANK(Status__c)", "resolvedErrorMessage": "Status is required."}
+            ],
+        },
+        "PermissionSet": {
+            "label": "Alpha Ops", "description": "Grants alpha access.", "license": "Salesforce",
+            "hasActivationRequired": False, "objectAccess": {"A__c": "CRE+VA"},
+            "systemPermissions": ["ViewSetup"], "objectPermissionCount": 2,
+            "fieldPermissionCount": 400, "classAccessCount": 1, "customPermissionCount": 1,
+            "recordTypeCount": 1, "flowAccessCount": 1, "userPermissionCount": 1,
+            "tabCount": 1, "pageAccessCount": 1, "applicationVisibilityCount": 1,
+            "referencesTruncated": True, "truncatedFamilies": ["grants-field-edit"],
+        },
+        "CustomMetadata": {
+            "type": "Routing__mdt", "record": "Default", "label": "Default",
+            "protected": False, "fieldsPopulated": ["Threshold__c"],
+            "values": [{"field": "Threshold__c", "value": 20}],
+        },
+        "LightningComponentBundle": {
+            "isExposed": True, "targets": ["lightning__RecordPage"], "masterLabel": "Alpha Card",
+            "description": "Shows the alpha case.",
+            "targetConfigs": [{"targets": "lightning__RecordPage", "objects": ["A__c"]}],
+            "apiProperties": ["recordId"], "wiredAdapters": ["getRecord"],
+        },
+    }
+
+    def test_a_sample_exists_for_every_profiled_type(self) -> None:
+        # The plan chose this test as "the standing test that would have caught all six"
+        # undeclared properties. Three hand-written samples would not have caught a seventh:
+        # Flow, Apex, PermissionSet, CustomMetadata and LWC were validated against their profile
+        # schemas by no test and by no corpus. The set equality is what makes it standing — a
+        # new profiled type cannot be added without a fixture that has to validate.
+        self.assertEqual(set(store.PROFILES), set(self.SAMPLES))
+
+    def test_adapter_output_validates_against_the_profile_schema(self) -> None:
+        for metadata_type, facts in self.SAMPLES.items():
+            with self.subTest(metadataType=metadata_type):
+                carried, errors, _assurance = store.ADAPTERS[metadata_type](
+                    {
+                        "metadataType": metadata_type,
+                        "facts": facts,
+                        # An edge exercises the shape every profile declares and none of the
+                        # hand-written samples reached.
+                        "references": [{"kind": "operates-on", "target": "A__c"}],
+                    }
+                )
+                schema = store.load_schema(store.PROFILES[metadata_type]["schema"])
+                payload = {"typeFacts": carried, "intentionalErrors": errors}
+                problems = sorted(
+                    error.message
+                    for error in Draft202012Validator(schema).iter_errors(payload)
+                )
+                self.assertEqual([], problems, f"{metadata_type}: {problems}")
+
+
 class AgentDescriptionTests(KnowledgeStoreTests):
     """The description is the one part of an entry a model writes rather than extracts."""
 
@@ -795,7 +982,10 @@ class WorkflowReachabilityTests(unittest.TestCase):
         return "\n".join(parts)
 
     # Commands that belong to CI rather than to a person, with the reason.
-    NOT_ON_PUBLIC_SURFACE = {"entry-check": "CI integrity gate, run by validate_harness"}
+    NOT_ON_PUBLIC_SURFACE = {
+        "entry-check": "CI integrity gate, run by validate_harness",
+        "feature-check": "CI integrity gate over features and their ledger, run by validate_harness",
+    }
 
     def test_every_entry_command_is_named_on_the_public_surface(self) -> None:
         surface = self.surface_text()
@@ -812,10 +1002,49 @@ class WorkflowReachabilityTests(unittest.TestCase):
         for command, reason in self.NOT_ON_PUBLIC_SURFACE.items():
             with self.subTest(command=command):
                 self.assertTrue(reason.strip())
+                # Being NAMED in the validator is not being RUN by it. feature-check was named
+                # in a prompt, in the role guard and in this file's own docstrings while being
+                # executed by nothing — and the live tree failed it for a day while
+                # validate_harness reported PASS. The pin is the argv, not the mention.
                 self.assertTrue(
-                    command in workflow or command in validator,
+                    f'"scripts/knowledge_store.py", "{command}"' in validator
+                    or f"python scripts/knowledge_store.py {command}" in workflow,
                     f"{command} is declared CI-only but no CI step runs it",
                 )
+
+    def test_every_grounding_subprocess_is_covered_by_the_timeout_handler(self) -> None:
+        # §0.3 item 1: an uncaught TimeoutExpired surfaces as a bare traceback in two gates at
+        # once, attributable to nothing. The handler exists — this asserts that the loop the
+        # grounding commands are actually run in is the one wrapped by it, so adding a second
+        # subprocess outside it cannot pass review by looking adjacent to the first.
+        import ast
+
+        source = (self.HARNESS / "scripts/validate_harness.py").read_text(encoding="utf-8")
+        loops = [
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.For)
+            and "feature-check" in {
+                literal.value
+                for literal in ast.walk(node.iter)
+                if isinstance(literal, ast.Constant) and isinstance(literal.value, str)
+            }
+        ]
+        self.assertEqual(1, len(loops), "the grounding command loop was not found")
+        handlers = [
+            handler
+            for statement in ast.walk(loops[0])
+            if isinstance(statement, ast.Try)
+            for handler in statement.handlers
+        ]
+        self.assertTrue(
+            any(
+                isinstance(handler.type, ast.Attribute)
+                and handler.type.attr == "TimeoutExpired"
+                for handler in handlers
+            ),
+            "grounding commands run outside the subprocess.TimeoutExpired handler",
+        )
 
     def test_the_curator_agent_loads_the_skills_its_prompts_use(self) -> None:
         agent = (self.HARNESS / ".github/agents/knowledge-curator.agent.md").read_text(encoding="utf-8")
@@ -844,3 +1073,368 @@ class WorkflowReachabilityTests(unittest.TestCase):
             with self.subTest(command=command.split("py ")[1].split()[0]):
                 for role in ("knowledge-curator", "solution-designer", "guardrail-reviewer"):
                     self.assertTrue(guard.allowed_role_command(command, self.HARNESS, role))
+
+
+class FeatureEntryTests(KnowledgeStoreTests):
+    """A Feature Entry approves a BOUNDARY RULE, never a member list.
+
+    That split is the whole design. Membership is a function of the rule AND of the package, so
+    storing it would mean every new artifact drifts every feature that could contain it — and a
+    reviewer would be re-approving a list they never read.
+    """
+
+    def propose(self, **kwargs):
+        args = argparse.Namespace(
+            slug="scheduling", name="Scheduling", anchor=["HarnessAlphaCase__c"], hub=None,
+            depth=1, include=None, exclude=None, assurance_floor="source-exact", replace=False,
+        )
+        for key, value in kwargs.items():
+            setattr(args, key, value)
+        return store.command_feature_propose(args)
+
+    def describe(self, slug="scheduling", text="Allocating people and detecting overlaps."):
+        path = self.temp / "fdesc.md"
+        path.write_text(text, encoding="utf-8")
+        return store.command_feature_describe(
+            argparse.Namespace(slug=slug, purpose_file=str(path))
+        )
+
+    def approve_feature(self, slug="scheduling"):
+        review = store.command_feature_review(argparse.Namespace(slug=[slug]))
+        pins = [
+            part for part in review["approveCommand"].split() if part.startswith("Feature:")
+        ]
+        return store.command_feature_approve(argparse.Namespace(feature=pins))
+
+    def lane(self, slug="scheduling"):
+        latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
+        return store.compute_feature_lane(store.feature_path(slug), latest)
+
+    def test_a_feature_cannot_be_approved_before_it_is_described(self) -> None:
+        self.propose()
+        review = store.command_feature_review(argparse.Namespace(slug=None))
+        self.assertEqual("NOTHING_TO_REVIEW", review["outcome"])
+        self.assertTrue(review["skipped"])
+
+    def test_approval_binds_the_rule_and_the_prose(self) -> None:
+        self.propose()
+        self.describe()
+        result = self.approve_feature()
+        self.assertEqual("APPROVED", result["outcome"])
+        self.assertEqual("approved-current", self.lane()["lane"])
+
+    def test_the_ledger_records_digests_and_no_member_list(self) -> None:
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        record = store.read_ledger(store.FEATURE_LEDGER_PATH)[-1]
+        self.assertIn("boundaryDigest", record)
+        # §6: a membershipDigest is pinned, a member LIST never is. The digest says whether
+        # membership moved; it cannot re-approve the artifacts it summarises, and the reviewer
+        # was told they were not approving a list.
+        self.assertIn("membershipDigest", record)
+        for forbidden in ("members", "memberCount"):
+            self.assertNotIn(forbidden, record)
+
+    def test_reordering_anchors_is_the_same_rule(self) -> None:
+        # Anchors and hubs are sets in meaning; a cosmetic reorder must not demand re-approval.
+        first = self.propose(anchor=["A__c", "B__c"])
+        second = self.propose(anchor=["B__c", "A__c"], replace=True)
+        self.assertEqual(first["boundaryDigest"], second["boundaryDigest"])
+
+    def test_changing_the_rule_returns_the_feature_to_draft(self) -> None:
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        self.propose(depth=2, replace=True)
+        self.assertNotEqual("approved-current", self.lane()["lane"])
+
+    def test_rewriting_the_description_returns_the_feature_to_draft(self) -> None:
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        self.describe(text="A different account of what this feature is.")
+        self.assertEqual("draft", self.lane()["lane"])
+
+    def test_features_live_outside_the_artifact_corpus(self) -> None:
+        # If a Feature ever landed under ARTIFACTS_ROOT it would enter the artifact index and
+        # could be offered as an entryRef, and every artifact reader would meet a file with no
+        # subject.metadataType.
+        self.propose()
+        self.describe()
+        self.assertNotIn(
+            store.feature_path("scheduling").resolve(),
+            {path.resolve() for path in store.all_entry_paths()},
+        )
+        self.assertNotEqual(store.FEATURE_LEDGER_PATH, store.LEDGER_PATH)
+
+    def test_a_feature_identity_has_two_segments(self) -> None:
+        # Three would satisfy work_record.entry_relative_path's unpack and resolve to a path
+        # under ARTIFACTS_ROOT that does not exist, failing silently instead of loudly.
+        self.assertEqual("Feature:scheduling", store.feature_identity("scheduling"))
+        self.assertEqual(2, len(store.feature_identity("scheduling").split(":")))
+
+    def test_feature_check_catches_an_approved_file_with_no_ledger_record(self) -> None:
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        store.FEATURE_LEDGER_PATH.unlink()
+        with self.assertRaises(store.StoreError) as raised:
+            store.command_feature_check(argparse.Namespace())
+        self.assertIn("no ledger record approves it", str(raised.exception))
+
+    def test_a_slug_cannot_escape_the_features_directory(self) -> None:
+        for hostile in ("../escape", "Upper", "trailing-", "con", "with space"):
+            with self.subTest(slug=hostile):
+                with self.assertRaises(store.StoreError):
+                    store.feature_path(hostile)
+
+
+    # --- the store half of the drift baseline (§6) --------------------------------------
+    #
+    # Neither half existed, so `feature-drift` could only ever answer "unknown" — its compare
+    # branch was live but unreachable. The ledger pins a DIGEST: it answers whether membership
+    # moved and is portable to a machine that never held the approver's `.cache/`, which on this
+    # Windows team is the normal case. The identity list that says WHICH artifacts moved stays
+    # in that disposable cache, written by `knowledge_search tree`.
+
+    def test_approval_succeeds_and_pins_null_when_no_index_is_reachable(self) -> None:
+        # §6 is explicit: a governed human approval must not be blocked by a disposable cache.
+        # Null is not "no change" — it is the input `feature-drift` turns into changed:"unknown".
+        self.propose()
+        self.describe()
+        result = self.approve_feature()
+        self.assertEqual("APPROVED", result["outcome"])
+        record = store.read_ledger(store.FEATURE_LEDGER_PATH)[-1]
+        self.assertIsNone(record["membershipDigest"])
+        gap = "\n".join(result["gaps"])
+        self.assertIn('changed: "unknown"', gap)
+        self.assertIn("never false", gap)
+
+    def test_a_reachable_index_pins_the_digest_it_computes(self) -> None:
+        captured: dict[str, object] = {}
+
+        def fake(boundary):
+            captured["boundary"] = boundary
+            return {"membershipDigest": "sha256:" + "b" * 64, "unreachable": None, "limitsHit": []}
+
+        self.propose()
+        self.describe()
+        with unittest.mock.patch.object(store, "approval_membership_digest", fake):
+            result = self.approve_feature()
+        self.assertNotIn("gaps", result)
+        record = store.read_ledger(store.FEATURE_LEDGER_PATH)[-1]
+        self.assertEqual("sha256:" + "b" * 64, record["membershipDigest"])
+        # The rule, not a member list, is what membership is computed from.
+        self.assertEqual(["HarnessAlphaCase__c"], captured["boundary"]["anchors"])
+
+    def test_a_truncated_membership_says_so_when_it_is_pinned(self) -> None:
+        # §6 correction 3. The traversal is deterministic, so a digest over a prefix is a real
+        # answer — but silence about the cut turns the later comparison into a claim about
+        # artifacts nobody reached.
+        def fake(_boundary):
+            return {
+                "membershipDigest": "sha256:" + "d" * 64, "unreachable": None,
+                "limitsHit": ["maxNodes"],
+            }
+
+        self.propose()
+        self.describe()
+        with unittest.mock.patch.object(store, "approval_membership_digest", fake):
+            result = self.approve_feature()
+        gap = "\n".join(result["gaps"])
+        self.assertIn("maxNodes", gap)
+        self.assertIn("PREFIX", gap)
+        self.assertIn("changedWithinTruncatedPrefix", gap)
+        self.assertEqual(
+            "sha256:" + "d" * 64,
+            store.read_ledger(store.FEATURE_LEDGER_PATH)[-1]["membershipDigest"],
+        )
+
+    def test_the_digest_is_computed_on_the_baseline_traversal_and_the_established_lane(self) -> None:
+        # A digest is only comparable with one recomputed the same way. `feature-drift` fixes the
+        # incoming traversal, the drift depth limit and the default established lane; if either
+        # half of this boundary drifts on any of them, every comparison silently becomes a
+        # comparison of two different questions and reports drift that never happened.
+        from scripts import knowledge_search
+
+        seen: dict[str, object] = {}
+
+        class FakeDocuments:
+            def lane_ids(self, lanes):
+                seen["lanes"] = tuple(lanes)
+                return {"anything"}
+
+        def fake_load_index():
+            return FakeDocuments(), {"generation": "g"}
+
+        def fake_compute_membership(documents, boundary, **kwargs):
+            seen.update(kwargs)
+            return {"membershipDigest": "sha256:" + "c" * 64, "limitsHit": []}
+
+        with unittest.mock.patch.object(knowledge_search, "load_index", fake_load_index), \
+                unittest.mock.patch.object(knowledge_search, "compute_membership", fake_compute_membership):
+            membership = store.approval_membership_digest({"anchors": ["A__c"], "depth": 1})
+
+        self.assertEqual("sha256:" + "c" * 64, membership["membershipDigest"])
+        self.assertIsNone(membership["unreachable"])
+        self.assertEqual(knowledge_search.BASELINE_DIRECTION, seen["direction"])
+        self.assertEqual(knowledge_search.DEPTH_LIMITS["drift"], seen["depth_limit"])
+        self.assertFalse(seen["include_heuristic"])
+        self.assertEqual(tuple(knowledge_search.ESTABLISHED_STATES), seen["lanes"])
+        self.assertEqual({"anything"}, seen["allowed"])
+
+
+class ReparseScopeTests(KnowledgeStoreTests):
+    """The symlink walk is the command's own cost, so it covers the tree the command writes.
+
+    Unscoped, `feature-status` on one 500-byte file paid an rglob over the whole 15 k-entry
+    artifact corpus — a corpus it does not read, cannot write, and whose symlinks are the entry
+    commands' business (§6, R4)."""
+
+    def link(self, target: Path) -> None:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.symlink_to(self.temp)
+
+    def test_a_symlink_in_the_artifact_corpus_does_not_block_a_feature_command(self) -> None:
+        self.link(store.ARTIFACTS_ROOT / "Flow" / "c" / "escape.md")
+        store.command_feature_propose(
+            argparse.Namespace(
+                slug="scheduling", name="Scheduling", anchor=["HarnessAlphaCase__c"], hub=None,
+                depth=1, include=None, exclude=None, assurance_floor="source-exact", replace=False,
+            )
+        )
+        self.assertTrue(store.feature_path("scheduling").is_file())
+
+    def test_a_symlink_in_the_feature_tree_still_refuses_a_feature_command(self) -> None:
+        self.link(store.FEATURES_ROOT / "escape.md")
+        with self.assertRaises(store.StoreError) as raised:
+            store.command_feature_check(argparse.Namespace())
+        self.assertIn("reparse point", str(raised.exception))
+
+    def test_a_symlink_in_the_artifact_corpus_still_refuses_an_entry_command(self) -> None:
+        self.link(store.ARTIFACTS_ROOT / "Flow" / "c" / "escape.md")
+        with self.assertRaises(store.StoreError):
+            self.draft()
+
+
+class IncrementalEntryCheckTests(KnowledgeStoreTests):
+    """`--changed-since` must skip the work, and must not skip the guarantees.
+
+    Measured at 9 000 entries, the first version skipped 9 000 of 9 000 fragment re-digests and
+    saved 1 % — because the cost is YAML parsing and jsonschema validation, not the re-digest it
+    skipped. Skipping the whole per-entry pass takes the same corpus from 40.4 s to 0.43 s. What
+    may never be skipped is the cross-entry pass and the answer for anything git cannot vouch
+    for."""
+
+    def commit(self) -> None:
+        import subprocess
+
+        for command in (
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
+            ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "entries"],
+        ):
+            subprocess.run(command, cwd=self.temp, check=True, capture_output=True)
+
+    def check(self, ref=None):
+        return store.command_entry_check(argparse.Namespace(changed_since=ref))
+
+    def approved_entry(self) -> dict:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        return drafted
+
+    def test_an_unchanged_entry_is_never_opened(self) -> None:
+        # The point of the fix, asserted where it cannot be faked by a timing claim: if the
+        # per-entry pass ran at all, parsing would raise.
+        self.approved_entry()
+        self.commit()
+
+        def explode(_text):
+            raise AssertionError("an unchanged entry was parsed")
+
+        with unittest.mock.patch.object(store, "split_entry", explode):
+            result = self.check("HEAD")
+        self.assertEqual("PASS", result["outcome"])
+        self.assertEqual(1, result["entriesSkipped"])
+        self.assertEqual(1, result["entries"])
+
+    def test_a_changed_entry_is_still_checked_in_full(self) -> None:
+        drafted = self.approved_entry()
+        self.commit()
+        path = self.temp / drafted["path"]
+        path.write_text(path.read_text(encoding="utf-8").replace("right queue", "other queue"), encoding="utf-8")
+        with self.assertRaises(store.StoreError) as raised:
+            self.check("HEAD")
+        self.assertIn("recomputed digest is not the latest ledger record", str(raised.exception))
+
+    def test_an_untracked_entry_counts_as_changed(self) -> None:
+        # `git diff` reports tracked paths only, so a brand-new entry — the commonest thing there
+        # is to check — would otherwise be invisible to the ref and skipped unexamined.
+        drafted = self.approved_entry()
+        path = self.temp / drafted["path"]
+        path.write_text(path.read_text(encoding="utf-8").replace("right queue", "other queue"), encoding="utf-8")
+        with self.assertRaises(store.StoreError):
+            self.check("HEAD")
+
+    def test_the_cross_entry_checks_still_cover_skipped_entries(self) -> None:
+        # §0.3: "a per-entry skip would silently destroy them". The skipped entry contributes its
+        # identity — read off its path — so a second file claiming that identity still collides.
+        drafted = self.approved_entry()
+        self.commit()
+        original = self.temp / drafted["path"]
+        impostor = original.with_name("Impostor.md")
+        impostor.write_text(original.read_text(encoding="utf-8"), encoding="utf-8")
+        with self.assertRaises(store.StoreError) as raised:
+            result = self.check("HEAD")
+            self.fail(f"the collision was not detected: {result}")
+        self.assertIn(f"identity {drafted['identity']} resolves to two files", str(raised.exception))
+
+    def test_an_unanswerable_ref_degrades_to_a_full_check(self) -> None:
+        self.approved_entry()
+        self.commit()
+        result = self.check("no-such-ref")
+        self.assertEqual(0, result["entriesSkipped"])
+        self.assertIn("git could not report changes", result["gap"])
+
+    def test_full_is_the_default_and_skips_nothing(self) -> None:
+        self.approved_entry()
+        self.commit()
+        result = self.check()
+        self.assertNotIn("entriesSkipped", result)
+        self.assertNotIn("changedSince", result)
+
+    def test_entry_check_writes_nothing(self) -> None:
+        # A read-only gate that acquired a writer would put a new integrity hole inside the
+        # command whose job is integrity.
+        self.approved_entry()
+        self.commit()
+        before = {path: path.read_bytes() for path in sorted(self.temp.rglob("*")) if path.is_file()}
+        self.check("HEAD")
+        after = {path: path.read_bytes() for path in sorted(self.temp.rglob("*")) if path.is_file()}
+        self.assertEqual(before, after)
+
+
+class PathDerivedIdentityTests(KnowledgeStoreTests):
+    """An identity read off a path is what makes the whole-entry skip possible — and it is only
+    allowed when the path can prove it. `entry_path()` derives the path FROM the identity, so
+    the inverse is exact for plain ASCII names and lossy for everything else; the lossy cases
+    must fall back to parsing rather than guess."""
+
+    def test_a_plain_entry_path_round_trips_to_its_identity(self) -> None:
+        drafted = self.draft()
+        path = self.temp / drafted["path"]
+        self.assertEqual(drafted["identity"], store.identity_from_entry_path(path))
+
+    def test_an_escaped_or_truncated_name_refuses_to_answer(self) -> None:
+        for full_name in ("Odd Name__c", "Ünicode__c", "A" * 120):
+            with self.subTest(fullName=full_name):
+                path = store.entry_path("Flow", None, full_name)
+                self.assertIsNone(
+                    store.identity_from_entry_path(path),
+                    f"{full_name} claimed an identity its path cannot prove",
+                )
+
+    def test_a_path_outside_the_artifact_corpus_refuses_to_answer(self) -> None:
+        self.assertIsNone(store.identity_from_entry_path(store.FEATURES_ROOT / "scheduling.md"))
+        self.assertIsNone(store.identity_from_entry_path(store.ARTIFACTS_ROOT / "Flow" / "loose.md"))

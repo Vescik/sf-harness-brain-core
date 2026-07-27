@@ -1,0 +1,74 @@
+# Phase audit — shipped phases, and P4's entry gate
+
+Date: 2026-07-25 · Status: ~~**P4 remains BLOCKED**~~ → **superseded; P4 has since merged and its
+entry gate is discharged** · Scope: P0, P1, P2, P3, P5, P6
+
+> **Correction, 2026-07-25 (wave 2).** The status line above was true when written and is not true
+> now. P4 merged in `7db8b51` and `0edc9c1`, and the seven blocking findings this document lists as
+> the entry gate were closed before it did. The successor record is
+> **`docs/knowledge-completion-audit-2026-07-25.md`**, which re-verified every gate in the master
+> plan by execution across P0–P6; P4's own gate is re-verified in
+> **`docs/knowledge-p4-completion-note.md`**. Read those two for current status. This document is
+> kept unedited below because the record of what was broken, and of how the discipline degraded, is
+> the reason the successor audit exists at all.
+>
+> **`[UPDATED 2026-07-26, wave 4.]` All three findings marked **Open** below have since closed:**
+> `explain` gained `--top`; `relation-health`'s orphan half now diffs entry edges against the live
+> component set; and the dossier's no-description fallback — narrowed in wave 3, closed in wave 4 —
+> now names `entry-draft`/`entry-describe` as the remedy for each of the two absences it
+> distinguishes. **Do not read status from this document**, and do not quote a number from it: the
+> successor audit's § Disposition is the single place status lives, it carries the evidence for each
+> row, and every performance figure in the project is now restated there under one named method
+> (M1). The figures below — including finding 6's "macOS 2.0 µs/entry → 30 ms projected" — are the
+> readings as taken then, on a benchmark that has since been rewritten to measure cold processes.
+
+Three lenses (gate completeness, cross-phase regression, P4 readiness) re-verified every shipped
+phase **by execution** against a 189-component reference corpus and a synthetic benchmark. All
+three returned GAPS-FOUND: **31 findings, 7 flagged blocking**.
+
+## Why this document exists
+
+The plan required a gap check before each phase. For P0 that happened and it worked — 36 gaps,
+six of them errors in the plan itself. After P0 the checks degraded into spot checks, and phases
+shipped on the strength of their own commit messages. This audit is what the discipline should
+have been throughout; it found two blocking defects in code already reported as done.
+
+## Blocking findings, and their disposition
+
+| # | Finding | Status |
+|---|---|---|
+| 1 | `explain` and `context` never lane-filtered or hydrated **the anchor**, so a revoked, drifted or silently tampered entry was served in full with its stale `entryDigest` — while `search` refused the same entry | **fixed** (`verify_anchor`) |
+| 2 | `explain.parts` — the composition primitive P4's membership is built on — had no lane filter and no cap, serving revoked entries as parts of an approved object | **fixed** |
+| 3 | The "mixed benchmark corpus" contained no CustomObject, ApexClass or ApexTrigger, so every traversal it existed to exercise was timing an **empty answer** | **fixed** (objects + a real Apex chain; verified reaching hop 2) |
+| 4 | `peakRssMb` was not instrumented anywhere, so the memory half of every R4 budget was unmeasurable | **fixed** |
+| 5 | `hydrate()` recomputes only `reviewedContentDigest`, which does not cover `source.fragments`, `scope` or `keywords` — an edit confined to those is invisible to both the coarse fingerprint and hydration | **fixed** (whole-file digest; stronger *and* cheaper) |
+| 6 | The 40 ms freshness budget is unverified on `windows-latest`; the macOS measurement is a warm in-process loop, while the thing budgeted is the cold per-CLI-process floor | **fixed** (`--assert-floor-us` on the CI matrix; macOS 2.0 µs/entry → 30 ms projected, Windows answered by CI) |
+| 7 | No reusable traversal exists for P4 to build `compute_membership` on — the BFS is inline in `run_impact`, single-anchor, and returns hits rather than a node set | **fixed** (`traverse()`) |
+
+**All seven blocking findings are closed.** The budget is expressed per entry rather than at one
+corpus size, because a budget stated at a fixture size can always be met by running the benchmark
+smaller — and it is asserted on the `windows-latest` matrix leg, since that is the team's platform
+and the one this work was *not* developed against.
+
+## Notable non-blocking findings
+
+- **P6's Set A was 7 of 8, not the 8 of 8 reported.** The gate counted a set assembled by hand
+  (including `search-knowledge`, which is the menu owner and not in Set A) rather than the set the
+  plan names; `generate-technical-documentation` was missed. **Fixed** — and the lesson is the
+  finding: a gate that counts its own list can be green and mean nothing.
+- `context --identity` always returned `subject.purpose: null` — the projection tokenizes purpose
+  for ranking but never kept the prose. **Fixed.**
+- `context` filtered rows by lane but never labelled them. **Fixed.**
+- `explain` still has no `--top`, so `incoming` is unbounded. **Open.**
+- `APEX_NEW_RE` was a third `factsDigest` move, landing after D1 declared the window closed. It was
+  free (zero approved entries) but was not re-authorised. **Recorded, not re-litigated.**
+- `relation-health`'s entry population reports schema problems but does not yet diff entry edges
+  against live source — the orphan half of its own acceptance line. **Open.**
+- The dossier's no-description fallback misattributes the cause when an entry exists but is
+  undescribed. **Open.**
+
+## Standing rule for the remaining work
+
+No phase starts until the previous phase's gate has been re-verified **by execution**, against
+the plan's own list rather than a list assembled while checking. A phase's commit message is
+evidence of intent, not of outcome.

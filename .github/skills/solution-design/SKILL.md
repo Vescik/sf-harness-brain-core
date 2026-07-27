@@ -31,9 +31,20 @@ Goal: assemble every fact the design will stand on, with sources, before proposi
 4. Principles: from the three loaded instruction files, list the rule IDs plausibly applicable to
    this change (managed-package MP-*, organization ORG-*, platform SF-*). This list is the
    verification checklist for Phase 3.
-5. Knowledge: query verified claims for each named component
-   (`python scripts/knowledge_registry.py query --subject-identity <ApiName>` or `--domain`), and
-   read [known limitations](../../../.ai/knowledge/known-limitations.md). Note claim freshness.
+5. Knowledge, both layers, in this order:
+   - **repository-source facts** — `python scripts/knowledge_search.py context --identity <Identity>`
+     for each named component. One call returns its purpose, parts, incoming/outgoing usage,
+     permission grants, execution `chains`, coverage and citations. `NO_ENTRY` means no *entry*
+     exists, not that the artifact does not — it never licenses inference.
+     Ground the design on `parts`, `permissions` and `incoming` only: those hold approved-current
+     rows. Anything you opened with `--state` arrives in the sibling `partsNonCurrent` /
+     `permissionsNonCurrent` / `incomingNonCurrent` keys and belongs in the gaps column, never in
+     the facts table. `incoming` and `outgoing` are keyed by relation kind, so iterate the keys —
+     an absent kind is silence, not an absence proof. A row with `hydrated: false` failed
+     re-reading and is not a fact.
+   - **org, runtime, business, package and vendor facts** — `python scripts/knowledge_registry.py
+     query --subject-identity <ApiName>` or `--domain`. Entries cannot answer these.
+   - read [known limitations](../../../.ai/knowledge/known-limitations.md). Note claim freshness.
 6. Salesforce reality:
    - `review_org_identity` must return `VERIFIED` before any org-derived fact is used.
    - `review_installed_packages` for package context; `review_object_contract` for each candidate
@@ -121,6 +132,19 @@ package/vendor facts, cited as `claimRef` + `evidenceRef`. Where an approved ent
 subject it shadows a metadata-repository claim about the same fact (SAFE-CLAIM-001 v2) — cite
 the entry. Absence, deployed state, and semantics are never grounded by an entry, and a missing
 search hit is never proof of absence.
+
+Cite what the executor gives you, not what the view shows: obtain the citable ref with
+`python scripts/knowledge_store.py entry-status --identity <Identity>`. A search result, a
+`context` pack and a generated dossier are never themselves citable.
+
+An entry can be approved, current and still refuse to ground a claim: contract §8.1 grounds only
+sections marked `source-exact` with full coverage, and the executor enforces that when the
+`entryRef` is bound. **Apex-layer entries generally cannot be cited as positive grounding** —
+their facts are regex-derived and honestly marked heuristic. Measured on the 189-component
+reference package: 48 of 52 ApexClass, 5 of 5 ApexTrigger, 3 of 93 CustomField and 2 of 2
+ValidationRule entries are refused. Read them for orientation, report the fact as inferred, and
+ground it on a claim with its own evidence. The refusal is the contract working, not a tooling
+failure — never retry it with a different ref shape.
 
 ## Return
 

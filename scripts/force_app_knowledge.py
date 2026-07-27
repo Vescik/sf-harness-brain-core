@@ -25,6 +25,26 @@ try:
 except ModuleNotFoundError:  # imported as scripts.force_app_knowledge by unit tests
     from scripts.schema_format import FORMAT_CHECKER
 
+# The reference-kind vocabulary lives in a leaf module so knowledge_store and knowledge_search can
+# read it without importing this 6.5k-line collector — see scripts/relation_kinds.py. Re-exported
+# here because every existing caller and tests/test_kind_contract.py read them off this module.
+try:
+    from relation_kinds import (  # noqa: F401
+        ALL_REF_KINDS,
+        HEURISTIC_REF_KINDS,
+        OBJECT_REF_KINDS,
+        SOURCE_DERIVED_HEURISTIC,
+        edge_assurance,
+    )
+except ModuleNotFoundError:  # imported as scripts.force_app_knowledge by unit tests
+    from scripts.relation_kinds import (  # noqa: F401
+        ALL_REF_KINDS,
+        HEURISTIC_REF_KINDS,
+        OBJECT_REF_KINDS,
+        SOURCE_DERIVED_HEURISTIC,
+        edge_assurance,
+    )
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOT = ROOT / "force-app"
@@ -32,7 +52,7 @@ CACHE_ROOT = ROOT / ".cache/knowledge-proposals"
 INVENTORY_PATH = CACHE_ROOT / "force-app-inventory.json"
 DRAFT_ROOT = CACHE_ROOT / "force-app-drafts"
 SCHEMA_VERSION = 1
-COLLECTOR_VERSION = "1.6.0"
+COLLECTOR_VERSION = "1.7.0"
 CUSTOM_OBJECT_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*(?:__c|__mdt|__e|__x))\b")
 # Custom-field token inside a formula/expression (validation rules). Standard fields cannot be told
 # apart from function names by source alone, so the usage registry records custom fields only.
@@ -119,6 +139,11 @@ SOQL_FROM_RE = re.compile(
 )
 DML_RE = re.compile(r"\b(insert|update|upsert|delete|undelete)\b", re.IGNORECASE)
 APEX_CALL_RE = re.compile(r"\b([A-Z][A-Za-z0-9_]{2,})\.[A-Za-z_][A-Za-z0-9_]*\s*\(")
+# Construction, which the call regex above cannot see: it requires an identifier immediately
+# followed by `.`, so `new AssignmentTriggerHandler().run()` — the standard one-trigger-per-object
+# handler idiom — matched nothing. That made the first hop of every execution chain invisible:
+# `impact --direction outgoing` from a trigger reached the object it operates on and stopped.
+APEX_NEW_RE = re.compile(r"\bnew\s+([A-Z][A-Za-z0-9_]{2,})\s*\(")
 # Inline SOQL blocks for field-level extraction (standard fields included — the FROM object gives
 # the context that FORMULA_FIELD_RE lacks). Still a source-token heuristic: dynamic SOQL strings
 # and relationship paths are not resolved.
@@ -195,94 +220,6 @@ APEX_SYSTEM_TYPES = frozenset(
     }
 )
 
-# Reference kinds whose target names an object (its head token before any `.field`). Used by the
-# feature crawl to associate an automation/UI component with the objects it touches. subflow,
-# action, apex-method, apex-controller, invokes-apex, invokes-class, and related-list targets name
-# automations/methods/related lists, not objects.
-OBJECT_REF_KINDS = frozenset(
-    {
-        "relationship",
-        "operates-on",
-        "object-token",
-        "schema",
-        "reads-field",
-        "writes-field",
-        "references-field",
-        "places-field",
-        "grants-field-permission",
-        "queries-object",
-        "dml-object",
-        "grants-object-permission",
-        "soql-field",
-        "var-field-ref",
-        "filters-field",
-        "picklist-dependency",
-        "grants-field-read",
-        "grants-field-edit",
-        "grants-object-view-all",
-        "grants-object-modify-all",
-        "serves-object",
-    }
-)
-# Reference kinds derived via regex source-token heuristics rather than structural XML/JS parsing
-# (Apex object tokens and invoked-class names). Best-effort: dynamic references and unresolved
-# variable types may be missing or approximate. Drives component-relation claims' heuristic flag
-# and assurance level. Kinds emitted both structurally and heuristically (queries-object from Flow
-# XML vs Apex SOQL regex) are not listed here — those references carry a per-edge heuristic flag.
-HEURISTIC_REF_KINDS = frozenset(
-    {
-        "object-token",
-        "invokes-class",
-        "soql-field",
-        "var-field-ref",
-        "callout-endpoint",
-        # FlexiPage flow wiring is detected by property-name pattern (flowName/flowApiName).
-        "launches-flow",
-    }
-)
-# Canonical vocabulary of every reference kind this extractor can emit. knowledge_registry.py
-# classifies the same kinds into FIELD/OBJECT/INVOKE/EXTERNAL sets for usage derivation; the two
-# vocabularies must not drift — tests/test_kind_contract.py pins the invariants between them.
-ALL_REF_KINDS = OBJECT_REF_KINDS | frozenset(
-    {
-        "subflow",
-        "action",
-        "apex-method",
-        "apex-controller",
-        "invokes-apex",
-        "invokes-class",
-        "related-list",
-        "uses-value-set",
-        "sends-alert",
-        "uses-template",
-        "uses-named-credential",
-        "callout-endpoint",
-        "uses-workflow-action",
-        "uses-business-process",
-        "uses-matching-rule",
-        "uses-label",
-        "embeds-component",
-        "displays-component",
-        "launches-flow",
-        "overrides-view",
-        "grants-class-access",
-        "grants-custom-permission",
-        "grants-record-type",
-        "grants-flow-access",
-        "grants-user-permission",
-        "assigns-layout",
-        "shares-with",
-        "assigns-to",
-        "uses-external-credential",
-        "references-auth-provider",
-        "grants-to-profile",
-        "grants-to-permission-set",
-        "references-custom-permission",
-        "includes-permission-set",
-        "mutes-permission-set",
-        "reports-to",
-    }
-)
 AUTOMATION_TYPES = frozenset(
     {
         "Flow",
@@ -664,6 +601,12 @@ class ForceAppKnowledge:
             if target and (kind, target) not in seen_references:
                 seen_references.add((kind, target))
                 references.append({"kind": kind, "target": target})
+
+        # Containment. A plain Text/Number/Checkbox field emitted no references at all (63 of 93
+        # fields in a 189-component probe corpus), so composition was not a graph question: the
+        # owning object was reachable only through a per-type facet. This is the child side; the
+        # index inverts it. Not `operates-on`, which on a rollup names the summarised CHILD object.
+        add_reference("belongs-to", object_name)
 
         # Picklist vocabulary: local values, global value-set link, dependency wiring.
         value_set = next(
@@ -1604,6 +1547,7 @@ class ForceAppKnowledge:
                     "object": trigger_object,
                     "events": sorted(value.strip() for value in match.group(3).split(",")),
                 }
+                references.append({"kind": "belongs-to", "target": trigger_object})
                 references.append({"kind": "operates-on", "target": trigger_object})
         else:
             match = CLASS_RE.search(source)
@@ -1668,7 +1612,7 @@ class ForceAppKnowledge:
         dml_operations = sorted({value.lower() for value in DML_RE.findall(source)})
         invoked = sorted(
             value
-            for value in set(APEX_CALL_RE.findall(source))
+            for value in set(APEX_CALL_RE.findall(source)) | set(APEX_NEW_RE.findall(source))
             if value not in self.apex_system_types and value != name
         )
         references.extend({"kind": "invokes-class", "target": value} for value in invoked)
@@ -2605,7 +2549,10 @@ class ForceAppKnowledge:
         name = direct_text(root, "fullName") or path.name.removesuffix(
             ".recordType-meta.xml"
         )
-        references: list[dict[str, Any]] = [{"kind": "operates-on", "target": object_name}]
+        references: list[dict[str, Any]] = [
+            {"kind": "belongs-to", "target": object_name},
+            {"kind": "operates-on", "target": object_name},
+        ]
         business_process = direct_text(root, "businessProcess")
         if business_process:
             references.append(
@@ -2879,6 +2826,9 @@ class ForceAppKnowledge:
         formula = direct_text(root, "errorConditionFormula") or ""
         references: list[dict[str, Any]] = []
         if object_name:
+            # Inside the guard: a validation rule is the one owned type whose owner may
+            # legitimately be absent (object_from_path raises and is caught above).
+            references.append({"kind": "belongs-to", "target": object_name})
             references.append({"kind": "operates-on", "target": object_name})
             # Cross-object chains resolve through repo lookups; bare tokens attribute to the
             # owning object only after matched chains are removed (no more misattributing
@@ -4052,7 +4002,10 @@ class ForceAppKnowledge:
                     values.append(
                         compact({"field": field, "value": sanitize_literal(raw_value)})
                     )
-        references: list[dict[str, Any]] = [{"kind": "operates-on", "target": type_name}]
+        references: list[dict[str, Any]] = [
+            {"kind": "belongs-to", "target": type_name},
+            {"kind": "operates-on", "target": type_name},
+        ]
         references.extend(
             {"kind": "references-field", "target": f"{type_name}.{field}"}
             for field in sorted(set(fields_populated))
@@ -5163,6 +5116,7 @@ class ForceAppKnowledge:
             raise KnowledgeBuildError("force-app changed after inventory; rerun inventory")
 
         claims_root = self.root / ".ai/knowledge/claims"
+        homed_types = self.entry_home_types()
         items: list[dict[str, Any]] = []
         counts: Counter[str] = Counter()
         for component in inventory["components"]:
@@ -5187,7 +5141,14 @@ class ForceAppKnowledge:
                     "heuristic": heuristic,
                 }
                 canonical_path = claims_root / f"{claim_id}.yaml"
-                if canonical_path.is_file():
+                if component["metadataType"] in homed_types:
+                    # This component's relations live in its Knowledge Entry, so no relation
+                    # claim is owed. Counting them as `missing` made the skill's "loop until
+                    # zero missing" unreachable: draft() skips these components, so every pass
+                    # reported progress while writing nothing. Checked BEFORE the claim file so
+                    # a leftover draft cannot pull an entry-home component back into the loop.
+                    item["state"] = "homed-in-entry"
+                elif canonical_path.is_file():
                     record = yaml.safe_load(canonical_path.read_text(encoding="utf-8"))
                     item["revision"] = int(record["revision"])
                     status = record.get("status")
@@ -5229,6 +5190,223 @@ class ForceAppKnowledge:
             path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             result["path"] = self.relative(path)
         return result
+
+    # Suffixes that make a target name package-local: only this source tree can create one, so
+    # live source can settle whether it still exists. A standard object (`Account`), a system
+    # permission (`ViewAllData`), a platform type or a bare Apex name is NOT decidable from
+    # source alone — absence from force-app is its ordinary state — so those targets are never
+    # called orphans. Stating that limit is the point: a report that guessed would be unreadable.
+    LOCAL_NAME_SUFFIXES = ("__c", "__e", "__mdt", "__b", "__x")
+
+    @classmethod
+    def _local_custom_name(cls, name: str) -> bool:
+        """True when force-app is the only place this API name can come from."""
+
+        for suffix in cls.LOCAL_NAME_SUFFIXES:
+            if name.endswith(suffix):
+                # `ns__Thing__c` is owned by an installed package. It is not in this repo and
+                # never will be, so its absence is not rot.
+                return "__" not in name[: -len(suffix)]
+        return False
+
+    @classmethod
+    def _decidable_targets(cls, target: str) -> list[str]:
+        """The component names inside one edge target whose existence live source can settle.
+
+        Edge targets are written the way source writes them — a bare object/class name, or
+        `Object.Member` for a field, record type or approval process. `Account.Name` yields
+        nothing: neither segment is package-local. `Engagement__c.Status__c` yields the owning
+        object and the field's own component name, because a deleted object and a deleted field
+        are different findings and a reader needs to be told which one happened.
+        """
+
+        object_name, _, member = target.partition(".")
+        if not member:
+            return [target] if cls._local_custom_name(target) else []
+        names = [object_name] if cls._local_custom_name(object_name) else []
+        if names and cls._local_custom_name(member):
+            names.append(target)
+        return names
+
+    @classmethod
+    def _edge_target_verdict(
+        cls,
+        target: str,
+        heuristic: bool,
+        live_names: set[str],
+        live_members: set[str],
+    ) -> tuple[list[str], list[str]]:
+        """(gone, undecidable) component names for one edge target, against live source.
+
+        The bare-name case is the whole reason this exists. A regex extractor emits the token it
+        found — `object-token` on `a.Allocation_Percent__c` yields `Allocation_Percent__c` with no
+        owner — while a live field is only ever indexed under `Object.Field`. Diffing the bare
+        token against the full names alone therefore reported 164 orphans on a 189-component
+        corpus with nothing deleted, every one of them present all along, so the handful a real
+        deletion produces arrived unreadable. Matching a bare token against every live
+        component's own trailing name settles those.
+
+        What is left over is genuinely ambiguous, and is returned as such rather than guessed at:
+        an unmatched bare token may be a deleted object, a deleted field on any object, or a name
+        the regex read out of a string literal that never was a component. R5 — coverage is
+        disclosed, never implied — makes that a population to state, not an orphan to claim and
+        not a silent drop, because a silent drop is what made the lane count mean nothing.
+        Dotted targets carry their own owner, so nothing about them is ambiguous.
+        """
+
+        _object_name, _, member = target.partition(".")
+        if member:
+            names = cls._decidable_targets(target)
+            return [name for name in names if name.casefold() not in live_names], []
+        if not cls._local_custom_name(target) or target.casefold() in live_names:
+            return [], []
+        if not heuristic:
+            # A declared edge names what its kind says it names — a lookup's `relationship`
+            # target is an object — so absence from the live component names settles it, and a
+            # field that happens to share the name cannot stand in for the deleted object.
+            return [target], []
+        if target.casefold() in live_members:
+            return [], []
+        return [], [target]
+
+    def entry_edge_health(self, live_component_ids: set[str]) -> dict[str, Any]:
+        """Rot in the entry-side relation graph, which the claim-side check cannot see.
+
+        relation_health only inspects `verified` relation CLAIMS. For the ten entry-home types
+        there will never be any, so it reported HEALTHY unconditionally while entry edges went
+        stale underneath it — a clean bill of health over an unexamined graph.
+
+        The orphan diff mirrors the claim-side one: an entry is append-only, so deleting the
+        object a field belongs to, or the class a trigger invokes, removes nothing from the
+        entry that points at it. `live_component_ids` is the same live set the claim-side diff
+        is computed against, and the reasons are the claim side's words so the two halves of
+        one report read as one report.
+
+        Lanes are computed, never read: contract §4 is explicit that reading `lifecycle.state`
+        out of frontmatter does not establish approval. A file saying `approved` with no ledger
+        record is precisely the case that check exists to catch — so `not-effective` is
+        inspected too, and reports what compute_lane refused it for.
+        """
+
+        try:
+            from scripts.knowledge_store import (  # local import: keeps the CLI standalone
+                all_entry_paths, compute_lane, ledger_latest, read_ledger, rooted, split_entry,
+            )
+        except ModuleNotFoundError:
+            from knowledge_store import (  # type: ignore
+                all_entry_paths, compute_lane, ledger_latest, read_ledger, rooted, split_entry,
+            )
+
+        live_names = {
+            component_id.split(":", 1)[1].casefold() for component_id in live_component_ids
+        }
+        # A field lives under `Object.Field`; the token a regex extractor emits for it does not.
+        # This is the index that lets a bare token be settled at all — see _edge_target_verdict.
+        live_members = {name.rpartition(".")[2] for name in live_names if "." in name}
+        by_lane: Counter[str] = Counter()
+        findings: list[dict[str, Any]] = []
+        undecidable: set[tuple[str, str, str]] = set()
+        with rooted(self.root):
+            latest = ledger_latest(read_ledger())
+            for path in all_entry_paths():
+                try:
+                    lane = compute_lane(path, latest)
+                    frontmatter, _body = split_entry(path.read_text(encoding="utf-8"))
+                except Exception as error:  # unparsable entry is itself a finding
+                    findings.append({"path": str(path), "reason": f"entry does not parse: {error}"})
+                    continue
+                by_lane[lane["lane"]] += 1
+                if lane["lane"] in {"draft", "revoked"}:
+                    # Unfinished work and deliberately retired knowledge are not corruption.
+                    continue
+                row = {
+                    "path": lane["path"], "identity": lane["identity"],
+                    "lifecycleState": lane["lane"],
+                }
+                for problem in lane["problems"]:
+                    findings.append({**row, "reason": problem})
+                if lane["lane"] not in {"approved-current", "approved-drifted"}:
+                    # An entry the ledger does not stand behind is already reported above; its
+                    # edges are not worth diffing, because the entry itself is not trusted.
+                    continue
+                subject = frontmatter["subject"]
+                component_id = f"{subject['metadataType']}:{subject['fullName']}"
+                if component_id not in live_component_ids:
+                    findings.append({**row, "reason": "component removed"})
+                    continue
+                for reference in frontmatter.get("typeFacts", {}).get("references", []) or []:
+                    kind = str(reference["kind"])
+                    # The stored marker is authoritative — it is inside factsDigest, so it is what
+                    # a human approved. edge_assurance only fills in for an entry written before
+                    # the field existed, using the same rule that stamped the others.
+                    assurance = str(
+                        reference.get("assurance")
+                        or edge_assurance(kind, bool(reference.get("heuristic")))
+                    )
+                    missing, ambiguous = self._edge_target_verdict(
+                        str(reference["target"]),
+                        assurance == SOURCE_DERIVED_HEURISTIC,
+                        live_names,
+                        live_members,
+                    )
+                    for name in ambiguous:
+                        undecidable.add((lane["identity"], kind, name))
+                    for name in missing:
+                        # Same two reason strings the claim-side orphan list uses, so one report
+                        # does not speak two dialects; `missingComponent` says which end went.
+                        findings.append(
+                            {**row, "reason": "edge no longer present in source",
+                             "kind": kind, "target": reference["target"],
+                             "missingComponent": name, "assurance": assurance}
+                        )
+        return {
+            "entriesByLane": dict(sorted(by_lane.items())),
+            "findingCount": len(findings),
+            "findings": sorted(
+                findings,
+                key=lambda item: (item.get("path", ""), item.get("target", ""), item["reason"]),
+            ),
+            "note": (
+                "Lanes are computed from the ledger, not read from frontmatter. Drafts and "
+                "revoked entries are skipped; every other entry is checked for integrity, and "
+                "approved ones also have their stored edges diffed against live source. Only "
+                "package-local targets (__c/__e/__mdt/__b/__x, unnamespaced) are decidable: a "
+                "standard object, a system permission or a bare Apex name is absent from "
+                "force-app by nature, so its absence is never reported as rot. "
+                + self._undecidable_note(undecidable)
+            ),
+        }
+
+    # How many undecidable targets the note names before it stops. A disclosure has to stay
+    # readable to be read at all — the defect this whole check is recovering from was 164 rows
+    # nobody could get through.
+    UNDECIDABLE_NOTE_SAMPLE = 5
+
+    @classmethod
+    def _undecidable_note(cls, undecidable: set[tuple[str, str, str]]) -> str:
+        """The disclosed-population sentence: what the diff refused to decide, and why.
+
+        The count is stated even when it is zero. A disclosure that appears only when non-empty
+        cannot be told apart from a build where nothing was disclosed because nothing was looked
+        at, which is the failure this file already made once.
+        """
+
+        if not undecidable:
+            return (
+                "0 approved-entry edge targets were left undecidable: every bare package-local "
+                "target matched a live component or a live field."
+            )
+        names = sorted({name for _identity, _kind, name in undecidable})
+        shown = ", ".join(names[: cls.UNDECIDABLE_NOTE_SAMPLE])
+        if len(names) > cls.UNDECIDABLE_NOTE_SAMPLE:
+            shown += f", … ({len(names) - cls.UNDECIDABLE_NOTE_SAMPLE} more)"
+        return (
+            f"{len(undecidable)} approved-entry edge target(s) across {len(names)} name(s) are "
+            "UNDECIDABLE and are disclosed rather than counted: a bare package-local name reached "
+            "through a heuristic extractor may be an object, a field on any object, or a token "
+            "the regex read out of a string literal, so its absence supports no claim in either "
+            f"direction. Names: {shown}."
+        )
 
     def relation_health(self, write: bool = False) -> dict[str, Any]:
         """Read-only: verified relation claims whose source edge no longer exists in current source.
@@ -5291,6 +5469,7 @@ class ForceAppKnowledge:
             "sourceTreeDigest": inventory["sourceTreeDigest"],
             "orphanedCount": len(orphaned),
             "orphaned": orphaned,
+            "entryEdges": self.entry_edge_health(live_component_ids),
         }
         self.validate_record(
             result, "force-app-relation-health.schema.json", "force-app relation health"
@@ -5424,7 +5603,17 @@ class ForceAppKnowledge:
         if inventory["repositoryCommit"] != commit:
             raise KnowledgeBuildError("repository HEAD changed after inventory; rerun inventory")
 
-        policy = json.loads((self.root / "config/knowledge-policy.json").read_text(encoding="utf-8"))
+        policy_path = self.root / "config/knowledge-policy.json"
+        if not policy_path.is_file():
+            # Every other precondition in this method fails with an actionable message. A bare
+            # FileNotFoundError traceback here says nothing about which file, why it is needed,
+            # or what to do — and this is reached deep in a drafting run, after the inventory.
+            raise KnowledgeBuildError(
+                f"knowledge policy is missing at {self.relative(policy_path)}; it defines the "
+                "claim-type evidence and sensitivity rules drafting must apply, so drafting "
+                "cannot proceed without it"
+            )
+        policy = json.loads(policy_path.read_text(encoding="utf-8"))
         self.draft_root.mkdir(parents=True, exist_ok=True)
         for old in self.draft_root.glob("*.yaml"):
             old.unlink()
@@ -5652,10 +5841,21 @@ class ForceAppKnowledge:
                 "bundles": [],
                 "limitations": [],
             }
+        # `drafted` counts what was WRITTEN, not what was selected. Reporting the selection
+        # made the loop invisible: with entry-home components in the worklist, draft() skipped
+        # every one of them and the manifest said `drafted: 50, remainingMissing: 532` over a
+        # manifest holding zero bundles and zero claims.
+        written = int(manifest.get("claimCount", 0))
         manifest["totalMissing"] = len(missing)
         manifest["heuristicSkipped"] = len(missing) - len(eligible)
-        manifest["drafted"] = len(claim_ids)
-        manifest["remainingMissing"] = len(missing) - len(claim_ids)
+        manifest["selected"] = len(claim_ids)
+        manifest["drafted"] = written
+        manifest["remainingMissing"] = len(missing) - written
+        if written != len(claim_ids):
+            manifest.setdefault("limitations", []).append(
+                f"selected {len(claim_ids)} candidate(s) but wrote {written}; the difference was "
+                "skipped by the drafter (entry-home components own their relations in entries)."
+            )
         return manifest
 
     def refresh(
@@ -6175,6 +6375,63 @@ class ForceAppKnowledge:
             "dossierPath": self.relative(dossier),
         }
 
+    def entry_descriptions(self) -> dict[str, dict[str, str]]:
+        """`<MetadataType>:<FullName>` -> the entry's Purpose prose and its computed lane.
+
+        An undescribed entry is kept with an empty `purpose` rather than dropped. Dropping it
+        made the dossier indistinguishable from "no entry exists", and the two states have
+        different remedies — `entry-describe` against `entry-draft`.
+        """
+
+        try:
+            from scripts.knowledge_store import (
+                all_entry_paths, compute_lane, ledger_latest, read_ledger, rooted, split_entry,
+            )
+        except ModuleNotFoundError:
+            from knowledge_store import (  # type: ignore
+                all_entry_paths, compute_lane, ledger_latest, read_ledger, rooted, split_entry,
+            )
+
+        found: dict[str, dict[str, str]] = {}
+        with rooted(self.root):
+            latest = ledger_latest(read_ledger())
+            for path in all_entry_paths():
+                try:
+                    lane = compute_lane(path, latest)
+                    frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+                except Exception:
+                    continue
+                purpose = ""
+                for block in body.split("## "):
+                    if block.startswith("Purpose"):
+                        purpose = block[len("Purpose"):].strip()
+                        break
+                if purpose.startswith("<AGENT_"):
+                    purpose = ""  # the draft sentinel is an absence, not a description
+                subject = frontmatter["subject"]
+                found[f"{subject['metadataType']}:{subject['fullName']}"] = {
+                    "purpose": purpose, "lane": lane["lane"],
+                }
+        return found
+
+    def entry_draftable_types(self) -> set[str]:
+        """Metadata types `entry-draft` will accept, from the store's own profile table.
+
+        Read rather than restated: `entry-draft` refuses every other type, so a dossier that
+        told a reader to draft an entry for a Layout would be naming a command that fails.
+
+        Deliberately NOT `entry_home_types`: that one answers a different question — whether
+        this repo has entries yet, and therefore whether drafting a repository claim would be
+        dead work. Naming both the same shadowed the gated one and made `draft()` skip every
+        entry-profiled component in a repo with zero entries, which is every repo today.
+        """
+
+        try:
+            from scripts.knowledge_store import PROFILES
+        except ModuleNotFoundError:
+            from knowledge_store import PROFILES  # type: ignore
+        return set(PROFILES)
+
     def render_dossier(self, crawl: dict[str, Any], manifest: dict[str, Any]) -> Path:
         """Render the human-readable feature dossier from the crawl boundary and drafted claims."""
 
@@ -6189,11 +6446,41 @@ class ForceAppKnowledge:
                 text = claim["assertion"]["value"].get("description", "")
                 descriptions[str(claim["subject"]["identity"])] = text
 
+        # Descriptions come from Knowledge Entries where the type has one. Reading them only
+        # from drafted claims made the dossier useless the moment those types moved to entries:
+        # every one of 64 components rendered "description pending" while the entries held the
+        # text. Entry lanes are computed, never read from frontmatter, and the lane is shown so
+        # a draft is never presented as approved knowledge.
+        entry_descriptions = self.entry_descriptions()
+        draftable_types = self.entry_draftable_types()
+
+        # Three states, three remedies. The fallback used to collapse the middle one into the
+        # first — "no Knowledge Entry" printed against a component whose entry was on disk and
+        # merely undescribed, sending the reader to author a file that already exists.
         def describe(component_id: str) -> str:
-            text = descriptions.get(component_id)
-            if not text or text.startswith("<AGENT_"):
-                return "_description pending (fill the draft sentinel before proposing)_"
-            return text.replace("\n", " ").strip()
+            claim_text = descriptions.get(component_id, "")
+            if claim_text.startswith("<AGENT_"):
+                claim_text = ""
+            claim_text = claim_text.replace("\n", " ").strip()
+            entry = entry_descriptions.get(component_id)
+            if entry is None:
+                if claim_text:
+                    return claim_text
+                remedy = (
+                    "run `entry-draft` then `entry-describe`"
+                    if component_id.split(":", 1)[0] in draftable_types
+                    else "this type has no entry home; describe it in a claim"
+                )
+                return f"_no description: no Knowledge Entry and no drafted claim — {remedy}_"
+            lane = entry["lane"]
+            if entry["purpose"]:
+                suffix = "" if lane == "approved-current" else f" _({lane}, not approved knowledge)_"
+                return entry["purpose"].replace("\n", " ").strip() + suffix
+            if claim_text:
+                return f"{claim_text} _({lane} Knowledge Entry has no Purpose: run `entry-describe`)_"
+            return (
+                f"_no description: the {lane} Knowledge Entry has no Purpose — run `entry-describe`_"
+            )
 
         def esc(value: Any) -> str:
             return str(value).replace("|", "\\|").replace("\n", " ")
@@ -6494,6 +6781,10 @@ def main(argv: Iterable[str] | None = None) -> int:
             result = builder.relation_health(args.write)
             summary = {
                 "orphanedCount": result["orphanedCount"],
+                # Surfaced in the summary because the claim-side count alone reported HEALTHY
+                # over an entry graph it never looked at.
+                "entryFindingCount": result["entryEdges"]["findingCount"],
+                "entriesByLane": result["entryEdges"]["entriesByLane"],
             }
             if "path" in result:
                 summary["path"] = result["path"]

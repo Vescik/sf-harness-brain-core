@@ -24,7 +24,8 @@
         "proposed": { "type": "integer", "minimum": 0 },
         "verified-current": { "type": "integer", "minimum": 0 },
         "verified-stale": { "type": "integer", "minimum": 0 },
-        "blocked": { "type": "integer", "minimum": 0 }
+        "blocked": { "type": "integer", "minimum": 0 },
+        "homed-in-entry": { "type": "integer", "minimum": 0 }
       }
     },
     "items": {
@@ -45,7 +46,8 @@
           "target": { "type": "string", "minLength": 1 },
           "heuristic": { "type": "boolean" },
           "state": {
-            "enum": ["missing", "proposed", "verified-current", "verified-stale", "blocked"]
+            "enum": ["missing", "proposed", "verified-current", "verified-stale", "blocked", "homed-in-entry"],
+            "description": "homed-in-entry: this component's relations live in its one-file Knowledge Entry, so no relation claim is owed. Counting those as `missing` made the update-relations loop unreachable."
           },
           "revision": { "type": "integer", "minimum": 1 },
           "reviewBy": { "type": "string", "format": "date-time" },

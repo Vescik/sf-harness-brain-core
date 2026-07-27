@@ -31,6 +31,12 @@
         "sharingModel": {
           "type": "string"
         },
+        "externalSharingModel": {
+          "type": "string"
+        },
+        "compactLayoutAssignment": {
+          "type": "string"
+        },
         "deploymentStatus": {
           "type": "string"
         },

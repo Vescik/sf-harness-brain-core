@@ -34,6 +34,31 @@
         "businessProcess": {
           "type": "string"
         },
+        "picklistScopes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "picklist"
+            ],
+            "properties": {
+              "picklist": {
+                "type": "string"
+              },
+              "valueCount": {
+                "type": "integer"
+              },
+              "defaults": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "description": "Per-picklist value scoping this record type declares. Declared because the adapter passes every collector fact through: an undeclared fact fails validation and blocks the draft."
+        },
         "picklistValueSets": {
           "type": "array",
           "items": {

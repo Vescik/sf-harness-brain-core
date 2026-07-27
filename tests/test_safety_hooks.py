@@ -712,22 +712,44 @@ class RoleGuardTests(unittest.TestCase):
         )
         self.assertEqual(hook_decision(output), "ask")
 
-    def test_entry_approve_and_revoke_ask_for_human_confirmation(self) -> None:
-        # One-file Knowledge Entry approvals are digest-pinned and chat-confirmed
-        # (docs/knowledge-one-file-contract.md par 6; mechanism copilot-chat-entry-confirmation).
-        for command in (
-            "python scripts/knowledge_store.py entry-approve --entry Flow:c:X:sha256:" + "a" * 64,
-            "python scripts/knowledge_store.py entry-revoke --identity Flow:c:X --rationale bad",
-        ):
-            with self.subTest(command=command):
-                output = run_hook(
+    def test_every_approval_command_is_chat_confirmed_and_authoring_is_not(self) -> None:
+        """Master plan §8's "no agent self-approval", pinned where it is actually enforced.
+
+        The role guard deliberately keeps entry/feature approve+revoke available to the mutation
+        roles: contract §6.1 makes the human's chat click the approval mechanism, and the curator
+        invokes the command *after* that click, so removing them would break the design rather
+        than harden it. The hook's `ask` is therefore the whole control, and it is asserted over
+        the guard's own mutation set — a hand-written pair covered only the entry half for a full
+        wave, and a ninth mutation command must not be able to land uncovered.
+        """
+
+        from scripts import copilot_role_guard as role_guard
+
+        mutations = role_guard.KNOWLEDGE_STORE_MUTATION_COMMANDS
+        approvals = {name for name in mutations if name.split("-", 1)[1] in ("approve", "revoke")}
+        authoring = set(mutations) - approvals
+        self.assertTrue(approvals and authoring, mutations)
+
+        def invoke(name: str) -> str:
+            flags = role_guard.KNOWLEDGE_STORE_COMMAND_FLAGS[name]
+            # Digest-pinned in reality; the hook matches on the verb, so a placeholder suffices.
+            args = " ".join(f"{flag} X" for flag in sorted(flags))
+            command = f"python scripts/knowledge_store.py {name} {args}".strip()
+            return hook_decision(
+                run_hook(
                     "copilot_safety_hook.py",
-                    {
-                        "tool_name": "execute/runInTerminal",
-                        "tool_input": {"command": command},
-                    },
+                    {"tool_name": "execute/runInTerminal", "tool_input": {"command": command}},
                 )
-                self.assertEqual(hook_decision(output), "ask")
+            )
+
+        for name in sorted(approvals):
+            with self.subTest(approval=name):
+                self.assertEqual("ask", invoke(name), f"{name} approves without a human click")
+        for name in sorted(authoring):
+            with self.subTest(authoring=name):
+                self.assertNotEqual(
+                    "ask", invoke(name), f"{name} records no approval and must not spend a click"
+                )
 
     def test_entry_store_commands_are_role_bound_and_artifact_edits_denied(self) -> None:
         from scripts import copilot_role_guard as role_guard

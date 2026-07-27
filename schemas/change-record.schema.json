@@ -1141,7 +1141,8 @@
       "properties": {
         "entryId": {
           "type": "string",
-          "pattern": "^[A-Za-z][A-Za-z0-9]{1,79}:[A-Za-z0-9_]{1,15}:.{1,240}$"
+          "pattern": "^(?!Feature:)[A-Za-z][A-Za-z0-9]{1,79}:[A-Za-z0-9_]{1,15}:.{1,240}$",
+          "description": "Artifact entry identity `<MetadataType>:<ns|c>:<FullName>` (docs/knowledge-one-file-contract.md par 3). The `Feature:` lookahead backstops the three-segment shape explicitly: a Feature Entry is a human-approved boundary rule with no source, no profile and no facts digest, so it is never citable (contract §13)."
         },
         "reviewedContentDigest": {
           "type": "string",

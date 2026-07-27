@@ -184,6 +184,22 @@
         "summarizedField": {
           "type": "string"
         },
+        "summaryFilterFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Fields the rollup's filter criteria reference. Declared because the adapter passes every collector fact through: an undeclared fact fails validation and blocks the draft."
+        },
+        "lookupFilterPresent": {
+          "type": "boolean"
+        },
+        "lookupFilterFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "references": {
           "type": "array",
           "items": {

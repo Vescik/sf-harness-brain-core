@@ -788,15 +788,26 @@ def main() -> int:
 
     if is_terminal_tool(tool_name) and re.search(
         r"knowledge_store\.py", dequote(command).replace("\\", "/")
-    ) and re.search(r"(?:^|\s)entry-(?:approve|revoke)(?:\s|$)", dequote(command)):
+    ) and re.search(r"(?:^|\s)(?:entry|feature)-(?:approve|revoke)(?:\s|$)", dequote(command)):
+        # One alternation, one mechanism, one revocation path. A Feature approval is the same
+        # act as an entry approval -- a human binding their name to a digest -- so it goes
+        # through the same trap rather than a second one that could drift out of step.
+        feature = bool(re.search(r"(?:^|\s)feature-(?:approve|revoke)(?:\s|$)", dequote(command)))
+        subject = (
+            "feature boundary rule approval/revocation — you are approving WHERE the feature "
+            "ends and what it is, never a member list (membership is recomputed, so package "
+            "growth cannot change what you approved)"
+            if feature
+            else "Knowledge Entry approval/revocation"
+        )
         print(
             json.dumps(
                 hook_response(
                     "ask",
-                    "SAFE-HUMAN-001: confirm this Knowledge Entry approval/revocation — the "
+                    f"SAFE-HUMAN-001: confirm this {subject} — the "
                     "command is digest-pinned to the exact displayed content and your click is "
                     "recorded as the copilot-chat-entry-confirmation review mechanism "
-                    "(docs/knowledge-one-file-contract.md §6).",
+                    "(docs/knowledge-one-file-contract.md §6, §13).",
                 )
             )
         )

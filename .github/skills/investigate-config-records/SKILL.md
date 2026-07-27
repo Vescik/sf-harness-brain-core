@@ -33,7 +33,18 @@ snapshot that fills the row cap is treated as transactional and returned unresol
 
 1. Check existing Knowledge both ways: `python scripts/knowledge_registry.py query
    --subject-identity <objectApiName>` shows effective claims only; earlier PROPOSED snapshots are
-   invisible to it and surface only through the reconcile step below.
+   invisible to it and surface only through the reconcile step below. For the object's
+   source-declared shape — its fields, record types and validation rules — use
+   `python scripts/knowledge_search.py context --identity CustomObject:<ns|c>:<Object>`; the claim
+   registry no longer carries repository-source facts for entry-homed types. Read the shape from
+   `parts`, `permissions` and `incoming` — the approved-current buckets; the `*NonCurrent`
+   siblings hold opted-in lanes and must not be treated as the object's declared shape. `incoming`
+   and `outgoing` are keyed by relation kind, so iterate the keys, and never read a missing kind
+   as an absence proof. A row with `hydrated: false` failed re-reading and is not part of the
+   object's declared shape. Cite what the executor gives you, not what the view shows: obtain the
+   citable ref with `python scripts/knowledge_store.py entry-status --identity <Identity>`; the
+   `context` pack is never itself citable, and Apex-layer entries generally cannot be cited as
+   positive grounding at all (contract §8.1 grounds only `source-exact`, fully covered sections).
 2. Call `review_org_identity` first. Stop unless it is `VERIFIED` for the exact configured sandbox.
 3. Call `review_object_contract` for the object's accessible field contract. Choose the snapshot
    fields from that contract only: the natural key (`Name`, a `DeveloperName`-like field, or an

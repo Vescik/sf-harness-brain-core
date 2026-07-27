@@ -20,11 +20,14 @@ returned in a separate lane and never interleave with approved results.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
+import os
 import re
 import shutil
 import sys
+import time
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
@@ -35,9 +38,11 @@ sys.path.insert(0, str(ROOT))
 
 try:
     from scripts import knowledge_store as store
+    from scripts import relation_kinds
     from scripts.text_analysis import ANALYZER_VERSION, analyze, fold_diacritics
 except ModuleNotFoundError:  # invoked as `python scripts/knowledge_search.py`
     import knowledge_store as store  # type: ignore
+    import relation_kinds  # type: ignore
     from text_analysis import ANALYZER_VERSION, analyze, fold_diacritics  # type: ignore
 
 INDEX_SCHEMA_VERSION = 1
@@ -56,6 +61,35 @@ FIELD_WEIGHTS = {
     "sourcePath": 0.2,
 }
 LEXICAL_CANDIDATE_CAP = 2000
+# One vocabulary, per-command values. A single shared depth cannot serve both: reverse impact
+# saturates fast, while a feature tree needs trigger -> handler -> queueable -> event.
+DEPTH_LIMITS = {"impact": 2, "context": 1, "tree": 4, "drift": 4}
+# §9's last open item, and the one place in this file whose numbers were never derived from
+# anything: 2000/500 were chosen constants and there was no clock among them, so a pathological
+# walk could only ever terminate on a node count. The benchmark now measures the two regimes
+# (`traversalObserved` in knowledge_benchmark.run) and the numbers below come from it —
+# knowledge_benchmark.TRAVERSAL_LIMIT_BASIS carries the measurement and the arithmetic, next to
+# the fixture that produced it rather than here where it would drift away from it.
+#
+# Depth is deliberately NOT here: R7 fixes depth per command as a SEMANTIC requirement
+# (DEPTH_LIMITS above), and a benchmark has no standing to move it.
+TRAVERSAL_LIMITS = {"maxNodes": 5000, "maxFanout": 2000, "maxSeconds": 2.0}
+
+# The plan's own list, verbatim from §9: "node/fanout/row/time traversal limits". Named here so a
+# test can count THE PLAN'S set instead of whatever this module happens to enforce — three of the
+# four were implemented and the fourth was missing for exactly as long as nothing counted them.
+# Keys are the `limitsHit` tokens a caller reads; `row` maps to no TRAVERSAL_LIMITS key because
+# it is `--top`, applied by each command to its own rows after the walk rather than inside it.
+PLAN_TRAVERSAL_LIMITS = {
+    "nodes": "maxNodes",
+    "fanout": "maxFanout",
+    "top": None,
+    "time": "maxSeconds",
+}
+IMPACT_TOP_DEFAULT = 50
+EXPLAIN_TOP_DEFAULT = 50
+# The relation kind that carries composition. Named once so `parts` and the tree agree.
+CONTAINMENT_KIND = "belongs-to"
 BM25_K1 = 1.2
 BM25_B = 0.75
 
@@ -123,6 +157,7 @@ PROFILE_FACETS = {
         "permissionSet.objectPermissionCount": "number",
         "permissionSet.fieldPermissionCount": "number",
         "permissionSet.referencesTruncated": "boolean",
+        "permissionSet.truncatedFamilies": "string",
     },
     "CustomObject": {
         "object.kind": "string",
@@ -269,6 +304,7 @@ def _permission_set_facets(front: dict[str, Any]) -> dict[str, Any]:
         "permissionSet.objectPermissionCount": facts.get("objectPermissionCount"),
         "permissionSet.fieldPermissionCount": facts.get("fieldPermissionCount"),
         "permissionSet.referencesTruncated": facts.get("referencesTruncated"),
+        "permissionSet.truncatedFamilies": facts.get("truncatedFamilies"),
     }
 
 
@@ -398,13 +434,27 @@ def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:
         "coverage": front.get("extractionCoverage", {}),
         "limitations": front.get("limitations", []),
         "candidateKeywords": front.get("candidateKeywords", []),
+        "purpose": purpose,
         "facets": facets,
         "edges": edges,
         "intentionalErrors": errors,
         "fields": fields,
+        # The entry's own account of what it was approved against, carried so `verify_anchor`
+        # can re-check it without re-parsing the entry file. It is trustworthy exactly when
+        # hydration passes — that proves the file is byte-identical to this projection's source —
+        # which is why the check downstream runs only after hydration succeeds.
+        "sources": [
+            {"path": fragment["path"], "digest": fragment["sourceDigest"]}
+            for fragment in front["source"]["fragments"]
+        ],
         "citation": {
             "path": lane["path"],
             "entryDigest": lane.get("reviewedContentDigest"),
+            # Digest of the WHOLE file. reviewedContentDigest covers identity, profile major,
+            # facts, semantics and sensitivity — not source.fragments, scope or keywords, so an
+            # edit confined to those passed hydration unseen. This is both stronger and cheaper
+            # than the parse-and-recompute it replaces.
+            "fileDigest": "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest(),
             "factsDigest": lane.get("factsDigest"),
             "sourceDigest": lane.get("sourceTreeDigest"),
             "profileDigest": front["profile"]["digest"],
@@ -415,23 +465,164 @@ def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:
 # --- index build --------------------------------------------------------------------------
 
 
-def corpus_fingerprint() -> str:
-    """Cheap freshness signal: identity, size and mtime of every entry file plus the ledger.
+_CODE_FINGERPRINT: str | None = None
 
-    Recomputing the full projection on each query re-parsed the whole corpus and cost ~1s at
-    200 entries (measured, scripts/knowledge_benchmark.py) — the index bought nothing. Stat
-    calls are ~two orders of magnitude cheaper, and correctness does not rest on them: every
-    result that is actually returned is re-read and digest-checked during hydration.
+
+def code_fingerprint() -> str:
+    """Digest of the code that produces projections and lanes.
+
+    Reuse and freshness were keyed on the data alone. Editing the lane logic therefore left
+    the previous generation entirely reusable — no entry file had moved, so every projection
+    was reused — and queries went on serving fields the current code would never produce.
+    Observed: draft entries kept the null citation digest written before the fix, so hydration
+    dropped every relation hit as "entry changed since the index was built" while the entries
+    were in fact untouched. A stat stamp cannot see a code change, so the code is part of the
+    key: edit the projector and the previous generation is discarded automatically.
+
+    relation_kinds is in the tuple even though nothing here derives assurance from it: the
+    vocabulary decides what an entry ASSERTS, so moving a kind into HEURISTIC_REF_KINDS changes
+    stored edges. Without it in the key, that edit would change no fingerprinted byte and every
+    cached projection would be reused as fresh — serving the old `source-exact` marker."""
+
+    global _CODE_FINGERPRINT
+    if _CODE_FINGERPRINT is None:
+        parts = []
+        for module in (sys.modules[__name__], store, relation_kinds, sys.modules[analyze.__module__]):
+            path = Path(getattr(module, "__file__", "") or "")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "absent"
+            parts.append((path.name, digest))
+        _CODE_FINGERPRINT = store.canonical_digest(sorted(parts))
+    return _CODE_FINGERPRINT
+
+
+def corpus_fingerprint() -> str:
+    """Coarse freshness signal: entry count, newest stamp, ledger stamp, analyzer, code.
+
+    Recomputing the full projection per query re-parsed the whole corpus (~1s at 200 entries),
+    so this replaced it with a per-file stat sweep — which was still linear: 11.6 µs per entry
+    measured, i.e. ~174 ms of pure staleness-checking on every CLI call at 15k entries, before
+    any query work, and materially worse on the team's NTFS + Defender path.
+
+    Aggregating to (count, newest stamp, total bytes) keeps the same guarantee at a fraction of
+    the cost. Hydration is NOT the argument for weakening this signal further: it re-reads and
+    digest-checks every row a query SERVES, so it catches a tampered served entry — but an
+    in-place edit that changes keywords or scope makes an entry stop ranking, and a row that is
+    never served is a row hydration never sees. A missed staleness signal here is therefore a
+    silent false negative, which is why the per-file stat stays and only its arithmetic changed.
+
+    The per-entry mtime is the expensive part and it is already at its floor: `DirEntry.stat()`
+    is one `fstatat` on POSIX, and on Windows the value comes free with the directory read.
+    Dropping to directory mtimes alone measured 0.53 µs/entry against 2.5 (macOS/APFS, 3000
+    entries) — five times cheaper, and it cannot see a content edit written in place rather than
+    renamed over, so it was rejected.
     """
-    parts = []
-    for path in store.all_entry_paths():
-        stat = path.stat()
-        parts.append((path.relative_to(store.ROOT).as_posix(), stat.st_size, stat.st_mtime_ns))
+    # os.scandir, not rglob+stat: the directory read already carries the metadata, so this is
+    # one syscall per file instead of two. Measured 11.6 -> 3.4 µs per entry.
+    newest = 0
+    count = 0
+    # Folded separately, not into the max(). `max(newest, st_mtime_ns, st_size)` could only ever
+    # be won by a file larger than 1.7e18 bytes, so the size term was dead and the signal was
+    # (count, newest) alone. As a running total it does real work: two edits that cancel out in
+    # both count and newest mtime — the one case the docstring admits this signal cannot see —
+    # are now caught whenever they change a byte count.
+    total_bytes = 0
+    stack = [str(store.ARTIFACTS_ROOT)] if store.ARTIFACTS_ROOT.is_dir() else []
+    while stack:
+        with os.scandir(stack.pop()) as entries:
+            for entry in entries:
+                # Name first, then is_dir: entry paths put `.md` only on leaf files (the type
+                # and namespace segments come from the identity grammar and cannot contain a
+                # dot), so a `.md` name is a file by construction and the d_type check on it is
+                # work nobody needs. Measured ~4% of the sweep.
+                if entry.name.endswith(".md"):
+                    stat = entry.stat(follow_symlinks=False)
+                    count += 1
+                    total_bytes += stat.st_size
+                    if stat.st_mtime_ns > newest:
+                        newest = stat.st_mtime_ns
+                elif entry.is_dir(follow_symlinks=False):
+                    stack.append(entry.path)
     ledger = store.LEDGER_PATH
     ledger_stat = (ledger.stat().st_size, ledger.stat().st_mtime_ns) if ledger.is_file() else (0, 0)
     return store.canonical_digest(
-        {"entries": sorted(parts), "ledger": ledger_stat, "analyzer": ANALYZER_VERSION}
+        {
+            "entries": [count, newest, total_bytes],
+            "ledger": ledger_stat,
+            "analyzer": ANALYZER_VERSION,
+            "code": code_fingerprint(),
+        }
     )
+
+
+def fold_target(target: str) -> str:
+    """Posting key for an edge target. Folded like facet keys are folded on write."""
+    return unicodedata.normalize("NFKC", target).casefold()
+
+
+def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
+    """Who points at each target, and what that target resolves to.
+
+    The old posting was `target -> [identity]`: it answered "does anything reference this" and
+    nothing else. The kind and the assurance — the two things that decide whether an edge may be
+    shown by default and what it means — had to be recovered by re-reading every source document,
+    which is why `explain` and `impact` scanned the whole corpus.
+
+    Resolution is computed here, once, rather than stored in entries: an entry may not assert
+    that its target exists, because that depends on another artifact. An unresolvable target is
+    kept and labelled, never dropped — "this points somewhere I have no entry for" is a finding,
+    and silently discarding it would make a partial graph look complete.
+    """
+
+    by_full_name: dict[str, list[str]] = defaultdict(list)
+    identities = set()
+    for item in projections:
+        identities.add(item["identity"])
+        full_name = item["facets"].get("fullName")
+        if full_name:
+            by_full_name[fold_target(str(full_name))].append(item["identity"])
+
+    by_target: dict[str, dict[str, Any]] = {}
+    for item in projections:
+        for edge in item["edges"]:
+            key = fold_target(edge["target"])
+            row = by_target.setdefault(
+                key, {"spellings": set(), "incoming": [], "targetIdentity": None, "resolution": "no-entry"}
+            )
+            row["spellings"].add(edge["target"])
+            row["incoming"].append([item["identity"], edge["kind"], edge["assurance"]])
+
+    for key, row in by_target.items():
+        candidates = by_full_name.get(key, [])
+        if not candidates and key in {fold_target(name) for name in identities}:
+            candidates = [name for name in identities if fold_target(name) == key]
+        if len(candidates) == 1:
+            row["targetIdentity"] = candidates[0]
+            row["resolution"] = "resolved"
+        elif len(candidates) > 1:
+            # Namespace twins. Guessing one would silently pick a package's artifact over the
+            # subscriber's; the caller is told instead.
+            row["resolution"] = "ambiguous"
+            row["candidates"] = sorted(candidates)
+        row["spellings"] = sorted(row["spellings"])
+        row["incoming"] = sorted(row["incoming"])
+
+    # Sources whose own edge list was capped by the collector. The entry records this locally
+    # (typeFacts.referencesTruncated / truncatedFamilies) but nothing read it at query time, so
+    # "which permission sets grant edit on this field?" returned a complete-looking list that
+    # systematically omitted every PermissionSet with more than ~300 grants — and the collector
+    # discards fieldPermissions FIRST, so the security question failed closed the wrong way.
+    truncated: dict[str, list[str]] = {}
+    for item in projections:
+        families = item["facets"].get("permissionSet.truncatedFamilies")
+        if item["facets"].get("permissionSet.referencesTruncated"):
+            for family in (families or ["unspecified"]):
+                truncated.setdefault(str(family), []).append(item["identity"])
+
+    return {
+        "byTarget": by_target,
+        "byFullName": {name: sorted(ids) for name, ids in by_full_name.items()},
+        "truncatedSources": {family: sorted(ids) for family, ids in truncated.items()},
+    }
 
 
 def entry_set_digest(projections: list[dict[str, Any]]) -> str:
@@ -445,6 +636,7 @@ def entry_set_digest(projections: list[dict[str, Any]]) -> str:
             "analyzer": ANALYZER_VERSION,
             "schema": INDEX_SCHEMA_VERSION,
             "policy": POLICY_VERSION,
+            "code": code_fingerprint(),
         }
     )
 
@@ -487,6 +679,8 @@ def load_previous_projections() -> dict[str, dict[str, Any]]:
         return {}
     if manifest.get("analyzerVersion") != ANALYZER_VERSION or manifest.get("schemaVersion") != INDEX_SCHEMA_VERSION:
         return {}  # a projection built by a different analyzer may not be reused
+    if manifest.get("codeFingerprint") != code_fingerprint():
+        return {}  # projections built by different projector/lane code may not be reused
     reusable: dict[str, dict[str, Any]] = {}
     try:
         for line in documents_path.read_text(encoding="utf-8").splitlines():
@@ -575,6 +769,7 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
                     facet_postings[key][str(entry).casefold()].append(item["identity"])
             for edge in item["edges"]:
                 relation_postings[edge["target"]].append(item["identity"])
+                relation_postings[fold_target(edge["target"])].append(item["identity"])
             seen_tokens = {token for field in item["fields"].values() for token in field}
             for token in seen_tokens:
                 token_postings[token].append(item["identity"])
@@ -590,6 +785,7 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
         },
         "tokens": {token: sorted(ids) for token, ids in token_postings.items()},
         "relations": {target: sorted(set(ids)) for target, ids in relation_postings.items()},
+        "reverse": build_relation_index(projections),
         "documentFrequency": dict(document_frequency),
         "averageFieldLength": {
             field: (sum(lengths) / len(lengths)) if lengths else 1.0
@@ -602,6 +798,7 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
         ("lanes", postings["lanes"]),
         ("facets", postings["facets"]),
         ("relations", postings["relations"]),
+        ("reverse", postings["reverse"]),
         ("tokens", postings["tokens"]),
         ("stats", {
             "documentFrequency": postings["documentFrequency"],
@@ -628,6 +825,7 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
             for metadata_type in sorted({item["facets"]["metadataType"] for item in projections})
         },
         "corpusFingerprint": corpus_fingerprint(),
+        "codeFingerprint": code_fingerprint(),
         "documentsDigest": store.canonical_digest(documents.read_text(encoding="utf-8")),
         "complete": True,
     }
@@ -688,6 +886,8 @@ class DocumentStore:
         self.generation_dir = generation_dir
         self._cache: dict[str, dict[str, Any]] = {}
         self._postings: dict[str, Any] = {}
+        self.document_reads = 0
+        self.posting_bytes = 0
 
     def posting_file(self, name: str) -> dict[str, Any]:
         """Load one posting file on first use.
@@ -697,6 +897,10 @@ class DocumentStore:
         if name not in self._postings:
             path = self.generation_dir / f"{name}.json"
             self._postings[name] = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+            # Counted so a query can report how much index it touched. documentReads alone is
+            # blind to this: a regression that loaded every posting family per query — token
+            # postings reach ~15 MB at 15k entries — would not move that counter at all.
+            self.posting_bytes += path.stat().st_size if path.is_file() else 0
         return self._postings[name]
 
     @property
@@ -726,6 +930,7 @@ class DocumentStore:
         with self.path.open("rb") as handle:
             handle.seek(offset)
             document = json.loads(handle.read(length).decode("utf-8"))
+        self.document_reads += 1
         self._cache[identity] = document
         return document
 
@@ -750,6 +955,33 @@ class DocumentStore:
 
     def relation_ids(self, target: str) -> set[str]:
         return set(self.posting_file("relations").get(target, []))
+
+    def target_row(self, target: str) -> dict[str, Any]:
+        """Everything the index knows about one edge target: who points at it, what it is."""
+        reverse = self.posting_file("reverse").get("byTarget", {})
+        return reverse.get(fold_target(target), {
+            "spellings": [], "incoming": [], "targetIdentity": None, "resolution": "no-target"
+        })
+
+    def incoming_edges(
+        self, target: str, *, kinds: set[str] | None = None, include_heuristic: bool = False
+    ) -> list[dict[str, Any]]:
+        """Every edge pointing at `target`, one row per edge.
+
+        One row per EDGE, not per source: an entry that both queries and writes the same object
+        is two facts about it, and collapsing them to one hid half the answer."""
+
+        rows = []
+        for source, kind, assurance in self.target_row(target)["incoming"]:
+            if kinds is not None and kind not in kinds:
+                continue
+            if not include_heuristic and assurance != relation_kinds.SOURCE_EXACT:
+                continue
+            rows.append({"source": source, "kind": kind, "assurance": assurance})
+        return rows
+
+    def identities_for_full_name(self, full_name: str) -> list[str]:
+        return list(self.posting_file("reverse").get("byFullName", {}).get(fold_target(full_name), []))
 
 
 # --- query ----------------------------------------------------------------------------------
@@ -886,6 +1118,16 @@ def hydrate(hits: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]
         # FILE still holds the content the projection was built from — which is exactly the
         # case a stat-based fingerprint could theoretically miss. Re-reading the 15k-line
         # ledger per query was pure overhead.
+        expected_file = hit["citation"].get("fileDigest")
+        actual_file = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+        if expected_file and actual_file != expected_file:
+            # Whole-file comparison: catches every byte, including the frontmatter fields
+            # reviewedContentDigest does not cover. One hash instead of a parse plus three
+            # digest computations.
+            gaps.append(
+                f"{hit['artifactId']}: entry changed since the index was built — rebuild the index"
+            )
+            continue
         try:
             frontmatter, body = store.split_entry(path.read_text(encoding="utf-8"))
             recomputed = store.reviewed_content_digest(frontmatter, body)
@@ -1038,6 +1280,7 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         # outgoing: what the anchor itself declares — "what does this Flow touch".
         anchor = args.relation_anchor
         direction = args.direction or "incoming"
+        served_relation_kinds: set[str] = set()
         if direction == "incoming":
             scan = documents.load_many(sorted(documents.relation_ids(anchor) & candidate_ids))
         else:
@@ -1055,6 +1298,12 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
                     continue
                 if direction == "incoming" and edge["target"] != anchor:
                     continue
+                # One row per EDGE, in both directions. The incoming branch used to `break`
+                # after the first matching edge, so a Flow that both reads and writes the same
+                # object was one row here and two rows from `explain`, `impact` and `context` —
+                # golden question (d) answering differently depending on which command you ask.
+                # An entry that touches an anchor twice is two facts about it.
+                served_relation_kinds.add(edge["kind"])
                 results.append(
                     hit_of(
                         document,
@@ -1070,8 +1319,17 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
                         "exact-relation",
                     )
                 )
-                if direction == "incoming":
-                    break
+        # Golden question (d) is normally asked HERE — "which permission sets grant edit on this
+        # field" is a relation query, not an `explain` — and this was the one relation surface
+        # that never raised the collector's truncation disclosure. `explain`, `impact` and
+        # `context` all did, so the same question answered clean or capped depending on which
+        # command you happened to use. The kind filter is the caller's own when they named one,
+        # otherwise the kinds actually served: a kind-less query asked about everything, so it
+        # must hear about every capped family, including when the cap is why nothing matched.
+        gaps.extend(truncation_gaps(
+            documents,
+            {args.relation_kind} if args.relation_kind else served_relation_kinds,
+        ))
         if not results:
             gaps.append(
                 "No exact relation edge matched; heuristic edges are excluded unless "
@@ -1131,12 +1389,57 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         if args.relation_anchor and not args.include_heuristic:
             relaxations.append("add --include-heuristic (separate assurance lane)")
 
+    if not results and args.identity:
+        # An exact identity that matched nothing is either absent or lane-filtered, and those are
+        # very different answers. Reporting neither — an empty result with an empty gaps array —
+        # is the worst of the three: it reads as "no such thing" when the entry is sitting in the
+        # index, revoked or drifted, one --state away.
+        known = documents.get(args.identity)
+        if known is not None:
+            gaps.append(
+                f"{args.identity} exists in this index in lane '{known['lane']}', which is outside "
+                f"the requested {', '.join(states)}. It was not served. Pass --state {known['lane']} "
+                "to see it, in its own bucket — it is not approved-current knowledge."
+            )
+        else:
+            gaps.append(
+                f"No entry in this index generation projects {args.identity}. That is absence of "
+                "an ENTRY, not absence of the artifact."
+            )
+
     served, hydration_gaps = hydrate(results[: args.top])
     gaps.extend(hydration_gaps)
+    # `--state draft` (or any other lane opt-in) must not tip non-current content into a key
+    # named `approvedResults`: a consumer reading that key is entitled to treat every hit in
+    # it as effective approved knowledge. Opted-in lanes are served in their own bucket, each
+    # hit still carrying its `lifecycle`.
+    if excluded.get("heuristicEdge") and not args.include_heuristic:
+        # Reporting the count only in excludedCounts was survivable while almost nothing was
+        # excluded. Once kind-level heuristics are marked honestly, a default relation query
+        # drops most of the graph — 44 of 50 edges for a hub object in the probe corpus — and a
+        # silently narrowed answer reads exactly like a complete one.
+        gaps.append(
+            f"{excluded['heuristicEdge']} heuristic edge(s) were excluded; they are inferred "
+            "(regex-derived), not declared. Add --include-heuristic to see them, in their own "
+            "assurance lane."
+        )
+    current = [hit for hit in served if hit["lifecycle"] == "approved-current"]
+    non_current = [hit for hit in served if hit["lifecycle"] != "approved-current"]
+    if non_current:
+        lanes = sorted({hit["lifecycle"] for hit in non_current})
+        gaps.append(
+            f"{len(non_current)} result(s) served from opted-in lane(s) {', '.join(lanes)}; "
+            "they are not approved-current knowledge and must not be cited as effective."
+        )
+    gaps.append(ROW_LIFECYCLE_DISCLOSURE)
     return {
         "outcome": "OK" if served else "NO_MATCH",
         "interpretedQuery": interpreted,
-        "approvedResults": served,
+        # `search` has no anchor: every hit is a row, including the one named by --identity, so
+        # there is nothing here that was re-checked against the working tree.
+        "lifecycleBasis": {"anchor": "not-applicable", "rows": LIFECYCLE_BASIS},
+        "approvedResults": current,
+        "nonCurrentResults": non_current,
         "draftCandidates": [hit["artifactId"] for hit in draft_lane][:10],
         "excludedCounts": dict(sorted(excluded.items())),
         "facetCounts": {
@@ -1150,28 +1453,312 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def source_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
+    """What could possibly have appeared as an edge source in this result.
+
+    Only entry-homed types produce entries, so Profile, Layout, FlexiPage, ApprovalProcess,
+    Workflow, DuplicateRule and the rest can never appear as a source however many of them
+    reference the anchor. A field referenced only by a Profile and a Layout reports zero
+    incoming edges — which reads as "nothing depends on it" unless the population is stated."""
+
+    return {
+        "entryHomedTypes": sorted(store.PROFILES),
+        "inCorpus": manifest.get("metadataTypeCounts", {}),
+        "note": (
+            "Only the metadata types listed in entryHomedTypes can appear as an edge source. "
+            "Profile, Layout, FlexiPage, ApprovalProcess, Workflow, DuplicateRule and other "
+            "non-entry-homed types are structurally absent from this result."
+        ),
+    }
+
+
+# What the collector actually writes into `typeFacts.truncatedFamilies` is the set of RELATION
+# KINDS it dropped (`{kind for _, kind, _ in prioritized[max_usage_refs:]}` in
+# force_app_knowledge._parse_access_bundle), not the XML family names. Keying this map on
+# `fieldPermissions`/`objectPermissions` meant no key ever matched, so the relevance filter below
+# was dead: the mandatory truncation gap fired on every query that touched a capped PermissionSet
+# whatever it had asked about, which is noise, and noise is how a mandatory disclosure stops being
+# read. Keys are therefore the emitted kinds; the value is the set of kinds that share the dropped
+# kind's XML family, because the cap cuts a whole family at one priority — a caller asking about
+# `grants-field-read` is affected by a `grants-field-edit` cut just as much.
+FIELD_GRANT_KINDS = {"grants-field-read", "grants-field-edit", "grants-field-permission"}
+OBJECT_GRANT_KINDS = {
+    "grants-object-permission", "grants-object-view-all", "grants-object-modify-all",
+}
+TRUNCATION_FAMILY_KINDS = {
+    "grants-field-read": FIELD_GRANT_KINDS,
+    "grants-field-edit": FIELD_GRANT_KINDS,
+    "grants-object-permission": OBJECT_GRANT_KINDS,
+    "grants-object-view-all": OBJECT_GRANT_KINDS,
+    "grants-object-modify-all": OBJECT_GRANT_KINDS,
+    "grants-record-type": {"grants-record-type"},
+    "grants-class-access": {"grants-class-access"},
+    "grants-custom-permission": {"grants-custom-permission"},
+    "grants-flow-access": {"grants-flow-access"},
+    "grants-user-permission": {"grants-user-permission"},
+}
+
+
+def truncation_gaps(documents: "DocumentStore", kinds: Iterable[str]) -> list[str]:
+    """Warn when a kind in this result belongs to a family some source had capped.
+
+    A missing grant is indistinguishable from an absent grant, and the collector cuts
+    fieldPermissions first — so the security question fails closed in the wrong direction
+    unless the incompleteness is stated.
+
+    A dropped kind this build does not recognise still raises the gap: an unknown truncation is
+    exactly the case where staying quiet is unsafe."""
+
+    truncated = documents.posting_file("reverse").get("truncatedSources", {})
+    if not truncated:
+        return []
+    wanted = set(kinds)
+    gaps = []
+    for dropped, sources in sorted(truncated.items()):
+        family_kinds = TRUNCATION_FAMILY_KINDS.get(dropped)
+        if wanted and family_kinds and not (wanted & family_kinds):
+            continue
+        gaps.append(
+            f"{len(sources)} entr(y/ies) had their {dropped} edge list capped by the collector; "
+            "edges of that family may be missing from this result and absence is not proof of "
+            "absence."
+        )
+    return gaps
+
+
+# R5 for the one staleness window neither mechanism covers. `corpus_fingerprint` stamps entry
+# files and the ledger; `hydrate` re-digests the ENTRY file. Nothing under force-app/ is in
+# either, so appending one line to a Flow makes `knowledge_store.compute_lane` return
+# `approved-drifted` immediately while every retrieval surface goes on serving the entry as
+# approved-current, hydrated, with no gap, until the next `build`. The blast radius is bounded —
+# the citation boundary reads compute_lane, so such an entry cannot be BOUND as a verified
+# entryRef — but `context --identity` is the documented step-1 lookup for all eight Set A
+# consumer surfaces, and it was reporting a lane the store disagreed with.
+#
+# The ANCHOR is re-checked against the working tree on every call (`verify_anchor`). The ROWS are
+# not: §4.2 spent two rounds removing per-file work from the per-query path because it cost
+# ~174 ms per invocation at 15 k, and re-hashing every served row's fragments would spend exactly
+# what that bought. So the window is stated instead of implied — which is what R5 asks for and
+# what silence was not.
+LIFECYCLE_BASIS = "index-fresh"
+ROW_LIFECYCLE_DISCLOSURE = (
+    "Row `lifecycle` labels are index-fresh, not store-fresh: each was computed when this "
+    "generation was built, and an edit under force-app/ moves an entry to `approved-drifted` in "
+    "the store without touching the entry file or the ledger, so nothing invalidates this index. "
+    "Only the anchor is re-checked against the working tree on every call. Re-run "
+    "`python scripts/knowledge_search.py build` for row-level currency."
+)
+
+
+def source_drift_gaps(document: dict[str, Any]) -> list[str]:
+    """Recorded source fragments whose bytes no longer match the working tree.
+
+    This is the store's `approved-drifted` test (`regenerate_fragment_digest`), applied to one
+    document so the cost is bounded and predictable: one hash per recorded fragment, and an entry
+    records one to three. The anchor gets it because the anchor is the row a caller is most
+    likely to act on; the plan's own safety argument puts the check here rather than in the
+    fingerprint — "correctness rests on hydration, not on the fingerprint".
+
+    Named fragments, not a bare boolean: "your entry is stale" that cannot say which file moved
+    sends the reader to re-read the whole component.
+    """
+
+    drifted: list[str] = []
+    for fragment in document.get("sources") or []:
+        path = store.ROOT / fragment["path"]
+        try:
+            actual = "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            drifted.append(f"{fragment['path']} (gone)")
+            continue
+        if actual != fragment["digest"]:
+            drifted.append(fragment["path"])
+    if not drifted:
+        return []
+    return [
+        f"{document['identity']} is served from this index as lane '{document['lane']}', but "
+        f"{len(drifted)} of the source fragment(s) it was approved against changed in the "
+        f"working tree ({', '.join(drifted)}). The store computes 'approved-drifted' for it "
+        "right now — the index is a disposable cache and is wrong about this entry. Re-run "
+        "`python scripts/knowledge_search.py build` before citing it."
+    ]
+
+
+def verify_anchor(document: dict[str, Any], states: list[str]) -> list[str]:
+    """Gaps a caller must see before trusting the anchor's own projection.
+
+    The lane filter and hydration were applied to an artifact's EDGES and never to the artifact
+    itself, so `explain` and `context` served a revoked, drifted or silently tampered entry in
+    full — with its citation block, and its stale entryDigest — while `search` refused the same
+    entry. `context` is the step-1 lookup for eight consumer surfaces, so this was the widest
+    path by which the disposable index could be mistaken for authority.
+
+    Source drift is the third state, and it was invisible to all of them: see
+    `source_drift_gaps`.
+    """
+
+    gaps: list[str] = []
+    if document["lane"] not in states:
+        gaps.append(
+            f"ANCHOR: {document['identity']} is in lane '{document['lane']}', outside the "
+            f"requested {', '.join(states)}. Its facts are shown for inspection and are NOT "
+            "approved-current knowledge — do not cite them as effective."
+        )
+    served, hydration_gaps = hydrate(
+        [{"artifactId": document["identity"], "citation": document["citation"]}]
+    )
+    gaps.extend(f"ANCHOR: {gap}" for gap in hydration_gaps)
+    # Two preconditions, both load-bearing. Hydration first: until the entry file is proved
+    # unchanged the projection's record of its own fragments is itself in question, and "rebuild
+    # the index" already is the answer — a second, weaker finding about a file we just refused is
+    # noise. And `approved-current` only: that is the one lane where the index and the store can
+    # disagree, because `compute_lane` moves nothing else on a source edit. Running it on a draft
+    # would report drift the store does not recognise, against an entry nobody has approved yet.
+    if served and document["lane"] == "approved-current":
+        gaps.extend(f"ANCHOR: {gap}" for gap in source_drift_gaps(document))
+    return gaps
+
+
+def lane_split(rows: list[dict[str, Any]], key: str = "lifecycle") -> tuple[list, list]:
+    """approved-current rows and opted-in-lane rows, never merged into one array."""
+    current = [row for row in rows if row.get(key) == "approved-current"]
+    other = [row for row in rows if row.get(key) != "approved-current"]
+    return current, other
+
+
+def lane_gaps(rows: list[dict[str, Any]], noun: str) -> list[str]:
+    """Two different findings that `lane_split` puts in the same bucket, worded apart.
+
+    A traversal row with `lifecycle: None` is a node with NO entry at all — a bare field token,
+    an EventBus name, a UnitOfWork class nobody has drafted — and `lane_split` files it with the
+    revoked and drifted rows, so the gap called it "served from opted-in lane(s); not
+    approved-current knowledge". That reads as "an entry exists and you opted into its lane",
+    which is the opposite of the truth. `search` already tells the two apart (commit f35b959);
+    this is the same distinction on the traversal surfaces."""
+
+    opted_in = [row for row in rows if row.get("lifecycle") is not None]
+    unresolved = [row for row in rows if row.get("lifecycle") is None]
+    gaps: list[str] = []
+    if opted_in:
+        gaps.append(
+            f"{len(opted_in)} {noun} served from opted-in lane(s); they are not approved-current "
+            "knowledge and must not be cited as effective."
+        )
+    if unresolved:
+        gaps.append(
+            f"{len(unresolved)} {noun} carry `resolved: false`: no entry in this index generation "
+            "projects them, so nothing was re-read for them and they carry no lane at all. That "
+            "is absence of an ENTRY, not absence of the artifact."
+        )
+    return gaps
+
+
+def group_by_kind(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Edge rows keyed by relation kind, as §5 words the composed pack's sections.
+
+    A flat array sorted by kind is not the same answer: an agent composing `incoming` cannot
+    tell a declared `writes-field` row from an inferred `object-token` one without reading every
+    row, and "which automations write this field" becomes a scan the caller has to perform."""
+
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped[row["kind"]].append(row)
+    return {kind: grouped[kind] for kind in sorted(grouped)}
+
+
+def _requested_states(args: argparse.Namespace) -> list[str]:
+    return list(getattr(args, "state", None) or ESTABLISHED_STATES)
+
+
 def run_explain(args: argparse.Namespace) -> dict[str, Any]:
     documents, manifest = load_index()
     document = documents.get(args.identity)
     if document is None:
         raise SearchError(f"no entry projection for {args.identity}")
-    targets = {document["identity"], document["facets"]["fullName"]}
-    incoming = [
-        {"source": other["identity"], "kind": edge["kind"], "assurance": edge["assurance"]}
-        for other in documents.load_many(documents.identities())
-        for edge in other["edges"]
-        if edge["target"] in targets
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    include_heuristic = bool(getattr(args, "include_heuristic", False))
+    top = int(getattr(args, "top", None) or EXPLAIN_TOP_DEFAULT)
+
+    # Incoming edges come from the reverse posting rather than a full-corpus scan, and carry
+    # their lane so a revoked or tampered entry cannot be served as a dependency.
+    rows: list[dict[str, Any]] = []
+    excluded = {"lifecycle": 0, "heuristicEdge": 0}
+    seen_targets = {document["identity"], document["facets"].get("fullName")}
+    for target in sorted(name for name in seen_targets if name):
+        for edge in documents.incoming_edges(target, include_heuristic=True):
+            if edge["assurance"] != relation_kinds.SOURCE_EXACT and not include_heuristic:
+                excluded["heuristicEdge"] += 1
+                continue
+            if edge["source"] not in allowed:
+                excluded["lifecycle"] += 1
+                continue
+            source = documents.get(edge["source"])
+            rows.append({**edge, "lifecycle": source["lane"] if source else None})
+    rows.sort(key=lambda item: (item["source"], item["kind"], item["assurance"]))
+    current, non_current = lane_split(rows)
+    # Each lane is capped on its own: sharing one budget lets a burst of revoked rows push the
+    # approved ones out of the answer, which is the opposite of what the lane split is for.
+    dropped = max(0, len(current) - top) + max(0, len(non_current) - top)
+    current, non_current = current[:top], non_current[:top]
+
+    gaps: list[str] = []
+    if excluded["heuristicEdge"]:
+        gaps.append(
+            f"{excluded['heuristicEdge']} heuristic edge(s) excluded; add --include-heuristic."
+        )
+    if excluded["lifecycle"]:
+        gaps.append(
+            f"{excluded['lifecycle']} edge(s) came from entries outside {', '.join(states)}."
+        )
+    if non_current:
+        gaps.append(
+            f"{len(non_current)} incoming edge(s) are declared by entries in opted-in lane(s); "
+            "they are not approved-current knowledge and must not be cited as effective."
+        )
+    if dropped:
+        # R5: explain was the one traversal surface that neither capped nor disclosed, so a hub
+        # object returned 70 rows and looked complete at any number.
+        gaps.append(
+            f"{dropped} incoming edge(s) beyond --top {top} were not returned; this list is a "
+            "sample, not the population."
+        )
+    gaps.extend(truncation_gaps(documents, {row["kind"] for row in rows}))
+    gaps.extend(verify_anchor(document, states))
+    gaps.append(ROW_LIFECYCLE_DISCLOSURE)
+
+    # `parts` went through none of this: not lane-filtered, not capped. It served revoked
+    # entries as parts of an approved object with no marker at all.
+    parts_all = [
+        row for row in documents.incoming_edges(
+            document["facets"].get("fullName") or document["identity"],
+            kinds={CONTAINMENT_KIND}, include_heuristic=include_heuristic,
+        )
+        if row["source"] in allowed
     ]
+    parts = sorted(parts_all, key=lambda row: row["source"])[:top]
+    if len(parts_all) > len(parts):
+        gaps.append(f"{len(parts_all) - len(parts)} part(s) beyond --top {top} were not returned.")
+
     return {
         "outcome": "EXPLAIN",
         "artifactId": document["identity"],
         "lifecycle": document["lane"],
+        # The anchor's own lane is store-fresh (verify_anchor re-checks the file AND its source
+        # fragments); every row's is not. One field, so a consumer never has to infer which.
+        "lifecycleBasis": {"anchor": "store-fresh", "rows": LIFECYCLE_BASIS},
         "facets": document["facets"],
         "assurance": document["assurance"],
         "coverage": document["coverage"],
         "limitations": document["limitations"],
         "outgoing": document["edges"],
-        "incoming": sorted(incoming, key=lambda item: (item["source"], item["kind"])),
+        "incoming": current,
+        "incomingNonCurrent": non_current,
+        "parts": parts,
+        "sourceCoverage": source_coverage(manifest),
+        "excludedCounts": excluded,
+        "gaps": gaps,
+        "counts": {"documentReads": documents.document_reads, "postingBytesRead": documents.posting_bytes},
         "intentionalErrors": [
             {
                 "elementApiName": error["elementApiName"],
@@ -1186,47 +1773,1063 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def run_impact(args: argparse.Namespace) -> dict[str, Any]:
-    documents, manifest = load_index()
-    depth = max(1, min(args.depth, 2))
-    all_documents = documents.load_many(documents.identities())
-    by_identity = {document["identity"]: document for document in all_documents}
-    frontier = {args.identity}
-    visited: set[str] = set()
-    paths: list[dict[str, Any]] = []
+def traverse(
+    documents: "DocumentStore",
+    anchor: str,
+    *,
+    depth: int,
+    direction: str,
+    allowed: set[str],
+    include_heuristic: bool,
+) -> dict[str, Any]:
+    """Breadth-first walk from one anchor, returning the node set and how each was reached.
+
+    Extracted from run_impact so `impact`, `context` and (next) feature membership share one
+    traversal rather than three. Three implementations of a bounded, lane-filtered,
+    assurance-aware BFS would drift, and the plan's "one traversal vocabulary" rule exists
+    because the first two already had different limit names.
+
+    Returns nodes with `path` (the chain that reached them) and `minAssurance` (the weakest hop
+    in that chain — a chain is only as trustworthy as its weakest link), plus the exclusion
+    counters, which limits were hit, and `observed` — the high-water marks the limits are set
+    against. Nodes with no entry are kept and marked `resolved: False`; dropping an unresolvable
+    hop would make a partial graph look complete.
+
+    `observed` is what makes TRAVERSAL_LIMITS derivable rather than asserted: the benchmark reads
+    the real fanout and node counts off this walk instead of reimplementing it, so the numbers in
+    the table are produced by the code that enforces them.
+    """
+
+    started = time.monotonic()
+    excluded = {"lifecycle": 0, "heuristicEdge": 0}
+    limits_hit: set[str] = set()
+    observed_fanout = 0
+    # `path` carries how a node was reached. A flat hop-2 row names an edge target that is only
+    # accidentally connectable to the anchor, so a reader cannot tell a real chain from a
+    # coincidence of naming.
+    chains: list[dict[str, Any]] = []
+    visited = {anchor}
+    frontier = [{"node": anchor, "path": [], "minAssurance": relation_kinds.SOURCE_EXACT}]
+
     for level in range(depth):
-        next_frontier: set[str] = set()
-        for document in all_documents:
-            for edge in document["edges"]:
-                if edge["target"] in frontier or edge["target"] in {
-                    by_identity[node]["facets"]["fullName"] for node in frontier if node in by_identity
-                }:
-                    if not args.include_heuristic and edge["assurance"] != "source-exact":
-                        continue
-                    if document["identity"] in visited:
-                        continue
-                    paths.append(
-                        {
-                            "source": document["identity"],
-                            "kind": edge["kind"],
-                            "target": edge["target"],
-                            "assurance": edge["assurance"],
-                            "hop": level + 1,
-                            "lifecycle": document["lane"],
-                        }
-                    )
-                    next_frontier.add(document["identity"])
-        visited |= frontier
-        frontier = next_frontier - visited
-        if not frontier:
+        next_frontier: list[dict[str, Any]] = []
+        for item in sorted(frontier, key=lambda entry: entry["node"]):
+            # The clock, checked once per expanded node rather than per hop: the node count is
+            # what bounds this loop, so one `monotonic()` per iteration is O(nodes) and cannot
+            # itself become the cost. A limit expressed only in nodes cannot bound a walk whose
+            # nodes are individually expensive — a hub whose fanout is capped 500 times over
+            # still does 500 posting reads per level — so the terminator nobody could hit was
+            # the one that mattered.
+            if time.monotonic() - started > TRAVERSAL_LIMITS["maxSeconds"]:
+                limits_hit.add("time")
+                break
+            document = documents.get(item["node"])
+            names = {item["node"]}
+            if document:
+                full_name = document["facets"].get("fullName")
+                if full_name:
+                    names.add(str(full_name))
+            hops = []
+            if direction == "incoming":
+                for name in sorted(names):
+                    for edge in documents.incoming_edges(name, include_heuristic=True):
+                        hops.append((edge["source"], edge["kind"], name, edge["assurance"]))
+            else:
+                for edge in (document or {}).get("edges", []):
+                    row = documents.target_row(edge["target"])
+                    resolved = row.get("targetIdentity")
+                    hops.append((resolved or edge["target"], edge["kind"], edge["target"], edge["assurance"]))
+            observed_fanout = max(observed_fanout, len(hops))
+            if len(hops) > TRAVERSAL_LIMITS["maxFanout"]:
+                limits_hit.add("fanout")
+                hops = sorted(hops)[: TRAVERSAL_LIMITS["maxFanout"]]
+            for node, kind, via, assurance in sorted(hops):
+                if assurance != relation_kinds.SOURCE_EXACT and not include_heuristic:
+                    excluded["heuristicEdge"] += 1
+                    continue
+                reached = documents.get(node)
+                if reached is None:
+                    # Forward hop into something with no entry: kept, labelled, never dropped.
+                    lifecycle = None
+                elif node not in allowed:
+                    excluded["lifecycle"] += 1
+                    continue
+                else:
+                    lifecycle = reached["lane"]
+                if node in visited:
+                    continue
+                weakest = (
+                    relation_kinds.SOURCE_DERIVED_HEURISTIC
+                    if relation_kinds.SOURCE_DERIVED_HEURISTIC in (assurance, item["minAssurance"])
+                    else relation_kinds.SOURCE_EXACT
+                )
+                step = {"from": item["node"], "kind": kind, "to": node, "via": via, "assurance": assurance}
+                chains.append({
+                    "node": node, "hop": level + 1, "lifecycle": lifecycle,
+                    "resolved": reached is not None,
+                    "path": item["path"] + [step],
+                    "minAssurance": weakest,
+                })
+                next_frontier.append({"node": node, "path": item["path"] + [step], "minAssurance": weakest})
+                if len(chains) >= TRAVERSAL_LIMITS["maxNodes"]:
+                    limits_hit.add("nodes")
+                    break
+            if limits_hit & {"nodes", "time"}:
+                break
+        visited |= {row["node"] for row in next_frontier}
+        frontier = next_frontier
+        if not frontier or limits_hit & {"nodes", "time"}:
             break
+
+    chains.sort(key=lambda row: (row["hop"], row["node"]))
+    return {
+        "nodes": chains,
+        "excluded": excluded,
+        "limitsHit": limits_hit,
+        # Deliberately free of any elapsed time: `feature-drift` digests what this walk produces,
+        # and a clock reading in the return value would make two identical walks compare unequal.
+        "observed": {"maxFanout": observed_fanout, "nodes": len(chains)},
+    }
+
+
+def run_impact(args: argparse.Namespace) -> dict[str, Any]:
+    """Reverse or forward traversal from an anchor, one chain per reached node.
+
+    Direction matters more than it looks. Reverse answers "what breaks if I change this" —
+    who points at the anchor. Forward answers "how does this work" — what the anchor invokes,
+    then what that invokes. Only reverse existed, so `impact` from an ApexTrigger returned zero
+    edges: nothing references a trigger. The outgoing edges were on the projection the whole
+    time; only the traversal was missing.
+
+    The anchor gets the same scrutiny as the rows, for the reason `verify_anchor` documents: this
+    surface applied the lane filter to reached NODES only, so a revoked or tamper-failing anchor
+    produced a gap list byte-identical to the healthy one, and a served row nobody had re-read.
+    """
+
+    documents, manifest = load_index()
+    limit = DEPTH_LIMITS["impact"]
+    requested = int(getattr(args, "depth", 1) or 1)
+    depth = max(1, min(requested, limit))
+    direction = getattr(args, "direction", None) or "incoming"
+    include_heuristic = bool(getattr(args, "include_heuristic", False))
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    top = int(getattr(args, "top", None) or IMPACT_TOP_DEFAULT)
+
+    # The traversal walks by NAME, so the anchor may be a bare fullName rather than an entry
+    # identity. It is resolved the way `context` resolves it before it can be verified at all.
+    anchor_document = documents.get(args.identity)
+    anchor_candidates: list[str] = []
+    if anchor_document is None:
+        anchor_candidates = documents.identities_for_full_name(args.identity)
+        if len(anchor_candidates) == 1:
+            anchor_document = documents.get(anchor_candidates[0])
+
+    walk = traverse(
+        documents, args.identity, depth=depth, direction=direction,
+        allowed=allowed, include_heuristic=include_heuristic,
+    )
+    chains, excluded, limits_hit = walk["nodes"], walk["excluded"], walk["limitsHit"]
+    served = chains[:top]
+    if len(chains) > top:
+        limits_hit.add("top")
+
+    # Hydration runs over what SURVIVED the cap, so a served row is a re-read row. Nodes that
+    # resolved to no entry stay in the answer marked unhydrated — dropping an unresolvable hop
+    # would make a partial graph look complete — and there is nothing to re-read for them.
+    served_ids = sorted({row["node"] for row in served if documents.get(row["node"])})
+    hydrated, hydration_gaps = hydrate(
+        [
+            {"artifactId": identity, "citation": documents.get(identity)["citation"]}
+            for identity in served_ids
+        ]
+    )
+    verified = {hit["artifactId"] for hit in hydrated}
+    for row in served:
+        row["hydrated"] = row["node"] in verified
+    current, non_current = lane_split(served)
+
+    gaps: list[str] = list(hydration_gaps)
+    if requested > limit:
+        gaps.append(f"depth {requested} was reduced to the {limit}-hop limit for impact.")
+    if excluded["heuristicEdge"]:
+        gaps.append(
+            f"{excluded['heuristicEdge']} heuristic hop(s) excluded. Execution chains are built "
+            "from inferred edges (invokes-class is regex-derived), so answering \"how does this "
+            "work\" needs --include-heuristic; each hop then carries its own assurance."
+        )
+    if excluded["lifecycle"]:
+        gaps.append(f"{excluded['lifecycle']} node(s) outside {', '.join(states)} were excluded.")
+    gaps.extend(lane_gaps(non_current, "node(s)"))
+    if limits_hit:
+        gaps.append(f"traversal limits reached: {', '.join(sorted(limits_hit))}.")
+    gaps.extend(truncation_gaps(documents, {step["kind"] for row in served for step in row["path"]}))
+    if anchor_document is not None:
+        gaps.extend(verify_anchor(anchor_document, states))
+    elif len(anchor_candidates) > 1:
+        gaps.append(
+            f"ANCHOR: {args.identity} is a bare name held by {len(anchor_candidates)} entries "
+            f"({', '.join(sorted(anchor_candidates))}), so none of them was verified. Pass the "
+            "full <MetadataType>:<ns|c>:<FullName> identity."
+        )
+    else:
+        gaps.append(
+            f"ANCHOR: no entry in this index generation projects {args.identity}, so the anchor "
+            "itself is unverified — the walk descends from a name, not from approved knowledge. "
+            "That is absence of an ENTRY, not absence of the artifact."
+        )
+    gaps.append(ROW_LIFECYCLE_DISCLOSURE)
+
     return {
         "outcome": "IMPACT",
         "anchor": args.identity,
-        "depth": depth,
-        "edges": sorted(paths, key=lambda item: (item["hop"], item["source"], item["kind"])),
+        "anchorIdentity": anchor_document["identity"] if anchor_document else None,
+        "anchorLifecycle": anchor_document["lane"] if anchor_document else None,
+        "lifecycleBasis": {
+            # A bare-name anchor has no entry to re-check, so nothing about it is store-fresh
+            # and saying otherwise would be the laundering this disclosure exists to prevent.
+            "anchor": "store-fresh" if anchor_document else "no-entry",
+            "rows": LIFECYCLE_BASIS,
+        },
+        "direction": direction,
+        "depthRequested": requested,
+        "depthLimit": limit,
+        "depthReached": max((row["hop"] for row in served), default=0),
+        "limitsHit": sorted(limits_hit),
+        "nodes": current,
+        "nodesNonCurrent": non_current,
+        "sourceCoverage": source_coverage(manifest),
+        "excludedCounts": excluded,
+        "gaps": gaps,
+        "counts": {
+            "documentReads": documents.document_reads,
+            "postingBytesRead": documents.posting_bytes,
+            "nodesServed": len(served),
+        },
         "note": "Static source-declared edges only; absence of an edge is not proof of absence.",
         "indexGeneration": manifest["generation"],
+    }
+
+
+PERMISSION_KINDS = {
+    kind for kinds in TRUNCATION_FAMILY_KINDS.values() for kind in kinds
+} | {"grants-flow-access", "grants-custom-permission", "grants-user-permission"}
+CONTEXT_TOP_DEFAULT = 25
+
+
+def run_context(args: argparse.Namespace) -> dict[str, Any]:
+    """Everything about one artifact, in one call.
+
+    Answering "tell me about X" took six heterogeneous queries — identity lookup, a facet query
+    per child type, incoming relations, outgoing relations, impact, permission grants — each
+    with its own shape and its own lane semantics, and two of them (ValidationRule, RecordType)
+    had no object facet at all, so the owner had to be read out of a fullName prefix by hand.
+
+    Sections are capped BEFORE hydration, not after. Hydrating first and capping second spent
+    the budget on rows the caller never sees and left the rows they are invited to cite
+    unverified — inverting the point of the budget.
+
+    `chains` is the sixth section §5 names and the reason this call replaces `impact` too: an
+    execution chain used to need a second command. It is a traversal, so it takes `--direction`
+    (§4.1) and, per R6, it is mostly a heuristic product — the default filter drops the hops and
+    says so rather than returning a short chain that reads as a complete one.
+    """
+
+    documents, manifest = load_index()
+    document = documents.get(args.identity)
+    if document is None:
+        candidates = documents.identities_for_full_name(args.identity)
+        if len(candidates) == 1:
+            document = documents.get(candidates[0])
+        elif len(candidates) > 1:
+            return {
+                "outcome": "AMBIGUOUS",
+                "query": args.identity,
+                "candidates": sorted(candidates),
+                "gaps": [
+                    "A bare name that exists in several namespaces is never resolved by ranking; "
+                    "pass the full <MetadataType>:<ns|c>:<FullName> identity."
+                ],
+                "indexGeneration": manifest["generation"],
+            }
+    if document is None:
+        return {
+            "outcome": "NO_ENTRY",
+            "query": args.identity,
+            "entryExists": False,
+            "gaps": [
+                f"No Knowledge Entry projects {args.identity} in this index generation. That is "
+                "absence of an ENTRY, not absence of the artifact — check `entry-coverage` for "
+                "the source-side denominator."
+            ],
+            "indexGeneration": manifest["generation"],
+        }
+
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    include_heuristic = bool(getattr(args, "include_heuristic", False))
+    direction = getattr(args, "direction", None) or "incoming"
+    top = int(getattr(args, "top", None) or CONTEXT_TOP_DEFAULT)
+    names = {document["identity"]}
+    full_name = document["facets"].get("fullName")
+    if full_name:
+        names.add(str(full_name))
+
+    incoming: list[dict[str, Any]] = []
+    excluded = {"lifecycle": 0, "heuristicEdge": 0, "cap": 0}
+    for name in sorted(names):
+        for edge in documents.incoming_edges(name, include_heuristic=True):
+            if edge["assurance"] != relation_kinds.SOURCE_EXACT and not include_heuristic:
+                excluded["heuristicEdge"] += 1
+                continue
+            if edge["source"] not in allowed:
+                excluded["lifecycle"] += 1
+                continue
+            source = documents.get(edge["source"])
+            incoming.append({**edge, "lifecycle": source["lane"] if source else None})
+
+    def bucket(rows: list[dict[str, Any]], kinds: set[str] | None, invert: bool = False):
+        """One section, split into its lanes — never merged, per the rule `search` states.
+
+        A consumer reading `parts` is entitled to treat every row in it as effective approved
+        knowledge; a per-row `lifecycle` label does not earn that back, because the eight consumer
+        surfaces that read this pack compose the array, not the labels. Each lane is capped on its
+        own budget so a burst of revoked rows cannot push approved ones out of the answer."""
+
+        chosen = [
+            row for row in rows
+            if kinds is None or ((row["kind"] in kinds) is not invert)
+        ]
+        chosen.sort(key=lambda row: (row["kind"], row["source"]))
+        current, non_current = lane_split(chosen)
+        excluded["cap"] += max(0, len(current) - top) + max(0, len(non_current) - top)
+        return current[:top], non_current[:top]
+
+    parts, parts_non_current = bucket(incoming, {CONTAINMENT_KIND})
+    permissions, permissions_non_current = bucket(incoming, PERMISSION_KINDS)
+    other_incoming, other_non_current = bucket(
+        incoming, {CONTAINMENT_KIND} | PERMISSION_KINDS, invert=True
+    )
+    served_rows = (
+        parts + parts_non_current + permissions + permissions_non_current
+        + other_incoming + other_non_current
+    )
+
+    # `outgoing` was `document["edges"]` verbatim: neither capped by --top nor filtered by
+    # --include-heuristic, while the exclusion gap counted incoming edges only. A default,
+    # no-flag call therefore served 18 source-derived-heuristic outgoing edges next to a gap
+    # line saying "1 heuristic edge(s) excluded". Nothing was laundered — every row carries its
+    # assurance — but the default filter meant two different things in one answer.
+    outgoing_rows: list[dict[str, Any]] = []
+    for edge in document["edges"]:
+        if edge["assurance"] != relation_kinds.SOURCE_EXACT and not include_heuristic:
+            excluded["heuristicEdge"] += 1
+            continue
+        outgoing_rows.append(dict(edge))
+    outgoing_rows.sort(key=lambda row: (row["kind"], row["target"]))
+    excluded["cap"] += max(0, len(outgoing_rows) - top)
+    outgoing_rows = outgoing_rows[:top]
+
+    # §5's `chains`, and the only section that is a traversal rather than a posting read.
+    walk = traverse(
+        documents, document["identity"], depth=DEPTH_LIMITS["context"], direction=direction,
+        allowed=allowed, include_heuristic=include_heuristic,
+    )
+    chain_excluded, chain_limits = walk["excluded"], set(walk["limitsHit"])
+    chain_rows = walk["nodes"]
+    if len(chain_rows) > top:
+        chain_limits.add("top")
+        chain_rows = chain_rows[:top]
+    chains, chains_non_current = lane_split(chain_rows)
+
+    # Hydration runs over what SURVIVED the cap, so a served row is a verified row. Chain nodes
+    # join the same pass: they are rows the caller is invited to act on exactly like the edge
+    # rows, and a node that resolves to no entry has nothing to re-read.
+    served_sources = {row["source"] for row in served_rows}
+    chain_nodes = {row["node"] for row in chain_rows}
+    hydrated, hydration_gaps = hydrate(
+        [
+            {"artifactId": identity, "citation": documents.get(identity)["citation"]}
+            for identity in sorted(served_sources | chain_nodes)
+            if documents.get(identity)
+        ]
+    )
+    verified = {hit["artifactId"] for hit in hydrated}
+    for row in served_rows:
+        row["hydrated"] = row["source"] in verified
+    for row in chain_rows:
+        row["hydrated"] = row["node"] in verified
+
+    gaps = list(hydration_gaps)
+    if excluded["heuristicEdge"]:
+        gaps.append(
+            f"{excluded['heuristicEdge']} heuristic edge(s) excluded across `incoming` and "
+            "`outgoing`; they are inferred (regex-derived), not declared. Add "
+            "--include-heuristic to see them, in their own assurance lane."
+        )
+    if chain_excluded["heuristicEdge"]:
+        # R6: the mandatory disclosure. 58 of 59 forward-chain edges in the probe corpus are
+        # `invokes-class`, so on the default filter this section is usually empty for the exact
+        # question it exists to answer, and silence would read as "there is no chain".
+        gaps.append(
+            f"{chain_excluded['heuristicEdge']} heuristic hop(s) were dropped from `chains`. "
+            "Execution chains are built from inferred edges (invokes-class is regex-derived), so "
+            "answering \"how does this work\" needs --include-heuristic; each hop then carries "
+            "its own assurance and each chain a path-level minAssurance."
+        )
+    if chain_excluded["lifecycle"]:
+        gaps.append(
+            f"{chain_excluded['lifecycle']} chain hop(s) led to entries outside "
+            f"{', '.join(states)} and were not followed."
+        )
+    gaps.extend(lane_gaps(chains_non_current, "chain(s)"))
+    if chain_limits:
+        gaps.append(f"chain traversal limits reached: {', '.join(sorted(chain_limits))}.")
+    if excluded["lifecycle"]:
+        gaps.append(f"{excluded['lifecycle']} edge(s) came from entries outside {', '.join(states)}.")
+    if excluded["cap"]:
+        gaps.append(f"{excluded['cap']} row(s) beyond --top {top} were not returned.")
+    gaps.append(
+        "`parts` lists artifacts that have a Knowledge Entry in this index generation, not the "
+        "object's declared composition. Run `python scripts/knowledge_store.py entry-coverage` "
+        "for the source-side denominator."
+    )
+    gaps.extend(truncation_gaps(documents, {row["kind"] for row in incoming}))
+    non_current = parts_non_current + permissions_non_current + other_non_current
+    if non_current:
+        gaps.append(
+            f"{len(non_current)} row(s) come from entries in opted-in lane(s) and are served in "
+            "the separate *NonCurrent buckets; each row also carries its own `lifecycle` — they "
+            "are not approved-current knowledge and must not be cited as effective."
+        )
+    gaps.extend(verify_anchor(document, states))
+    gaps.append(ROW_LIFECYCLE_DISCLOSURE)
+
+    return {
+        "outcome": "CONTEXT",
+        "artifactId": document["identity"],
+        "lifecycle": document["lane"],
+        "lifecycleBasis": {"anchor": "store-fresh", "rows": LIFECYCLE_BASIS},
+        "subject": {
+            "facets": document["facets"],
+            "purpose": document.get("purpose"),
+            "assurance": document["assurance"],
+            "coverage": document["coverage"],
+            "limitations": document["limitations"],
+            "citation": document["citation"],
+        },
+        "parts": parts,
+        "partsNonCurrent": parts_non_current,
+        "partsCoverage": {
+            "basis": f"inverted {CONTAINMENT_KIND} edges in this index generation",
+            "entriesByType": manifest.get("metadataTypeCounts", {}),
+        },
+        "permissions": permissions,
+        "permissionsNonCurrent": permissions_non_current,
+        "incoming": group_by_kind(other_incoming),
+        "incomingNonCurrent": group_by_kind(other_non_current),
+        "outgoing": group_by_kind(outgoing_rows),
+        "chains": chains,
+        "chainsNonCurrent": chains_non_current,
+        "chainsMeta": {
+            "direction": direction,
+            "depth": DEPTH_LIMITS["context"],
+            "limitsHit": sorted(chain_limits),
+            "excluded": chain_excluded,
+            "note": (
+                "Each hop carries its own `assurance`; each chain carries `minAssurance`, the "
+                "weakest hop in its path — a chain is only as trustworthy as that hop."
+            ),
+        },
+        "intentionalErrors": document["intentionalErrors"],
+        "sourceCoverage": source_coverage(manifest),
+        "excludedCounts": excluded,
+        "gaps": gaps,
+        "counts": {
+            "documentReads": documents.document_reads,
+            "postingBytesRead": documents.posting_bytes,
+        },
+        "indexGeneration": manifest["generation"],
+    }
+
+
+def load_feature(slug: str) -> tuple[dict[str, Any], str, dict[str, Any]]:
+    path = store.feature_path(slug)
+    if not path.is_file():
+        raise SearchError(f"no feature entry for Feature:{slug}")
+    frontmatter, body = store.split_entry(path.read_text(encoding="utf-8"))
+    latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
+    return frontmatter, body, store.compute_feature_lane(path, latest)
+
+
+BELOW_FLOOR_IDENTITY_CAP = 50
+
+
+def compute_membership(
+    documents: "DocumentStore", boundary: dict[str, Any], *, allowed: set[str],
+    include_heuristic: bool, direction: str = "incoming",
+    depth_limit: int = DEPTH_LIMITS["tree"],
+) -> dict[str, Any]:
+    """Members of a boundary rule, recomputed — never stored.
+
+    Membership is a function of the rule AND of the package, so it cannot live in the approved
+    entry: adding an unrelated artifact would drift every feature that could contain it, and the
+    reviewer would be re-approving a list they never read.
+
+    The assurance floor is what stops the rule being a dragnet. Measured on one real boundary,
+    23 of 29 Apex members joined only through heuristic edges — a class that merely mentions the
+    object name. Below-floor members are still found and counted; they are just not presented as
+    members.
+
+    `direction` is the §4.1 traversal direction, hardcoded to `incoming` until now, and
+    `depth_limit` is the caller's own DEPTH_LIMITS row (R7) rather than `tree`'s for every
+    caller. Both are inputs to the membership digest, so a caller that changes either is asking
+    a different question and its answer is not comparable with the approved baseline."""
+
+    floor = boundary.get("membershipAssuranceFloor") or relation_kinds.SOURCE_EXACT
+    heuristic_ok = floor == relation_kinds.SOURCE_DERIVED_HEURISTIC or include_heuristic
+    depth = max(0, min(int(boundary.get("depth", 1)), depth_limit))
+    excluded_ids = set(boundary.get("exclude") or [])
+
+    nodes: dict[str, dict[str, Any]] = {}
+
+    def offer(identity: str, reason: str, assurance: str, hop: int, path: list) -> None:
+        if identity in excluded_ids or identity in nodes:
+            return
+        nodes[identity] = {
+            "identity": identity, "hop": hop,
+            "membership": {"reason": reason, "assurance": assurance, "hop": hop, "path": path},
+        }
+
+    below_floor: list[dict[str, Any]] = []
+    # Accumulated across every anchor walk, not read off the last one. `limitsHit` from a single
+    # `walk` variable meant a feature truncated on its first anchor reported no limits at all if
+    # its last anchor happened to be small — and `feature-drift` compares digests, so an
+    # undisclosed truncation there is a comparison of two prefixes presented as an answer.
+    limits_hit: set[str] = set()
+    for anchor_name in sorted(set(boundary.get("anchors") or [])):
+        for identity in documents.identities_for_full_name(anchor_name):
+            offer(identity, "anchor", "human-declared", 0, [])
+        walk = traverse(
+            documents, anchor_name, depth=max(depth, 1), direction=direction,
+            allowed=allowed, include_heuristic=True,
+        )
+        limits_hit |= set(walk["limitsHit"])
+        for node in walk["nodes"]:
+            weakest = node["minAssurance"]
+            if weakest != relation_kinds.SOURCE_EXACT and not heuristic_ok:
+                below_floor.append({"identity": node["node"], "assurance": weakest})
+                continue
+            kinds = {step["kind"] for step in node["path"]}
+            reason = CONTAINMENT_KIND if CONTAINMENT_KIND in kinds else "references-member"
+            offer(node["node"], reason, weakest, node["hop"], node["path"])
+
+    for identity in sorted(set(boundary.get("include") or [])):
+        offer(identity, "declared-include", "human-declared", 0, [])
+
+    for node in nodes.values():
+        document = documents.get(node["identity"])
+        node["lifecycle"] = document["lane"] if document else None
+        node["metadataType"] = document["facets"]["metadataType"] if document else None
+        node["resolved"] = document is not None
+
+    members = sorted(nodes.values(), key=lambda item: (item["hop"], item["identity"]))
+    # An artifact can reach the boundary by several paths. Qualifying on ANY of them makes it a
+    # member, so it must not also be reported as excluded — listing it in both places reads as
+    # a contradiction and makes the below-floor count meaningless.
+    member_ids = set(nodes)
+    # De-duplicated BEFORE it is counted. `below_floor` is appended once per anchor walk, so an
+    # artifact reachable from three anchors was counted three times while being named once: the
+    # answer said "9 artifact(s)" and listed 5. In the one section whose whole purpose is telling
+    # the truth about what was inferred, the number and the names must be the same set.
+    below_floor_ids = sorted({item["identity"] for item in below_floor} - member_ids)
+    digest = store.canonical_digest(sorted(item["identity"] for item in members))
+    return {
+        "members": members,
+        "membershipDigest": digest,
+        "belowFloor": {
+            "count": len(below_floor_ids),
+            "assuranceFloor": floor,
+            "identities": below_floor_ids[:BELOW_FLOOR_IDENTITY_CAP],
+            # R5: the list is a sample past this point, and a reader comparing count to names
+            # must be told which of the two is the population.
+            "identitiesTruncated": max(0, len(below_floor_ids) - BELOW_FLOOR_IDENTITY_CAP),
+        },
+        "direction": direction,
+        "limitsHit": sorted(limits_hit),
+        # The member set and therefore the digest cover a deterministic PREFIX of the boundary,
+        # not all of it. Every caller that compares digests has to say so (§6 correction 3).
+        "truncated": bool(limits_hit),
+    }
+
+
+BASELINE_SCHEMA_VERSION = 1
+# The direction the approved membership digest is defined against. `--direction outgoing` asks a
+# different question of the same rule, so its answer is exploratory and never a baseline.
+BASELINE_DIRECTION = "incoming"
+
+
+def baseline_path(slug: str) -> Path:
+    return cache_root() / f"feature-baseline-{slug}.json"
+
+
+def write_membership_baseline(
+    slug: str, record: dict[str, Any] | None, membership: dict[str, Any], *,
+    boundary: dict[str, Any], direction: str, generation: str,
+) -> dict[str, Any]:
+    """Put the approved membership's identity list in the disposable cache, or say why not.
+
+    §6 rules the ledger pins a `membershipDigest` and nothing else — a digest is not a member
+    list and cannot re-approve on drift — so the identities have to live somewhere that is never
+    authority. That is `.cache/`: git-ignored, per-developer, disposable. `feature-drift`
+    therefore answers `changed` from the LEDGER digest, which is portable to a machine that never
+    held the approver's cache (the normal case on this team), and takes only the added/removed
+    DETAIL from here.
+
+    Written only when this run reproduces exactly the digest the approval recorded. A later run
+    on a drifted package would otherwise overwrite the approved membership with the drifted one,
+    and the diff would go quietly empty — the baseline silently erasing the thing it exists to
+    detect. Returns what happened, so `tree` can report it rather than failing silently, which is
+    how this file came to be read in one place and written in none.
+    """
+
+    approved = (record or {}).get("membershipDigest")
+    if record is None or record.get("action") == "revoke":
+        return {"written": False, "reason": "the feature is not approved, so there is nothing to baseline"}
+    if approved is None:
+        return {
+            "written": False,
+            "reason": (
+                "the approval record pins no membershipDigest (feature-approve records null when "
+                "no index is reachable at approval time), so no baseline can be attributed to it"
+            ),
+        }
+    if direction != BASELINE_DIRECTION:
+        return {
+            "written": False,
+            "reason": (
+                f"--direction {direction} asks a different question of the same rule; the approved "
+                f"membership digest is defined on the {BASELINE_DIRECTION} traversal"
+            ),
+        }
+    if membership["truncated"]:
+        return {
+            "written": False,
+            "reason": (
+                f"the traversal hit its limits ({', '.join(membership['limitsHit'])}), so this "
+                "member list is a prefix and naming added/removed artifacts from it would be wrong "
+                "past the cut"
+            ),
+        }
+    if membership["membershipDigest"] != approved:
+        return {
+            "written": False,
+            "reason": (
+                "this index does not reproduce the membership the approval recorded, so writing it "
+                "as the baseline would overwrite the approved membership with the drifted one"
+            ),
+        }
+    path = baseline_path(slug)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    store.atomic_write(path, json.dumps({
+        "version": BASELINE_SCHEMA_VERSION,
+        "feature": store.feature_identity(slug),
+        "membershipDigest": membership["membershipDigest"],
+        "boundaryDigest": store.boundary_digest(boundary),
+        "direction": direction,
+        "members": sorted(node["identity"] for node in membership["members"]),
+        "indexGeneration": generation,
+        "note": (
+            "Disposable cache, never authority. It supplies added/removed DETAIL to "
+            "`feature-drift`; whether membership changed at all is answered from the approval "
+            "ledger's membershipDigest, not from this file."
+        ),
+    }, indent=2, sort_keys=True) + "\n")
+    return {"written": True, "path": store.relative_path(path)}
+
+
+def run_tree(args: argparse.Namespace) -> dict[str, Any]:
+    """The feature's current membership, descending from its anchors.
+
+    Also the only writer of the membership baseline `feature-drift` reads. Before this, that file
+    appeared in the repository exactly once — as a read — so `changed` could only ever be
+    "unknown" while the gap text told the caller to "run `tree` on the approving machine to write
+    a baseline", naming a command that did not do that."""
+
+    documents, manifest = load_index()
+    frontmatter, body, lane = load_feature(args.feature)
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    direction = getattr(args, "direction", None) or BASELINE_DIRECTION
+    result = compute_membership(
+        documents, frontmatter["boundary"], allowed=allowed,
+        include_heuristic=bool(getattr(args, "include_heuristic", False)),
+        direction=direction, depth_limit=DEPTH_LIMITS["tree"],
+    )
+    record = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH)).get(
+        store.feature_identity(args.feature)
+    )
+    baseline = write_membership_baseline(
+        args.feature, record, result, boundary=frontmatter["boundary"], direction=direction,
+        generation=manifest["generation"],
+    )
+    current = [node for node in result["members"] if node["lifecycle"] == "approved-current"]
+    non_current = [node for node in result["members"] if node["lifecycle"] != "approved-current"]
+    gaps = [
+        "Membership is recomputed from the approved boundary rule and is ADVISORY — it is not "
+        "part of what any human approved, and it is not itself citable.",
+    ]
+    if lane["lane"] != "approved-current":
+        gaps.append(
+            f"The feature rule itself is in lane '{lane['lane']}', so this tree descends from a "
+            "boundary nobody has approved."
+        )
+    if result["belowFloor"]["count"]:
+        gaps.append(
+            f"{result['belowFloor']['count']} artifact(s) reach this boundary only through "
+            f"inferred edges, below the '{result['belowFloor']['assuranceFloor']}' floor, and are "
+            "counted rather than listed as members. Pass --include-heuristic to include them."
+        )
+    if result["belowFloor"]["identitiesTruncated"]:
+        gaps.append(
+            f"{result['belowFloor']['identitiesTruncated']} of those artifact(s) are counted but "
+            f"not named: `belowFloor.identities` is capped at {BELOW_FLOOR_IDENTITY_CAP}."
+        )
+    if non_current:
+        gaps.append(
+            f"{len(non_current)} member(s) are not approved-current knowledge."
+        )
+    if result["truncated"]:
+        gaps.append(
+            f"traversal limits reached ({', '.join(result['limitsHit'])}), so this membership is "
+            "a deterministic PREFIX of the boundary, not all of it."
+        )
+    if direction != BASELINE_DIRECTION:
+        gaps.append(
+            f"--direction {direction} walks the rule forwards; the approved membership digest is "
+            f"defined on the {BASELINE_DIRECTION} traversal, so this tree is exploratory and is "
+            "not what `feature-drift` compares against."
+        )
+    if not baseline["written"]:
+        gaps.append(
+            f"No membership baseline was written for `feature-drift` to diff against: "
+            f"{baseline['reason']}. `feature-drift` still answers whether membership changed, "
+            "from the approval ledger's digest; only the added/removed detail needs this file."
+        )
+    return {
+        "outcome": "TREE",
+        "feature": store.feature_identity(args.feature),
+        "name": frontmatter["subject"]["name"],
+        "featureLane": lane["lane"],
+        "boundary": frontmatter["boundary"],
+        "purpose": body.split("## Purpose", 1)[-1].strip() if "## Purpose" in body else None,
+        "members": current,
+        "membersNonCurrent": non_current,
+        "belowFloor": result["belowFloor"],
+        "membershipDigest": result["membershipDigest"],
+        "direction": direction,
+        "truncated": result["truncated"],
+        "limitsHit": result["limitsHit"],
+        "baseline": baseline,
+        "sourceCoverage": source_coverage(manifest),
+        "gaps": gaps,
+        "indexGeneration": manifest["generation"],
+    }
+
+
+MEMBER_DELTA_CAP = 50
+
+
+def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
+    """What membership did since the rule was approved, in two layers.
+
+    `changed` is answered from the APPROVAL LEDGER's `membershipDigest` against the digest
+    recomputed now. That layer is portable: it works on a machine that never held the approver's
+    cache, which on a Windows team with per-developer caches is the normal case. When the ledger
+    pins no digest — `feature-approve` records null rather than refusing, because a governed
+    human approval must not be blocked by a disposable cache — the answer is `"unknown"` with a
+    gap naming why. It is never `false`: reporting "nothing changed" because nothing could be
+    compared is the exact inversion §6 exists to prevent.
+
+    added/removed DETAIL is a second layer and comes from the `.cache/` identity list `tree`
+    writes. Absent or foreign, the detail is withheld and named as a gap while `changed` still
+    answers. A digest cannot say WHICH artifacts moved; a member list must never be in the
+    ledger."""
+
+    documents, manifest = load_index()
+    frontmatter, _body, lane = load_feature(args.feature)
+    identity = store.feature_identity(args.feature)
+    latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
+    record = latest.get(identity)
+    allowed = documents.lane_ids(_requested_states(args))
+    current = compute_membership(
+        documents, frontmatter["boundary"], allowed=allowed,
+        include_heuristic=bool(getattr(args, "include_heuristic", False)),
+        direction=BASELINE_DIRECTION, depth_limit=DEPTH_LIMITS["drift"],
+    )
+    path = baseline_path(args.feature)
+    baseline = None
+    if path.is_file():
+        try:
+            baseline = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            baseline = None
+
+    approved_digest = (record or {}).get("membershipDigest")
+    approved = bool(record) and record.get("action") != "revoke"
+    truncated = current["truncated"]
+    changed: Any = "unknown"
+    changed_within_prefix: Any = None
+    gaps: list[str] = []
+    if not approved:
+        gaps.append(f"{identity} is not approved, so there is no baseline to compare against.")
+    elif approved_digest is None:
+        gaps.append(
+            f"The approval record for {identity} pins no membershipDigest, so whether membership "
+            "changed cannot be answered here — not that it did not change. `feature-approve` "
+            "records null when no index is reachable at approval time. Run `build` and re-approve "
+            "the feature to pin one."
+        )
+    elif truncated:
+        # §6 correction 3. `changed: null` on every large feature makes the command useless
+        # exactly where features matter, and a bare true/false over a prefix is worse: it claims
+        # to have compared artifacts it never reached. The traversal is deterministic, so the
+        # prefix comparison is a real answer as long as it is named as one.
+        changed_within_prefix = approved_digest != current["membershipDigest"]
+        gaps.append(
+            f"The membership traversal hit its limits ({', '.join(current['limitsHit'])}), so both "
+            "digests cover a deterministic PREFIX of the membership rather than all of it. "
+            "`changedWithinTruncatedPrefix` is that prefix's answer; `changed` stays \"unknown\" "
+            "because artifacts past the cut were never compared."
+        )
+    else:
+        changed = approved_digest != current["membershipDigest"]
+
+    added: list[str] | None = None
+    removed: list[str] | None = None
+    if approved and approved_digest is not None:
+        remedy = (
+            f"Run `python scripts/knowledge_search.py tree --feature {args.feature}` on a machine "
+            "whose index reproduces the approved membership; the cache is git-ignored and "
+            "per-developer, so a machine that did not approve normally has no copy."
+        )
+        if baseline is None:
+            gaps.append(
+                "No membership identity list is cached here, so added/removed detail is "
+                f"unavailable — `changed` above still answers from the approval ledger. {remedy}"
+            )
+        elif baseline.get("membershipDigest") != approved_digest:
+            gaps.append(
+                "The cached membership list was written for a different membership than the one "
+                "the approval pinned, so naming added/removed artifacts from it would name the "
+                f"wrong ones; the detail is withheld. {remedy}"
+            )
+        else:
+            was = set(baseline.get("members") or [])
+            now = {node["identity"] for node in current["members"]}
+            added, removed = sorted(now - was), sorted(was - now)
+            if len(added) > MEMBER_DELTA_CAP or len(removed) > MEMBER_DELTA_CAP:
+                # R5: a capped list read as the population would understate the drift.
+                gaps.append(
+                    f"added/removed are capped at {MEMBER_DELTA_CAP} identities each "
+                    f"({len(added)} added, {len(removed)} removed in total)."
+                )
+            added, removed = added[:MEMBER_DELTA_CAP], removed[:MEMBER_DELTA_CAP]
+
+    boundary_moved = bool(record) and record.get("boundaryDigest") != store.boundary_digest(
+        frontmatter["boundary"]
+    )
+    if boundary_moved:
+        gaps.append(
+            "The boundary RULE itself differs from what was approved — that is a re-approval, "
+            "not drift."
+        )
+    return {
+        "outcome": "FEATURE_DRIFT",
+        "feature": identity,
+        "featureLane": lane["lane"],
+        "changed": changed,
+        "changedWithinTruncatedPrefix": changed_within_prefix,
+        "truncated": truncated,
+        "limitsHit": current["limitsHit"],
+        "membershipDigest": current["membershipDigest"],
+        "approvedMembershipDigest": approved_digest,
+        "baselineDigest": (baseline or {}).get("membershipDigest"),
+        "added": added,
+        "removed": removed,
+        "boundaryRuleChanged": boundary_moved,
+        "memberCount": len(current["members"]),
+        "gaps": gaps,
+        "indexGeneration": manifest["generation"],
+    }
+
+
+DOSSIER_ROOT_NAME = "output/feature-dossiers"
+
+
+def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
+    """Render a feature dossier from its APPROVED entry rather than from a crawl.
+
+    The crawl-driven dossier answered "what did a BFS reach from these anchors", which on a
+    20-object package meant 13 objects at depth 2 and no way to say which of them anyone
+    considered part of the feature. This one renders what a human approved — the boundary rule
+    and the description — plus the membership that rule currently produces, with every member
+    carrying why it is a member and how much that reason can be trusted.
+
+    The file is a generated view. It is never Knowledge and never citable: a reader who wants a
+    citable reference is pointed at the executor receipt, not at this table."""
+
+    documents, manifest = load_index()
+    frontmatter, body, lane = load_feature(args.feature)
+    boundary = frontmatter["boundary"]
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
+    membership = compute_membership(
+        documents, boundary, allowed=allowed,
+        include_heuristic=bool(getattr(args, "include_heuristic", False)),
+        direction=BASELINE_DIRECTION, depth_limit=DEPTH_LIMITS["tree"],
+    )
+    purpose = body.split("## Purpose", 1)[-1].strip() if "## Purpose" in body else ""
+
+    def described(identity: str) -> tuple[str, str]:
+        """Two absences, two remedies — the same pair `force_app_knowledge.render_dossier` names.
+
+        Both dossiers distinguish "no entry" from "entry with no Purpose" correctly, but this one
+        named no remedy at all, so the two views of the same absence disagreed about what the
+        reader should do next. The type gate is the store's own profile table for the same reason
+        P5 reads it: telling someone to run `entry-draft` for a Layout names a command that
+        refuses."""
+
+        document = documents.get(identity)
+        if document is None:
+            metadata_type = identity.split(":", 1)[0]
+            remedy = (
+                "run `entry-draft` then `entry-describe`"
+                if metadata_type in store.PROFILES
+                else "this type has no entry home; describe it in a claim"
+            )
+            return (f"_no Knowledge Entry in this index generation — {remedy}_", "absent")
+        text = (document.get("purpose") or "").replace("\n", " ").strip()
+        if text.startswith("<AGENT_"):
+            # The draft sentinel is an absence, not a description — P5's `entry_descriptions`
+            # says so in the same words. This one printed `<AGENT_DESCRIPTION>` into the table as
+            # if it were prose and counted it as described, so an entry nobody has written up
+            # read as one that had been.
+            text = ""
+        if not text:
+            return (
+                f"_the {document['lane']} Knowledge Entry has no Purpose — run `entry-describe`_",
+                document["lane"],
+            )
+        return (text, document["lane"])
+
+    by_type: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for node in membership["members"]:
+        by_type[node.get("metadataType") or "unresolved"].append(node)
+
+    described_count = sum(
+        1 for node in membership["members"] if described(node["identity"])[1] not in ("absent",)
+        and not described(node["identity"])[0].startswith("_")
+    )
+    lines = [
+        f"# Feature — {frontmatter['subject']['name']}",
+        "",
+        f"`{store.feature_identity(args.feature)}` · boundary rule lane: **{lane['lane']}**",
+        "",
+        "**This file is a generated view, not Knowledge.** It is never citable. What a human "
+        "approved is the boundary rule and the description below; the member list is recomputed "
+        "from that rule and is advisory. To cite a member, take the receipt from "
+        "`python scripts/knowledge_store.py entry-status --identity <Identity>`.",
+        "",
+        "## What this feature is",
+        "",
+        purpose or "_no description_",
+        "",
+        "## Approved boundary rule",
+        "",
+        "A feature boundary is a decision, not a radius: each traversal hop expands both along an "
+        "object's own lookups and along every field pointing at it, so depth alone cannot express "
+        "a feature.",
+        "",
+        "| Element | Value |",
+        "|---|---|",
+        f"| Anchors | {', '.join(f'`{item}`' for item in boundary['anchors']) or '—'} |",
+        f"| Hubs (kept as targets, never expanded) | {', '.join(f'`{item}`' for item in boundary['hubs']) or '—'} |",
+        f"| Depth | {boundary['depth']} |",
+        f"| Explicitly included | {', '.join(f'`{item}`' for item in boundary['include']) or '—'} |",
+        f"| Explicitly excluded | {', '.join(f'`{item}`' for item in boundary['exclude']) or '—'} |",
+        f"| Membership assurance floor | `{boundary['membershipAssuranceFloor']}` |",
+        "",
+        "## Members",
+        "",
+        f"{len(membership['members'])} artifact(s) meet the rule at or above the assurance floor; "
+        f"{described_count} carry a description.",
+        "",
+    ]
+    for metadata_type in sorted(by_type):
+        lines += [f"### {metadata_type}", "",
+                  "| Artifact | Why it belongs | Assurance | Lane | Description |",
+                  "|---|---|---|---|---|"]
+        for node in sorted(by_type[metadata_type], key=lambda item: item["identity"]):
+            text, node_lane = described(node["identity"])
+            member = node["membership"]
+            name = node["identity"].split(":")[-1]
+            escaped = text.replace("|", "\\|")
+            lines.append(
+                f"| `{name}` | {member['reason']} (hop {member['hop']}) | {member['assurance']} "
+                f"| {node_lane} | {escaped} |"
+            )
+        lines.append("")
+
+    below = membership["belowFloor"]
+    lines += ["## Reached only by inference", ""]
+    if below["count"]:
+        lines += [
+            f"{below['count']} artifact(s) reach this boundary only through regex-derived edges, "
+            f"below the `{below['assuranceFloor']}` floor. They are listed so their absence from "
+            "the member table is visible, not silent — an artifact that merely mentions an "
+            "object's name in source is not thereby part of the feature.",
+            "",
+        ] + [f"- `{identity}`" for identity in below["identities"]] + [""]
+        if below["identitiesTruncated"]:
+            lines += [
+                f"{below['identitiesTruncated']} further artifact(s) are counted above but not "
+                f"named here: the list is capped at {BELOW_FLOOR_IDENTITY_CAP}.",
+                "",
+            ]
+    else:
+        lines += ["_None: every member reaches the boundary through a declared edge._", ""]
+
+    lines += [
+        "## What this view cannot tell you",
+        "",
+        "- Membership lists artifacts that have a Knowledge Entry in this index generation, not "
+        "the feature's true composition. Run `python scripts/knowledge_store.py entry-coverage` "
+        "for the source-side denominator.",
+        f"- Only these metadata types can appear at all: "
+        f"{', '.join(f'`{item}`' for item in sorted(store.PROFILES))}. Profile, Layout, FlexiPage, "
+        "ApprovalProcess, Workflow and other unprofiled types are structurally absent.",
+        "- Nothing here reflects the deployed org, only the repository source.",
+        "",
+        f"Index generation `{manifest['generation'][7:23]}`.",
+    ]
+
+    path = store.ROOT / DOSSIER_ROOT_NAME / f"{args.feature}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    store.atomic_write(path, "\n".join(lines) + "\n")
+    return {
+        "outcome": "DOSSIER",
+        "feature": store.feature_identity(args.feature),
+        "featureLane": lane["lane"],
+        "path": store.relative_path(path),
+        "members": len(membership["members"]),
+        "described": described_count,
+        "belowFloor": below["count"],
+        "gaps": (
+            []
+            if lane["lane"] == "approved-current"
+            else [f"rendered from a boundary rule in lane '{lane['lane']}', which nobody approved"]
+        ),
     }
 
 
@@ -1247,6 +2850,20 @@ def run_capabilities(args: argparse.Namespace) -> dict[str, Any]:
         "defaultStates": list(ESTABLISHED_STATES),
         "analyzerVersion": ANALYZER_VERSION,
         "supportedProfiles": sorted(PROFILE_FACETS),
+        # --relation-kind accepted any string and capabilities listed none, so the only way to
+        # learn the vocabulary was to guess or read the collector.
+        "relationKinds": sorted(relation_kinds.ALL_REF_KINDS),
+        "heuristicRelationKinds": sorted(relation_kinds.HEURISTIC_REF_KINDS),
+        "containmentKind": CONTAINMENT_KIND,
+        "directions": ["incoming", "outgoing"],
+        "depthLimits": dict(DEPTH_LIMITS),
+        "assuranceLanes": {
+            relation_kinds.SOURCE_EXACT: "declared in source; served by default",
+            relation_kinds.SOURCE_DERIVED_HEURISTIC: (
+                "inferred (regex-derived); excluded unless --include-heuristic. Execution chains "
+                "are built from these, so answering \"how does this work\" requires the flag."
+            ),
+        },
     }
 
 
@@ -1280,13 +2897,61 @@ def build_parser() -> argparse.ArgumentParser:
 
     explain = commands.add_parser("explain", help="one artifact with usage and reverse usage")
     explain.add_argument("--identity", required=True)
+    explain.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    explain.add_argument("--top", type=int, default=EXPLAIN_TOP_DEFAULT)
+    explain.add_argument("--include-heuristic", action="store_true")
     explain.set_defaults(func=run_explain)
 
-    impact = commands.add_parser("impact", help="bounded reverse-dependency traversal")
+    impact = commands.add_parser("impact", help="bounded dependency traversal, either direction")
     impact.add_argument("--identity", required=True)
     impact.add_argument("--depth", type=int, default=1)
+    impact.add_argument(
+        "--direction", default="incoming", choices=["incoming", "outgoing"],
+        help="incoming: who points at the anchor (what breaks if I change it). "
+        "outgoing: what the anchor reaches (how it works).",
+    )
+    impact.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    impact.add_argument("--top", type=int, default=IMPACT_TOP_DEFAULT)
     impact.add_argument("--include-heuristic", action="store_true")
     impact.set_defaults(func=run_impact)
+
+    context = commands.add_parser(
+        "context", help="one composed pack for an artifact: parts, usage, permissions, coverage"
+    )
+    context.add_argument("--identity", required=True)
+    context.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    context.add_argument("--top", type=int, default=CONTEXT_TOP_DEFAULT)
+    context.add_argument("--include-heuristic", action="store_true")
+    context.add_argument(
+        "--direction", default=BASELINE_DIRECTION, choices=["incoming", "outgoing"],
+        help="direction of the `chains` traversal only; the edge sections always report both.",
+    )
+    context.set_defaults(func=run_context)
+
+    tree = commands.add_parser("tree", help="current membership of an approved feature boundary")
+    tree.add_argument("--feature", required=True)
+    tree.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    tree.add_argument("--include-heuristic", action="store_true")
+    tree.add_argument(
+        "--direction", default=BASELINE_DIRECTION, choices=["incoming", "outgoing"],
+        help="outgoing walks the rule forwards; exploratory only — the approved membership "
+        "digest is defined on the incoming traversal, so it writes no baseline.",
+    )
+    tree.set_defaults(func=run_tree)
+
+    drift = commands.add_parser("feature-drift", help="what membership did since approval")
+    drift.add_argument("--feature", required=True)
+    drift.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    drift.add_argument("--include-heuristic", action="store_true")
+    drift.set_defaults(func=run_feature_drift)
+
+    dossier = commands.add_parser(
+        "feature-dossier", help="render a feature dossier from its approved boundary rule"
+    )
+    dossier.add_argument("--feature", required=True)
+    dossier.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
+    dossier.add_argument("--include-heuristic", action="store_true")
+    dossier.set_defaults(func=run_feature_dossier)
 
     capabilities = commands.add_parser("capabilities", help="valid facets, operators, modes")
     capabilities.add_argument("--metadata-type", default=None)
