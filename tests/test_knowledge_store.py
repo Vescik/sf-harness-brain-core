@@ -996,6 +996,63 @@ class AgentDescriptionTests(KnowledgeStoreTests):
         self.assertEqual(before["intentionalErrors"], after["intentionalErrors"])
         self.assertIn("Rewritten description", body)
 
+    def describe_with(self, identity: str, text: str, **kwargs):
+        path = self.temp / "description.md"
+        path.write_text(text, encoding="utf-8")
+        namespace = argparse.Namespace(
+            identity=identity, purpose_file=str(path),
+            limitation=kwargs.get("limitation"),
+            clear_limitations=kwargs.get("clear_limitations", False),
+        )
+        return store.command_entry_describe(namespace)
+
+    def test_limitations_can_be_written_and_are_digest_bound(self) -> None:
+        """`limitations` is required, digest-bound and printed to the approver — and had no writer.
+
+        Measured on the first real store: `[]` on all 80 entries, while 26 of them carried an
+        explicit source-limit caveat in their prose, where no consumer reads it. `entry-draft`
+        hardcodes the field and no subcommand could set it."""
+
+        drafted = self.draft()
+        before, body = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual([], before["limitations"])
+        digest_before = store.facts_digest(before)
+
+        result = self.describe_with(
+            drafted["identity"], "States what the component does.",
+            limitation=["Value set is not in this repository.", "Callers are not visible here."],
+        )
+        after, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(
+            ["Callers are not visible here.", "Value set is not in this repository."],
+            after["limitations"], "limitations are stored sorted and de-duplicated",
+        )
+        self.assertEqual(after["limitations"], result["limitations"])
+        self.assertNotEqual(
+            digest_before, store.facts_digest(after),
+            "a limitation that does not move factsDigest is not governed content",
+        )
+        self.assertEqual(before["typeFacts"], after["typeFacts"], "extracted facts were touched")
+
+    def test_limitations_are_replaced_not_appended_and_can_be_cleared(self) -> None:
+        # A limitation set is a statement about THIS text. Appending would silently carry a caveat
+        # that the new description already answered.
+        drafted = self.draft()
+        self.describe_with(drafted["identity"], "First take.", limitation=["Stale caveat."])
+        self.describe_with(drafted["identity"], "Second take.", limitation=["Current caveat."])
+        after, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(["Current caveat."], after["limitations"])
+
+        self.describe_with(drafted["identity"], "Third take.", clear_limitations=True)
+        cleared, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual([], cleared["limitations"])
+
+        with self.assertRaises(store.StoreError):
+            self.describe_with(
+                drafted["identity"], "Fourth take.",
+                limitation=["Something."], clear_limitations=True,
+            )
+
 
 class DraftLaneHonestyTests(KnowledgeStoreTests):
     """Unfinished work and broken work must not look the same."""

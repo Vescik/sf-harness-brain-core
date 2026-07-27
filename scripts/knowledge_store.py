@@ -1031,6 +1031,13 @@ def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
     is the one part a human must actually read. Structured facts are never touched here: this
     command replaces only the attested body, recomputes the digests, and returns the entry to
     `draft` — an approval bound to the previous text cannot survive new text (contract §5.5).
+
+    `--limitation` writes the one required, digest-bound field that had no write path at all.
+    `limitations` is inside `factsDigest`, printed to the approver, and read by six projection
+    sites — and it was `[]` on every entry of the first real store, because `entry-draft`
+    hardcodes it and no subcommand could set it. The caveats existed; they were stranded in
+    prose, where no consumer reads them. It rides this command because the invalidation
+    semantics a limitation needs are exactly the ones a new description already has.
     """
 
     assert_no_reparse_points()
@@ -1050,6 +1057,15 @@ def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
             "component does, it is not a transcript of its source"
         )
     body = "## Purpose\n\n" + description
+    limitations = [str(item).strip() for item in (getattr(args, "limitation", None) or []) if str(item).strip()]
+    if limitations and getattr(args, "clear_limitations", False):
+        raise StoreError("--clear-limitations cannot be combined with --limitation")
+    if limitations:
+        # Replace rather than append: a limitation set is a statement about THIS text, and an
+        # append-only field would silently carry a caveat that the new description answered.
+        frontmatter["limitations"] = sorted(dict.fromkeys(limitations))
+    elif getattr(args, "clear_limitations", False):
+        frontmatter["limitations"] = []
     problems = validate_entry(frontmatter, body)
     if problems:
         raise StoreError("description rejected: " + "; ".join(problems))
@@ -1066,6 +1082,7 @@ def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "DESCRIBED",
         "identity": args.identity,
+        "limitations": frontmatter.get("limitations", []),
         "path": relative_path(path),
         "reviewedContentDigest": frontmatter["lifecycle"]["contentDigest"],
         "previousApprovalInvalidated": was_approved,
@@ -1407,6 +1424,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     describe.add_argument("--identity", required=True)
     describe.add_argument("--purpose-file", required=True)
+    describe.add_argument("--limitation", action="append", default=None)
+    describe.add_argument("--clear-limitations", action="store_true")
     describe.set_defaults(func=command_entry_describe)
 
     review = commands.add_parser(
