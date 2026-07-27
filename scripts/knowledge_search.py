@@ -1196,6 +1196,10 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         excluded["facet"] += len(candidate_ids - by_facet)
         candidate_ids &= by_facet
     lexical_truncated = 0
+    # Hoisted: whether the query matched ANYTHING lexically is the difference between "no such
+    # thing" and "matched, then filtered out by your lane". Reporting the second as the first is
+    # how `search --text mpsaCard` came back "No lexical match" for an entry sitting in the index.
+    lexical_token_ids: set[str] = set()
     if args.text and not other_facets:
         # Seed candidates from the RAREST query token and intersect outwards. A common term
         # ("queue") matches the whole corpus, so a naive union would hydrate everything and
@@ -1210,6 +1214,7 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
             token_ids = posting if not token_ids else (token_ids | posting)
             if len(token_ids) >= LEXICAL_CANDIDATE_CAP:
                 break
+        lexical_token_ids = token_ids
         candidate_ids &= token_ids
         if len(candidate_ids) > LEXICAL_CANDIDATE_CAP:
             # Never silently truncate: the cap is reported alongside the results.
@@ -1365,19 +1370,51 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
                 "lower-signal matches were not ranked. Narrow with a facet or a rarer term."
             )
         if not results:
-            gaps.append("No lexical match; try --state draft, relax a facet, or check the analyzer aliases.")
+            if lexical_token_ids:
+                gaps.append(
+                    f"{len(lexical_token_ids)} entr(ies) matched this query lexically and were then "
+                    "excluded — see `excludedCounts` for by what. This is NOT an absence of matching "
+                    "knowledge; add --state draft or relax a facet to see them."
+                )
+            else:
+                gaps.append(
+                    "No lexical match; try --state draft, relax a facet, or check the analyzer aliases."
+                )
     else:
         results = [hit_of(document, 0.0, [], "structured") for document in candidates]
         results.sort(key=lambda hit: hit["artifactId"])
 
-    draft_lane = (
-        [
-            hit_of(document, 0.0, [], "draft-lane")
-            for document in documents.load_many(sorted(documents.lane_ids(["draft"]))[:10])
-        ]
-        if "draft" not in states
-        else []
-    )
+    # Ranked by the query, not by the alphabet. This list was `sorted(lane_ids(["draft"]))[:10]`
+    # — byte-identical for an exact API name and for gibberish, printed where results go, on a
+    # store where every entry is draft and so every first query lands here.
+    draft_lane: list[dict[str, Any]] = []
+    draft_basis = "none"
+    if "draft" not in states:
+        draft_ids = documents.lane_ids(["draft"])
+        if args.text and lexical_token_ids:
+            draft_ids = draft_ids & lexical_token_ids
+        draft_documents = documents.load_many(sorted(draft_ids)[:LEXICAL_CANDIDATE_CAP])
+        if args.text and draft_documents:
+            draft_scored = bm25f(documents, draft_documents, analyze(args.text))
+            ranked = sorted(
+                (
+                    (draft_scored[document["identity"]][0], document["identity"], document,
+                     draft_scored[document["identity"]][1])
+                    for document in draft_documents
+                    if document["identity"] in draft_scored
+                ),
+                key=lambda row: (-row[0], row[1]),
+            )
+            draft_lane = [
+                hit_of(document, score, matched, "draft-lane")
+                for score, _identity, document, matched in ranked
+            ][:10]
+            draft_basis = "query-ranked"
+        else:
+            draft_lane = [
+                hit_of(document, 0.0, [], "draft-lane") for document in draft_documents[:10]
+            ]
+            draft_basis = "alphabetical, no text query"
     relaxations = []
     if not results:
         if args.metadata_type:
@@ -1441,6 +1478,7 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         "approvedResults": current,
         "nonCurrentResults": non_current,
         "draftCandidates": [hit["artifactId"] for hit in draft_lane][:10],
+        "draftCandidatesBasis": draft_basis,
         "excludedCounts": dict(sorted(excluded.items())),
         "facetCounts": {
             "metadataType": manifest["metadataTypeCounts"],

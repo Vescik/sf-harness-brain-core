@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-ANALYZER_VERSION = "1.0.0"
+ANALYZER_VERSION = "1.1.0"
 
 CAMEL_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 SF_SUFFIX = re.compile(r"__(c|r|e|mdt|b|x|kav|s|hd|share|history)$", re.IGNORECASE)
@@ -66,7 +66,13 @@ def analyze(value: str) -> list[str]:
             if suffix:
                 tokens.append(suffix.group(0))
                 segment = SF_SUFFIX.sub("", segment)
-            for word in re.split(r"[_\s]+", segment):
+            # The hyphen splits here and NOT in SEPARATORS: the compound is already indexed
+            # whole as `symbol` above, so splitting here adds the parts without destroying it.
+            # Without this, `semicolon` and `delimited` both missed a description reading
+            # "Semicolon-delimited list of trigger handler names", while the two phrasings of
+            # "record level error" returned different features. Salesforce prose is saturated
+            # with these: master-detail, before-save, record-level, roll-up, read-only.
+            for word in re.split(r"[-_\s]+", segment):
                 if not word:
                     continue
                 tokens.append(word)

@@ -311,6 +311,61 @@ class KnowledgeSearchTests(EntryFixtureMixin, unittest.TestCase):
         self.assertIn("harness", tokens)
         self.assertNotEqual(["c"], sorted(set(tokens)))
 
+    def test_hyphenated_compounds_are_reachable_by_either_half(self) -> None:
+        """The compound stayed atomic, so half of every hyphenated phrase was unreachable.
+
+        Measured on the first real store: `semicolon` and `delimited` both returned NO_MATCH
+        against a description reading "Semicolon-delimited list of trigger handler names", while
+        `semicolon-delimited` returned it. Worse, the two phrasings of the same question returned
+        different features. Salesforce prose is saturated with these — master-detail, before-save,
+        record-level, roll-up, read-only."""
+
+        tokens = search.analyze("Semicolon-delimited list")
+        for expected in ("semicolon-delimited", "semicolon", "delimited"):
+            self.assertIn(expected, tokens, f"{expected!r} is not reachable")
+        # The Salesforce suffix handling the analyzer exists to protect must be untouched.
+        symbols = search.analyze("HarnessAlphaCase__c.Status__c")
+        self.assertIn("harnessalphacase__c.status__c", symbols)
+        self.assertIn("__c", symbols)
+
+    def test_a_lane_filtered_match_is_not_reported_as_no_match(self) -> None:
+        """`search --text mpsaCard` said "No lexical match" for an entry sitting in the index.
+
+        It matched and was then lane-excluded, which is a completely different answer — and the
+        one the store exists to give honestly. On a store where nothing is approved yet this is
+        100% of first contact."""
+
+        self.seed()
+        drafted = self.draft("Flow", "HarnessBetaDispatch", "Redraft, not approved.")
+        search.build_index()
+        result = self.search(text="redraft")
+        self.assertEqual([], result["approvedResults"])
+        self.assertTrue(
+            any("matched this query lexically and were then excluded" in gap for gap in result["gaps"]),
+            f"a lane-filtered match still reports absence: {result['gaps']}",
+        )
+        self.assertFalse(
+            any(gap.startswith("No lexical match") for gap in result["gaps"]),
+            "the false 'no match' gap is still emitted alongside the true one",
+        )
+        self.assertIn(drafted["identity"], result["draftCandidates"])
+        self.assertEqual("query-ranked", result["draftCandidatesBasis"])
+
+    def test_draft_candidates_answer_the_query_rather_than_the_alphabet(self) -> None:
+        # It was `sorted(lane_ids(["draft"]))[:10]` — byte-identical for a real API name and for
+        # gibberish, printed where results go. A fixed list that looks like results is worse than
+        # an empty one: it reads as "these are the nearest things we know", and they are not.
+        self.seed()
+        self.draft("Flow", "HarnessBetaDispatch", "Redraft, not approved.")
+        search.build_index()
+        real = self.search(text="redraft")
+        nonsense = self.search(text="zzzz xyzzy nonsense")
+        self.assertTrue(real["draftCandidates"], "a matching draft was not offered")
+        self.assertEqual(
+            [], nonsense["draftCandidates"],
+            "gibberish still returns a candidate list, so the list is not the query's answer",
+        )
+
     def test_g06_candidate_keywords_do_not_rank_in_the_established_lane(self) -> None:
         self.seed()
         result = self.search(text="dispatch")
