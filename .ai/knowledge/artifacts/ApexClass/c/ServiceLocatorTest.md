@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:cc1f1b0ebfdb7d5c83f207552c536bb97af960e8e9f4656b44632fac9648bfc0
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:cc1f1b0ebfdb7d5c83f207552c536bb97af960e8e9f4656b44632fac9648bfc0
-  state: draft
+  state: approved
 limitations:
 - This test declares its own interface and implementation inline, so it cannot establish
   that the metadata-driven binding lookup, the namespace fallback, or the unloadable-class

@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:fda8fddb46ead273654123bf0e76b1af93ada68b91016468d8b448eb7703f662
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:fda8fddb46ead273654123bf0e76b1af93ada68b91016468d8b448eb7703f662
-  state: draft
+  state: approved
 limitations:
 - No Apex, Flow, validation rule or layout in the repository branches on this value,
   so nothing here shows the classification driving any downstream behaviour.

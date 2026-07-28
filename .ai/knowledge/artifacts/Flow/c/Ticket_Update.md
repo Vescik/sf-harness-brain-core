@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:9d5d8b85ab95d24044549260ab589ba47087ac289f95cf935fd0e9e31de1a35f
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:9d5d8b85ab95d24044549260ab589ba47087ac289f95cf935fd0e9e31de1a35f
-  state: draft
+  state: approved
 limitations:
 - What this flow would actually write cannot be read from the source, since the update
   element names a field literally called null__NotFound and the intended behaviour

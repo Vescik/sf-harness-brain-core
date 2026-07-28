@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:0cc296ebc82031e31dc35089a7f6f235bcf496e1e442161c31565f4ce1d7c0b4
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:0cc296ebc82031e31dc35089a7f6f235bcf496e1e442161c31565f4ce1d7c0b4
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository reads or writes this lookup, so what attaching a Category
   to a Ticket is meant to mean is not shown by the source.

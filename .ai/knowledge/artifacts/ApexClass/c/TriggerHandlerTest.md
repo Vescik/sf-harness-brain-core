@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:70332be0ba6ad6cf20a9e35a2c623ea63acf569352af9dfe6a901aa196e82957
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:70332be0ba6ad6cf20a9e35a2c623ea63acf569352af9dfe6a901aa196e82957
-  state: draft
+  state: approved
 limitations:
 - The FeatureFlags and TriggerBypass bypass paths that validateRun also consults are
   not exercised by this test, so their effect on run cannot be established from it.

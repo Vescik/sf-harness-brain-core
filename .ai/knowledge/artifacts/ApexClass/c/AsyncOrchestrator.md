@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:7ddf6c09584438f03c0052ad17990580404687f84b4ceb1037b66e3895a496ae
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:7ddf6c09584438f03c0052ad17990580404687f84b4ceb1037b66e3895a496ae
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository enqueues through AsyncOrchestrator, so the scheduling
   conflict detection, billing generation and sync consumers its header names are not

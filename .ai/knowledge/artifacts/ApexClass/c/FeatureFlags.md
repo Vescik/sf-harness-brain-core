@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:600dc67749c4379848501d43d9f30f1b3b74f3702368d2a2e3fa3dd6ee81e82e
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:600dc67749c4379848501d43d9f30f1b3b74f3702368d2a2e3fa3dd6ee81e82e
-  state: draft
+  state: approved
 limitations:
 - Which flags are switched on is held in FeatureFlag__mdt records rather than in this
   class, so which behaviours the gate currently permits cannot be read from this source.

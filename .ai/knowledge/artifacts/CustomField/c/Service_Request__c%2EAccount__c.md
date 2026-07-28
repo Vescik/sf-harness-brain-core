@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:c5979ed8579cead9ca93fe915a7d47f1fe091b3c60909e7fa80878ca300616a2
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:c5979ed8579cead9ca93fe915a7d47f1fe091b3c60909e7fa80878ca300616a2
-  state: draft
+  state: approved
 limitations:
 - The only consumer visible here is a Lightning record page, so anything outside this
   repository that populates or reads the link cannot be seen from source.

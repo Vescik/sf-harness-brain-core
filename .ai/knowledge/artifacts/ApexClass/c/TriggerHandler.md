@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:3c3f408bd5c0ec0bc776abec5484b6fb9a6aba00a3471ae835d14d7372ec0ecd
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:3c3f408bd5c0ec0bc776abec5484b6fb9a6aba00a3471ae835d14d7372ec0ecd
-  state: draft
+  state: approved
 limitations:
 - This repository contains no triggers and no handler subclass other than the test
   one, so the live consumers this framework dispatches for are not visible in source.

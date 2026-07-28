@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:578ae49b835da3bb96599ac5d5ff535961e02aeae492278af082b3566e1411c5
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:578ae49b835da3bb96599ac5d5ff535961e02aeae492278af082b3566e1411c5
-  state: draft
+  state: approved
 limitations:
 - The only reader in this repository is a flow stored as an invalid draft that never
   writes the value back, so what this field drives at runtime cannot be established

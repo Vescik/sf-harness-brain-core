@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:7e4508c00a1f566c6fb2e2d4e06a7b100b88139ac43cd0170a78b5b22667ff2f
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:7e4508c00a1f566c6fb2e2d4e06a7b100b88139ac43cd0170a78b5b22667ff2f
-  state: draft
+  state: approved
 limitations:
 - The system-mode counterpart method the class header describes is not defined here,
   so how the package's rare system-mode reads are performed cannot be read from this

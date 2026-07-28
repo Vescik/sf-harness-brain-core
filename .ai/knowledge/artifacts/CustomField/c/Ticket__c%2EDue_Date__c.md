@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:f3b0ff3863040810f4575be0b4cb8ef63d2892ed717a81389c6c7deee825ebee
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:f3b0ff3863040810f4575be0b4cb8ef63d2892ed717a81389c6c7deee825ebee
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository derives the value and no source here connects the Category
   SLA Hours field to it, so how a due date is actually arrived at is not visible from

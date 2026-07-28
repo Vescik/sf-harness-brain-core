@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:63bab92cb3f055fea10c80b12fc3ae39b053b3e1d615fe2f8c800cd75500b589
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:63bab92cb3f055fea10c80b12fc3ae39b053b3e1d615fe2f8c800cd75500b589
-  state: draft
+  state: approved
 limitations:
 - The listed rows come from the running org's global describe and its own domain,
   so which objects a search actually returns cannot be read from this repository's

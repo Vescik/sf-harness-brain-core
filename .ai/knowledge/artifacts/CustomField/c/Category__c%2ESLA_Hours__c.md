@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:890e39dff4d7c62d8d84b571d82712ff199f8d329604c4a09949998a9794e74d
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:890e39dff4d7c62d8d84b571d82712ff199f8d329604c4a09949998a9794e74d
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository consumes the field and it carries no description or help
   text, so the field name is the only evidence of intent.

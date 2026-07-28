@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:1103e60d556af7d12ec4efeee6adc39d52eaca3d78aee6ec3abb8fece8e2241f
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:1103e60d556af7d12ec4efeee6adc39d52eaca3d78aee6ec3abb8fece8e2241f
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository sets, clears, or validates the assignment, so how a technician
   is actually chosen in practice cannot be established from source.

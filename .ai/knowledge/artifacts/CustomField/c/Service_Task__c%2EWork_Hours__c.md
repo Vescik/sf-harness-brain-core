@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:155e8fd21ad57a67831400df5701318531a9e1f5421174a9051acff15cd82099
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:155e8fd21ad57a67831400df5701318531a9e1f5421174a9051acff15cd82099
-  state: draft
+  state: approved
 limitations:
 - No Apex, Flow, validation rule or layout in the repository reads or writes this
   field, so whether it is meant to feed billing, capacity or reporting is not shown

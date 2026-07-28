@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:ac2bfbaad86bdfa91a918dd09ac3dbcc036697dd208a0550d877603db43a6af3
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:ac2bfbaad86bdfa91a918dd09ac3dbcc036697dd208a0550d877603db43a6af3
-  state: draft
+  state: approved
 limitations: []
 profile:
   digest: sha256:baaa5f69a92d0b991b9a11f226acc297c7d5373a4b65dd97ddb7359315277c4d

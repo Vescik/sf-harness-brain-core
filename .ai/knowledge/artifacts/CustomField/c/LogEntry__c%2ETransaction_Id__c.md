@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:a2fa2eb3130a4ae68bd00390d1e388259f14433357650b5c07551710f1bf0320
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:a2fa2eb3130a4ae68bd00390d1e388259f14433357650b5c07551710f1bf0320
-  state: draft
+  state: approved
 limitations:
 - No code in this repository queries or filters on this field, so whoever reads the
   correlated log rows is not visible in source.

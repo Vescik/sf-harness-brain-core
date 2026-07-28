@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:93a5fd8ea8280096dc08b17cb3e29127aa9f30b6e78f279ccdc7a329f2944be1
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:93a5fd8ea8280096dc08b17cb3e29127aa9f30b6e78f279ccdc7a329f2944be1
-  state: draft
+  state: approved
 limitations:
 - The system-mode insert and the swallowing of the flush's own DML errors are not
   covered by these tests, so this entry cannot establish that either behaves as Logger

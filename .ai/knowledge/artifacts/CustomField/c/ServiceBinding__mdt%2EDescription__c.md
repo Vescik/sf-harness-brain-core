@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:7133d826dc44c6ae8ef3709972091c39bc2e28789d8cd13d3d37584f3a0ba7c2
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:7133d826dc44c6ae8ef3709972091c39bc2e28789d8cd13d3d37584f3a0ba7c2
-  state: draft
+  state: approved
 limitations:
 - No code in this repository reads this field, so the maintainers who actually consume
   the note are not visible in source.

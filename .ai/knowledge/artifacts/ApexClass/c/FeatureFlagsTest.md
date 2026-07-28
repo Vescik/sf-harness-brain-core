@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:0facfa57dbcc699010ded3a5eab0a69ba403be37bac843126f64ba7366d97841
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:0facfa57dbcc699010ded3a5eab0a69ba403be37bac843126f64ba7366d97841
-  state: draft
+  state: approved
 limitations:
 - All three tests run off the mock map, so this entry cannot establish that the real
   metadata path — cache population and the active check on the record — behaves as

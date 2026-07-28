@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:55b1a040371c61455e57d6cbb41505a30d7fa347a6bd760914d5604508a81204
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:55b1a040371c61455e57d6cbb41505a30d7fa347a6bd760914d5604508a81204
-  state: draft
+  state: approved
 limitations:
 - The bypass list is admin-editable data on a hierarchy custom setting rather than
   packaged configuration, so which handlers are actually bypassed in any org cannot

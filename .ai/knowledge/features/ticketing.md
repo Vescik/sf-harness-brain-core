@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:14:19Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:66d3a21b118c0480d7fe6feabd2473ce99823c219a4fe0f7accb5f17a130fbc4
 boundary:
   anchors:
   - Ticket__c
@@ -19,7 +19,7 @@ keywords: []
 kind: feature-entry
 lifecycle:
   contentDigest: sha256:66d3a21b118c0480d7fe6feabd2473ce99823c219a4fe0f7accb5f17a130fbc4
-  state: draft
+  state: approved
 limitations: []
 schemaVersion: 1
 sensitivity: internal-sanitized

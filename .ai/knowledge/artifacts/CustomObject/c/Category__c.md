@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:166ad1c278bf3894ee700c7c66dd62128215b5fd331ce892b0d0c726493a70c9
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:166ad1c278bf3894ee700c7c66dd62128215b5fd331ce892b0d0c726493a70c9
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository reads the SLA hours value, so whatever would enforce
   or report on an SLA is not visible from source.

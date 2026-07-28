@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:992c5d83c3fbcdbe9ebe0b45b19595fb56e807d313f56ee15aeb537b79f464d2
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:992c5d83c3fbcdbe9ebe0b45b19595fb56e807d313f56ee15aeb537b79f464d2
-  state: draft
+  state: approved
 limitations:
 - The Meridian PSA feature cards this component was written to back are not present
   in this repository, so the components that supply its heading, icon and body content

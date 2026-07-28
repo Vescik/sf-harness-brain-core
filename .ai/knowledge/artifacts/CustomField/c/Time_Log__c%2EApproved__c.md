@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:6ba572d80b780f9de80870b99985f6895d4b39076e12a64a70ef6ef54ffce940
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:6ba572d80b780f9de80870b99985f6895d4b39076e12a64a70ef6ef54ffce940
-  state: draft
+  state: approved
 limitations:
 - No Apex, flow, validation rule, record page, or permission set in this repository
   touches the field, so who may approve an entry, at what point, and what an approval

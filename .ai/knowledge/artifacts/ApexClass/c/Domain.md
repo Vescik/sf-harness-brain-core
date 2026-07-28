@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:7a8cf3360ea68f11911a6f863911dbee63b61768bdc0cf7d5535fd8bfb4e1ad9
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:7a8cf3360ea68f11911a6f863911dbee63b61768bdc0cf7d5535fd8bfb4e1ad9
-  state: draft
+  state: approved
 limitations:
 - No subclass of Domain exists in this repository, so what a concrete domain does
   with the trigger records and the prior-version map cannot be read from source.

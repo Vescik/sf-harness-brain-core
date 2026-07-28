@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:cbaa96db62ace24df654af8f59fa939265b58ff7d5ae8444c806ca48aa0217b1
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:cbaa96db62ace24df654af8f59fa939265b58ff7d5ae8444c806ca48aa0217b1
-  state: draft
+  state: approved
 limitations:
 - The only reads of the object in this repository are in tests, so how these rows
   are consumed operationally and how long they are retained cannot be read from source.

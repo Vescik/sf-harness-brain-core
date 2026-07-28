@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:342e883a4093d3530aaef1ad76c38b4f2630d112483f71519d2e41b43aadbce8
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:342e883a4093d3530aaef1ad76c38b4f2630d112483f71519d2e41b43aadbce8
-  state: draft
+  state: approved
 limitations:
 - No flow or Apex in this repository populates the link, so which ticket a comment
   is attached to is set by whatever creates the record and cannot be read from source.

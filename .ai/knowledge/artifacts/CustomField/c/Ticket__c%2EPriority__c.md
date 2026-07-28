@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:7fb4c12a7a6d870c13faac5150f71b88047b066974af254caf5f5e081206ce41
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:7fb4c12a7a6d870c13faac5150f71b88047b066974af254caf5f5e081206ce41
-  state: draft
+  state: approved
 limitations:
 - The Priority value set is not part of this repository, so the meaning and ordering
   of its codes cannot be read from the source here.

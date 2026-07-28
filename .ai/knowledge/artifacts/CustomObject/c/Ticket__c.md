@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:c8761b187e1bc0375d4a817dda3ed5d1d7c975ce6cd70a7f6c00f0d12155b8a8
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:c8761b187e1bc0375d4a817dda3ed5d1d7c975ce6cd70a7f6c00f0d12155b8a8
-  state: draft
+  state: approved
 limitations:
 - Source shows that the category lookup targets the standard ProductCategory object
   rather than this repository's Category object and that the record page is labelled

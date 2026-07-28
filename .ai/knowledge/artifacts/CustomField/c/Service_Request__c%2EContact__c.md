@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:b4a41b39cc9bf05e047031fe9de3ed1b804f11cd113213dac48b8dae0f9c219e
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:b4a41b39cc9bf05e047031fe9de3ed1b804f11cd113213dac48b8dae0f9c219e
-  state: draft
+  state: approved
 limitations:
 - No code, flow, or validation rule in this repository reads, defaults, or requires
   this field, so whatever populates it in practice is not visible in source.

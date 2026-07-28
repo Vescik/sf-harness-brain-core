@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:333a4b3bd12c8026a7c199a00e6b72971050c35d2d9033aab9e4b96a3b283a38
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:333a4b3bd12c8026a7c199a00e6b72971050c35d2d9033aab9e4b96a3b283a38
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository defines which field drives the path component the record
   page header carries.

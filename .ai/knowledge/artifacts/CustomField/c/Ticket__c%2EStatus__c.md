@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:5fb62e6d5f45588955e05a4d87d6368df555699fba984ab9846744d2b55a76ba
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:5fb62e6d5f45588955e05a4d87d6368df555699fba984ab9846744d2b55a76ba
-  state: draft
+  state: approved
 limitations:
 - The shared Status value set is not committed to this repository, so the full list
   of stages a ticket can reach is not visible from source.

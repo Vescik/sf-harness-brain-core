@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:3bb7c1721f75a50ac81ab8a4b6f3340fc0a1a44c57efbb63f1388609fe696e2e
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:3bb7c1721f75a50ac81ab8a4b6f3340fc0a1a44c57efbb63f1388609fe696e2e
-  state: draft
+  state: approved
 limitations:
 - The Priority value set is org-wide and not defined in this repository, so the options
   a user can actually pick cannot be read from source.

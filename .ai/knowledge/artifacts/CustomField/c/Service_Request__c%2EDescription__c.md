@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:19e9ea1f9b6e73367ff423222e3baf3c14a1308d7533ba2792d12a67bbc549c9
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:19e9ea1f9b6e73367ff423222e3baf3c14a1308d7533ba2792d12a67bbc549c9
-  state: draft
+  state: approved
 limitations:
 - Neither the field nor the object states what the description should contain, so
   the expected content cannot be read from source.

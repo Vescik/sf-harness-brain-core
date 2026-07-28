@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:91513d4fc776c6c47b997ac40ac3a6bc84da180351e08cd6cba75b1f0bc66874
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:91513d4fc776c6c47b997ac40ac3a6bc84da180351e08cd6cba75b1f0bc66874
-  state: draft
+  state: approved
 limitations:
 - Every case builds the unit of work through the system-mode factory, so this entry
   cannot establish how the default user-mode CRUD and field-level enforcement path

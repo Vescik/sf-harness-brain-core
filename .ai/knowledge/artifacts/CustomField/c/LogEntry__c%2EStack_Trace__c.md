@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:20bf85500298f7084b623ce7786edaa780b4cb947c4b088fe961f442c232a74d
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:20bf85500298f7084b623ce7786edaa780b4cb947c4b088fe961f442c232a74d
-  state: draft
+  state: approved
 limitations:
 - No test in this repository asserts on the trace contents, so what a stored stack
   trace actually holds cannot be established from source.

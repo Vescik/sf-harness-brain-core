@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:7e243f8500069e70fd22bd0e788be5cf8d4cf10e566720262416c3ab6b3fe6a8
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:7e243f8500069e70fd22bd0e788be5cf8d4cf10e566720262416c3ab6b3fe6a8
-  state: draft
+  state: approved
 limitations:
 - The per-module test-data factory classes the header says build on this base are
   absent and no class here calls TestData, so its intended callers are not visible

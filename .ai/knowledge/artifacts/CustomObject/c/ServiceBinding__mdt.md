@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:e5cd2aedfb886a810d20793f009c34438619b42eada50481e453d23e8b14aa42
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:e5cd2aedfb886a810d20793f009c34438619b42eada50481e453d23e8b14aa42
-  state: draft
+  state: approved
 limitations:
 - No binding records ship in this repository, so which logical service names are bound
   to which implementation classes cannot be read from source.

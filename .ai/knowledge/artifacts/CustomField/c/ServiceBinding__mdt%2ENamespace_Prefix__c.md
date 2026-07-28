@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:924f9a6f94b8f0673730d8630563a8d7899ccfb25af0b4c620c98b2b542f955c
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:924f9a6f94b8f0673730d8630563a8d7899ccfb25af0b4c620c98b2b542f955c
-  state: draft
+  state: approved
 limitations:
 - This field is subscriber-controlled, so which namespace an installing org actually
   points a shipped binding at cannot be read from this repository.

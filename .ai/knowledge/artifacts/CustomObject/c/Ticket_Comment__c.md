@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:a250165b4c5c56777ea5658439efe17f8c01907fbe19cce6924522bca38bf547
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:a250165b4c5c56777ea5658439efe17f8c01907fbe19cce6924522bca38bf547
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository reads the internal flag, so what marking a comment internal
   is meant to change is not visible in the source.

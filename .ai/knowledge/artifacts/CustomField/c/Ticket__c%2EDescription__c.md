@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:f0ceee5416eea2e7f9e1b5a25b5fc18e9c662215b4829d75942cad41ecd56cc9
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:f0ceee5416eea2e7f9e1b5a25b5fc18e9c662215b4829d75942cad41ecd56cc9
-  state: draft
+  state: approved
 limitations:
 - No validation rule, flow or Apex in this repository reads or writes the field, so
   whether anything outside repository source consumes the description is not visible

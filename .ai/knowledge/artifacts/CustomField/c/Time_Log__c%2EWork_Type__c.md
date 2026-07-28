@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:2e778db1dae5131266f07b54802b029e3b6367e8c9d80e92a45b6645b7f08baf
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:2e778db1dae5131266f07b54802b029e3b6367e8c9d80e92a45b6645b7f08baf
-  state: draft
+  state: approved
 limitations:
 - No Apex class, Flow, validation rule, or layout in this repository reads or writes
   the field, so what consumes the classification downstream, such as billing, rate

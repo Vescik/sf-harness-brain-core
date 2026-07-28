@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:b515c7ea40a0c5e001791a66d9440eac8d9f4976535da3acb7a38fb80d692a63
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:b515c7ea40a0c5e001791a66d9440eac8d9f4976535da3acb7a38fb80d692a63
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository references the object, so how tasks are created, how
   their status relates to the parent request's status, and how booked hours relate

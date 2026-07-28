@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:5b544561deef410ab220252faf4e0e4a77251e43fd20d465fe9c94cecc666581
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:5b544561deef410ab220252faf4e0e4a77251e43fd20d465fe9c94cecc666581
-  state: draft
+  state: approved
 limitations:
 - The Status picklist draws on a global value set that is not present in this repository,
   so the source cannot confirm that the two literal values the rule tests still match

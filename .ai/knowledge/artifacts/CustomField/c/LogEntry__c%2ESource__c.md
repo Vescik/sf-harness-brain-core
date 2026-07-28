@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:7271e621ad5896341ae40813b6d01c485cc90a3fe43173a670130d9104c222d5
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:7271e621ad5896341ae40813b6d01c485cc90a3fe43173a670130d9104c222d5
-  state: draft
+  state: approved
 limitations:
 - Nothing in the source constrains this value to a real class name, so a stored value
   cannot be relied on to identify the class that emitted the row.

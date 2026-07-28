@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:b5a249f543228334ad4ca587757e837319087c5792262cddbc17b71838e3b4d2
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:b5a249f543228334ad4ca587757e837319087c5792262cddbc17b71838e3b4d2
-  state: draft
+  state: approved
 limitations:
 - Nothing in this package branches on the field, so what the classification is used
   for once it is set is not visible here.

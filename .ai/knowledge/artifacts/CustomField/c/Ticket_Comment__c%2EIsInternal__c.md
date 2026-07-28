@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:e819f667a8ecb30928fedf902184030f8add1edd000dc372e34775447479714b
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:e819f667a8ecb30928fedf902184030f8add1edd000dc372e34775447479714b
-  state: draft
+  state: approved
 limitations:
 - Nothing in this repository consumes this field, so what being internal is supposed
   to change, such as who may read the comment or whether it is hidden from a customer-facing

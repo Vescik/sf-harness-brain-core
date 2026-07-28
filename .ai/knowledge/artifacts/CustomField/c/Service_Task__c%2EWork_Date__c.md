@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:7e6517c535386f46503a38f547ec71bc1d4ab3d568626cc450878feed4aabe51
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:7e6517c535386f46503a38f547ec71bc1d4ab3d568626cc450878feed4aabe51
-  state: draft
+  state: approved
 limitations:
 - Any scheduling or timesheet logic that depends on this field is not visible in this
   repository.

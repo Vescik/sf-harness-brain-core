@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:22f39574533844bea90a26c1d99d20f4c5aa135ca4dec1fabc8fed98af35fbc7
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:22f39574533844bea90a26c1d99d20f4c5aa135ca4dec1fabc8fed98af35fbc7
-  state: draft
+  state: approved
 limitations:
 - This test substitutes the setting through the test-visible override, so it cannot
   establish that case-insensitive handler-name matching or the real hierarchy custom

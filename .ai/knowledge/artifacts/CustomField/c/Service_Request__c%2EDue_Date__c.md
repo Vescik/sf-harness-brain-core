@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:982dc028c2cebc718e2a7a3c5ed51c32b74f1e2611fad75198aa671b52e01b8c
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:982dc028c2cebc718e2a7a3c5ed51c32b74f1e2611fad75198aa671b52e01b8c
-  state: draft
+  state: approved
 limitations:
 - What the due date is meant to drive is not visible in this repository, since no
   Apex, flow, or validation rule here reads it.

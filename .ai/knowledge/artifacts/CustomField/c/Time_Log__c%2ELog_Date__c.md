@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:6afa84e4fc191a009972a7ae44c5f7a326efec04e2e35de6824839621b821661
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:6afa84e4fc191a009972a7ae44c5f7a326efec04e2e35de6824839621b821661
-  state: draft
+  state: approved
 limitations:
 - No Apex, flow, or record page in this repository reads the field, so any grouping
   of time logs into a week, a month, or a billing period happens outside the metadata

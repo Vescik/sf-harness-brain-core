@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:865b6a15a8cf8cdb9e0a8b81e72d7f9c3418f2dfd17b05de9f4468a88ec286e6
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:865b6a15a8cf8cdb9e0a8b81e72d7f9c3418f2dfd17b05de9f4468a88ec286e6
-  state: draft
+  state: approved
 limitations:
 - No component in this repository reads or aggregates the value, so any comparison
   of logged hours against Service_Request__c.Estimated_Hours__c happens outside this

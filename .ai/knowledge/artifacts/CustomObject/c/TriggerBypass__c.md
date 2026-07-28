@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:3b6e357763b1b6a089d07d3e628b7db0a5be703b8429d98d527182c88ed1c299
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:3b6e357763b1b6a089d07d3e628b7db0a5be703b8429d98d527182c88ed1c299
-  state: draft
+  state: approved
 limitations:
 - The bypass values are data rather than packaged metadata and are toggled per org
   by admins, so which handlers are actually bypassed anywhere is not in this repository.

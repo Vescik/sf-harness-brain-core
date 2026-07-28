@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:89d6d099be76bf02ac3bb2aa64addd53ba74000db56ab3564a2e2d27cef5fbcd
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:89d6d099be76bf02ac3bb2aa64addd53ba74000db56ab3564a2e2d27cef5fbcd
-  state: draft
+  state: approved
 limitations:
 - The field description calls this a master switch for all Meridian PSA triggers,
   but this repository only shows it reaching handlers routed through TriggerHandler,

@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:6c4fd6c180af68c6d54a8fda5363e94c7a873254900a9e8655c2339c9f528817
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:6c4fd6c180af68c6d54a8fda5363e94c7a873254900a9e8655c2339c9f528817
-  state: draft
+  state: approved
 limitations:
 - Statuses, priorities and service types are coded values drawn from global value
   sets that are not in this repository, so what codes such as s_1 and s_6 stand for

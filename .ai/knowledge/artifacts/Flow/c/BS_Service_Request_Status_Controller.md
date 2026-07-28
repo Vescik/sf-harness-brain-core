@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:27ae67de4fd93000c8496f1b8711923971732d25cce439ec2643a1497f491343
 assurance:
   intentionalErrors: source-exact
   typeFacts: source-exact
@@ -29,7 +29,7 @@ intentionalErrors:
 keywords: []
 lifecycle:
   contentDigest: sha256:27ae67de4fd93000c8496f1b8711923971732d25cce439ec2643a1497f491343
-  state: draft
+  state: approved
 limitations:
 - Status codes s_1..s_6 come from a value set that is not in this repository, so which
   business statuses the allowed transitions permit cannot be read from source.

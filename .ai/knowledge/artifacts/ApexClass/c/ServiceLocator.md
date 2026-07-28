@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:3805cead73e1569444e0cff7475e62b118a1996fff9bc494d2963db66d0d6a0b
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:3805cead73e1569444e0cff7475e62b118a1996fff9bc494d2963db66d0d6a0b
-  state: draft
+  state: approved
 limitations:
 - No ServiceBinding__mdt records are checked into this repository, so which logical
   names resolve to which implementation classes cannot be read from source.

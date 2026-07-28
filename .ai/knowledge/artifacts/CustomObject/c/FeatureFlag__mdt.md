@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:2e3bf8179fc4bb2c52acb5809568a2865e6e5118ab7942651c23c0288c505696
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:2e3bf8179fc4bb2c52acb5809568a2865e6e5118ab7942651c23c0288c505696
-  state: draft
+  state: approved
 limitations:
 - No flag records ship in this repository, so the set of flags actually in use is
   not visible from source.

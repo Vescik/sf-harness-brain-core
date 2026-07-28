@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:44f3082590b642feae24adfa0888f377fc4ea53e8460bb5f6fe199f64c1b2c50
 assurance:
   typeFacts: source-derived-heuristic
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:44f3082590b642feae24adfa0888f377fc4ea53e8460bb5f6fe199f64c1b2c50
-  state: draft
+  state: approved
 limitations:
 - Only the test class constructs UnitOfWork in this repository, so the production
   callers the pattern exists to serve are not visible in source.

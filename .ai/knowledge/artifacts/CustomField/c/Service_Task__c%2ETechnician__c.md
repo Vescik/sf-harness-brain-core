@@ -1,9 +1,9 @@
 ---
 approval:
-  mechanism: null
-  reviewedAt: null
-  reviewedBy: null
-  reviewedContentDigest: null
+  mechanism: copilot-chat-entry-confirmation
+  reviewedAt: '2026-07-28T20:12:56Z'
+  reviewedBy: Dominik Machowski
+  reviewedContentDigest: sha256:eda95542ff947d10075cc44864439b60c15d27f24d2fb9b48c5842104efec153
 assurance:
   typeFacts: source-exact
 candidateKeywords: []
@@ -12,7 +12,7 @@ extractionCoverage:
 keywords: []
 lifecycle:
   contentDigest: sha256:eda95542ff947d10075cc44864439b60c15d27f24d2fb9b48c5842104efec153
-  state: draft
+  state: approved
 limitations:
 - No Apex, Flow, validation rule, layout or permission set in the repository reads
   this field, so any assignment, sharing or reporting behaviour built on it lives
