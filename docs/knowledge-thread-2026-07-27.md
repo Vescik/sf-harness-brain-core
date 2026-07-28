@@ -593,7 +593,38 @@ Advisory throughout. A hard gate would reject an anchor whose `object-meta.xml` 
 fixture and would couple a pure file write to git — the failure `entry-coverage` deliberately
 soft-handles.
 
-### Left for the human
+### APPROVED — 2026-07-28
+
+80 entries in 4 chunks, then both boundary rules. `entry-check` PASS with **80 ledger records**,
+`feature-check` PASS, harness PASS (3166 checks). Reviewer: Dominik Machowski, mechanism
+`copilot-chat-entry-confirmation`.
+
+**D7 — new, found at the moment of approval.** Both features had to be approved **twice**. The
+first pass pinned no `membershipDigest`, and said so: approving 80 entries moved every one of them
+out of `draft`, which staled the index the digest is computed against. Without that pin
+`feature-drift` answers `changed: "unknown"` — never `false` — so drift detection is blind on a
+store that has just been signed.
+
+The remedy the gap text prescribes is undiscoverable through the documented flow.
+`command_feature_review` skips an `approved-current` feature **unconditionally**, even when one is
+named explicitly with `--slug`, so it cannot render the surface you are told to re-approve from.
+`feature-approve` accepts the re-approval directly. `command_entry_review` has no such asymmetry —
+an explicitly named entry is offered whatever its lane. Fix: mirror the entry behaviour, or have
+`feature-approve` rebuild-and-pin rather than leaving the second pass to be guessed.
+
+What the store answers now, on the approved lane with no `--state` override — the path that
+returned nothing at all before B2:
+
+| question | answer |
+|---|---|
+| *how is time booked against a service request* | `Service_Request__c`, `Service_Task__c.Work_Hours__c` |
+| *what stops a ticket being closed* | `Ticket__c.Comment_Validation`, `Ticket_Comment__c` |
+| *semicolon delimited* | `TriggerBypassTest`, `TriggerBypass__c` |
+
+`feature-drift`: `service-request` changed=False (26 members), `ticketing` changed=False (20).
+Both dossiers render with every member described.
+
+### Superseded — what was left for the human
 
 Read each review artifact, run its pinned command: **4 entry chunks + 2 features**.
 Sheet: `output/knowledge-approvals/APPROVE-2026-07-28.md`. Regenerated twice — every digest moved
