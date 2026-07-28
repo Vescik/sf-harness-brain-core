@@ -2598,12 +2598,31 @@ def run_tree(args: argparse.Namespace) -> dict[str, Any]:
         )
     idle_hubs = sorted(set(result["hubs"]["declared"]) - set(result["hubs"]["stoppedAt"]))
     if idle_hubs:
+        # "Stopped nothing" has two very different causes and they used to read identically: a
+        # correct hub the walk never reached, and a name that matches nothing at all. Resolved
+        # against the loaded index rather than force-app, because `inventory()` re-parses the
+        # source tree on every call and `tree` is not a full-corpus question — the basis is named
+        # so this is never mistaken for the source check `feature-review` runs before approval.
+        unknown = [hub for hub in idle_hubs if not documents.identities_for_full_name(hub)]
+        known_idle = [hub for hub in idle_hubs if hub not in unknown]
         gaps.append(
             f"{len(idle_hubs)} declared hub(s) stopped no hop on this walk "
             f"({', '.join(idle_hubs)}). A hub only fires where the traversal would otherwise "
             f"expand through it, so an idle hub is a rule element carrying no weight — not "
             "evidence that it is holding the boundary in."
         )
+        if unknown:
+            gaps.append(
+                f"{len(unknown)} of those hub(s) name nothing this index knows "
+                f"({', '.join(unknown)}). Expected for a standard or packaged object, which has "
+                "no entry here; indistinguishable from a typo on this evidence. "
+                "`feature-review` checks the names against force-app source before approval."
+            )
+        if known_idle:
+            gaps.append(
+                f"{len(known_idle)} of those hub(s) DO have an entry and were still not reached "
+                f"({', '.join(known_idle)}) — the rule names them, the walk does not go near them."
+            )
     if result["truncated"]:
         gaps.append(
             f"traversal limits reached ({', '.join(result['limitsHit'])}), so this membership is "

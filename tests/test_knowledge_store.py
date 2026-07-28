@@ -1218,6 +1218,43 @@ class FeatureEntryTests(KnowledgeStoreTests):
         latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
         return store.compute_feature_lane(store.feature_path(slug), latest)
 
+    def test_a_boundary_name_that_is_not_in_source_is_named_at_review(self) -> None:
+        """`feature-propose` strips whitespace and writes, so a typo lands inside a rule a human
+        then approves and a digest then pins. Nothing checked any name existed, and an
+        unresolvable name looked identical to a correct one the walk never reached."""
+
+        self.propose(anchor=["HarnessAlphaCase__c"], hub=["Definitely_Not_Here__c"])
+        self.describe()
+        result = store.command_feature_review(argparse.Namespace(slug=["scheduling"]))
+        artifact = (self.temp / result["reviewArtifact"]).read_text(encoding="utf-8")
+        self.assertIn("name check:", artifact)
+        self.assertIn("Definitely_Not_Here__c", artifact)
+
+    def test_a_near_miss_is_reported_as_a_probable_typo(self) -> None:
+        # A near match is the typo signal. An absence with NO near match is the ordinary case for
+        # a standard or packaged object, which is a legitimate hub — so the two must not read the
+        # same, or the check is noise a reviewer learns to skip.
+        typo = store.resolve_boundary_names(["HarnessAlphaCse__c"])
+        self.assertEqual("not-in-workspace", typo["names"]["HarnessAlphaCse__c"]["status"])
+        self.assertIn(
+            "HarnessAlphaCase__c", typo["names"]["HarnessAlphaCse__c"]["closest"],
+            "a one-character typo did not surface the name it was probably meant to be",
+        )
+        standard = store.resolve_boundary_names(["Account"])
+        self.assertEqual("not-in-workspace", standard["names"]["Account"]["status"])
+        self.assertEqual([], standard["names"]["Account"]["closest"])
+
+    def test_the_name_check_never_refuses_a_write(self) -> None:
+        """Advisory on purpose: a hard gate would reject an anchor whose object-meta.xml is absent
+        from a fixture, and would couple a pure file write to git and the inventory schema."""
+
+        proposed = self.propose(anchor=["Definitely_Not_Here__c"])
+        self.assertEqual("PROPOSED", proposed["outcome"])
+        self.assertIn(
+            "Definitely_Not_Here__c", proposed["nameResolution"]["notInWorkspace"],
+            "the write succeeded without telling the caller the anchor resolves to nothing",
+        )
+
     def test_a_feature_cannot_be_approved_before_it_is_described(self) -> None:
         self.propose()
         review = store.command_feature_review(argparse.Namespace(slug=None))

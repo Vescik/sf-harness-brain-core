@@ -1523,6 +1523,77 @@ FEATURE_SLUG_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 FEATURE_SENTINEL = "<AGENT_FEATURE_DESCRIPTION>"
 
 
+BOUNDARY_NAME_CLOSEST = 3
+
+
+def source_object_names() -> tuple[set[str], str | None]:
+    """Every component and owning-object name force-app currently holds.
+
+    One cached JSON read, the same source `entry-coverage` uses, deliberately NOT an rglob over
+    the artifact corpus: a single-feature command paying a walk over a 15 k-entry store is the
+    scale defect this module already warns about. Returns the reason instead of raising when the
+    inventory is unavailable — a boundary must still be writable on a machine that has not run
+    `inventory` yet.
+    """
+
+    from scripts.force_app_knowledge import ForceAppKnowledge
+
+    try:
+        inventory = ForceAppKnowledge(ROOT).inventory()
+    except Exception as error:  # noqa: BLE001 - advisory context, never a hard failure
+        return set(), f"unavailable: {error}"
+    names: set[str] = set()
+    for component in inventory.get("components", []):
+        name = component.get("name")
+        if not name:
+            continue
+        names.add(str(name))
+        owner = (component.get("facts") or {}).get("object")
+        if owner:
+            names.add(str(owner))
+        if "." in str(name):
+            names.add(str(name).split(".", 1)[0])
+    return names, None
+
+
+def resolve_boundary_names(names: list[str]) -> dict[str, Any]:
+    """Advisory: does each name in a boundary rule exist in this workspace's source?
+
+    `feature-propose` stripped whitespace and wrote, so a typo landed inside a rule that a human
+    then approved and a digest then pinned. Worse, an unresolvable name and a name the walk simply
+    never reached produce the SAME silence — measured on the first real store, where a rule
+    declared four hubs, none fired, and nothing distinguished "correct but not reached" from
+    "does not exist".
+
+    Advisory on purpose. A hard gate here would reject an anchor whose object-meta.xml is absent
+    from a fixture, and would couple a pure file write to git and to the inventory schema — the
+    failure `entry-coverage` deliberately soft-handles. The reviewer is told; nothing is refused.
+    """
+
+    import difflib
+
+    known, unavailable = source_object_names()
+    rows: dict[str, Any] = {}
+    for name in sorted({str(item).strip() for item in names if str(item).strip()}):
+        if unavailable:
+            rows[name] = {"status": "unknown", "closest": []}
+            continue
+        if name in known:
+            rows[name] = {"status": "in-source", "closest": []}
+            continue
+        rows[name] = {
+            "status": "not-in-workspace",
+            # A near miss is the typo signal. An exact absence with no near miss is usually a
+            # standard or packaged object, which is a legitimate hub and not an error.
+            "closest": difflib.get_close_matches(name, sorted(known), n=BOUNDARY_NAME_CLOSEST, cutoff=0.8),
+        }
+    return {
+        "names": rows,
+        "basis": unavailable or "force-app inventory",
+        "notInWorkspace": sorted(n for n, row in rows.items() if row["status"] == "not-in-workspace"),
+    }
+
+
 def feature_identity(slug: str) -> str:
     """`Feature:<slug>` — two segments, deliberately.
 
@@ -1701,6 +1772,9 @@ def command_feature_propose(args: argparse.Namespace) -> dict[str, Any]:
         "boundaryDigest": boundary_digest(frontmatter["boundary"]),
         "reviewedContentDigest": digest,
         "describedYet": FEATURE_SENTINEL not in body,
+        "nameResolution": resolve_boundary_names(
+            boundary["anchors"] + boundary["hubs"] + boundary["include"] + boundary["exclude"]
+        ),
     }
 
 
@@ -1786,8 +1860,30 @@ def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
             f"- explicit include: {', '.join(boundary['include']) or '(none)'}",
             f"- explicit exclude: {', '.join(boundary['exclude']) or '(none)'}",
             f"- membership assurance floor: {boundary['membershipAssuranceFloor']}",
-            "", "### Attested body (exactly what approval covers)", "", body.strip(), "",
         ]
+        # Every name in the rule is about to be pinned by a digest, and nothing checked that any
+        # of them exists: `feature-propose` strips whitespace and writes. An unresolvable name and
+        # a name the walk never reached look identical in every other output.
+        resolution = resolve_boundary_names(
+            boundary["anchors"] + boundary["hubs"] + boundary["include"] + boundary["exclude"]
+        )
+        absent = resolution["notInWorkspace"]
+        if resolution["basis"].startswith("unavailable"):
+            lines.append(
+                f"- name check: NOT RUN ({resolution['basis']}) — no name in this rule was verified"
+            )
+        elif absent:
+            lines.append("- name check: the following are NOT in this workspace's force-app source:")
+            for name in absent:
+                closest = resolution["names"][name]["closest"]
+                lines.append(
+                    f"    - `{name}`"
+                    + (f" — did you mean {', '.join(f'`{item}`' for item in closest)}?" if closest
+                       else " (no near match; expected for a standard or packaged object)")
+                )
+        else:
+            lines.append("- name check: every name in this rule resolves to force-app source")
+        lines += ["", "### Attested body (exactly what approval covers)", "", body.strip(), ""]
     REVIEW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
     artifact = REVIEW_ARTIFACT_ROOT / f"{chunk_id}-feature-review.md"
     atomic_write(artifact, "\n".join(lines) + "\n")
