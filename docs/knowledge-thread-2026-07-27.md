@@ -566,11 +566,39 @@ Declared hubs still fire on nothing in this package, and `run_tree` says so. Tha
 stops a walk that would otherwise expand through it, and no standard object here carries a field
 pointing at an anchor.
 
+### D3 — closed (`2b31a4a`), because it landed on the signature page
+
+`feature-propose` stripped whitespace and wrote; nothing verified an anchor, hub, include or
+exclude existed. The two features declare five hub names between them and the review artifact
+printed them with nothing to say whether any was real.
+
+Worse, the idle-hub gap added earlier the same day made it *ambiguous* rather than merely
+unchecked — *"3 declared hub(s) stopped no hop"* reads identically for a correct hub the walk never
+reached, a standard object with no entry, and a misspelling. That gap was mine and needed splitting.
+
+`resolve_boundary_names` classifies each name against force-app source and returns near matches:
+
+| name | status | closest |
+|---|---|---|
+| `Service_Request__c` | `in-source` | — |
+| `Account` | `not-in-workspace` | — (ordinary for a standard object) |
+| `Servce_Request__c` | `not-in-workspace` | `Service_Request__c` ← **the typo signal** |
+
+Three surfaces, two bases, each named: `feature-propose` returns `nameResolution`;
+`feature-review` renders a `name check` line, worth the 0.15 s source parse once at signing time;
+`run_tree` splits its hub gap using the **already-loaded index**, because `inventory()` re-parses
+the source tree on every call and `tree` is not a full-corpus question.
+
+Advisory throughout. A hard gate would reject an anchor whose `object-meta.xml` is absent from a
+fixture and would couple a pure file write to git — the failure `entry-coverage` deliberately
+soft-handles.
+
 ### Left for the human
 
 Read each review artifact, run its pinned command: **4 entry chunks + 2 features**.
-Sheet: `output/knowledge-approvals/APPROVE-2026-07-27.md` (regenerated — every digest moved when
-limitations landed, so any command captured earlier is stale).
+Sheet: `output/knowledge-approvals/APPROVE-2026-07-28.md`. Regenerated twice — every digest moved
+when limitations landed, and the feature reviews changed again when the name check arrived, so any
+command captured earlier is stale.
 
 ### Not done, deliberately
 
