@@ -220,6 +220,18 @@ class PreflightValidationTests(unittest.TestCase):
         self.assertTrue(any("browser" in failure for failure in failures))
         self.assertTrue(any("promotedTestsPath" in failure for failure in failures))
 
+    def test_release_capability_rejects_placeholder_or_blank_query_id(self) -> None:
+        # The skill contract promises DEPENDENCY UNAVAILABLE for placeholder configuration;
+        # the capability layer must make that deterministic, not just the global config scan.
+        config = safe_config()
+        with patch.dict("os.environ", {"ADO_ORGANIZATION": "example-org"}, clear=False):
+            for value in ("", "   ", "<ADO_SAVED_QUERY_ID>", "<anything>"):
+                config["ado"]["releaseQueryId"] = value
+                failures = preflight.validate_capability(config, "release")
+                self.assertTrue(any("release Query ID" in item for item in failures), value)
+            config["ado"]["releaseQueryId"] = "query-1"
+            self.assertEqual(preflight.validate_capability(config, "release"), [])
+
     def test_pass_receipt_is_reused_until_config_or_env_changes(self) -> None:
         with TemporaryDirectory() as name:
             root = Path(name)

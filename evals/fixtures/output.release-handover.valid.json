@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 3,
+  "workflow": "release-handover",
+  "workflowClass": "cache-read",
+  "generatedAt": "2026-07-29T09:00:00Z",
+  "status": "success",
+  "recordRef": null,
+  "sourceRefs": [
+    "ado:example-org/Example Project/query/aaaa1111-bbbb-2222-cccc-333344445555@12",
+    "ado:example-org/Example Project/1201",
+    "ado:example-org/Example Project/1202",
+    "ado-wiki:example-org/Example Project/Example.wiki/1201-technical-documentation",
+    "template:.ai/templates/release-handover.md@0000000000000000000000000000000000000000"
+  ],
+  "ruleRefs": [],
+  "claimRefs": [],
+  "evidenceRefs": [],
+  "knowledgeSnapshotAt": null,
+  "reconciliation": {
+    "status": "not-required",
+    "mismatches": [],
+    "missingEvidence": []
+  },
+  "completeness": {
+    "status": "complete",
+    "missingEvidence": []
+  },
+  "reviewStatus": "draft",
+  "assumptions": [],
+  "warnings": [
+    "no attached wiki link: 1202 — missing-documentation fallback rendered"
+  ],
+  "filesWritten": [
+    "output/handover/2026-07.md",
+    "output/handover/2026-07.json"
+  ],
+  "verification": [
+    "validate_handover_output.py: PASS (structure matches .ai/templates/release-handover.md@0000000000000000000000000000000000000000)"
+  ],
+  "artifactPath": "output/handover/2026-07.md"
+}

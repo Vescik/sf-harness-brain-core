@@ -38,6 +38,18 @@ for the index). It was historical input only, never the normative runtime specif
 | Runtime | `.vscode/mcp.json`, `.github/hooks/`, `scripts/` | Reconciled MCP/hidden-CLI review, guarded non-production tools, deterministic checks |
 | Local/generated data | `.cache/`, `output/` | Ignored raw cache and human-review drafts |
 
+## Changing the release-handover document shape
+
+The `/release-handover` document is rendered strictly from
+[.ai/templates/release-handover.md](.ai/templates/release-handover.md) — edit that one file to
+change the structure; no prompt, skill, or script change is needed. The render check
+([scripts/validate_handover_output.py](scripts/validate_handover_output.py)) re-derives the
+expected headings from the template at every run, so edits are enforced automatically on the
+next generation. Keep the `repeat-per-item` marker comment (it marks the block repeated per
+work item; the harness audit requires exactly one), and note that
+[scripts/validate_harness.py](scripts/validate_harness.py) link-checks relative links inside
+templates.
+
 ## Start here
 
 Follow [SETUP.md](SETUP.md) — or, if you are setting up a machine from scratch, the

@@ -626,6 +626,10 @@ class RoleGuardTests(unittest.TestCase):
                 r".venv\Scripts\python.exe scripts\preflight.py --capability metadata",
                 ("config-investigator",),
             ),
+            (
+                "python scripts/validate_handover_output.py output/handover/2026-07.md",
+                all_roles,
+            ),
         )
         for command, roles in matrix:
             for role in roles:
@@ -681,6 +685,28 @@ class RoleGuardTests(unittest.TestCase):
         for command in denied:
             with self.subTest(command=command):
                 self.assertFalse(role_guard.allowed_role_command(command, root, "solution-designer"))
+
+    def test_handover_render_check_accepts_only_one_contained_draft(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        denied = (
+            # extra arguments and the --template override stay human/CI-only
+            "python scripts/validate_handover_output.py output/handover/a.md output/handover/b.md",
+            "python scripts/validate_handover_output.py output/handover/a.md --template x.md",
+            # containment: never outside output/handover/, never absolute, only .md
+            "python scripts/validate_handover_output.py output/handover/../../SECURITY.md",
+            "python scripts/validate_handover_output.py /etc/hosts",
+            "python scripts/validate_handover_output.py output/handover/2026-07.json",
+            "python scripts/validate_handover_output.py output/handover/",
+            "python scripts/validate_handover_output.py",
+            # interpreter prefix is mandatory
+            "scripts/validate_handover_output.py output/handover/2026-07.md",
+        )
+        for command in denied:
+            with self.subTest(command=command):
+                self.assertFalse(
+                    role_guard.allowed_role_command(command, ROOT, "test-strategist")
+                )
 
     def test_development_assistant_may_request_project_retrieve(self) -> None:
         from scripts import copilot_role_guard as role_guard

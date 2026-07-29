@@ -7,6 +7,14 @@ Source: historical design blueprint section 13 (git tag design-history).
 Declarative-output rule (blueprint sections 3 and 11): the skill ends its work on this
 markdown file. DOCX/PDF export is a separate, manual, human-triggered step via a VS Code
 extension (Markdown PDF / vscode-pandoc) — never a script generated or run by the agent.
+
+To change the handover document shape, edit THIS file only: headings, their order, and the
+repeating item block are read from here at every run, and scripts/validate_handover_output.py
+re-derives the expected structure from this file, so edits are enforced automatically on the
+next run. Keep the repeat-per-item marker line below — it marks which block repeats per work
+item; the render check and the harness audit (scripts/validate_harness.py) require exactly
+one. Plain non-placeholder lines (the fallback texts) are treated as fixed text the skill
+must reproduce exactly; relative markdown links in templates are link-checked by the audit.
 -->
 
 # Release Handover — <release period>
@@ -32,6 +40,7 @@ extension (Markdown PDF / vscode-pandoc) — never a script generated or run by 
 ---
 
 <!-- The section below repeats for EVERY item in the release. -->
+<!-- repeat-per-item -->
 
 ## <User Story ID> - <Title>
 
@@ -65,12 +74,15 @@ No acceptance criteria documented
 Artifacts + manual steps, extracted from the natively linked wiki page (technical
 documentation). Same columns as section 3 of technical-documentation.md — see the R2 note
 there about the blueprint's "same 4 columns" reference.
-If the item has NO linked documentation page: state explicitly "No published technical
-documentation" — never regenerate or guess the content.
+If the item has NO attached documentation link: replace the table with exactly the fallback
+line below — keep the [Missing Wiki Link] marker, the release manager searches the document
+for it to add the link manually — never regenerate or guess the content.
 -->
 
 | Component type | Name | Purpose (one sentence) | Manual steps reference |
 |---|---|---|---|
+
+No published technical documentation — [Missing Wiki Link]
 
 ### Tests
 

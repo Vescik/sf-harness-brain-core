@@ -20,6 +20,11 @@ try:
 except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
     from scripts.schema_format import FORMAT_CHECKER
 
+try:
+    from validate_handover_output import template_fixed_texts
+except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
+    from scripts.validate_handover_output import template_fixed_texts
+
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_COUNTS = {"agents": 6, "prompts": 24, "skills": 25, "instructions": 3}
@@ -199,6 +204,7 @@ def check_required_files(audit: Audit) -> None:
         "schemas/knowledge-profile-customobject.schema.json",
         "scripts/knowledge_store.py",
         "scripts/knowledge_search.py",
+        "scripts/validate_handover_output.py",
         "docs/knowledge-one-file-contract.md",
         "schemas/change-record.schema.json",
         "schemas/handoff-envelope.schema.json",
@@ -840,7 +846,7 @@ def check_skill_commands(audit: Audit) -> None:
     first command. Fail closed here so the skill text and the guard can never drift apart again.
     """
 
-    guarded = "preflight|work_record|knowledge_registry|force_app_knowledge|salesforce_read|playwright_guard"
+    guarded = "preflight|work_record|knowledge_registry|force_app_knowledge|salesforce_read|validate_handover_output|playwright_guard"
     bare = re.compile(r"`\s*scripts/(?:" + guarded + r")\.py(?:\s|`)")
     backslash = re.compile(r"`[^`]*(?:scripts\\|\.venv\\)")
     for skill in sorted((ROOT / ".github/skills").glob("*/SKILL.md")):
@@ -856,6 +862,44 @@ def check_skill_commands(audit: Audit) -> None:
                 False,
                 f"{relative(skill)}: guarded command uses a backslash path (POSIX shlex mangles it): {match.group(0)!r}",
             )
+
+
+def check_release_handover_contract(audit: Audit) -> None:
+    """The handover template stays the single structure source; the skill quotes none of it.
+
+    scripts/validate_handover_output.py derives the expected document shape from the template
+    at every run, keyed on the repeat-per-item marker, so template edits are enforced without
+    any code change. The skill must load the template by path and instruct the render
+    self-check, and must not embed any of the template's fixed fallback texts: a quoted
+    literal desynchronizes the moment a human edits the template (T11 follow-up,
+    docs/evidence-analysis-2026-07-24.md).
+    """
+
+    template = (ROOT / ".ai/templates/release-handover.md").read_text(encoding="utf-8")
+    audit.require(
+        template.count("<!-- repeat-per-item -->") == 1,
+        "release-handover template must contain exactly one <!-- repeat-per-item --> marker "
+        "(scripts/validate_handover_output.py keys per-item repetition on it; keep it when "
+        "editing the template)",
+    )
+    skill = (ROOT / ".github/skills/generate-release-handover/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    audit.require(
+        "../../../.ai/templates/release-handover.md" in skill,
+        "generate-release-handover must load the template by path (single structure source)",
+    )
+    audit.require(
+        "scripts/validate_handover_output.py" in skill,
+        "generate-release-handover must instruct the render self-check",
+    )
+    for text in template_fixed_texts(template):
+        audit.require(
+            text not in skill,
+            f"generate-release-handover quotes a template fixed text ({text!r}); reference "
+            "the template's fallback generically so template edits cannot desynchronize "
+            "the skill",
+        )
 
 
 def check_python_yaml_safety(audit: Audit) -> None:
@@ -885,7 +929,10 @@ def check_schemas_and_evals(audit: Audit) -> None:
         "ado-item-cache.schema.json": ("ado-item.complete.json", "ado-item.partial.json"),
         "ado-wiki-cache.schema.json": ("ado-wiki.complete.json", "ado-wiki.partial.json"),
         "test-case-cache.schema.json": ("test-cases.complete.json", "test-cases.partial.json"),
-        "output-envelope.schema.json": ("output.incomplete.json",),
+        "output-envelope.schema.json": (
+            "output.incomplete.json",
+            "output.release-handover.valid.json",
+        ),
     }
     for schema_name, fixture_names in mappings.items():
         schema_path = ROOT / "schemas" / schema_name
@@ -1126,6 +1173,7 @@ def main() -> int:
     check_secret_signatures(audit)
     check_python_yaml_safety(audit)
     check_skill_commands(audit)
+    check_release_handover_contract(audit)
     check_knowledge_consumer_sets(audit)
     if audit.errors:
         print(f"FAIL: harness validation ({len(audit.errors)} errors, {audit.checks} checks)")

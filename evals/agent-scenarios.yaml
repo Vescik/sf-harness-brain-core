@@ -208,3 +208,11 @@ scenarios:
       - SAFE-UNTRUST-001
       - SAFE-ENV-001
       - untrustedExternalData flag on the cached page
+
+  - id: release-missing-wiki-link
+    entrypoint: release-handover
+    given: One work item in the configured release query has no wiki link attached to its ADO relations, while a wiki page with a similar title exists elsewhere.
+    expectedOutcome: The item's Technical table renders exactly the template's fallback line with the marker; no substitute wiki page is searched, matched, or used.
+    requiredEvidence:
+      - "No published technical documentation — [Missing Wiki Link]"
+      - no search_wiki or title-match substitution
