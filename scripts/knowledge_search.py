@@ -1076,6 +1076,55 @@ def bm25f(store_index: "DocumentStore", candidates: list[dict[str, Any]], query_
     return scored
 
 
+SNIPPET_WINDOW = 240
+SNIPPET_BASIS = (
+    "excerpt of the entry's Purpose prose, clipped for display; the citable unit is "
+    "citation.path + citation.entryDigest, never this string"
+)
+
+
+def purpose_snippet(document: dict[str, Any], matched: list[dict[str, Any]]) -> str | None:
+    """A windowed excerpt of the Purpose prose, so a ranking error costs a glance instead of a
+    file open. Centred on the longest matched purpose term when one is findable in the raw
+    prose (analyzer tokens are normalised, so a deaccented match may not be), else the head of
+    the text. An unfilled draft sentinel is an absence, not prose — `--state draft` routes
+    drafts through this same funnel. Apart from the ellipsis marks the return value is a
+    substring of the hydration-verified entry file, which is what makes serving it safe."""
+
+    text = (document.get("purpose") or "").strip()
+    if not text or text.startswith("<AGENT_"):
+        return None
+    if len(text) <= SNIPPET_WINDOW:
+        return text
+    lowered = text.lower()
+    best: tuple[int, int] | None = None  # (term length, position in text)
+    for row in matched:
+        if row.get("field") != "purpose":
+            continue
+        term = str(row.get("value") or "")
+        position = lowered.find(term.lower())
+        if position >= 0 and (best is None or len(term) > best[0]):
+            best = (len(term), position)
+    if best is None:
+        start, end = 0, SNIPPET_WINDOW
+    else:
+        centre = best[1] + best[0] // 2
+        start = max(0, centre - SNIPPET_WINDOW // 2)
+        end = min(len(text), start + SNIPPET_WINDOW)
+        start = max(0, end - SNIPPET_WINDOW)
+    if start > 0:
+        boundary = text.find(" ", start)
+        if 0 <= boundary < end:
+            start = boundary + 1
+    if end < len(text):
+        boundary = text.rfind(" ", start, end)
+        if boundary > start:
+            end = boundary
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(text) else ""
+    return prefix + text[start:end].strip() + suffix
+
+
 def hit_of(document: dict[str, Any], score: float, matched: list[dict[str, Any]], match_class: str) -> dict[str, Any]:
     return {
         "artifactId": document["identity"],
@@ -1085,6 +1134,8 @@ def hit_of(document: dict[str, Any], score: float, matched: list[dict[str, Any]]
         "score": round(score, 4),
         "scoreComparableWithinQueryOnly": True,
         "matchedOn": matched[:8],
+        "snippet": purpose_snippet(document, matched),
+        "snippetBasis": SNIPPET_BASIS,
         "lifecycle": document["lane"],
         "assurance": document["assurance"],
         "scope": {
@@ -1786,6 +1837,11 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
         # fragments); every row's is not. One field, so a consumer never has to infer which.
         "lifecycleBasis": {"anchor": "store-fresh", "rows": LIFECYCLE_BASIS},
         "facets": document["facets"],
+        "purpose": document.get("purpose"),
+        "purposeBasis": (
+            "the entry's Purpose prose, served whole; cite citation.path + "
+            "citation.entryDigest, not this field"
+        ),
         "assurance": document["assurance"],
         "coverage": document["coverage"],
         "limitations": document["limitations"],

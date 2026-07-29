@@ -304,6 +304,63 @@ class KnowledgeSearchTests(EntryFixtureMixin, unittest.TestCase):
             with self.subTest(term=term):
                 self.assertIn("Flow:c:HarnessAlphaRouter", self.ids(self.search(text=term)))
 
+    def test_f3_a_search_row_carries_a_purpose_excerpt_labelled_as_one(self) -> None:
+        """F3: a row of isolated matched tokens makes retrieval a file locator — every ranking
+        error costs a file open. The row carries a clipped Purpose excerpt under a key that
+        SAYS it is an excerpt; the citable unit stays citation.path + citation.entryDigest."""
+
+        self.seed()
+        result = self.search(text="dispatches")
+        hit = next(
+            h for h in result["approvedResults"]
+            if h["artifactId"] == "Flow:c:HarnessBetaDispatch"
+        )
+        self.assertIn("dispatches", (hit["snippet"] or "").lower())
+        self.assertIn("citation.path", hit["snippetBasis"])
+
+    def test_f3_a_long_purpose_is_clipped_on_word_boundaries_around_the_match(self) -> None:
+        (self.temp / "force-app/main/default/flows/HarnessGammaLong.flow-meta.xml").write_text(
+            ALPHA_FLOW, encoding="utf-8"
+        )
+        filler = "Routine hop over the lazy dog. " * 12
+        entry = self.draft(
+            "Flow", "HarnessGammaLong", filler + "Escalates rejected invoices nightly."
+        )
+        self.approve(entry)
+        search.build_index()
+        hit = next(
+            h for h in self.search(text="invoices")["approvedResults"]
+            if h["artifactId"] == "Flow:c:HarnessGammaLong"
+        )
+        self.assertIn("invoices", hit["snippet"])
+        self.assertLessEqual(len(hit["snippet"]), 260, "the window must stay a window")
+        self.assertTrue(hit["snippet"].startswith("…"), "a clipped head must announce itself")
+
+    def test_f3_an_unfilled_draft_sentinel_is_an_absence_not_a_snippet(self) -> None:
+        # `--state draft` routes drafts through this same funnel; an <AGENT_...> placeholder is
+        # a template, not prose, and serving it as an excerpt would launder it into one.
+        (self.temp / "force-app/main/default/flows/HarnessGammaBlank.flow-meta.xml").write_text(
+            ALPHA_FLOW, encoding="utf-8"
+        )
+        # An empty purpose file is the real path to a sentinel: entry-draft writes the
+        # <AGENT_...> template itself, and refuses a hand-written one.
+        self.draft("Flow", "HarnessGammaBlank", "")
+        search.build_index()
+        result = self.search(text="harnessgammablank", state=["draft"])
+        hit = next(
+            h for h in result["approvedResults"] + result["nonCurrentResults"]
+            if h["artifactId"] == "Flow:c:HarnessGammaBlank"
+        )
+        self.assertIsNone(hit["snippet"])
+
+    def test_f3_explain_serves_the_full_purpose_with_its_basis(self) -> None:
+        self.seed()
+        result = search.run_explain(argparse.Namespace(
+            identity="Flow:c:HarnessAlphaRouter", state=None, top=50, include_heuristic=False,
+        ))
+        self.assertIn("Kieruje", result["purpose"])
+        self.assertIn("citation.path", result["purposeBasis"])
+
     def test_g03_salesforce_symbols_survive_the_analyzer(self) -> None:
         tokens = search.analyze("HarnessAlphaCase__c.Status__c")
         self.assertIn("harnessalphacase__c.status__c", tokens)
