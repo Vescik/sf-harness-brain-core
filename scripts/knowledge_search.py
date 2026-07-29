@@ -92,6 +92,13 @@ EXPLAIN_TOP_DEFAULT = 50
 CONTAINMENT_KIND = "belongs-to"
 BM25_K1 = 1.2
 BM25_B = 0.75
+# A query token in at least this share of the corpus cannot discriminate between entries.
+# Corpus-derived on purpose: `saturated` is a statement about THIS store, not about English,
+# so there is no stopword list to maintain and no ANALYZER_VERSION bump to pay. A share is
+# meaningless over a handful of documents — in a 1-entry store EVERY matched term hits 100%
+# and a bootstrap store would be unsearchable — so below the corpus floor nothing saturates.
+DF_SATURATION = 0.5
+DF_SATURATION_MIN_CORPUS = 4
 
 ESTABLISHED_STATES = ("approved-current",)
 ALL_LANES = (
@@ -1041,6 +1048,31 @@ def parse_facet(expression: str) -> tuple[str, str, str]:
     return key, operator, value
 
 
+def query_term_stats(store_index: "DocumentStore", query_tokens: list[str]) -> list[dict[str, Any]]:
+    """Corpus-derived honesty about each query token, before any scoring happens.
+
+    BM25's idf discounts a saturated term but never zeroes it, so a sentence-shaped query
+    whose only content word matches nothing still accumulates score from its function words —
+    and the verdict reads OK. The statistics the index already persists at build time are
+    enough to name which tokens could possibly discriminate."""
+
+    statistics = store_index.posting_file("stats")
+    document_frequency = statistics.get("documentFrequency", {})
+    corpus = max(store_index.count, 1)
+    rows = []
+    for token in sorted(set(query_tokens)):
+        frequency = document_frequency.get(token, 0)
+        rows.append({
+            "term": token,
+            "documentFrequency": frequency,
+            "corpusSize": corpus,
+            "idf": round(math.log(1 + (corpus - frequency + 0.5) / (frequency + 0.5)), 4),
+            "matched": frequency > 0,
+            "saturated": corpus >= DF_SATURATION_MIN_CORPUS and frequency >= DF_SATURATION * corpus,
+        })
+    return rows
+
+
 def bm25f(store_index: "DocumentStore", candidates: list[dict[str, Any]], query_tokens: list[str]) -> dict[str, tuple[float, list[dict[str, Any]]]]:
     """Rank candidates with corpus statistics precomputed at build time.
 
@@ -1218,6 +1250,10 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "top": args.top,
     }
+    # Computed here, NOT inside the candidate-seeding block below: seeding is guarded by
+    # `and not other_facets`, and the honesty of queryTerms must not depend on which filters
+    # the caller happened to add.
+    query_terms = query_term_stats(documents, analyze(args.text)) if args.text else []
 
     # Hard filters resolve to identity sets through the postings index; only the survivors
     # are hydrated. Exact-equality facets narrow via postings, other operators are evaluated
@@ -1415,6 +1451,27 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
                 score, matched = scored[document["identity"]]
                 results.append(hit_of(document, score, matched, "structured-plus-lexical" if facets else "lexical"))
         results.sort(key=lambda hit: (-hit["score"], hit["artifactId"]))
+        # F2: derived from `scored`, never from hit["matchedOn"] — hit_of truncates that to 8,
+        # so a discriminating term can contribute and still be invisible there.
+        contributing = {row["value"] for _score, matched in scored.values() for row in matched}
+        discriminating = {row["term"] for row in query_terms if row["matched"] and not row["saturated"]}
+        unmatched = sorted(row["term"] for row in query_terms if not row["matched"])
+        if results and not (contributing & discriminating):
+            gaps.append(
+                "Nothing discriminating matched: "
+                + (f"no entry contains {', '.join(unmatched)}; " if unmatched else "")
+                + f"every term that scored ({', '.join(sorted(contributing))}) appears in at "
+                f"least {int(DF_SATURATION * 100)}% of this corpus and cannot rank anything. "
+                "Serving these results would be relevance manufactured by function words — "
+                "see queryTerms for the per-term evidence."
+            )
+            results = []
+        elif results and unmatched:
+            gaps.append(
+                f"No entry contains: {', '.join(unmatched)}. Results rank on the remaining "
+                "terms only; if one of these named the thing you meant, this is a coverage "
+                "gap, not an answer."
+            )
         if lexical_truncated:
             gaps.append(
                 f"Lexical candidate set capped at {LEXICAL_CANDIDATE_CAP}; {lexical_truncated} "
@@ -1523,6 +1580,7 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "OK" if served else "NO_MATCH",
         "interpretedQuery": interpreted,
+        "queryTerms": query_terms,
         # `search` has no anchor: every hit is a row, including the one named by --identity, so
         # there is nothing here that was re-checked against the working tree.
         "lifecycleBasis": {"anchor": "not-applicable", "rows": LIFECYCLE_BASIS},

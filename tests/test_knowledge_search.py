@@ -361,6 +361,38 @@ class KnowledgeSearchTests(EntryFixtureMixin, unittest.TestCase):
         self.assertIn("Kieruje", result["purpose"])
         self.assertIn("citation.path", result["purposeBasis"])
 
+    def test_f2_function_words_alone_cannot_manufacture_an_ok(self) -> None:
+        """F2: a sentence-shaped query whose only content word matches nothing scored on
+        corpus-saturated tokens and returned OK. A store whose pitch is honest absence
+        reporting was manufacturing relevance. `harness` sits in every fixture identity, so
+        it is this corpus's function word; `refunds` names the thing nobody documented."""
+
+        self.seed()
+        result = self.search(text="how does harness handle refunds")
+        self.assertEqual("NO_MATCH", result["outcome"])
+        self.assertTrue(
+            any("refunds" in gap for gap in result["gaps"]),
+            "the gap must name the unmatched content word",
+        )
+
+    def test_f2_query_terms_report_frequency_and_saturation(self) -> None:
+        self.seed()
+        result = self.search(text="dispatches refunds")
+        terms = {row["term"]: row for row in result["queryTerms"]}
+        self.assertTrue(terms["dispatches"]["matched"])
+        self.assertFalse(terms["dispatches"]["saturated"])
+        self.assertFalse(terms["refunds"]["matched"])
+        self.assertEqual(0, terms["refunds"]["documentFrequency"])
+
+    def test_f2_a_dead_term_is_disclosed_even_when_results_serve(self) -> None:
+        # One term carries the query, the other matches nothing anywhere. Serving results
+        # without saying so lets the caller believe both terms were answered.
+        self.seed()
+        result = self.search(text="dispatches refunds")
+        self.assertEqual("OK", result["outcome"])
+        self.assertIn("Flow:c:HarnessBetaDispatch", self.ids(result))
+        self.assertTrue(any("refunds" in gap for gap in result["gaps"]))
+
     def test_g03_salesforce_symbols_survive_the_analyzer(self) -> None:
         tokens = search.analyze("HarnessAlphaCase__c.Status__c")
         self.assertIn("harnessalphacase__c.status__c", tokens)
