@@ -1836,7 +1836,12 @@ def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
         if lane["problems"]:
             skipped.append({"identity": lane["identity"], "reasons": lane["problems"]})
             continue
-        if lane["lane"] == "approved-current":
+        # D7: an explicit --slug is a request to RE-render — the remedy `feature-approve` and
+        # `feature-drift` both prescribe when no membershipDigest could be pinned. Only a bare
+        # sweep skips the already-approved, and it must say so rather than answer with silence.
+        if lane["lane"] == "approved-current" and not wanted:
+            skipped.append({"identity": lane["identity"],
+                            "reasons": ["already approved-current; name it with --slug to re-render"]})
             continue
         frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
         resolved.append((lane["identity"], frontmatter, body, lane["reviewedContentDigest"]))

@@ -1261,6 +1261,32 @@ class FeatureEntryTests(KnowledgeStoreTests):
         self.assertEqual("NOTHING_TO_REVIEW", review["outcome"])
         self.assertTrue(review["skipped"])
 
+    def test_an_approved_feature_re_renders_when_named_and_only_then(self) -> None:
+        """D7: when `feature-approve` pins no membershipDigest it prescribes re-approval against
+        a reachable index, but the review surface refused to render an approved-current feature
+        even when `--slug` named it — the prescribed remedy was unreachable. Naming an approved
+        feature must re-render its surface; a bare sweep must still skip it, and say so."""
+
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        digest = self.lane()["reviewedContentDigest"]
+
+        named = store.command_feature_review(argparse.Namespace(slug=["scheduling"]))
+        self.assertEqual("REVIEW_READY", named["outcome"])
+        self.assertIn(
+            f":{digest}", named["approveCommand"],
+            "the re-rendered surface must pin the same digest the store already carries",
+        )
+
+        swept = store.command_feature_review(argparse.Namespace(slug=None))
+        self.assertEqual("NOTHING_TO_REVIEW", swept["outcome"])
+        self.assertTrue(
+            any("approved-current" in reason
+                for item in swept["skipped"] for reason in item["reasons"]),
+            "a bare sweep over an approved store must say WHY there is nothing to review",
+        )
+
     def test_approval_binds_the_rule_and_the_prose(self) -> None:
         self.propose()
         self.describe()
