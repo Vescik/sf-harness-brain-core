@@ -493,9 +493,17 @@ def regenerate_fragment_digest(frontmatter: dict[str, Any]) -> bool:
     return True
 
 
-def all_entry_paths() -> list[Path]:
+def all_entry_paths(include_case_twins: bool = False) -> list[Path]:
     if not ARTIFACTS_ROOT.exists():
         return []
+    if include_case_twins:
+        # `rglob("*.md")` is case-sensitive on Linux, so `NAME.MD` — exactly the kind of file
+        # the case-fold gate exists to refuse — was invisible to the one check meant to see it,
+        # and `entry-check` passed over a collision that breaks every Windows/macOS checkout.
+        return sorted(
+            path for path in ARTIFACTS_ROOT.rglob("*")
+            if path.is_file() and path.suffix.casefold() == ".md"
+        )
     return sorted(ARTIFACTS_ROOT.rglob("*.md"))
 
 
@@ -1360,7 +1368,7 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
     seen_identities: dict[str, str] = {}
     seen_casefold: dict[str, str] = {}
     skipped = 0
-    for path in all_entry_paths():
+    for path in all_entry_paths(include_case_twins=True):
         relative = path.relative_to(ROOT).as_posix()
         identity = (
             identity_from_entry_path(path)
