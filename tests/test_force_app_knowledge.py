@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -133,6 +134,39 @@ class ForceAppKnowledgeTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
+
+    def minimal_crawl(self) -> dict:
+        return {
+            "feature": "Alpha", "slug": "alpha",
+            "repositoryCommit": "0" * 40,
+            "anchors": ["HarnessEngagement__c"], "depth": 1, "objects": [],
+            "hubStopList": [], "unresolvedAnchors": [],
+            "relations": {"outbound": [], "inbound": [], "junctions": []},
+            "automations": [], "ui": [], "supporting": [],
+            "limitations": [], "sourceTreeDigest": "sha256:" + "0" * 64,
+            "generatedAt": "2026-07-29T00:00:00Z",
+        }
+
+    def test_f4_the_crawl_dossier_is_a_proposal_and_lives_in_the_cache(self) -> None:
+        """F4 half 1: the crawl dossier is a PROPOSAL whose input JSON already lives in the
+        disposable cache, and it shared output/feature-dossiers/<slug>.md with the
+        approved-entry dossier — a different content model — so whichever writer ran last
+        silently replaced the other."""
+
+        path = self.builder.render_dossier(self.minimal_crawl(), {"bundles": [], "claimCount": 0})
+        self.assertIn(
+            ".cache/knowledge-proposals/feature-dossiers", str(path).replace("\\", "/")
+        )
+        self.assertTrue(
+            path.read_text(encoding="utf-8").startswith("# Feature Dossier — ")
+        )
+
+    def test_f4_the_crawl_writer_refuses_an_entry_model_file(self) -> None:
+        target = self.builder.dossier_root / "alpha.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# Feature — Alpha\n\napproved-entry model\n", encoding="utf-8")
+        with self.assertRaises(KnowledgeBuildError):
+            self.builder.render_dossier(self.minimal_crawl(), {"bundles": [], "claimCount": 0})
 
     def test_clean_inventory_generates_schema_valid_sanitized_drafts(self) -> None:
         inventory = self.builder.inventory()
@@ -770,6 +804,40 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         capped = self.builder.refresh(now, warn_days=30, limit=1, dry_run=True)
         self.assertEqual(1, capped["refreshSelected"])
         self.assertEqual(2, capped["remaining"])
+
+    def test_f5_coverage_refuses_when_entries_exist_and_claims_do_not(self) -> None:
+        """4d: coverage() derives from the claims worklist, empty by construction on an entry
+        store, so it reported 0% documented over 80 approved entries and queued 25 components
+        that were already done. Refusal names the replacements rather than teaching coverage a
+        second denominator."""
+
+        self.builder.inventory()
+        entries = {
+            "CustomObject:HarnessEngagement__c": {"purpose": "Real.", "lane": "approved-current"}
+        }
+        with unittest.mock.patch.object(
+            ForceAppKnowledge, "entry_descriptions", lambda self: entries
+        ):
+            with self.assertRaises(KnowledgeBuildError) as caught:
+                self.builder.coverage()
+        self.assertIn("entry-readiness", str(caught.exception))
+
+    def test_f5_entry_readiness_reports_the_entry_side_denominator(self) -> None:
+        self.builder.inventory()
+        entries = {
+            "CustomObject:HarnessEngagement__c": {"purpose": "Real.", "lane": "approved-current"}
+        }
+        with unittest.mock.patch.object(
+            ForceAppKnowledge, "entry_descriptions", lambda self: entries
+        ):
+            result = self.builder.entry_readiness()
+        self.assertEqual("force-app-entry-readiness", result["kind"])
+        bucket = result["byMetadataType"]["CustomObject"]
+        self.assertGreaterEqual(bucket["components"], 1)
+        self.assertEqual(1, bucket["byLane"]["approved-current"])
+        self.assertGreaterEqual(result["totals"]["noEntry"], 1)
+        # The basis must name the other surfaces, or one denominator gets mistaken for another.
+        self.assertIn("coverage", result["basis"])
 
     def test_coverage_summarizes_documentation_state(self) -> None:
         self.builder.inventory()

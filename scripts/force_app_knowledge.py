@@ -396,7 +396,11 @@ class ForceAppKnowledge:
         self.cache_root = self.root / ".cache/knowledge-proposals"
         self.inventory_path = self.cache_root / "force-app-inventory.json"
         self.draft_root = self.cache_root / "force-app-drafts"
-        self.dossier_root = self.root / "output/feature-dossiers"
+        # The crawl dossier is a PROPOSAL and its input JSON already lives in the disposable
+        # cache, so its rendering does too. output/feature-dossiers/ belongs to the
+        # approved-entry dossier (`knowledge_search.py feature-dossier`) — a different content
+        # model; sharing the path let whichever writer ran last silently replace the other.
+        self.dossier_root = self.cache_root / "feature-dossiers"
         # Extractor tuning: config/knowledge-extraction.json overrides; built-in defaults keep
         # template repos working without local configuration.
         extraction: dict[str, Any] = {}
@@ -5499,6 +5503,23 @@ class ForceAppKnowledge:
         governed human review.
         """
 
+        claims_root = self.root / ".ai/knowledge/claims"
+        has_claims = claims_root.is_dir() and any(claims_root.glob("*.yaml"))
+        if not has_claims and any(
+            str(entry["lane"]).startswith("approved")
+            for entry in self.entry_descriptions().values()
+        ):
+            # On an entry store the claims worklist is empty by construction, so this report
+            # read "0% documented" over 80 approved entries and queued 25 already-documented
+            # components as "document next". Refusing beats teaching coverage a second
+            # denominator that could then be mistaken for the first.
+            raise KnowledgeBuildError(
+                "coverage derives its denominator from the claims worklist, and this workspace "
+                "holds no claims but does hold approved Knowledge Entries — its percentages "
+                "would read 0% documented over a documented store. Run "
+                "`force_app_knowledge.py entry-readiness` for the entry-side view, or "
+                "`knowledge_store.py entry-coverage` for the source-side denominator."
+            )
         worklist = self.worklist(metadata_type=None)
         items = worklist["items"]
         by_type: dict[str, Counter[str]] = {}
@@ -5557,6 +5578,65 @@ class ForceAppKnowledge:
             result["path"] = self.relative(coverage_path)
         return result
 
+
+    ENTRY_READINESS_SAMPLE_CAP = 50
+
+    def entry_readiness(self) -> dict[str, Any]:
+        """Which live components of entry-homed types carry a Knowledge Entry, per lane.
+
+        The entry-side counterpart of `coverage`, deliberately a separate command with a
+        separate denominator: `coverage` divides claim-documented components by the claims
+        worklist, this divides live entry-profiled components by entry lanes, and mistaking one
+        for the other is how a fully-approved entry store read as 0% documented."""
+
+        inventory = self.inventory()
+        draftable = self.entry_draftable_types()
+        entries = self.entry_descriptions()
+        by_type: dict[str, dict[str, Any]] = {}
+        missing: list[dict[str, str]] = []
+        for component in inventory.get("components", []):
+            metadata_type = component["metadataType"]
+            if metadata_type not in draftable:
+                continue
+            bucket = by_type.setdefault(
+                metadata_type, {"components": 0, "byLane": Counter(), "noEntry": 0}
+            )
+            bucket["components"] += 1
+            entry = entries.get(component["id"])
+            if entry is None:
+                bucket["noEntry"] += 1
+                missing.append(
+                    {"componentId": component["id"], "metadataType": metadata_type}
+                )
+            else:
+                bucket["byLane"][str(entry["lane"])] += 1
+        missing.sort(key=lambda row: (row["metadataType"], row["componentId"]))
+        return {
+            "kind": "force-app-entry-readiness",
+            "generatedAt": iso(utc_now()),
+            "repositoryCommit": inventory["repositoryCommit"],
+            "byMetadataType": {
+                name: {
+                    "components": bucket["components"],
+                    "byLane": dict(sorted(bucket["byLane"].items())),
+                    "noEntry": bucket["noEntry"],
+                }
+                for name, bucket in sorted(by_type.items())
+            },
+            "totals": {
+                "components": sum(b["components"] for b in by_type.values()),
+                "withEntry": sum(sum(b["byLane"].values()) for b in by_type.values()),
+                "noEntry": sum(b["noEntry"] for b in by_type.values()),
+            },
+            "documentNext": missing[: self.ENTRY_READINESS_SAMPLE_CAP],
+            "documentNextTruncated": max(0, len(missing) - self.ENTRY_READINESS_SAMPLE_CAP),
+            "basis": (
+                "live entry-profiled force-app components against Knowledge Entry lanes. "
+                "`coverage` answers the CLAIM-side question with a claims-worklist denominator; "
+                "`relation-health` answers whether edge targets still exist in source. None of "
+                "the three supersedes another."
+            ),
+        }
 
     # Metadata types whose repository facts moved to one-file Knowledge Entries. Drafting a
     # repository claim for them would only be rejected at propose time (SAFE-CLAIM-001 v2),
@@ -6563,6 +6643,15 @@ class ForceAppKnowledge:
         )
         self.dossier_root.mkdir(parents=True, exist_ok=True)
         dossier_path = self.dossier_root / f"{crawl['slug']}.md"
+        if dossier_path.is_file():
+            first_line = dossier_path.read_text(encoding="utf-8").split("\n", 1)[0]
+            if first_line.startswith("# Feature — "):
+                raise KnowledgeBuildError(
+                    f"{dossier_path} holds an approved-entry dossier (its H1 is '# Feature — '), "
+                    "a different content model; refusing to overwrite it. Entry dossiers are "
+                    "written by `knowledge_search.py feature-dossier` to output/feature-dossiers/ "
+                    "— move or delete this file if it is misplaced."
+                )
         dossier_path.write_text("\n".join(lines), encoding="utf-8")
         return dossier_path
 
@@ -6594,6 +6683,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--write",
         action="store_true",
         help="also save the coverage report under .cache/knowledge-proposals/",
+    )
+    commands.add_parser(
+        "entry-readiness",
+        help="entry-side coverage: live entry-profiled components against entry lanes (read-only)",
     )
     relations_worklist = commands.add_parser(
         "relations-worklist",
@@ -6725,6 +6818,13 @@ def main(argv: Iterable[str] | None = None) -> int:
             }
             if "path" in result:
                 summary["path"] = result["path"]
+        elif args.command == "entry-readiness":
+            result = builder.entry_readiness()
+            summary = {
+                "totals": result["totals"],
+                "documentNext": len(result["documentNext"]),
+                "documentNextTruncated": result["documentNextTruncated"],
+            }
         elif args.command == "relations-worklist":
             result = builder.relations_worklist(args.metadata_type, args.write)
             summary = {

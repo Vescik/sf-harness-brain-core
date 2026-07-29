@@ -493,9 +493,17 @@ def regenerate_fragment_digest(frontmatter: dict[str, Any]) -> bool:
     return True
 
 
-def all_entry_paths() -> list[Path]:
+def all_entry_paths(include_case_twins: bool = False) -> list[Path]:
     if not ARTIFACTS_ROOT.exists():
         return []
+    if include_case_twins:
+        # `rglob("*.md")` is case-sensitive on Linux, so `NAME.MD` — exactly the kind of file
+        # the case-fold gate exists to refuse — was invisible to the one check meant to see it,
+        # and `entry-check` passed over a collision that breaks every Windows/macOS checkout.
+        return sorted(
+            path for path in ARTIFACTS_ROOT.rglob("*")
+            if path.is_file() and path.suffix.casefold() == ".md"
+        )
     return sorted(ARTIFACTS_ROOT.rglob("*.md"))
 
 
@@ -515,6 +523,42 @@ def collector_component(metadata_type: str, full_name: str) -> dict[str, Any]:
 
 
 _OPERATION_KINDS = {"lookup": "recordLookup", "create": "recordCreate", "update": "recordUpdate", "delete": "recordDelete"}
+
+
+def render_decision_path(path: Any) -> str:
+    """One reachability path, rendered for the profile's `decisionGuards: [string]`.
+
+    The collector emits `paths` as a list of PATHS, each a list of hop OBJECTS
+    (`{decision, outcome?, outcomeLabel?, conditions?, default?}`, force_app_knowledge.py:960-966).
+    Joining those with `" -> ".join(...)` raised `TypeError: sequence item 0: expected str
+    instance, dict found` on the first real Flow that declared a custom error behind a decision —
+    an unhandled crash, not a degraded fact, so the whole entry could not be drafted. The pilot
+    never hit it because its fixture errors sit on the trigger path with no decision above them.
+
+    A hop renders as the decision name, qualified by the branch that reaches it: the outcome label
+    when there is one, the API outcome name otherwise, and `default` for the else-branch. An
+    unrecognised hop degrades to its decision name rather than raising — a guard string is
+    disclosure, and losing the whole entry to gain a punctuation mark is the wrong trade.
+    """
+
+    if not isinstance(path, list):
+        return str(path)
+    steps: list[str] = []
+    for hop in path:
+        if not isinstance(hop, dict):
+            steps.append(str(hop))
+            continue
+        decision = str(hop.get("decision") or "").strip()
+        if not decision:
+            continue
+        branch = hop.get("outcomeLabel") or hop.get("outcome")
+        if branch:
+            steps.append(f"{decision} [{branch}]")
+        elif hop.get("default"):
+            steps.append(f"{decision} [default]")
+        else:
+            steps.append(decision)
+    return " -> ".join(steps)
 
 
 def flow_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, str]]:
@@ -595,7 +639,7 @@ def flow_type_facts(component: dict[str, Any]) -> tuple[dict[str, Any], list[dic
             ),
             "reachability": {
                 "triggerContext": item.get("triggerContext") or "not-derived",
-                "decisionGuards": [" -> ".join(p) if isinstance(p, list) else str(p) for p in item.get("paths", [])],
+                "decisionGuards": [render_decision_path(p) for p in item.get("paths", [])],
                 "truncated": bool(item.get("pathsTruncated")),
             },
             "basis": "source-declared",
@@ -995,6 +1039,13 @@ def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
     is the one part a human must actually read. Structured facts are never touched here: this
     command replaces only the attested body, recomputes the digests, and returns the entry to
     `draft` — an approval bound to the previous text cannot survive new text (contract §5.5).
+
+    `--limitation` writes the one required, digest-bound field that had no write path at all.
+    `limitations` is inside `factsDigest`, printed to the approver, and read by six projection
+    sites — and it was `[]` on every entry of the first real store, because `entry-draft`
+    hardcodes it and no subcommand could set it. The caveats existed; they were stranded in
+    prose, where no consumer reads them. It rides this command because the invalidation
+    semantics a limitation needs are exactly the ones a new description already has.
     """
 
     assert_no_reparse_points()
@@ -1014,6 +1065,15 @@ def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
             "component does, it is not a transcript of its source"
         )
     body = "## Purpose\n\n" + description
+    limitations = [str(item).strip() for item in (getattr(args, "limitation", None) or []) if str(item).strip()]
+    if limitations and getattr(args, "clear_limitations", False):
+        raise StoreError("--clear-limitations cannot be combined with --limitation")
+    if limitations:
+        # Replace rather than append: a limitation set is a statement about THIS text, and an
+        # append-only field would silently carry a caveat that the new description answered.
+        frontmatter["limitations"] = sorted(dict.fromkeys(limitations))
+    elif getattr(args, "clear_limitations", False):
+        frontmatter["limitations"] = []
     problems = validate_entry(frontmatter, body)
     if problems:
         raise StoreError("description rejected: " + "; ".join(problems))
@@ -1030,6 +1090,7 @@ def command_entry_describe(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "DESCRIBED",
         "identity": args.identity,
+        "limitations": frontmatter.get("limitations", []),
         "path": relative_path(path),
         "reviewedContentDigest": frontmatter["lifecycle"]["contentDigest"],
         "previousApprovalInvalidated": was_approved,
@@ -1307,7 +1368,7 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
     seen_identities: dict[str, str] = {}
     seen_casefold: dict[str, str] = {}
     skipped = 0
-    for path in all_entry_paths():
+    for path in all_entry_paths(include_case_twins=True):
         relative = path.relative_to(ROOT).as_posix()
         identity = (
             identity_from_entry_path(path)
@@ -1371,6 +1432,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     describe.add_argument("--identity", required=True)
     describe.add_argument("--purpose-file", required=True)
+    describe.add_argument("--limitation", action="append", default=None)
+    describe.add_argument("--clear-limitations", action="store_true")
     describe.set_defaults(func=command_entry_describe)
 
     review = commands.add_parser(
@@ -1466,6 +1529,77 @@ def main(argv: list[str] | None = None) -> int:
 
 FEATURE_SLUG_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 FEATURE_SENTINEL = "<AGENT_FEATURE_DESCRIPTION>"
+
+
+BOUNDARY_NAME_CLOSEST = 3
+
+
+def source_object_names() -> tuple[set[str], str | None]:
+    """Every component and owning-object name force-app currently holds.
+
+    One cached JSON read, the same source `entry-coverage` uses, deliberately NOT an rglob over
+    the artifact corpus: a single-feature command paying a walk over a 15 k-entry store is the
+    scale defect this module already warns about. Returns the reason instead of raising when the
+    inventory is unavailable — a boundary must still be writable on a machine that has not run
+    `inventory` yet.
+    """
+
+    from scripts.force_app_knowledge import ForceAppKnowledge
+
+    try:
+        inventory = ForceAppKnowledge(ROOT).inventory()
+    except Exception as error:  # noqa: BLE001 - advisory context, never a hard failure
+        return set(), f"unavailable: {error}"
+    names: set[str] = set()
+    for component in inventory.get("components", []):
+        name = component.get("name")
+        if not name:
+            continue
+        names.add(str(name))
+        owner = (component.get("facts") or {}).get("object")
+        if owner:
+            names.add(str(owner))
+        if "." in str(name):
+            names.add(str(name).split(".", 1)[0])
+    return names, None
+
+
+def resolve_boundary_names(names: list[str]) -> dict[str, Any]:
+    """Advisory: does each name in a boundary rule exist in this workspace's source?
+
+    `feature-propose` stripped whitespace and wrote, so a typo landed inside a rule that a human
+    then approved and a digest then pinned. Worse, an unresolvable name and a name the walk simply
+    never reached produce the SAME silence — measured on the first real store, where a rule
+    declared four hubs, none fired, and nothing distinguished "correct but not reached" from
+    "does not exist".
+
+    Advisory on purpose. A hard gate here would reject an anchor whose object-meta.xml is absent
+    from a fixture, and would couple a pure file write to git and to the inventory schema — the
+    failure `entry-coverage` deliberately soft-handles. The reviewer is told; nothing is refused.
+    """
+
+    import difflib
+
+    known, unavailable = source_object_names()
+    rows: dict[str, Any] = {}
+    for name in sorted({str(item).strip() for item in names if str(item).strip()}):
+        if unavailable:
+            rows[name] = {"status": "unknown", "closest": []}
+            continue
+        if name in known:
+            rows[name] = {"status": "in-source", "closest": []}
+            continue
+        rows[name] = {
+            "status": "not-in-workspace",
+            # A near miss is the typo signal. An exact absence with no near miss is usually a
+            # standard or packaged object, which is a legitimate hub and not an error.
+            "closest": difflib.get_close_matches(name, sorted(known), n=BOUNDARY_NAME_CLOSEST, cutoff=0.8),
+        }
+    return {
+        "names": rows,
+        "basis": unavailable or "force-app inventory",
+        "notInWorkspace": sorted(n for n, row in rows.items() if row["status"] == "not-in-workspace"),
+    }
 
 
 def feature_identity(slug: str) -> str:
@@ -1646,6 +1780,9 @@ def command_feature_propose(args: argparse.Namespace) -> dict[str, Any]:
         "boundaryDigest": boundary_digest(frontmatter["boundary"]),
         "reviewedContentDigest": digest,
         "describedYet": FEATURE_SENTINEL not in body,
+        "nameResolution": resolve_boundary_names(
+            boundary["anchors"] + boundary["hubs"] + boundary["include"] + boundary["exclude"]
+        ),
     }
 
 
@@ -1707,7 +1844,12 @@ def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
         if lane["problems"]:
             skipped.append({"identity": lane["identity"], "reasons": lane["problems"]})
             continue
-        if lane["lane"] == "approved-current":
+        # D7: an explicit --slug is a request to RE-render — the remedy `feature-approve` and
+        # `feature-drift` both prescribe when no membershipDigest could be pinned. Only a bare
+        # sweep skips the already-approved, and it must say so rather than answer with silence.
+        if lane["lane"] == "approved-current" and not wanted:
+            skipped.append({"identity": lane["identity"],
+                            "reasons": ["already approved-current; name it with --slug to re-render"]})
             continue
         frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
         resolved.append((lane["identity"], frontmatter, body, lane["reviewedContentDigest"]))
@@ -1731,8 +1873,30 @@ def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
             f"- explicit include: {', '.join(boundary['include']) or '(none)'}",
             f"- explicit exclude: {', '.join(boundary['exclude']) or '(none)'}",
             f"- membership assurance floor: {boundary['membershipAssuranceFloor']}",
-            "", "### Attested body (exactly what approval covers)", "", body.strip(), "",
         ]
+        # Every name in the rule is about to be pinned by a digest, and nothing checked that any
+        # of them exists: `feature-propose` strips whitespace and writes. An unresolvable name and
+        # a name the walk never reached look identical in every other output.
+        resolution = resolve_boundary_names(
+            boundary["anchors"] + boundary["hubs"] + boundary["include"] + boundary["exclude"]
+        )
+        absent = resolution["notInWorkspace"]
+        if resolution["basis"].startswith("unavailable"):
+            lines.append(
+                f"- name check: NOT RUN ({resolution['basis']}) — no name in this rule was verified"
+            )
+        elif absent:
+            lines.append("- name check: the following are NOT in this workspace's force-app source:")
+            for name in absent:
+                closest = resolution["names"][name]["closest"]
+                lines.append(
+                    f"    - `{name}`"
+                    + (f" — did you mean {', '.join(f'`{item}`' for item in closest)}?" if closest
+                       else " (no near match; expected for a standard or packaged object)")
+                )
+        else:
+            lines.append("- name check: every name in this rule resolves to force-app source")
+        lines += ["", "### Attested body (exactly what approval covers)", "", body.strip(), ""]
     REVIEW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
     artifact = REVIEW_ARTIFACT_ROOT / f"{chunk_id}-feature-review.md"
     atomic_write(artifact, "\n".join(lines) + "\n")
@@ -1786,11 +1950,12 @@ def approval_membership_digest(boundary: dict[str, Any]) -> dict[str, Any]:
             depth_limit=knowledge_search.DEPTH_LIMITS["drift"],
         )
     except knowledge_search.SearchError as error:
-        return {"membershipDigest": None, "unreachable": str(error), "limitsHit": []}
+        return {"membershipDigest": None, "unreachable": str(error), "limitsHit": [], "laneExcludedCount": 0}
     return {
         "membershipDigest": membership["membershipDigest"],
         "unreachable": None,
         "limitsHit": membership["limitsHit"],
+        "laneExcludedCount": membership["laneExcluded"]["count"],
     }
 
 
@@ -1826,6 +1991,7 @@ def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
     records = []
     unpinned: list[str] = []
     truncated: list[str] = []
+    lane_dropped: list[str] = []
     for identity, path, lane in resolved:
         frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
         membership = approval_membership_digest(frontmatter["boundary"])
@@ -1834,6 +2000,8 @@ def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
             unpinned.append(f"{identity}: {membership['unreachable']}")
         elif membership["limitsHit"]:
             truncated.append(f"{identity}: {', '.join(membership['limitsHit'])}")
+        if membership["laneExcludedCount"]:
+            lane_dropped.append(f"{identity}: {membership['laneExcludedCount']} artifact(s)")
         frontmatter["lifecycle"] = {"state": "approved", "contentDigest": lane["reviewedContentDigest"]}
         frontmatter["approval"] = {
             "reviewedContentDigest": lane["reviewedContentDigest"],
@@ -1874,6 +2042,13 @@ def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
             + ", so the pinned digest covers a deterministic PREFIX of the membership rather "
             "than all of it, and `feature-drift` will answer "
             "`changedWithinTruncatedPrefix` instead of `changed`."
+        )
+    if lane_dropped:
+        gaps.append(
+            "The lifecycle lane filter removed reached artifact(s) from the membership the "
+            "pinned digest covers — " + "; ".join(lane_dropped)
+            + ". The digest is honest for the established lanes; it simply does not include "
+            "them. `tree --feature <slug>` names them under `laneExcluded`."
         )
     if gaps:
         result["gaps"] = gaps

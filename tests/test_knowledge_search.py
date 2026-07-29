@@ -304,12 +304,156 @@ class KnowledgeSearchTests(EntryFixtureMixin, unittest.TestCase):
             with self.subTest(term=term):
                 self.assertIn("Flow:c:HarnessAlphaRouter", self.ids(self.search(text=term)))
 
+    def test_f3_a_search_row_carries_a_purpose_excerpt_labelled_as_one(self) -> None:
+        """F3: a row of isolated matched tokens makes retrieval a file locator — every ranking
+        error costs a file open. The row carries a clipped Purpose excerpt under a key that
+        SAYS it is an excerpt; the citable unit stays citation.path + citation.entryDigest."""
+
+        self.seed()
+        result = self.search(text="dispatches")
+        hit = next(
+            h for h in result["approvedResults"]
+            if h["artifactId"] == "Flow:c:HarnessBetaDispatch"
+        )
+        self.assertIn("dispatches", (hit["snippet"] or "").lower())
+        self.assertIn("citation.path", hit["snippetBasis"])
+
+    def test_f3_a_long_purpose_is_clipped_on_word_boundaries_around_the_match(self) -> None:
+        (self.temp / "force-app/main/default/flows/HarnessGammaLong.flow-meta.xml").write_text(
+            ALPHA_FLOW, encoding="utf-8"
+        )
+        filler = "Routine hop over the lazy dog. " * 12
+        entry = self.draft(
+            "Flow", "HarnessGammaLong", filler + "Escalates rejected invoices nightly."
+        )
+        self.approve(entry)
+        search.build_index()
+        hit = next(
+            h for h in self.search(text="invoices")["approvedResults"]
+            if h["artifactId"] == "Flow:c:HarnessGammaLong"
+        )
+        self.assertIn("invoices", hit["snippet"])
+        self.assertLessEqual(len(hit["snippet"]), 260, "the window must stay a window")
+        self.assertTrue(hit["snippet"].startswith("…"), "a clipped head must announce itself")
+
+    def test_f3_an_unfilled_draft_sentinel_is_an_absence_not_a_snippet(self) -> None:
+        # `--state draft` routes drafts through this same funnel; an <AGENT_...> placeholder is
+        # a template, not prose, and serving it as an excerpt would launder it into one.
+        (self.temp / "force-app/main/default/flows/HarnessGammaBlank.flow-meta.xml").write_text(
+            ALPHA_FLOW, encoding="utf-8"
+        )
+        # An empty purpose file is the real path to a sentinel: entry-draft writes the
+        # <AGENT_...> template itself, and refuses a hand-written one.
+        self.draft("Flow", "HarnessGammaBlank", "")
+        search.build_index()
+        result = self.search(text="harnessgammablank", state=["draft"])
+        hit = next(
+            h for h in result["approvedResults"] + result["nonCurrentResults"]
+            if h["artifactId"] == "Flow:c:HarnessGammaBlank"
+        )
+        self.assertIsNone(hit["snippet"])
+
+    def test_f3_explain_serves_the_full_purpose_with_its_basis(self) -> None:
+        self.seed()
+        result = search.run_explain(argparse.Namespace(
+            identity="Flow:c:HarnessAlphaRouter", state=None, top=50, include_heuristic=False,
+        ))
+        self.assertIn("Kieruje", result["purpose"])
+        self.assertIn("citation.path", result["purposeBasis"])
+
+    def test_f2_function_words_alone_cannot_manufacture_an_ok(self) -> None:
+        """F2: a sentence-shaped query whose only content word matches nothing scored on
+        corpus-saturated tokens and returned OK. A store whose pitch is honest absence
+        reporting was manufacturing relevance. `harness` sits in every fixture identity, so
+        it is this corpus's function word; `refunds` names the thing nobody documented."""
+
+        self.seed()
+        result = self.search(text="how does harness handle refunds")
+        self.assertEqual("NO_MATCH", result["outcome"])
+        self.assertTrue(
+            any("refunds" in gap for gap in result["gaps"]),
+            "the gap must name the unmatched content word",
+        )
+
+    def test_f2_query_terms_report_frequency_and_saturation(self) -> None:
+        self.seed()
+        result = self.search(text="dispatches refunds")
+        terms = {row["term"]: row for row in result["queryTerms"]}
+        self.assertTrue(terms["dispatches"]["matched"])
+        self.assertFalse(terms["dispatches"]["saturated"])
+        self.assertFalse(terms["refunds"]["matched"])
+        self.assertEqual(0, terms["refunds"]["documentFrequency"])
+
+    def test_f2_a_dead_term_is_disclosed_even_when_results_serve(self) -> None:
+        # One term carries the query, the other matches nothing anywhere. Serving results
+        # without saying so lets the caller believe both terms were answered.
+        self.seed()
+        result = self.search(text="dispatches refunds")
+        self.assertEqual("OK", result["outcome"])
+        self.assertIn("Flow:c:HarnessBetaDispatch", self.ids(result))
+        self.assertTrue(any("refunds" in gap for gap in result["gaps"]))
+
     def test_g03_salesforce_symbols_survive_the_analyzer(self) -> None:
         tokens = search.analyze("HarnessAlphaCase__c.Status__c")
         self.assertIn("harnessalphacase__c.status__c", tokens)
         self.assertIn("__c", tokens)
         self.assertIn("harness", tokens)
         self.assertNotEqual(["c"], sorted(set(tokens)))
+
+    def test_hyphenated_compounds_are_reachable_by_either_half(self) -> None:
+        """The compound stayed atomic, so half of every hyphenated phrase was unreachable.
+
+        Measured on the first real store: `semicolon` and `delimited` both returned NO_MATCH
+        against a description reading "Semicolon-delimited list of trigger handler names", while
+        `semicolon-delimited` returned it. Worse, the two phrasings of the same question returned
+        different features. Salesforce prose is saturated with these — master-detail, before-save,
+        record-level, roll-up, read-only."""
+
+        tokens = search.analyze("Semicolon-delimited list")
+        for expected in ("semicolon-delimited", "semicolon", "delimited"):
+            self.assertIn(expected, tokens, f"{expected!r} is not reachable")
+        # The Salesforce suffix handling the analyzer exists to protect must be untouched.
+        symbols = search.analyze("HarnessAlphaCase__c.Status__c")
+        self.assertIn("harnessalphacase__c.status__c", symbols)
+        self.assertIn("__c", symbols)
+
+    def test_a_lane_filtered_match_is_not_reported_as_no_match(self) -> None:
+        """`search --text mpsaCard` said "No lexical match" for an entry sitting in the index.
+
+        It matched and was then lane-excluded, which is a completely different answer — and the
+        one the store exists to give honestly. On a store where nothing is approved yet this is
+        100% of first contact."""
+
+        self.seed()
+        drafted = self.draft("Flow", "HarnessBetaDispatch", "Redraft, not approved.")
+        search.build_index()
+        result = self.search(text="redraft")
+        self.assertEqual([], result["approvedResults"])
+        self.assertTrue(
+            any("matched this query lexically and were then excluded" in gap for gap in result["gaps"]),
+            f"a lane-filtered match still reports absence: {result['gaps']}",
+        )
+        self.assertFalse(
+            any(gap.startswith("No lexical match") for gap in result["gaps"]),
+            "the false 'no match' gap is still emitted alongside the true one",
+        )
+        self.assertIn(drafted["identity"], result["draftCandidates"])
+        self.assertEqual("query-ranked", result["draftCandidatesBasis"])
+
+    def test_draft_candidates_answer_the_query_rather_than_the_alphabet(self) -> None:
+        # It was `sorted(lane_ids(["draft"]))[:10]` — byte-identical for a real API name and for
+        # gibberish, printed where results go. A fixed list that looks like results is worse than
+        # an empty one: it reads as "these are the nearest things we know", and they are not.
+        self.seed()
+        self.draft("Flow", "HarnessBetaDispatch", "Redraft, not approved.")
+        search.build_index()
+        real = self.search(text="redraft")
+        nonsense = self.search(text="zzzz xyzzy nonsense")
+        self.assertTrue(real["draftCandidates"], "a matching draft was not offered")
+        self.assertEqual(
+            [], nonsense["draftCandidates"],
+            "gibberish still returns a candidate list, so the list is not the query's answer",
+        )
 
     def test_g06_candidate_keywords_do_not_rank_in_the_established_lane(self) -> None:
         self.seed()
@@ -1410,7 +1554,12 @@ class TraversalReuseTests(EntryFixtureMixin, unittest.TestCase):
             self.assertIn(node["minAssurance"], (
                 relation_kinds.SOURCE_EXACT, relation_kinds.SOURCE_DERIVED_HEURISTIC
             ))
-        self.assertEqual({"nodes", "excluded", "limitsHit", "observed"}, set(walk))
+        self.assertEqual(
+            {"nodes", "excluded", "excludedIdentities", "stoppedAt", "limitsHit", "observed"},
+            set(walk),
+        )
+        # No stop-list was passed, so nothing was kept-but-unexpanded.
+        self.assertEqual([], walk["stoppedAt"])
 
     def test_traverse_honours_the_lane_filter_it_is_given(self) -> None:
         self.seed()
@@ -2595,6 +2744,87 @@ class ProjectorVersionTests(EntryFixtureMixin, unittest.TestCase):
         self.assertIn("INDEX STALE", str(raised.exception))
 
 
+class EdgeResolutionTests(EntryFixtureMixin, unittest.TestCase):
+    """4d: bare member tokens resolve, decidability is stated, and edge-health reports it.
+
+    `build_relation_index` computed a per-target `resolution` that nothing read, and
+    `by_full_name` keys on the qualified `Object.Field` while extractors emit the bare member
+    token source actually wrote — so a field with an approved entry read as `no-entry` and
+    `impact --direction outgoing` dead-ended one hop early on targets that were entries all
+    along."""
+
+    FIELD = {
+        "identity": "CustomField:c:HarnessAlphaCase__c.Status__c",
+        "facets": {"fullName": "HarnessAlphaCase__c.Status__c"}, "edges": [],
+    }
+
+    def flow_projection(self, name, targets):
+        return {
+            "identity": f"Flow:c:{name}", "facets": {"fullName": name},
+            "edges": [
+                {"target": target, "kind": "reads-field", "assurance": "source-exact"}
+                for target in targets
+            ],
+        }
+
+    def test_a_bare_member_token_resolves_to_the_entry_that_owns_it(self) -> None:
+        index = search.build_relation_index(
+            [self.FIELD, self.flow_projection("R", ["Status__c"])]
+        )
+        row = index["byTarget"][search.fold_target("Status__c")]
+        self.assertEqual("resolved-by-member", row["resolution"])
+        self.assertEqual(self.FIELD["identity"], row["targetIdentity"])
+
+    def test_two_owners_of_one_member_name_are_ambiguous_not_guessed(self) -> None:
+        other = {
+            "identity": "CustomField:c:HarnessBetaOrder__c.Status__c",
+            "facets": {"fullName": "HarnessBetaOrder__c.Status__c"}, "edges": [],
+        }
+        index = search.build_relation_index(
+            [self.FIELD, other, self.flow_projection("R", ["Status__c"])]
+        )
+        row = index["byTarget"][search.fold_target("Status__c")]
+        self.assertEqual("ambiguous", row["resolution"])
+        self.assertEqual(
+            sorted([self.FIELD["identity"], other["identity"]]), row["candidates"]
+        )
+        self.assertIsNone(row["targetIdentity"])
+
+    def test_a_qualified_full_name_still_resolves_first(self) -> None:
+        index = search.build_relation_index(
+            [self.FIELD, self.flow_projection("R", ["HarnessAlphaCase__c.Status__c"])]
+        )
+        row = index["byTarget"][search.fold_target("HarnessAlphaCase__c.Status__c")]
+        self.assertEqual("resolved", row["resolution"])
+        self.assertEqual(self.FIELD["identity"], row["targetIdentity"])
+
+    def test_decidability_follows_the_entry_edge_health_rule(self) -> None:
+        # Only an unnamespaced __c/__e/__mdt/__b/__x name can have an entry here. A standard
+        # field on a custom object (`Category__c.Id`) will never have a CustomField entry, and
+        # `ns__Thing__c` is owned by an installed package.
+        index = search.build_relation_index([
+            self.flow_projection(
+                "R", ["Status__c", "Category__c.Id", "Account", "ns__Thing__c"]
+            ),
+        ])
+        by_target = index["byTarget"]
+        self.assertTrue(by_target[search.fold_target("Status__c")]["decidable"])
+        self.assertFalse(by_target[search.fold_target("Category__c.Id")]["decidable"])
+        self.assertFalse(by_target[search.fold_target("Account")]["decidable"])
+        self.assertFalse(by_target[search.fold_target("ns__Thing__c")]["decidable"])
+
+    def test_edge_health_reports_resolution_decidability_and_truncation(self) -> None:
+        self.seed()
+        result = search.run_edge_health(argparse.Namespace())
+        self.assertEqual("EDGE_HEALTH", result["outcome"])
+        self.assertIsInstance(result["resolutionCounts"], dict)
+        self.assertIn("truncatedSources", result)
+        self.assertIn("decidableNoEntry", result)
+        self.assertIn("force-app source", result["basis"])
+        manifest = search.load_index()[1]
+        self.assertIn("edgeResolution", manifest)
+
+
 class FeatureDossierTests(EntryFixtureMixin, unittest.TestCase):
     """The dossier renders what a human approved, and is never itself citable."""
 
@@ -2652,6 +2882,94 @@ class FeatureDossierTests(EntryFixtureMixin, unittest.TestCase):
         self.assertIn("generated view, not Knowledge", text)
         self.assertIn("never citable", text)
         self.assertIn("entry-status --identity", text)
+
+    def test_f4_the_entry_dossier_refuses_a_crawl_model_file(self) -> None:
+        """F4 half 1: both writers rendered output/feature-dossiers/<slug>.md with different
+        content models, and whichever ran last silently replaced the other. The crawl writer
+        moved to the disposable cache; each writer now refuses a file carrying the other
+        model's H1 rather than overwriting it."""
+
+        self.make_feature()
+        self.approve_feature()
+        target = store.ROOT / "output/feature-dossiers/alpha.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# Feature Dossier — alpha\n\ncrawl proposal\n", encoding="utf-8")
+        with self.assertRaises(search.SearchError):
+            self.dossier()
+
+    def _draft_out_of_lane_field(self) -> str:
+        """A draft entry the walk can reach from the alpha anchor: out of the default lanes."""
+
+        purpose = self.temp / "lane-purpose.md"
+        purpose.write_text("Tracks a draft-only lane fixture.", encoding="utf-8")
+        fields = self.temp / "force-app/main/default/objects/HarnessAlphaCase__c/fields"
+        (fields / "LaneOnly__c.field-meta.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "    <fullName>LaneOnly__c</fullName>\n    <label>LaneOnly</label>\n"
+            "    <type>Text</type>\n</CustomField>\n",
+            encoding="utf-8",
+        )
+        store.command_entry_draft(argparse.Namespace(
+            metadata_type="CustomField", full_name="HarnessAlphaCase__c.LaneOnly__c",
+            namespace=None, purpose_file=str(purpose), source_api_version="64.0",
+            candidate_keyword=None,
+        ))
+        search.build_index()
+        return "CustomField:c:HarnessAlphaCase__c.LaneOnly__c"
+
+    def test_f4_lane_filtered_members_are_reported_not_discarded(self) -> None:
+        """F4 half 2: traverse counted excluded["lifecycle"] and compute_membership discarded
+        the identities, so the DEFAULT invocation — approved-current only — could empty a
+        dossier and still report gaps: []. Reporting only: the member set and its digest
+        cover exactly what they covered before."""
+
+        excluded_identity = self._draft_out_of_lane_field()
+        self.make_feature()
+        self.approve_feature()
+
+        tree = search.run_tree(argparse.Namespace(
+            feature="alpha", state=None, include_heuristic=False, direction=None,
+        ))
+        self.assertIn(excluded_identity, tree["laneExcluded"]["identities"])
+        self.assertNotIn(
+            excluded_identity,
+            [m["identity"] for m in tree["members"] + tree["membersNonCurrent"]],
+        )
+        self.assertTrue(any("lane" in gap for gap in tree["gaps"]))
+
+        drift = search.run_feature_drift(argparse.Namespace(
+            feature="alpha", state=None, include_heuristic=False,
+        ))
+        self.assertGreaterEqual(drift["laneExcluded"]["count"], 1)
+
+        dossier = self.dossier()
+        self.assertGreaterEqual(dossier["laneExcluded"], 1)
+        self.assertTrue(any("lane" in gap for gap in dossier["gaps"]))
+
+    def test_f4_an_explicitly_included_draft_is_a_member_not_an_exclusion(self) -> None:
+        # The double-count trap `belowFloor` already documents: an artifact that qualifies as
+        # a member by ANY path must not also be reported as excluded.
+        excluded_identity = self._draft_out_of_lane_field()
+        self.make_feature(include=[excluded_identity])
+        self.approve_feature()
+        tree = search.run_tree(argparse.Namespace(
+            feature="alpha", state=None, include_heuristic=False, direction=None,
+        ))
+        self.assertIn(
+            excluded_identity, [m["identity"] for m in tree["membersNonCurrent"]]
+        )
+        self.assertNotIn(excluded_identity, tree["laneExcluded"]["identities"])
+
+    def test_f4_the_approval_receipt_discloses_the_lane_drop(self) -> None:
+        # The human pinning a membershipDigest is told how many reached artifacts the lane
+        # filter removed from what that digest covers.
+        self._draft_out_of_lane_field()
+        self.make_feature()
+        review = store.command_feature_review(argparse.Namespace(slug=["alpha"]))
+        pins = [part for part in review["approveCommand"].split() if part.startswith("Feature:")]
+        result = store.command_feature_approve(argparse.Namespace(feature=pins))
+        self.assertTrue(any("lane" in gap for gap in result.get("gaps", [])))
 
     def test_every_no_description_state_names_the_remedy_p5_names(self) -> None:
         """The two dossiers must not disagree about what the reader does next.
@@ -3071,6 +3389,100 @@ class FeatureBaselineDriftTests(EntryFixtureMixin, unittest.TestCase):
         two commands walking different distances."""
 
         self.assertEqual(search.DEPTH_LIMITS["tree"], search.DEPTH_LIMITS["drift"])
+
+    def test_depth_zero_is_anchors_and_declared_includes_only(self) -> None:
+        """`depth: 0` is documented as "anchors only" and executed one full BFS level.
+
+        `compute_membership` clamped the rule to 0 and then called `traverse(depth=max(depth, 1))`,
+        so the narrowest boundary a human can write reached every artifact pointing at the anchor.
+        The value is inside `boundaryDigest`: a reviewer approved "anchors only" and got a hop."""
+
+        self.seed_two_hop_feature()
+        self.make_feature(depth=0, replace=True)
+        identities = {member["identity"] for member in self.membership(include_heuristic=True)["members"]}
+        self.assertIn("CustomObject:c:HarnessAlphaCase__c", identities)
+        self.assertNotIn(
+            "ApexClass:c:HarnessAlphaSelector", identities,
+            "depth 0 still walked a level — the anchor's incoming edges are not 'anchors only'",
+        )
+
+    def test_an_object_joins_through_the_containment_edge_of_its_own_field(self) -> None:
+        """Before this, NO object but an anchor could ever be a member.
+
+        An object is reached only through the containment edge of one of its own parts, and that
+        edge points away from an incoming walk — so the walk reached `HarnessBetaOrder__c.Case__c`
+        and stopped, one hop short of the object that field lives on. Measured on the first real
+        store: `Service_Task__c`, `Time_Log__c`, `Ticket_Comment__c` and `Category__c` were all
+        absent while their own fields were members, IDENTICALLY at depth 1, 2 and 3 — which is
+        also why `depth` bought nothing and `hubs` had no hop to stop."""
+
+        self.seed()
+        objects = self.temp / "force-app/main/default/objects/HarnessBetaOrder__c"
+        (objects / "HarnessBetaOrder__c.object-meta.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomObject xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "    <label>Harness Beta Order</label>\n"
+            "    <sharingModel>ReadWrite</sharingModel>\n"
+            "</CustomObject>\n",
+            encoding="utf-8",
+        )
+        self.approve(self.draft("CustomObject", "HarnessBetaOrder__c", "Orders the beta team dispatches."))
+        search.build_index()
+
+        self.make_feature(depth=1)
+        shallow = {m["identity"] for m in self.membership(include_heuristic=True)["members"]}
+        self.assertIn("CustomField:c:HarnessBetaOrder__c.Case__c", shallow)
+        self.assertNotIn(
+            "CustomObject:c:HarnessBetaOrder__c", shallow,
+            "the owning object is two hops away; depth 1 must not reach it",
+        )
+
+        self.make_feature(depth=2, replace=True)
+        members = self.membership(include_heuristic=True)["members"]
+        owner = next(
+            (m for m in members if m["identity"] == "CustomObject:c:HarnessBetaOrder__c"), None
+        )
+        self.assertIsNotNone(owner, "an object still cannot be reached through its own field")
+        self.assertEqual(
+            "contains-member", owner["membership"]["reason"],
+            "reached because it OWNS a member; calling that 'belongs-to' inverts the relationship",
+        )
+        self.assertTrue(
+            any(step.get("ownerWard") for step in owner["membership"]["path"]),
+            "the owner-ward direction is not recorded on the step that took it",
+        )
+
+    def test_a_hub_is_kept_as_a_member_but_never_expanded_through(self) -> None:
+        """§13.7 states this traversal honours `hubs`; it read the key nowhere.
+
+        `hubs` sits inside `boundaryDigest` and renders in the dossier as "kept as targets, never
+        expanded", so a reviewer approved a stop-list that `tree`, `feature-dossier` and
+        `feature-drift` all ignored. The fixture chain is service → selector → object, so stopping
+        at the selector must keep the selector and drop the service."""
+
+        self.seed_two_hop_feature()
+        self.make_feature(depth=2, hub=["HarnessAlphaSelector"], replace=True)
+        result = self.membership(include_heuristic=True)
+        identities = {member["identity"] for member in result["members"]}
+        self.assertIn(
+            "ApexClass:c:HarnessAlphaSelector", identities,
+            "a hub is an edge target that is kept, not an exclusion",
+        )
+        self.assertNotIn(
+            "ApexClass:c:HarnessAlphaService", identities,
+            "the walk expanded through a declared hub",
+        )
+        self.assertEqual(["HarnessAlphaSelector"], result["hubs"]["declared"])
+        self.assertEqual(["HarnessAlphaSelector"], result["hubs"]["stoppedAt"])
+
+    def test_a_declared_hub_that_never_fires_is_reported_as_such(self) -> None:
+        # A rule whose hubs never stop a hop is a rule approved for a reason that did not happen;
+        # only the walk can say so, and silence reads as "the hub worked".
+        self.seed_two_hop_feature()
+        self.make_feature(depth=2, hub=["HarnessNotInThisGraph__c"], replace=True)
+        result = self.membership(include_heuristic=True)
+        self.assertEqual(["HarnessNotInThisGraph__c"], result["hubs"]["declared"])
+        self.assertEqual([], result["hubs"]["stoppedAt"])
 
     def test_a_forward_tree_is_exploratory_and_writes_no_baseline(self) -> None:
         # §4.1 threads the direction into `tree`; the approved membership digest is defined on

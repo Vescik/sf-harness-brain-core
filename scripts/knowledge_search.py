@@ -92,6 +92,13 @@ EXPLAIN_TOP_DEFAULT = 50
 CONTAINMENT_KIND = "belongs-to"
 BM25_K1 = 1.2
 BM25_B = 0.75
+# A query token in at least this share of the corpus cannot discriminate between entries.
+# Corpus-derived on purpose: `saturated` is a statement about THIS store, not about English,
+# so there is no stopword list to maintain and no ANALYZER_VERSION bump to pay. A share is
+# meaningless over a handful of documents — in a 1-entry store EVERY matched term hits 100%
+# and a bootstrap store would be unsearchable — so below the corpus floor nothing saturates.
+DF_SATURATION = 0.5
+DF_SATURATION_MIN_CORPUS = 4
 
 ESTABLISHED_STATES = ("approved-current",)
 ALL_LANES = (
@@ -559,6 +566,33 @@ def fold_target(target: str) -> str:
     return unicodedata.normalize("NFKC", target).casefold()
 
 
+LOCAL_NAME_SUFFIXES = ("__c", "__e", "__mdt", "__b", "__x")
+
+
+def _local_custom_name(name: str) -> bool:
+    """entry_edge_health's published rule: force-app is the only place this name can come from.
+
+    `ns__Thing__c` belongs to an installed package — it is not in this repo and never will be."""
+
+    for suffix in LOCAL_NAME_SUFFIXES:
+        if name.endswith(suffix):
+            return "__" not in name[: -len(suffix)]
+    return False
+
+
+def target_decidable(target: str) -> bool:
+    """Whether this index could ever hold an entry for the target.
+
+    Mirrors `force_app_knowledge._decidable_targets`: only an unnamespaced __c/__e/__mdt/__b/__x
+    name is decidable. A dotted target needs BOTH halves package-local — `Category__c.Id` will
+    never have a CustomField entry, so its `no-entry` proves nothing."""
+
+    object_name, _, member = target.partition(".")
+    if not member:
+        return _local_custom_name(target)
+    return _local_custom_name(object_name) and _local_custom_name(member)
+
+
 def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
     """Who points at each target, and what that target resolves to.
 
@@ -574,12 +608,20 @@ def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
     """
 
     by_full_name: dict[str, list[str]] = defaultdict(list)
+    # Extractors emit the token source wrote — `object-token` on `a.Status__c` yields the bare
+    # `Status__c` — while a field entry's fullName is the qualified `Object.Field`. Without this
+    # index a fifth of the probe corpus's `no-entry` edges named fields that had approved
+    # entries, and `impact --direction outgoing` dead-ended one hop early on all of them.
+    by_member: dict[str, list[str]] = defaultdict(list)
     identities = set()
     for item in projections:
         identities.add(item["identity"])
         full_name = item["facets"].get("fullName")
         if full_name:
             by_full_name[fold_target(str(full_name))].append(item["identity"])
+            owner, _, member = str(full_name).rpartition(".")
+            if owner:
+                by_member[fold_target(member)].append(item["identity"])
 
     by_target: dict[str, dict[str, Any]] = {}
     for item in projections:
@@ -603,6 +645,17 @@ def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
             # subscriber's; the caller is told instead.
             row["resolution"] = "ambiguous"
             row["candidates"] = sorted(candidates)
+        else:
+            members = by_member.get(key, [])
+            if len(members) == 1:
+                row["targetIdentity"] = members[0]
+                # A distinct value, not "resolved": the qualified/bare distinction stays
+                # visible to anyone auditing how an edge was settled.
+                row["resolution"] = "resolved-by-member"
+            elif len(members) > 1:
+                row["resolution"] = "ambiguous"
+                row["candidates"] = sorted(members)
+        row["decidable"] = target_decidable(sorted(row["spellings"])[0])
         row["spellings"] = sorted(row["spellings"])
         row["incoming"] = sorted(row["incoming"])
 
@@ -817,6 +870,24 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
         "entryCount": len(projections),
         "laneCounts": {
             lane: sum(1 for item in projections if item["lane"] == lane) for lane in ALL_LANES
+        },
+        # Pinned per generation so `build --check` covers them and drift in edge resolution is
+        # visible where every other corpus statistic already is.
+        "edgeResolution": {
+            "targets": len(postings["reverse"]["byTarget"]),
+            "resolutionCounts": {
+                resolution: sum(
+                    1 for row in postings["reverse"]["byTarget"].values()
+                    if row["resolution"] == resolution
+                )
+                for resolution in sorted(
+                    {row["resolution"] for row in postings["reverse"]["byTarget"].values()}
+                )
+            },
+            "decidableNoEntry": sum(
+                1 for row in postings["reverse"]["byTarget"].values()
+                if row["resolution"] == "no-entry" and row["decidable"]
+            ),
         },
         "metadataTypeCounts": {
             metadata_type: sum(
@@ -1041,6 +1112,31 @@ def parse_facet(expression: str) -> tuple[str, str, str]:
     return key, operator, value
 
 
+def query_term_stats(store_index: "DocumentStore", query_tokens: list[str]) -> list[dict[str, Any]]:
+    """Corpus-derived honesty about each query token, before any scoring happens.
+
+    BM25's idf discounts a saturated term but never zeroes it, so a sentence-shaped query
+    whose only content word matches nothing still accumulates score from its function words —
+    and the verdict reads OK. The statistics the index already persists at build time are
+    enough to name which tokens could possibly discriminate."""
+
+    statistics = store_index.posting_file("stats")
+    document_frequency = statistics.get("documentFrequency", {})
+    corpus = max(store_index.count, 1)
+    rows = []
+    for token in sorted(set(query_tokens)):
+        frequency = document_frequency.get(token, 0)
+        rows.append({
+            "term": token,
+            "documentFrequency": frequency,
+            "corpusSize": corpus,
+            "idf": round(math.log(1 + (corpus - frequency + 0.5) / (frequency + 0.5)), 4),
+            "matched": frequency > 0,
+            "saturated": corpus >= DF_SATURATION_MIN_CORPUS and frequency >= DF_SATURATION * corpus,
+        })
+    return rows
+
+
 def bm25f(store_index: "DocumentStore", candidates: list[dict[str, Any]], query_tokens: list[str]) -> dict[str, tuple[float, list[dict[str, Any]]]]:
     """Rank candidates with corpus statistics precomputed at build time.
 
@@ -1076,6 +1172,55 @@ def bm25f(store_index: "DocumentStore", candidates: list[dict[str, Any]], query_
     return scored
 
 
+SNIPPET_WINDOW = 240
+SNIPPET_BASIS = (
+    "excerpt of the entry's Purpose prose, clipped for display; the citable unit is "
+    "citation.path + citation.entryDigest, never this string"
+)
+
+
+def purpose_snippet(document: dict[str, Any], matched: list[dict[str, Any]]) -> str | None:
+    """A windowed excerpt of the Purpose prose, so a ranking error costs a glance instead of a
+    file open. Centred on the longest matched purpose term when one is findable in the raw
+    prose (analyzer tokens are normalised, so a deaccented match may not be), else the head of
+    the text. An unfilled draft sentinel is an absence, not prose — `--state draft` routes
+    drafts through this same funnel. Apart from the ellipsis marks the return value is a
+    substring of the hydration-verified entry file, which is what makes serving it safe."""
+
+    text = (document.get("purpose") or "").strip()
+    if not text or text.startswith("<AGENT_"):
+        return None
+    if len(text) <= SNIPPET_WINDOW:
+        return text
+    lowered = text.lower()
+    best: tuple[int, int] | None = None  # (term length, position in text)
+    for row in matched:
+        if row.get("field") != "purpose":
+            continue
+        term = str(row.get("value") or "")
+        position = lowered.find(term.lower())
+        if position >= 0 and (best is None or len(term) > best[0]):
+            best = (len(term), position)
+    if best is None:
+        start, end = 0, SNIPPET_WINDOW
+    else:
+        centre = best[1] + best[0] // 2
+        start = max(0, centre - SNIPPET_WINDOW // 2)
+        end = min(len(text), start + SNIPPET_WINDOW)
+        start = max(0, end - SNIPPET_WINDOW)
+    if start > 0:
+        boundary = text.find(" ", start)
+        if 0 <= boundary < end:
+            start = boundary + 1
+    if end < len(text):
+        boundary = text.rfind(" ", start, end)
+        if boundary > start:
+            end = boundary
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(text) else ""
+    return prefix + text[start:end].strip() + suffix
+
+
 def hit_of(document: dict[str, Any], score: float, matched: list[dict[str, Any]], match_class: str) -> dict[str, Any]:
     return {
         "artifactId": document["identity"],
@@ -1085,6 +1230,8 @@ def hit_of(document: dict[str, Any], score: float, matched: list[dict[str, Any]]
         "score": round(score, 4),
         "scoreComparableWithinQueryOnly": True,
         "matchedOn": matched[:8],
+        "snippet": purpose_snippet(document, matched),
+        "snippetBasis": SNIPPET_BASIS,
         "lifecycle": document["lane"],
         "assurance": document["assurance"],
         "scope": {
@@ -1167,6 +1314,10 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "top": args.top,
     }
+    # Computed here, NOT inside the candidate-seeding block below: seeding is guarded by
+    # `and not other_facets`, and the honesty of queryTerms must not depend on which filters
+    # the caller happened to add.
+    query_terms = query_term_stats(documents, analyze(args.text)) if args.text else []
 
     # Hard filters resolve to identity sets through the postings index; only the survivors
     # are hydrated. Exact-equality facets narrow via postings, other operators are evaluated
@@ -1196,6 +1347,10 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
         excluded["facet"] += len(candidate_ids - by_facet)
         candidate_ids &= by_facet
     lexical_truncated = 0
+    # Hoisted: whether the query matched ANYTHING lexically is the difference between "no such
+    # thing" and "matched, then filtered out by your lane". Reporting the second as the first is
+    # how `search --text mpsaCard` came back "No lexical match" for an entry sitting in the index.
+    lexical_token_ids: set[str] = set()
     if args.text and not other_facets:
         # Seed candidates from the RAREST query token and intersect outwards. A common term
         # ("queue") matches the whole corpus, so a naive union would hydrate everything and
@@ -1210,6 +1365,7 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
             token_ids = posting if not token_ids else (token_ids | posting)
             if len(token_ids) >= LEXICAL_CANDIDATE_CAP:
                 break
+        lexical_token_ids = token_ids
         candidate_ids &= token_ids
         if len(candidate_ids) > LEXICAL_CANDIDATE_CAP:
             # Never silently truncate: the cap is reported alongside the results.
@@ -1359,25 +1515,78 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
                 score, matched = scored[document["identity"]]
                 results.append(hit_of(document, score, matched, "structured-plus-lexical" if facets else "lexical"))
         results.sort(key=lambda hit: (-hit["score"], hit["artifactId"]))
+        # F2: derived from `scored`, never from hit["matchedOn"] — hit_of truncates that to 8,
+        # so a discriminating term can contribute and still be invisible there.
+        contributing = {row["value"] for _score, matched in scored.values() for row in matched}
+        discriminating = {row["term"] for row in query_terms if row["matched"] and not row["saturated"]}
+        unmatched = sorted(row["term"] for row in query_terms if not row["matched"])
+        if results and not (contributing & discriminating):
+            gaps.append(
+                "Nothing discriminating matched: "
+                + (f"no entry contains {', '.join(unmatched)}; " if unmatched else "")
+                + f"every term that scored ({', '.join(sorted(contributing))}) appears in at "
+                f"least {int(DF_SATURATION * 100)}% of this corpus and cannot rank anything. "
+                "Serving these results would be relevance manufactured by function words — "
+                "see queryTerms for the per-term evidence."
+            )
+            results = []
+        elif results and unmatched:
+            gaps.append(
+                f"No entry contains: {', '.join(unmatched)}. Results rank on the remaining "
+                "terms only; if one of these named the thing you meant, this is a coverage "
+                "gap, not an answer."
+            )
         if lexical_truncated:
             gaps.append(
                 f"Lexical candidate set capped at {LEXICAL_CANDIDATE_CAP}; {lexical_truncated} "
                 "lower-signal matches were not ranked. Narrow with a facet or a rarer term."
             )
         if not results:
-            gaps.append("No lexical match; try --state draft, relax a facet, or check the analyzer aliases.")
+            if lexical_token_ids:
+                gaps.append(
+                    f"{len(lexical_token_ids)} entr(ies) matched this query lexically and were then "
+                    "excluded — see `excludedCounts` for by what. This is NOT an absence of matching "
+                    "knowledge; add --state draft or relax a facet to see them."
+                )
+            else:
+                gaps.append(
+                    "No lexical match; try --state draft, relax a facet, or check the analyzer aliases."
+                )
     else:
         results = [hit_of(document, 0.0, [], "structured") for document in candidates]
         results.sort(key=lambda hit: hit["artifactId"])
 
-    draft_lane = (
-        [
-            hit_of(document, 0.0, [], "draft-lane")
-            for document in documents.load_many(sorted(documents.lane_ids(["draft"]))[:10])
-        ]
-        if "draft" not in states
-        else []
-    )
+    # Ranked by the query, not by the alphabet. This list was `sorted(lane_ids(["draft"]))[:10]`
+    # — byte-identical for an exact API name and for gibberish, printed where results go, on a
+    # store where every entry is draft and so every first query lands here.
+    draft_lane: list[dict[str, Any]] = []
+    draft_basis = "none"
+    if "draft" not in states:
+        draft_ids = documents.lane_ids(["draft"])
+        if args.text and lexical_token_ids:
+            draft_ids = draft_ids & lexical_token_ids
+        draft_documents = documents.load_many(sorted(draft_ids)[:LEXICAL_CANDIDATE_CAP])
+        if args.text and draft_documents:
+            draft_scored = bm25f(documents, draft_documents, analyze(args.text))
+            ranked = sorted(
+                (
+                    (draft_scored[document["identity"]][0], document["identity"], document,
+                     draft_scored[document["identity"]][1])
+                    for document in draft_documents
+                    if document["identity"] in draft_scored
+                ),
+                key=lambda row: (-row[0], row[1]),
+            )
+            draft_lane = [
+                hit_of(document, score, matched, "draft-lane")
+                for score, _identity, document, matched in ranked
+            ][:10]
+            draft_basis = "query-ranked"
+        else:
+            draft_lane = [
+                hit_of(document, 0.0, [], "draft-lane") for document in draft_documents[:10]
+            ]
+            draft_basis = "alphabetical, no text query"
     relaxations = []
     if not results:
         if args.metadata_type:
@@ -1435,12 +1644,14 @@ def run_search(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "outcome": "OK" if served else "NO_MATCH",
         "interpretedQuery": interpreted,
+        "queryTerms": query_terms,
         # `search` has no anchor: every hit is a row, including the one named by --identity, so
         # there is nothing here that was re-checked against the working tree.
         "lifecycleBasis": {"anchor": "not-applicable", "rows": LIFECYCLE_BASIS},
         "approvedResults": current,
         "nonCurrentResults": non_current,
         "draftCandidates": [hit["artifactId"] for hit in draft_lane][:10],
+        "draftCandidatesBasis": draft_basis,
         "excludedCounts": dict(sorted(excluded.items())),
         "facetCounts": {
             "metadataType": manifest["metadataTypeCounts"],
@@ -1748,6 +1959,11 @@ def run_explain(args: argparse.Namespace) -> dict[str, Any]:
         # fragments); every row's is not. One field, so a consumer never has to infer which.
         "lifecycleBasis": {"anchor": "store-fresh", "rows": LIFECYCLE_BASIS},
         "facets": document["facets"],
+        "purpose": document.get("purpose"),
+        "purposeBasis": (
+            "the entry's Purpose prose, served whole; cite citation.path + "
+            "citation.entryDigest, not this field"
+        ),
         "assurance": document["assurance"],
         "coverage": document["coverage"],
         "limitations": document["limitations"],
@@ -1781,8 +1997,14 @@ def traverse(
     direction: str,
     allowed: set[str],
     include_heuristic: bool,
+    stop_at: set[str] | None = None,
 ) -> dict[str, Any]:
     """Breadth-first walk from one anchor, returning the node set and how each was reached.
+
+    `stop_at` is the caller's stop-list, matched against a reached node's identity AND its
+    `fullName`: such a node is kept as an edge target and never expanded through (feature
+    `hubs`, contract §13.1). `depth` is honoured exactly — `depth=0` walks no levels at all,
+    which is what "anchors only" has to mean for the caller that offers its anchors itself.
 
     Extracted from run_impact so `impact`, `context` and (next) feature membership share one
     traversal rather than three. Three implementations of a bounded, lane-filtered,
@@ -1802,6 +2024,11 @@ def traverse(
 
     started = time.monotonic()
     excluded = {"lifecycle": 0, "heuristicEdge": 0}
+    # WHO was dropped, not only how many. The count alone let `compute_membership` discard the
+    # identities, so a walk emptied by the default lane filter was indistinguishable from a walk
+    # that reached nothing. Reporting only — an excluded node is still never expanded through,
+    # and nothing here may ever join a digest input.
+    excluded_identities: set[str] = set()
     limits_hit: set[str] = set()
     observed_fanout = 0
     # `path` carries how a node was reached. A flat hop-2 row names an edge target that is only
@@ -1809,6 +2036,12 @@ def traverse(
     # coincidence of naming.
     chains: list[dict[str, Any]] = []
     visited = {anchor}
+    # Nodes the stop-list kept but did not expand, and the stop-list entries that actually fired.
+    # `halted` joins `visited` so a stop node is offered once, not once per branch that reaches it;
+    # `stopped_names` is reported, because a boundary that silently drops a hop reads as a boundary
+    # that had nothing there.
+    halted: set[str] = set()
+    stopped_names: set[str] = set()
     frontier = [{"node": anchor, "path": [], "minAssurance": relation_kinds.SOURCE_EXACT}]
 
     for level in range(depth):
@@ -1833,17 +2066,32 @@ def traverse(
             if direction == "incoming":
                 for name in sorted(names):
                     for edge in documents.incoming_edges(name, include_heuristic=True):
-                        hops.append((edge["source"], edge["kind"], name, edge["assurance"]))
+                        hops.append((edge["source"], edge["kind"], name, edge["assurance"], False))
+                # An object is reached ONLY through the containment edge of one of its own parts,
+                # and that edge points away from an incoming walk. Without this hop no object but
+                # an anchor could ever be reached: measured on a real boundary, `Service_Task__c`,
+                # `Time_Log__c`, `Ticket_Comment__c` and `Category__c` were all absent while their
+                # own fields were members, identically at depth 1, 2 and 3 — so `depth` bought
+                # nothing and `hubs` had no hop to stop. The inversion already existed twice, in
+                # `run_explain` and `run_context`; it was missing from the shared walk.
+                for edge in (document or {}).get("edges", []):
+                    if edge["kind"] != CONTAINMENT_KIND:
+                        continue
+                    row = documents.target_row(edge["target"])
+                    hops.append((
+                        row.get("targetIdentity") or edge["target"],
+                        edge["kind"], edge["target"], edge["assurance"], True,
+                    ))
             else:
                 for edge in (document or {}).get("edges", []):
                     row = documents.target_row(edge["target"])
                     resolved = row.get("targetIdentity")
-                    hops.append((resolved or edge["target"], edge["kind"], edge["target"], edge["assurance"]))
+                    hops.append((resolved or edge["target"], edge["kind"], edge["target"], edge["assurance"], False))
             observed_fanout = max(observed_fanout, len(hops))
             if len(hops) > TRAVERSAL_LIMITS["maxFanout"]:
                 limits_hit.add("fanout")
                 hops = sorted(hops)[: TRAVERSAL_LIMITS["maxFanout"]]
-            for node, kind, via, assurance in sorted(hops):
+            for node, kind, via, assurance, owner_ward in sorted(hops):
                 if assurance != relation_kinds.SOURCE_EXACT and not include_heuristic:
                     excluded["heuristicEdge"] += 1
                     continue
@@ -1853,6 +2101,7 @@ def traverse(
                     lifecycle = None
                 elif node not in allowed:
                     excluded["lifecycle"] += 1
+                    excluded_identities.add(node)
                     continue
                 else:
                     lifecycle = reached["lane"]
@@ -1864,19 +2113,35 @@ def traverse(
                     else relation_kinds.SOURCE_EXACT
                 )
                 step = {"from": item["node"], "kind": kind, "to": node, "via": via, "assurance": assurance}
+                if owner_ward:
+                    # The containment edge was followed towards the OWNER, not towards the part.
+                    # `kind` stays honest — it is the same `belongs-to` edge — so the direction has
+                    # to be on the step, or a reader cannot tell "contains a member" from
+                    # "is a member's part" and the membership reason inverts.
+                    step["ownerWard"] = True
                 chains.append({
                     "node": node, "hop": level + 1, "lifecycle": lifecycle,
                     "resolved": reached is not None,
                     "path": item["path"] + [step],
                     "minAssurance": weakest,
                 })
-                next_frontier.append({"node": node, "path": item["path"] + [step], "minAssurance": weakest})
+                reached_names = {node}
+                if reached is not None:
+                    reached_full = reached["facets"].get("fullName")
+                    if reached_full:
+                        reached_names.add(str(reached_full))
+                hit = reached_names & stop_at if stop_at else set()
+                if hit:
+                    stopped_names |= hit
+                    halted.add(node)
+                else:
+                    next_frontier.append({"node": node, "path": item["path"] + [step], "minAssurance": weakest})
                 if len(chains) >= TRAVERSAL_LIMITS["maxNodes"]:
                     limits_hit.add("nodes")
                     break
             if limits_hit & {"nodes", "time"}:
                 break
-        visited |= {row["node"] for row in next_frontier}
+        visited |= {row["node"] for row in next_frontier} | halted
         frontier = next_frontier
         if not frontier or limits_hit & {"nodes", "time"}:
             break
@@ -1885,6 +2150,8 @@ def traverse(
     return {
         "nodes": chains,
         "excluded": excluded,
+        "excludedIdentities": sorted(excluded_identities),
+        "stoppedAt": sorted(stopped_names),
         "limitsHit": limits_hit,
         # Deliberately free of any elapsed time: `feature-drift` digests what this walk produces,
         # and a clock reading in the return value would make two identical walks compare unequal.
@@ -2290,6 +2557,10 @@ def compute_membership(
     heuristic_ok = floor == relation_kinds.SOURCE_DERIVED_HEURISTIC or include_heuristic
     depth = max(0, min(int(boundary.get("depth", 1)), depth_limit))
     excluded_ids = set(boundary.get("exclude") or [])
+    # `hubs` is inside `boundaryDigest` and §13.7 states this traversal honours it, so it has to
+    # do something: a hub is kept as an edge target and never expanded through. Distinct from
+    # `exclude`, which removes the artifact from the answer entirely.
+    hub_names = {str(name) for name in (boundary.get("hubs") or []) if name}
 
     nodes: dict[str, dict[str, Any]] = {}
 
@@ -2307,21 +2578,31 @@ def compute_membership(
     # its last anchor happened to be small — and `feature-drift` compares digests, so an
     # undisclosed truncation there is a comparison of two prefixes presented as an answer.
     limits_hit: set[str] = set()
+    stopped_at: set[str] = set()
+    lane_excluded: set[str] = set()
     for anchor_name in sorted(set(boundary.get("anchors") or [])):
         for identity in documents.identities_for_full_name(anchor_name):
             offer(identity, "anchor", "human-declared", 0, [])
         walk = traverse(
-            documents, anchor_name, depth=max(depth, 1), direction=direction,
-            allowed=allowed, include_heuristic=True,
+            documents, anchor_name, depth=depth, direction=direction,
+            allowed=allowed, include_heuristic=True, stop_at=hub_names or None,
         )
         limits_hit |= set(walk["limitsHit"])
+        stopped_at |= set(walk["stoppedAt"])
+        lane_excluded |= set(walk["excludedIdentities"])
         for node in walk["nodes"]:
             weakest = node["minAssurance"]
             if weakest != relation_kinds.SOURCE_EXACT and not heuristic_ok:
                 below_floor.append({"identity": node["node"], "assurance": weakest})
                 continue
             kinds = {step["kind"] for step in node["path"]}
-            reason = CONTAINMENT_KIND if CONTAINMENT_KIND in kinds else "references-member"
+            if any(step.get("ownerWard") for step in node["path"]):
+                # Reached because it OWNS a member, not because it is one. Labelling this
+                # `belongs-to` would tell a reviewer that Service_Task__c belongs to
+                # Service_Request__c, which is the relationship inverted.
+                reason = "contains-member"
+            else:
+                reason = CONTAINMENT_KIND if CONTAINMENT_KIND in kinds else "references-member"
             offer(node["node"], reason, weakest, node["hop"], node["path"])
 
     for identity in sorted(set(boundary.get("include") or [])):
@@ -2343,10 +2624,21 @@ def compute_membership(
     # answer said "9 artifact(s)" and listed 5. In the one section whose whole purpose is telling
     # the truth about what was inferred, the number and the names must be the same set.
     below_floor_ids = sorted({item["identity"] for item in below_floor} - member_ids)
+    # Same double-count trap as `below_floor`: an artifact reached out-of-lane by one path and
+    # qualifying as a member by another (an anchor, a declared include, an in-lane path) is a
+    # member, not an exclusion. Subtract BEFORE counting.
+    lane_excluded_ids = sorted(lane_excluded - member_ids)
     digest = store.canonical_digest(sorted(item["identity"] for item in members))
     return {
         "members": members,
         "membershipDigest": digest,
+        # Reporting only, never a digest input: folding this into `membershipDigest` would
+        # re-approve every feature whose neighbourhood contains a draft.
+        "laneExcluded": {
+            "count": len(lane_excluded_ids),
+            "identities": lane_excluded_ids[:BELOW_FLOOR_IDENTITY_CAP],
+            "identitiesTruncated": max(0, len(lane_excluded_ids) - BELOW_FLOOR_IDENTITY_CAP),
+        },
         "belowFloor": {
             "count": len(below_floor_ids),
             "assuranceFloor": floor,
@@ -2356,6 +2648,9 @@ def compute_membership(
             "identitiesTruncated": max(0, len(below_floor_ids) - BELOW_FLOOR_IDENTITY_CAP),
         },
         "direction": direction,
+        # Which declared hubs actually stopped a hop. A rule whose hubs never fire is a rule the
+        # reviewer approved for a reason that did not happen, and only the walk can say so.
+        "hubs": {"declared": sorted(hub_names), "stoppedAt": sorted(stopped_at)},
         "limitsHit": sorted(limits_hit),
         # The member set and therefore the digest cover a deterministic PREFIX of the boundary,
         # not all of it. Every caller that compares digests has to say so (§6 correction 3).
@@ -2495,10 +2790,43 @@ def run_tree(args: argparse.Namespace) -> dict[str, Any]:
             f"{result['belowFloor']['identitiesTruncated']} of those artifact(s) are counted but "
             f"not named: `belowFloor.identities` is capped at {BELOW_FLOOR_IDENTITY_CAP}."
         )
+    if result["laneExcluded"]["count"]:
+        gaps.append(
+            f"{result['laneExcluded']['count']} artifact(s) were reached by this walk and then "
+            f"removed by the lifecycle lane filter ({', '.join(states)}); they are not members "
+            "and the membership digest does not cover them. Pass --state to widen the lanes."
+        )
     if non_current:
         gaps.append(
             f"{len(non_current)} member(s) are not approved-current knowledge."
         )
+    idle_hubs = sorted(set(result["hubs"]["declared"]) - set(result["hubs"]["stoppedAt"]))
+    if idle_hubs:
+        # "Stopped nothing" has two very different causes and they used to read identically: a
+        # correct hub the walk never reached, and a name that matches nothing at all. Resolved
+        # against the loaded index rather than force-app, because `inventory()` re-parses the
+        # source tree on every call and `tree` is not a full-corpus question — the basis is named
+        # so this is never mistaken for the source check `feature-review` runs before approval.
+        unknown = [hub for hub in idle_hubs if not documents.identities_for_full_name(hub)]
+        known_idle = [hub for hub in idle_hubs if hub not in unknown]
+        gaps.append(
+            f"{len(idle_hubs)} declared hub(s) stopped no hop on this walk "
+            f"({', '.join(idle_hubs)}). A hub only fires where the traversal would otherwise "
+            f"expand through it, so an idle hub is a rule element carrying no weight — not "
+            "evidence that it is holding the boundary in."
+        )
+        if unknown:
+            gaps.append(
+                f"{len(unknown)} of those hub(s) name nothing this index knows "
+                f"({', '.join(unknown)}). Expected for a standard or packaged object, which has "
+                "no entry here; indistinguishable from a typo on this evidence. "
+                "`feature-review` checks the names against force-app source before approval."
+            )
+        if known_idle:
+            gaps.append(
+                f"{len(known_idle)} of those hub(s) DO have an entry and were still not reached "
+                f"({', '.join(known_idle)}) — the rule names them, the walk does not go near them."
+            )
     if result["truncated"]:
         gaps.append(
             f"traversal limits reached ({', '.join(result['limitsHit'])}), so this membership is "
@@ -2526,6 +2854,8 @@ def run_tree(args: argparse.Namespace) -> dict[str, Any]:
         "members": current,
         "membersNonCurrent": non_current,
         "belowFloor": result["belowFloor"],
+        "laneExcluded": result["laneExcluded"],
+        "hubs": result["hubs"],
         "membershipDigest": result["membershipDigest"],
         "direction": direction,
         "truncated": result["truncated"],
@@ -2561,7 +2891,8 @@ def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
     identity = store.feature_identity(args.feature)
     latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
     record = latest.get(identity)
-    allowed = documents.lane_ids(_requested_states(args))
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
     current = compute_membership(
         documents, frontmatter["boundary"], allowed=allowed,
         include_heuristic=bool(getattr(args, "include_heuristic", False)),
@@ -2581,6 +2912,12 @@ def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
     changed: Any = "unknown"
     changed_within_prefix: Any = None
     gaps: list[str] = []
+    if current["laneExcluded"]["count"]:
+        gaps.append(
+            f"{current['laneExcluded']['count']} artifact(s) were reached by the membership walk "
+            f"and then removed by the lifecycle lane filter ({', '.join(states)}); neither the "
+            "recomputed digest nor the approved one covers them."
+        )
     if not approved:
         gaps.append(f"{identity} is not approved, so there is no baseline to compare against.")
     elif approved_digest is None:
@@ -2659,6 +2996,7 @@ def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
         "removed": removed,
         "boundaryRuleChanged": boundary_moved,
         "memberCount": len(current["members"]),
+        "laneExcluded": current["laneExcluded"],
         "gaps": gaps,
         "indexGeneration": manifest["generation"],
     }
@@ -2766,6 +3104,15 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
         f"{described_count} carry a description.",
         "",
     ]
+    if membership["laneExcluded"]["count"]:
+        # The default --state is the lane-emptying invocation, so without this line a dossier
+        # emptied by the lane filter reads as a plausible small feature rather than a broken one.
+        lines += [
+            f"{membership['laneExcluded']['count']} further artifact(s) were reached by the walk "
+            f"and then removed by the lifecycle lane filter ({', '.join(states)}); they are "
+            "neither members nor counted above. Re-render with `--state` to widen the lanes.",
+            "",
+        ]
     for metadata_type in sorted(by_type):
         lines += [f"### {metadata_type}", "",
                   "| Artifact | Why it belongs | Assurance | Lane | Description |",
@@ -2815,8 +3162,27 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
     ]
 
     path = store.ROOT / DOSSIER_ROOT_NAME / f"{args.feature}.md"
+    if path.is_file():
+        first_line = path.read_text(encoding="utf-8").split("\n", 1)[0]
+        if first_line.startswith("# Feature Dossier — "):
+            raise SearchError(
+                f"{store.relative_path(path)} holds a crawl-proposal dossier (its H1 is "
+                "'# Feature Dossier — '), a different content model; refusing to overwrite it. "
+                "Crawl dossiers are written by `force_app_knowledge.py feature-draft` to "
+                ".cache/knowledge-proposals/feature-dossiers/ — this one is a stale copy from "
+                "before that split; move or delete it first."
+            )
     path.parent.mkdir(parents=True, exist_ok=True)
     store.atomic_write(path, "\n".join(lines) + "\n")
+    gaps = []
+    if lane["lane"] != "approved-current":
+        gaps.append(f"rendered from a boundary rule in lane '{lane['lane']}', which nobody approved")
+    if membership["laneExcluded"]["count"]:
+        gaps.append(
+            f"{membership['laneExcluded']['count']} artifact(s) were reached by the walk and then "
+            f"removed by the lifecycle lane filter ({', '.join(states)}); the dossier says so in "
+            "its Members section."
+        )
     return {
         "outcome": "DOSSIER",
         "feature": store.feature_identity(args.feature),
@@ -2825,11 +3191,70 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
         "members": len(membership["members"]),
         "described": described_count,
         "belowFloor": below["count"],
-        "gaps": (
-            []
-            if lane["lane"] == "approved-current"
-            else [f"rendered from a boundary rule in lane '{lane['lane']}', which nobody approved"]
+        "laneExcluded": membership["laneExcluded"]["count"],
+        "gaps": gaps,
+    }
+
+
+EDGE_HEALTH_SAMPLE_CAP = 50
+
+
+def run_edge_health(args: argparse.Namespace) -> dict[str, Any]:
+    """How well edge targets resolve to entries in this index generation.
+
+    Deliberately DISTINCT from `force_app_knowledge.py relation-health` and its
+    entry_edge_health half, which answer a different question — "does this edge target still
+    exist in force-app source?" — against the live tree. This surface answers "does the target
+    have an entry in this index generation?". Neither report supersedes the other.
+    """
+
+    documents, manifest = load_index()
+    reverse = documents.posting_file("reverse")
+    by_target = reverse.get("byTarget", {})
+    counts: dict[str, int] = defaultdict(int)
+    for row in by_target.values():
+        counts[row["resolution"]] += 1
+    ambiguous = sorted(key for key, row in by_target.items() if row["resolution"] == "ambiguous")
+    undecided = sorted(
+        key for key, row in by_target.items()
+        if row["resolution"] == "no-entry" and row.get("decidable")
+    )
+    gaps = []
+    if len(ambiguous) > EDGE_HEALTH_SAMPLE_CAP:
+        gaps.append(
+            f"{len(ambiguous) - EDGE_HEALTH_SAMPLE_CAP} ambiguous target(s) beyond the "
+            f"{EDGE_HEALTH_SAMPLE_CAP}-row sample are counted but not named."
+        )
+    if len(undecided) > EDGE_HEALTH_SAMPLE_CAP:
+        gaps.append(
+            f"{len(undecided) - EDGE_HEALTH_SAMPLE_CAP} decidable no-entry target(s) beyond the "
+            f"{EDGE_HEALTH_SAMPLE_CAP}-row sample are counted but not named."
+        )
+    return {
+        "outcome": "EDGE_HEALTH",
+        "targets": len(by_target),
+        "resolutionCounts": dict(sorted(counts.items())),
+        # Only a decidable no-entry target is a documentation gap: an unnamespaced
+        # __c/__e/__mdt/__b/__x name this package could hold an entry for. A standard object or
+        # a packaged name has no entry by nature and its absence proves nothing.
+        "decidableNoEntry": {
+            "count": len(undecided),
+            "targets": undecided[:EDGE_HEALTH_SAMPLE_CAP],
+        },
+        "ambiguous": {
+            "count": len(ambiguous),
+            "targets": ambiguous[:EDGE_HEALTH_SAMPLE_CAP],
+        },
+        # Computed since the reverse index existed, exposed nowhere until now: sources whose
+        # own edge list was capped by the collector, per truncated family.
+        "truncatedSources": reverse.get("truncatedSources", {}),
+        "basis": (
+            "resolution is against ENTRIES in this index generation. "
+            "`force_app_knowledge.py relation-health` answers the different question of whether "
+            "a target still exists in force-app source; neither report supersedes the other."
         ),
+        "gaps": gaps,
+        "indexGeneration": manifest["generation"],
     }
 
 
@@ -2952,6 +3377,11 @@ def build_parser() -> argparse.ArgumentParser:
     dossier.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
     dossier.add_argument("--include-heuristic", action="store_true")
     dossier.set_defaults(func=run_feature_dossier)
+
+    edge_health = commands.add_parser(
+        "edge-health", help="how edge targets resolve to entries in this index generation"
+    )
+    edge_health.set_defaults(func=run_edge_health)
 
     capabilities = commands.add_parser("capabilities", help="valid facets, operators, modes")
     capabilities.add_argument("--metadata-type", default=None)

@@ -708,6 +708,57 @@ class AdapterFaithfulnessTests(unittest.TestCase):
         # A validation rule's message is not a Flow Custom Error and never enters that index.
         self.assertEqual([], errors)
 
+    def test_a_custom_error_behind_a_decision_renders_its_guard_path(self) -> None:
+        """The collector emits `paths` as paths of hop OBJECTS, not of strings.
+
+        `" -> ".join(path)` raised `TypeError: sequence item 0: expected str instance, dict found`
+        on the first real Flow whose custom error sat behind a decision — an unhandled crash, so
+        the entry could not be drafted at all. Every fixture Flow put its error on the trigger
+        path with no decision above it, which is why 80 real components found this and the pilot
+        did not."""
+
+        component = {
+            "metadataType": "Flow",
+            "facts": {
+                "processType": "AutoLaunchedFlow",
+                "status": "Active",
+                "errorCatalog": [
+                    {
+                        "component": "Invalid_Class_Change",
+                        "kind": "custom-error",
+                        "errorMessage": "This status change is not allowed.",
+                        "triggerContext": "Service_Request__c / CreateAndUpdate / RecordBeforeSave",
+                        "paths": [
+                            [{"decision": "Validate_Status_Change", "default": True}],
+                            [
+                                {"decision": "Route_By_Type", "outcome": "Escalated",
+                                 "outcomeLabel": "Escalated ticket"},
+                                {"decision": "Validate_Status_Change", "outcome": "Blocked"},
+                            ],
+                        ],
+                    }
+                ],
+            },
+        }
+        _carried, errors, _assurance = store.ADAPTERS["Flow"](component)
+        self.assertEqual(1, len(errors))
+        self.assertEqual(
+            [
+                "Validate_Status_Change [default]",
+                "Route_By_Type [Escalated ticket] -> Validate_Status_Change [Blocked]",
+            ],
+            errors[0]["reachability"]["decisionGuards"],
+        )
+
+    def test_an_unrecognised_decision_hop_degrades_instead_of_raising(self) -> None:
+        # A guard string is disclosure; losing the whole entry to gain punctuation is the wrong
+        # trade, so an unexpected hop shape falls back rather than crashing the draft.
+        self.assertEqual("", store.render_decision_path([{"unexpected": "shape"}]))
+        self.assertEqual("A -> B", store.render_decision_path(
+            [{"decision": "A"}, {"decision": "B"}]
+        ))
+        self.assertEqual("not-a-path", store.render_decision_path("not-a-path"))
+
 
 class EdgeAssuranceTests(unittest.TestCase):
     """A kind-level heuristic must never be stored as source-exact.
@@ -945,6 +996,63 @@ class AgentDescriptionTests(KnowledgeStoreTests):
         self.assertEqual(before["intentionalErrors"], after["intentionalErrors"])
         self.assertIn("Rewritten description", body)
 
+    def describe_with(self, identity: str, text: str, **kwargs):
+        path = self.temp / "description.md"
+        path.write_text(text, encoding="utf-8")
+        namespace = argparse.Namespace(
+            identity=identity, purpose_file=str(path),
+            limitation=kwargs.get("limitation"),
+            clear_limitations=kwargs.get("clear_limitations", False),
+        )
+        return store.command_entry_describe(namespace)
+
+    def test_limitations_can_be_written_and_are_digest_bound(self) -> None:
+        """`limitations` is required, digest-bound and printed to the approver — and had no writer.
+
+        Measured on the first real store: `[]` on all 80 entries, while 26 of them carried an
+        explicit source-limit caveat in their prose, where no consumer reads it. `entry-draft`
+        hardcodes the field and no subcommand could set it."""
+
+        drafted = self.draft()
+        before, body = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual([], before["limitations"])
+        digest_before = store.facts_digest(before)
+
+        result = self.describe_with(
+            drafted["identity"], "States what the component does.",
+            limitation=["Value set is not in this repository.", "Callers are not visible here."],
+        )
+        after, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(
+            ["Callers are not visible here.", "Value set is not in this repository."],
+            after["limitations"], "limitations are stored sorted and de-duplicated",
+        )
+        self.assertEqual(after["limitations"], result["limitations"])
+        self.assertNotEqual(
+            digest_before, store.facts_digest(after),
+            "a limitation that does not move factsDigest is not governed content",
+        )
+        self.assertEqual(before["typeFacts"], after["typeFacts"], "extracted facts were touched")
+
+    def test_limitations_are_replaced_not_appended_and_can_be_cleared(self) -> None:
+        # A limitation set is a statement about THIS text. Appending would silently carry a caveat
+        # that the new description already answered.
+        drafted = self.draft()
+        self.describe_with(drafted["identity"], "First take.", limitation=["Stale caveat."])
+        self.describe_with(drafted["identity"], "Second take.", limitation=["Current caveat."])
+        after, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(["Current caveat."], after["limitations"])
+
+        self.describe_with(drafted["identity"], "Third take.", clear_limitations=True)
+        cleared, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual([], cleared["limitations"])
+
+        with self.assertRaises(store.StoreError):
+            self.describe_with(
+                drafted["identity"], "Fourth take.",
+                limitation=["Something."], clear_limitations=True,
+            )
+
 
 class DraftLaneHonestyTests(KnowledgeStoreTests):
     """Unfinished work and broken work must not look the same."""
@@ -1110,11 +1218,74 @@ class FeatureEntryTests(KnowledgeStoreTests):
         latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
         return store.compute_feature_lane(store.feature_path(slug), latest)
 
+    def test_a_boundary_name_that_is_not_in_source_is_named_at_review(self) -> None:
+        """`feature-propose` strips whitespace and writes, so a typo lands inside a rule a human
+        then approves and a digest then pins. Nothing checked any name existed, and an
+        unresolvable name looked identical to a correct one the walk never reached."""
+
+        self.propose(anchor=["HarnessAlphaCase__c"], hub=["Definitely_Not_Here__c"])
+        self.describe()
+        result = store.command_feature_review(argparse.Namespace(slug=["scheduling"]))
+        artifact = (self.temp / result["reviewArtifact"]).read_text(encoding="utf-8")
+        self.assertIn("name check:", artifact)
+        self.assertIn("Definitely_Not_Here__c", artifact)
+
+    def test_a_near_miss_is_reported_as_a_probable_typo(self) -> None:
+        # A near match is the typo signal. An absence with NO near match is the ordinary case for
+        # a standard or packaged object, which is a legitimate hub — so the two must not read the
+        # same, or the check is noise a reviewer learns to skip.
+        typo = store.resolve_boundary_names(["HarnessAlphaCse__c"])
+        self.assertEqual("not-in-workspace", typo["names"]["HarnessAlphaCse__c"]["status"])
+        self.assertIn(
+            "HarnessAlphaCase__c", typo["names"]["HarnessAlphaCse__c"]["closest"],
+            "a one-character typo did not surface the name it was probably meant to be",
+        )
+        standard = store.resolve_boundary_names(["Account"])
+        self.assertEqual("not-in-workspace", standard["names"]["Account"]["status"])
+        self.assertEqual([], standard["names"]["Account"]["closest"])
+
+    def test_the_name_check_never_refuses_a_write(self) -> None:
+        """Advisory on purpose: a hard gate would reject an anchor whose object-meta.xml is absent
+        from a fixture, and would couple a pure file write to git and the inventory schema."""
+
+        proposed = self.propose(anchor=["Definitely_Not_Here__c"])
+        self.assertEqual("PROPOSED", proposed["outcome"])
+        self.assertIn(
+            "Definitely_Not_Here__c", proposed["nameResolution"]["notInWorkspace"],
+            "the write succeeded without telling the caller the anchor resolves to nothing",
+        )
+
     def test_a_feature_cannot_be_approved_before_it_is_described(self) -> None:
         self.propose()
         review = store.command_feature_review(argparse.Namespace(slug=None))
         self.assertEqual("NOTHING_TO_REVIEW", review["outcome"])
         self.assertTrue(review["skipped"])
+
+    def test_an_approved_feature_re_renders_when_named_and_only_then(self) -> None:
+        """D7: when `feature-approve` pins no membershipDigest it prescribes re-approval against
+        a reachable index, but the review surface refused to render an approved-current feature
+        even when `--slug` named it — the prescribed remedy was unreachable. Naming an approved
+        feature must re-render its surface; a bare sweep must still skip it, and say so."""
+
+        self.propose()
+        self.describe()
+        self.approve_feature()
+        digest = self.lane()["reviewedContentDigest"]
+
+        named = store.command_feature_review(argparse.Namespace(slug=["scheduling"]))
+        self.assertEqual("REVIEW_READY", named["outcome"])
+        self.assertIn(
+            f":{digest}", named["approveCommand"],
+            "the re-rendered surface must pin the same digest the store already carries",
+        )
+
+        swept = store.command_feature_review(argparse.Namespace(slug=None))
+        self.assertEqual("NOTHING_TO_REVIEW", swept["outcome"])
+        self.assertTrue(
+            any("approved-current" in reason
+                for item in swept["skipped"] for reason in item["reasons"]),
+            "a bare sweep over an approved store must say WHY there is nothing to review",
+        )
 
     def test_approval_binds_the_rule_and_the_prose(self) -> None:
         self.propose()
@@ -1216,7 +1387,8 @@ class FeatureEntryTests(KnowledgeStoreTests):
 
         def fake(boundary):
             captured["boundary"] = boundary
-            return {"membershipDigest": "sha256:" + "b" * 64, "unreachable": None, "limitsHit": []}
+            return {"membershipDigest": "sha256:" + "b" * 64, "unreachable": None,
+                    "limitsHit": [], "laneExcludedCount": 0}
 
         self.propose()
         self.describe()
@@ -1235,7 +1407,7 @@ class FeatureEntryTests(KnowledgeStoreTests):
         def fake(_boundary):
             return {
                 "membershipDigest": "sha256:" + "d" * 64, "unreachable": None,
-                "limitsHit": ["maxNodes"],
+                "limitsHit": ["maxNodes"], "laneExcludedCount": 0,
             }
 
         self.propose()
@@ -1270,7 +1442,8 @@ class FeatureEntryTests(KnowledgeStoreTests):
 
         def fake_compute_membership(documents, boundary, **kwargs):
             seen.update(kwargs)
-            return {"membershipDigest": "sha256:" + "c" * 64, "limitsHit": []}
+            return {"membershipDigest": "sha256:" + "c" * 64, "limitsHit": [],
+                    "laneExcluded": {"count": 0, "identities": [], "identitiesTruncated": 0}}
 
         with unittest.mock.patch.object(knowledge_search, "load_index", fake_load_index), \
                 unittest.mock.patch.object(knowledge_search, "compute_membership", fake_compute_membership):

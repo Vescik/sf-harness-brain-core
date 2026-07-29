@@ -40,7 +40,9 @@ bound to a commit otherwise.
 4. Draft feature-tagged claims and the dossier:
    `python scripts/force_app_knowledge.py feature-draft --feature "<Feature>"`. This drafts schema-v3
    `proposed` claims for boundary components only — each carrying the `feature` tag — and renders
-   `output/feature-dossiers/<slug>.md`. Drafts are not canonical or verified.
+   `.cache/knowledge-proposals/feature-dossiers/<slug>.md`. Drafts are not canonical or verified.
+   (`output/feature-dossiers/` belongs to the approved-entry dossier rendered by
+   `knowledge_search.py feature-dossier` — a different content model.)
 5. **Write the AI descriptions.** For every behavior-bearing draft (Flow, Apex, trigger, approval
    process, LWC/Aura) you intend to propose, read the component's actual source and replace the
    `<AGENT_...>` sentinel with 2–6 grounded sentences (purpose, entry conditions, key steps, what it

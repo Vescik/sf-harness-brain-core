@@ -212,6 +212,7 @@ FORCE_APP_COMMAND_FLAGS = {
     "dashboard": frozenset({"--warn-days"}),
     "worklist": frozenset({"--metadata-type", "--write"}),
     "coverage": frozenset({"--write"}),
+    "entry-readiness": frozenset(),
     "relations-worklist": frozenset({"--metadata-type", "--write"}),
     "relation-health": frozenset({"--write"}),
     "relations-draft": frozenset({"--observed-at", "--metadata-type", "--limit", "--include-heuristic"}),
@@ -253,7 +254,7 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     ),
     "entry-approve": frozenset({"--entry"}),
     "entry-review": frozenset({"--identity"}),
-    "entry-describe": frozenset({"--identity", "--purpose-file"}),
+    "entry-describe": frozenset({"--identity", "--purpose-file", "--limitation", "--clear-limitations"}),
     "entry-context": frozenset({"--identity", "--max-source-chars"}),
     "entry-revoke": frozenset({"--identity", "--rationale"}),
     "entry-status": frozenset({"--identity"}),
@@ -306,6 +307,7 @@ KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
     "tree": frozenset({"--feature", "--state", "--include-heuristic", "--direction"}),
     "feature-drift": frozenset({"--feature", "--state", "--include-heuristic"}),
     "feature-dossier": frozenset({"--feature", "--state", "--include-heuristic"}),
+    "edge-health": frozenset(),
     "capabilities": frozenset({"--metadata-type"}),
 }
 # Boolean flags take no value, so the parser must not skip the token after them. A flag missing
@@ -316,7 +318,7 @@ KNOWLEDGE_SEARCH_VALUELESS_FLAGS = frozenset({"--check", "--full", "--include-he
 # Empty because no knowledge_store subcommand declares a boolean yet. The constant and its
 # branch in knowledge_store_command_allowed exist so the first one cannot fail open the way
 # `--full` did on the search side; the arity-derived contract test is what will require it here.
-KNOWLEDGE_STORE_VALUELESS_FLAGS: frozenset[str] = frozenset({"--replace"})
+KNOWLEDGE_STORE_VALUELESS_FLAGS: frozenset[str] = frozenset({"--replace", "--clear-limitations"})
 
 
 def knowledge_search_command_allowed(parts: list[str], role: str) -> bool:
