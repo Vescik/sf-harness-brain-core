@@ -134,6 +134,39 @@ class ForceAppKnowledgeTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
+    def minimal_crawl(self) -> dict:
+        return {
+            "feature": "Alpha", "slug": "alpha",
+            "repositoryCommit": "0" * 40,
+            "anchors": ["HarnessEngagement__c"], "depth": 1, "objects": [],
+            "hubStopList": [], "unresolvedAnchors": [],
+            "relations": {"outbound": [], "inbound": [], "junctions": []},
+            "automations": [], "ui": [], "supporting": [],
+            "limitations": [], "sourceTreeDigest": "sha256:" + "0" * 64,
+            "generatedAt": "2026-07-29T00:00:00Z",
+        }
+
+    def test_f4_the_crawl_dossier_is_a_proposal_and_lives_in_the_cache(self) -> None:
+        """F4 half 1: the crawl dossier is a PROPOSAL whose input JSON already lives in the
+        disposable cache, and it shared output/feature-dossiers/<slug>.md with the
+        approved-entry dossier — a different content model — so whichever writer ran last
+        silently replaced the other."""
+
+        path = self.builder.render_dossier(self.minimal_crawl(), {"bundles": [], "claimCount": 0})
+        self.assertIn(
+            ".cache/knowledge-proposals/feature-dossiers", str(path).replace("\\", "/")
+        )
+        self.assertTrue(
+            path.read_text(encoding="utf-8").startswith("# Feature Dossier — ")
+        )
+
+    def test_f4_the_crawl_writer_refuses_an_entry_model_file(self) -> None:
+        target = self.builder.dossier_root / "alpha.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# Feature — Alpha\n\napproved-entry model\n", encoding="utf-8")
+        with self.assertRaises(KnowledgeBuildError):
+            self.builder.render_dossier(self.minimal_crawl(), {"bundles": [], "claimCount": 0})
+
     def test_clean_inventory_generates_schema_valid_sanitized_drafts(self) -> None:
         inventory = self.builder.inventory()
         self.assertTrue(inventory["workspaceStatus"]["clean"])

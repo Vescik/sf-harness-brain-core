@@ -161,10 +161,10 @@ Count: **6 templates.** Every header-bearing template cites `docs/archive/HARNES
 ### Storage conventions
 
 - **`.cache/`** (gitignored; skeleton kept via `.gitkeep`): `ado-items/` (empty), `test-cases/` (empty), `knowledge-proposals/` (populated: `force-app-inventory.json`, `force-app-worklist-CustomObject.json`, `feature-billing.json`, `force-app-drafts/` with ~80 draft YAMLs + `manifest.json`), plus root `denials.log`. `.gitignore` comment cites "blueprint §13 and §17" as policy source.
-- **`output/`** (gitignored generated content for human review; skeleton kept via `.gitkeep`): `documentation/` (empty), `feature-dossiers/` (populated: `billing.md`), `handover/` (empty), `solution-design/` (empty), `generated-tests/` (empty), `feature-health/` (empty). `.gitignore`'s own comment flags this policy as **PROVISIONAL**: "blueprint §13 says output/ git policy 'depends on the subfolder' and does not resolve which subfolders are committed... Revisit per §13 — see docs/archive/BUILD_REPORT.md flag 24."
+- **`output/`** (gitignored generated content for human review; skeleton kept via `.gitkeep`): `documentation/` (empty), `feature-dossiers/` (approved-entry dossiers written by `knowledge_search.py feature-dossier`; the crawl-proposal dossier moved to `.cache/knowledge-proposals/feature-dossiers/`), `handover/` (empty), `solution-design/` (empty), `generated-tests/` (empty), `feature-health/` (empty). `.gitignore`'s own comment flags this policy as **PROVISIONAL**: "blueprint §13 says output/ git policy 'depends on the subfolder' and does not resolve which subfolders are committed... Revisit per §13 — see docs/archive/BUILD_REPORT.md flag 24."
 - **`force-app/main/default/**`**: org metadata content is gitignored (human-retrieved/deployed only); skeleton kept via `.gitkeep`, same pattern.
 - Other `.gitignore` sections: OS noise, local Salesforce CLI tooling state, local harness config (`config/harness.local.json`, `config/harness.json` — comment states only `harness.example.json` is meant to be tracked), general dev-tooling noise.
-- `output/feature-dossiers/` is the one `output/` subfolder without a committed `.gitkeep`, even though it's populated and actively referenced by `feature-documentor/SKILL.md` and `feature-dossier.md`.
+- `output/feature-dossiers/` is the one `output/` subfolder without a committed `.gitkeep`, even though it's actively referenced by `feature-dossier.md` and written by `knowledge_search.py feature-dossier` (the crawl dossier `feature-documentor` renders lives in `.cache/knowledge-proposals/feature-dossiers/`).
 
 ### Documentation modules
 
@@ -321,7 +321,7 @@ Every `.ai/contracts/*.md` target resolves. `tool-capabilities.md` exists on dis
 | batch-knowledge/SKILL.md:30 | `.cache/knowledge-proposals/` | yes |
 | batch-knowledge/SKILL.md:91 | `output/documentation/batch-knowledge-<Type>-<date>.md` (pattern) | yes |
 | fetch-ado-item/SKILL.md:25 | `.cache/ado-items/<id>.json` (pattern) | yes |
-| feature-documentor/SKILL.md:43 | `output/feature-dossiers/<slug>.md` (pattern) | yes (dir exists, populated, but not `.gitkeep`-tracked — see storage conventions) |
+| feature-documentor/SKILL.md:43 | `.cache/knowledge-proposals/feature-dossiers/<slug>.md` (pattern) | yes (disposable cache; `output/feature-dossiers/` belongs to the approved-entry dossier) |
 | generate-technical-documentation/SKILL.md:41 | `output/documentation/<itemId>.md` (pattern) | yes |
 | generate-release-handover/SKILL.md:33 | `output/handover/<period>.md` (pattern) | yes |
 | propose-force-app-knowledge/SKILL.md:23 | `.cache/knowledge-proposals/force-app-drafts/manifest.json` | yes |
@@ -341,7 +341,7 @@ Three referenced cache paths do not exist as provisioned directories: `.cache/de
 | template file | sections | claiming skill | resolves |
 |---|---|---|---|
 | `change-record.md` (9 sections) | all 9 | **none found.** Repo-wide grep for "change-record" under `.github/` hits only `.github/CODEOWNERS:7` (path ownership) and a generic phrase in `solution-designer.agent.md:62` ("change-record artifacts") that never names this template file. `solution-design/SKILL.md` Phase 2 defines its own inline section list for `design.md`, with different names/order, never citing this template. | **no** |
-| `feature-dossier.md` (7 sections) | all | `feature-documentor/SKILL.md:41-43` writes `output/feature-dossiers/<slug>.md` via a script (`force_app_knowledge.py feature-draft`); template line 7 says edit the generator, not the output — true producer is a script, not skill prose. | yes (path/skill pairing); section-level mapping is via script, not literal skill text |
+| `feature-dossier.md` (7 sections) | all | `feature-documentor/SKILL.md:41-43` writes `.cache/knowledge-proposals/feature-dossiers/<slug>.md` via a script (`force_app_knowledge.py feature-draft`); template line 7 says edit the generator, not the output — true producer is a script, not skill prose. | yes (path/skill pairing); section-level mapping is via script, not literal skill text |
 | `feature-health-report.md` (6 sections) | all | `check-feature-coverage/SKILL.md:36` ("Save all mandatory sections using the Feature Health template"), bidirectional with template's own header. §5 "Open questions" has no explicit skill step naming it. | yes; §5 unmapped |
 | `knowledge-entry.md` | all | **none found.** Repo-wide grep for "knowledge-entry" under `.github/` returns zero hits; no "Used by skill" header on this template either — genuine two-way silence. | **no** |
 | `release-handover.md` | all | `generate-release-handover/SKILL.md:33`, bidirectional with template header. Section itemization (Summary/Technical table/Tests) is aggregate only, not per-section. | yes |

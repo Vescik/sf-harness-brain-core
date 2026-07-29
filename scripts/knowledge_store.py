@@ -1942,11 +1942,12 @@ def approval_membership_digest(boundary: dict[str, Any]) -> dict[str, Any]:
             depth_limit=knowledge_search.DEPTH_LIMITS["drift"],
         )
     except knowledge_search.SearchError as error:
-        return {"membershipDigest": None, "unreachable": str(error), "limitsHit": []}
+        return {"membershipDigest": None, "unreachable": str(error), "limitsHit": [], "laneExcludedCount": 0}
     return {
         "membershipDigest": membership["membershipDigest"],
         "unreachable": None,
         "limitsHit": membership["limitsHit"],
+        "laneExcludedCount": membership["laneExcluded"]["count"],
     }
 
 
@@ -1982,6 +1983,7 @@ def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
     records = []
     unpinned: list[str] = []
     truncated: list[str] = []
+    lane_dropped: list[str] = []
     for identity, path, lane in resolved:
         frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
         membership = approval_membership_digest(frontmatter["boundary"])
@@ -1990,6 +1992,8 @@ def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
             unpinned.append(f"{identity}: {membership['unreachable']}")
         elif membership["limitsHit"]:
             truncated.append(f"{identity}: {', '.join(membership['limitsHit'])}")
+        if membership["laneExcludedCount"]:
+            lane_dropped.append(f"{identity}: {membership['laneExcludedCount']} artifact(s)")
         frontmatter["lifecycle"] = {"state": "approved", "contentDigest": lane["reviewedContentDigest"]}
         frontmatter["approval"] = {
             "reviewedContentDigest": lane["reviewedContentDigest"],
@@ -2030,6 +2034,13 @@ def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
             + ", so the pinned digest covers a deterministic PREFIX of the membership rather "
             "than all of it, and `feature-drift` will answer "
             "`changedWithinTruncatedPrefix` instead of `changed`."
+        )
+    if lane_dropped:
+        gaps.append(
+            "The lifecycle lane filter removed reached artifact(s) from the membership the "
+            "pinned digest covers — " + "; ".join(lane_dropped)
+            + ". The digest is honest for the established lanes; it simply does not include "
+            "them. `tree --feature <slug>` names them under `laneExcluded`."
         )
     if gaps:
         result["gaps"] = gaps

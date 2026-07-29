@@ -720,7 +720,9 @@ A boundary rule that differs from the approved one is reported separately as
 `tree`, `feature-dossier` and any file they write (`output/feature-dossiers/…`) are
 **generated views**. They are not Knowledge, they are not approved, and they are never
 citable — the member list in them is advisory and the dossier says so in its own first
-paragraph. A reader who wants a citable reference is pointed at the executor receipt
+paragraph. The crawl-proposal dossier (`force_app_knowledge.py feature-draft`) is a different
+content model again and lives in `.cache/knowledge-proposals/feature-dossiers/…`; each writer
+refuses a file carrying the other's H1 rather than overwriting it. A reader who wants a citable reference is pointed at the executor receipt
 (`knowledge_store.py entry-status --identity <Identity>`), never at a hand-built `entryRef`:
 a projection's digests are content digests and `validate_entry_refs` rejects them outright.
 

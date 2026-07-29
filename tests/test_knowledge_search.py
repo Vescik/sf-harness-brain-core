@@ -1554,7 +1554,10 @@ class TraversalReuseTests(EntryFixtureMixin, unittest.TestCase):
             self.assertIn(node["minAssurance"], (
                 relation_kinds.SOURCE_EXACT, relation_kinds.SOURCE_DERIVED_HEURISTIC
             ))
-        self.assertEqual({"nodes", "excluded", "stoppedAt", "limitsHit", "observed"}, set(walk))
+        self.assertEqual(
+            {"nodes", "excluded", "excludedIdentities", "stoppedAt", "limitsHit", "observed"},
+            set(walk),
+        )
         # No stop-list was passed, so nothing was kept-but-unexpanded.
         self.assertEqual([], walk["stoppedAt"])
 
@@ -2798,6 +2801,94 @@ class FeatureDossierTests(EntryFixtureMixin, unittest.TestCase):
         self.assertIn("generated view, not Knowledge", text)
         self.assertIn("never citable", text)
         self.assertIn("entry-status --identity", text)
+
+    def test_f4_the_entry_dossier_refuses_a_crawl_model_file(self) -> None:
+        """F4 half 1: both writers rendered output/feature-dossiers/<slug>.md with different
+        content models, and whichever ran last silently replaced the other. The crawl writer
+        moved to the disposable cache; each writer now refuses a file carrying the other
+        model's H1 rather than overwriting it."""
+
+        self.make_feature()
+        self.approve_feature()
+        target = store.ROOT / "output/feature-dossiers/alpha.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("# Feature Dossier — alpha\n\ncrawl proposal\n", encoding="utf-8")
+        with self.assertRaises(search.SearchError):
+            self.dossier()
+
+    def _draft_out_of_lane_field(self) -> str:
+        """A draft entry the walk can reach from the alpha anchor: out of the default lanes."""
+
+        purpose = self.temp / "lane-purpose.md"
+        purpose.write_text("Tracks a draft-only lane fixture.", encoding="utf-8")
+        fields = self.temp / "force-app/main/default/objects/HarnessAlphaCase__c/fields"
+        (fields / "LaneOnly__c.field-meta.xml").write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">\n'
+            "    <fullName>LaneOnly__c</fullName>\n    <label>LaneOnly</label>\n"
+            "    <type>Text</type>\n</CustomField>\n",
+            encoding="utf-8",
+        )
+        store.command_entry_draft(argparse.Namespace(
+            metadata_type="CustomField", full_name="HarnessAlphaCase__c.LaneOnly__c",
+            namespace=None, purpose_file=str(purpose), source_api_version="64.0",
+            candidate_keyword=None,
+        ))
+        search.build_index()
+        return "CustomField:c:HarnessAlphaCase__c.LaneOnly__c"
+
+    def test_f4_lane_filtered_members_are_reported_not_discarded(self) -> None:
+        """F4 half 2: traverse counted excluded["lifecycle"] and compute_membership discarded
+        the identities, so the DEFAULT invocation — approved-current only — could empty a
+        dossier and still report gaps: []. Reporting only: the member set and its digest
+        cover exactly what they covered before."""
+
+        excluded_identity = self._draft_out_of_lane_field()
+        self.make_feature()
+        self.approve_feature()
+
+        tree = search.run_tree(argparse.Namespace(
+            feature="alpha", state=None, include_heuristic=False, direction=None,
+        ))
+        self.assertIn(excluded_identity, tree["laneExcluded"]["identities"])
+        self.assertNotIn(
+            excluded_identity,
+            [m["identity"] for m in tree["members"] + tree["membersNonCurrent"]],
+        )
+        self.assertTrue(any("lane" in gap for gap in tree["gaps"]))
+
+        drift = search.run_feature_drift(argparse.Namespace(
+            feature="alpha", state=None, include_heuristic=False,
+        ))
+        self.assertGreaterEqual(drift["laneExcluded"]["count"], 1)
+
+        dossier = self.dossier()
+        self.assertGreaterEqual(dossier["laneExcluded"], 1)
+        self.assertTrue(any("lane" in gap for gap in dossier["gaps"]))
+
+    def test_f4_an_explicitly_included_draft_is_a_member_not_an_exclusion(self) -> None:
+        # The double-count trap `belowFloor` already documents: an artifact that qualifies as
+        # a member by ANY path must not also be reported as excluded.
+        excluded_identity = self._draft_out_of_lane_field()
+        self.make_feature(include=[excluded_identity])
+        self.approve_feature()
+        tree = search.run_tree(argparse.Namespace(
+            feature="alpha", state=None, include_heuristic=False, direction=None,
+        ))
+        self.assertIn(
+            excluded_identity, [m["identity"] for m in tree["membersNonCurrent"]]
+        )
+        self.assertNotIn(excluded_identity, tree["laneExcluded"]["identities"])
+
+    def test_f4_the_approval_receipt_discloses_the_lane_drop(self) -> None:
+        # The human pinning a membershipDigest is told how many reached artifacts the lane
+        # filter removed from what that digest covers.
+        self._draft_out_of_lane_field()
+        self.make_feature()
+        review = store.command_feature_review(argparse.Namespace(slug=["alpha"]))
+        pins = [part for part in review["approveCommand"].split() if part.startswith("Feature:")]
+        result = store.command_feature_approve(argparse.Namespace(feature=pins))
+        self.assertTrue(any("lane" in gap for gap in result.get("gaps", [])))
 
     def test_every_no_description_state_names_the_remedy_p5_names(self) -> None:
         """The two dossiers must not disagree about what the reader does next.

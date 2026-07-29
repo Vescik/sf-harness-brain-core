@@ -16,7 +16,7 @@ Visualforce pages, layouts) touching the anchors, keep the boundary tight with `
 and present it for confirmation before drafting.
 
 The outcome is schema-valid `proposed` claims tagged with the feature plus a draft dossier under
-`output/feature-dossiers/` — never verified facts: promotion needs a separate human chat approval,
+`.cache/knowledge-proposals/feature-dossiers/` — never verified facts: promotion needs a separate human chat approval,
 and the dossier is never published to ADO or a production wiki from here. Reconcile against the live
 org through the guarded `python scripts/salesforce_read.py retrieve` only when a review org is
 configured. Report the boundary summary, crawl and dossier paths, drafted claim IDs, org drift,

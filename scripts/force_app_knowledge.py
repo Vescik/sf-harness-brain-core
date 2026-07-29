@@ -396,7 +396,11 @@ class ForceAppKnowledge:
         self.cache_root = self.root / ".cache/knowledge-proposals"
         self.inventory_path = self.cache_root / "force-app-inventory.json"
         self.draft_root = self.cache_root / "force-app-drafts"
-        self.dossier_root = self.root / "output/feature-dossiers"
+        # The crawl dossier is a PROPOSAL and its input JSON already lives in the disposable
+        # cache, so its rendering does too. output/feature-dossiers/ belongs to the
+        # approved-entry dossier (`knowledge_search.py feature-dossier`) — a different content
+        # model; sharing the path let whichever writer ran last silently replace the other.
+        self.dossier_root = self.cache_root / "feature-dossiers"
         # Extractor tuning: config/knowledge-extraction.json overrides; built-in defaults keep
         # template repos working without local configuration.
         extraction: dict[str, Any] = {}
@@ -6563,6 +6567,15 @@ class ForceAppKnowledge:
         )
         self.dossier_root.mkdir(parents=True, exist_ok=True)
         dossier_path = self.dossier_root / f"{crawl['slug']}.md"
+        if dossier_path.is_file():
+            first_line = dossier_path.read_text(encoding="utf-8").split("\n", 1)[0]
+            if first_line.startswith("# Feature — "):
+                raise KnowledgeBuildError(
+                    f"{dossier_path} holds an approved-entry dossier (its H1 is '# Feature — '), "
+                    "a different content model; refusing to overwrite it. Entry dossiers are "
+                    "written by `knowledge_search.py feature-dossier` to output/feature-dossiers/ "
+                    "— move or delete this file if it is misplaced."
+                )
         dossier_path.write_text("\n".join(lines), encoding="utf-8")
         return dossier_path
 

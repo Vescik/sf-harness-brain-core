@@ -1387,7 +1387,8 @@ class FeatureEntryTests(KnowledgeStoreTests):
 
         def fake(boundary):
             captured["boundary"] = boundary
-            return {"membershipDigest": "sha256:" + "b" * 64, "unreachable": None, "limitsHit": []}
+            return {"membershipDigest": "sha256:" + "b" * 64, "unreachable": None,
+                    "limitsHit": [], "laneExcludedCount": 0}
 
         self.propose()
         self.describe()
@@ -1406,7 +1407,7 @@ class FeatureEntryTests(KnowledgeStoreTests):
         def fake(_boundary):
             return {
                 "membershipDigest": "sha256:" + "d" * 64, "unreachable": None,
-                "limitsHit": ["maxNodes"],
+                "limitsHit": ["maxNodes"], "laneExcludedCount": 0,
             }
 
         self.propose()
@@ -1441,7 +1442,8 @@ class FeatureEntryTests(KnowledgeStoreTests):
 
         def fake_compute_membership(documents, boundary, **kwargs):
             seen.update(kwargs)
-            return {"membershipDigest": "sha256:" + "c" * 64, "limitsHit": []}
+            return {"membershipDigest": "sha256:" + "c" * 64, "limitsHit": [],
+                    "laneExcluded": {"count": 0, "identities": [], "identitiesTruncated": 0}}
 
         with unittest.mock.patch.object(knowledge_search, "load_index", fake_load_index), \
                 unittest.mock.patch.object(knowledge_search, "compute_membership", fake_compute_membership):

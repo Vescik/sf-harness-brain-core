@@ -1960,6 +1960,11 @@ def traverse(
 
     started = time.monotonic()
     excluded = {"lifecycle": 0, "heuristicEdge": 0}
+    # WHO was dropped, not only how many. The count alone let `compute_membership` discard the
+    # identities, so a walk emptied by the default lane filter was indistinguishable from a walk
+    # that reached nothing. Reporting only — an excluded node is still never expanded through,
+    # and nothing here may ever join a digest input.
+    excluded_identities: set[str] = set()
     limits_hit: set[str] = set()
     observed_fanout = 0
     # `path` carries how a node was reached. A flat hop-2 row names an edge target that is only
@@ -2032,6 +2037,7 @@ def traverse(
                     lifecycle = None
                 elif node not in allowed:
                     excluded["lifecycle"] += 1
+                    excluded_identities.add(node)
                     continue
                 else:
                     lifecycle = reached["lane"]
@@ -2080,6 +2086,7 @@ def traverse(
     return {
         "nodes": chains,
         "excluded": excluded,
+        "excludedIdentities": sorted(excluded_identities),
         "stoppedAt": sorted(stopped_names),
         "limitsHit": limits_hit,
         # Deliberately free of any elapsed time: `feature-drift` digests what this walk produces,
@@ -2508,6 +2515,7 @@ def compute_membership(
     # undisclosed truncation there is a comparison of two prefixes presented as an answer.
     limits_hit: set[str] = set()
     stopped_at: set[str] = set()
+    lane_excluded: set[str] = set()
     for anchor_name in sorted(set(boundary.get("anchors") or [])):
         for identity in documents.identities_for_full_name(anchor_name):
             offer(identity, "anchor", "human-declared", 0, [])
@@ -2517,6 +2525,7 @@ def compute_membership(
         )
         limits_hit |= set(walk["limitsHit"])
         stopped_at |= set(walk["stoppedAt"])
+        lane_excluded |= set(walk["excludedIdentities"])
         for node in walk["nodes"]:
             weakest = node["minAssurance"]
             if weakest != relation_kinds.SOURCE_EXACT and not heuristic_ok:
@@ -2551,10 +2560,21 @@ def compute_membership(
     # answer said "9 artifact(s)" and listed 5. In the one section whose whole purpose is telling
     # the truth about what was inferred, the number and the names must be the same set.
     below_floor_ids = sorted({item["identity"] for item in below_floor} - member_ids)
+    # Same double-count trap as `below_floor`: an artifact reached out-of-lane by one path and
+    # qualifying as a member by another (an anchor, a declared include, an in-lane path) is a
+    # member, not an exclusion. Subtract BEFORE counting.
+    lane_excluded_ids = sorted(lane_excluded - member_ids)
     digest = store.canonical_digest(sorted(item["identity"] for item in members))
     return {
         "members": members,
         "membershipDigest": digest,
+        # Reporting only, never a digest input: folding this into `membershipDigest` would
+        # re-approve every feature whose neighbourhood contains a draft.
+        "laneExcluded": {
+            "count": len(lane_excluded_ids),
+            "identities": lane_excluded_ids[:BELOW_FLOOR_IDENTITY_CAP],
+            "identitiesTruncated": max(0, len(lane_excluded_ids) - BELOW_FLOOR_IDENTITY_CAP),
+        },
         "belowFloor": {
             "count": len(below_floor_ids),
             "assuranceFloor": floor,
@@ -2706,6 +2726,12 @@ def run_tree(args: argparse.Namespace) -> dict[str, Any]:
             f"{result['belowFloor']['identitiesTruncated']} of those artifact(s) are counted but "
             f"not named: `belowFloor.identities` is capped at {BELOW_FLOOR_IDENTITY_CAP}."
         )
+    if result["laneExcluded"]["count"]:
+        gaps.append(
+            f"{result['laneExcluded']['count']} artifact(s) were reached by this walk and then "
+            f"removed by the lifecycle lane filter ({', '.join(states)}); they are not members "
+            "and the membership digest does not cover them. Pass --state to widen the lanes."
+        )
     if non_current:
         gaps.append(
             f"{len(non_current)} member(s) are not approved-current knowledge."
@@ -2764,6 +2790,7 @@ def run_tree(args: argparse.Namespace) -> dict[str, Any]:
         "members": current,
         "membersNonCurrent": non_current,
         "belowFloor": result["belowFloor"],
+        "laneExcluded": result["laneExcluded"],
         "hubs": result["hubs"],
         "membershipDigest": result["membershipDigest"],
         "direction": direction,
@@ -2800,7 +2827,8 @@ def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
     identity = store.feature_identity(args.feature)
     latest = store.ledger_latest(store.read_ledger(store.FEATURE_LEDGER_PATH))
     record = latest.get(identity)
-    allowed = documents.lane_ids(_requested_states(args))
+    states = _requested_states(args)
+    allowed = documents.lane_ids(states)
     current = compute_membership(
         documents, frontmatter["boundary"], allowed=allowed,
         include_heuristic=bool(getattr(args, "include_heuristic", False)),
@@ -2820,6 +2848,12 @@ def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
     changed: Any = "unknown"
     changed_within_prefix: Any = None
     gaps: list[str] = []
+    if current["laneExcluded"]["count"]:
+        gaps.append(
+            f"{current['laneExcluded']['count']} artifact(s) were reached by the membership walk "
+            f"and then removed by the lifecycle lane filter ({', '.join(states)}); neither the "
+            "recomputed digest nor the approved one covers them."
+        )
     if not approved:
         gaps.append(f"{identity} is not approved, so there is no baseline to compare against.")
     elif approved_digest is None:
@@ -2898,6 +2932,7 @@ def run_feature_drift(args: argparse.Namespace) -> dict[str, Any]:
         "removed": removed,
         "boundaryRuleChanged": boundary_moved,
         "memberCount": len(current["members"]),
+        "laneExcluded": current["laneExcluded"],
         "gaps": gaps,
         "indexGeneration": manifest["generation"],
     }
@@ -3005,6 +3040,15 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
         f"{described_count} carry a description.",
         "",
     ]
+    if membership["laneExcluded"]["count"]:
+        # The default --state is the lane-emptying invocation, so without this line a dossier
+        # emptied by the lane filter reads as a plausible small feature rather than a broken one.
+        lines += [
+            f"{membership['laneExcluded']['count']} further artifact(s) were reached by the walk "
+            f"and then removed by the lifecycle lane filter ({', '.join(states)}); they are "
+            "neither members nor counted above. Re-render with `--state` to widen the lanes.",
+            "",
+        ]
     for metadata_type in sorted(by_type):
         lines += [f"### {metadata_type}", "",
                   "| Artifact | Why it belongs | Assurance | Lane | Description |",
@@ -3054,8 +3098,27 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
     ]
 
     path = store.ROOT / DOSSIER_ROOT_NAME / f"{args.feature}.md"
+    if path.is_file():
+        first_line = path.read_text(encoding="utf-8").split("\n", 1)[0]
+        if first_line.startswith("# Feature Dossier — "):
+            raise SearchError(
+                f"{store.relative_path(path)} holds a crawl-proposal dossier (its H1 is "
+                "'# Feature Dossier — '), a different content model; refusing to overwrite it. "
+                "Crawl dossiers are written by `force_app_knowledge.py feature-draft` to "
+                ".cache/knowledge-proposals/feature-dossiers/ — this one is a stale copy from "
+                "before that split; move or delete it first."
+            )
     path.parent.mkdir(parents=True, exist_ok=True)
     store.atomic_write(path, "\n".join(lines) + "\n")
+    gaps = []
+    if lane["lane"] != "approved-current":
+        gaps.append(f"rendered from a boundary rule in lane '{lane['lane']}', which nobody approved")
+    if membership["laneExcluded"]["count"]:
+        gaps.append(
+            f"{membership['laneExcluded']['count']} artifact(s) were reached by the walk and then "
+            f"removed by the lifecycle lane filter ({', '.join(states)}); the dossier says so in "
+            "its Members section."
+        )
     return {
         "outcome": "DOSSIER",
         "feature": store.feature_identity(args.feature),
@@ -3064,11 +3127,8 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
         "members": len(membership["members"]),
         "described": described_count,
         "belowFloor": below["count"],
-        "gaps": (
-            []
-            if lane["lane"] == "approved-current"
-            else [f"rendered from a boundary rule in lane '{lane['lane']}', which nobody approved"]
-        ),
+        "laneExcluded": membership["laneExcluded"]["count"],
+        "gaps": gaps,
     }
 
 
