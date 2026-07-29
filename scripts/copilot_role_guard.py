@@ -212,6 +212,7 @@ FORCE_APP_COMMAND_FLAGS = {
     "dashboard": frozenset({"--warn-days"}),
     "worklist": frozenset({"--metadata-type", "--write"}),
     "coverage": frozenset({"--write"}),
+    "entry-readiness": frozenset(),
     "relations-worklist": frozenset({"--metadata-type", "--write"}),
     "relation-health": frozenset({"--write"}),
     "relations-draft": frozenset({"--observed-at", "--metadata-type", "--limit", "--include-heuristic"}),
@@ -306,6 +307,7 @@ KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
     "tree": frozenset({"--feature", "--state", "--include-heuristic", "--direction"}),
     "feature-drift": frozenset({"--feature", "--state", "--include-heuristic"}),
     "feature-dossier": frozenset({"--feature", "--state", "--include-heuristic"}),
+    "edge-health": frozenset(),
     "capabilities": frozenset({"--metadata-type"}),
 }
 # Boolean flags take no value, so the parser must not skip the token after them. A flag missing

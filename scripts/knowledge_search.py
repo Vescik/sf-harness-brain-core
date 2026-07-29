@@ -566,6 +566,33 @@ def fold_target(target: str) -> str:
     return unicodedata.normalize("NFKC", target).casefold()
 
 
+LOCAL_NAME_SUFFIXES = ("__c", "__e", "__mdt", "__b", "__x")
+
+
+def _local_custom_name(name: str) -> bool:
+    """entry_edge_health's published rule: force-app is the only place this name can come from.
+
+    `ns__Thing__c` belongs to an installed package — it is not in this repo and never will be."""
+
+    for suffix in LOCAL_NAME_SUFFIXES:
+        if name.endswith(suffix):
+            return "__" not in name[: -len(suffix)]
+    return False
+
+
+def target_decidable(target: str) -> bool:
+    """Whether this index could ever hold an entry for the target.
+
+    Mirrors `force_app_knowledge._decidable_targets`: only an unnamespaced __c/__e/__mdt/__b/__x
+    name is decidable. A dotted target needs BOTH halves package-local — `Category__c.Id` will
+    never have a CustomField entry, so its `no-entry` proves nothing."""
+
+    object_name, _, member = target.partition(".")
+    if not member:
+        return _local_custom_name(target)
+    return _local_custom_name(object_name) and _local_custom_name(member)
+
+
 def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
     """Who points at each target, and what that target resolves to.
 
@@ -581,12 +608,20 @@ def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
     """
 
     by_full_name: dict[str, list[str]] = defaultdict(list)
+    # Extractors emit the token source wrote — `object-token` on `a.Status__c` yields the bare
+    # `Status__c` — while a field entry's fullName is the qualified `Object.Field`. Without this
+    # index a fifth of the probe corpus's `no-entry` edges named fields that had approved
+    # entries, and `impact --direction outgoing` dead-ended one hop early on all of them.
+    by_member: dict[str, list[str]] = defaultdict(list)
     identities = set()
     for item in projections:
         identities.add(item["identity"])
         full_name = item["facets"].get("fullName")
         if full_name:
             by_full_name[fold_target(str(full_name))].append(item["identity"])
+            owner, _, member = str(full_name).rpartition(".")
+            if owner:
+                by_member[fold_target(member)].append(item["identity"])
 
     by_target: dict[str, dict[str, Any]] = {}
     for item in projections:
@@ -610,6 +645,17 @@ def build_relation_index(projections: list[dict[str, Any]]) -> dict[str, Any]:
             # subscriber's; the caller is told instead.
             row["resolution"] = "ambiguous"
             row["candidates"] = sorted(candidates)
+        else:
+            members = by_member.get(key, [])
+            if len(members) == 1:
+                row["targetIdentity"] = members[0]
+                # A distinct value, not "resolved": the qualified/bare distinction stays
+                # visible to anyone auditing how an edge was settled.
+                row["resolution"] = "resolved-by-member"
+            elif len(members) > 1:
+                row["resolution"] = "ambiguous"
+                row["candidates"] = sorted(members)
+        row["decidable"] = target_decidable(sorted(row["spellings"])[0])
         row["spellings"] = sorted(row["spellings"])
         row["incoming"] = sorted(row["incoming"])
 
@@ -824,6 +870,24 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
         "entryCount": len(projections),
         "laneCounts": {
             lane: sum(1 for item in projections if item["lane"] == lane) for lane in ALL_LANES
+        },
+        # Pinned per generation so `build --check` covers them and drift in edge resolution is
+        # visible where every other corpus statistic already is.
+        "edgeResolution": {
+            "targets": len(postings["reverse"]["byTarget"]),
+            "resolutionCounts": {
+                resolution: sum(
+                    1 for row in postings["reverse"]["byTarget"].values()
+                    if row["resolution"] == resolution
+                )
+                for resolution in sorted(
+                    {row["resolution"] for row in postings["reverse"]["byTarget"].values()}
+                )
+            },
+            "decidableNoEntry": sum(
+                1 for row in postings["reverse"]["byTarget"].values()
+                if row["resolution"] == "no-entry" and row["decidable"]
+            ),
         },
         "metadataTypeCounts": {
             metadata_type: sum(
@@ -3132,6 +3196,68 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+EDGE_HEALTH_SAMPLE_CAP = 50
+
+
+def run_edge_health(args: argparse.Namespace) -> dict[str, Any]:
+    """How well edge targets resolve to entries in this index generation.
+
+    Deliberately DISTINCT from `force_app_knowledge.py relation-health` and its
+    entry_edge_health half, which answer a different question — "does this edge target still
+    exist in force-app source?" — against the live tree. This surface answers "does the target
+    have an entry in this index generation?". Neither report supersedes the other.
+    """
+
+    documents, manifest = load_index()
+    reverse = documents.posting_file("reverse")
+    by_target = reverse.get("byTarget", {})
+    counts: dict[str, int] = defaultdict(int)
+    for row in by_target.values():
+        counts[row["resolution"]] += 1
+    ambiguous = sorted(key for key, row in by_target.items() if row["resolution"] == "ambiguous")
+    undecided = sorted(
+        key for key, row in by_target.items()
+        if row["resolution"] == "no-entry" and row.get("decidable")
+    )
+    gaps = []
+    if len(ambiguous) > EDGE_HEALTH_SAMPLE_CAP:
+        gaps.append(
+            f"{len(ambiguous) - EDGE_HEALTH_SAMPLE_CAP} ambiguous target(s) beyond the "
+            f"{EDGE_HEALTH_SAMPLE_CAP}-row sample are counted but not named."
+        )
+    if len(undecided) > EDGE_HEALTH_SAMPLE_CAP:
+        gaps.append(
+            f"{len(undecided) - EDGE_HEALTH_SAMPLE_CAP} decidable no-entry target(s) beyond the "
+            f"{EDGE_HEALTH_SAMPLE_CAP}-row sample are counted but not named."
+        )
+    return {
+        "outcome": "EDGE_HEALTH",
+        "targets": len(by_target),
+        "resolutionCounts": dict(sorted(counts.items())),
+        # Only a decidable no-entry target is a documentation gap: an unnamespaced
+        # __c/__e/__mdt/__b/__x name this package could hold an entry for. A standard object or
+        # a packaged name has no entry by nature and its absence proves nothing.
+        "decidableNoEntry": {
+            "count": len(undecided),
+            "targets": undecided[:EDGE_HEALTH_SAMPLE_CAP],
+        },
+        "ambiguous": {
+            "count": len(ambiguous),
+            "targets": ambiguous[:EDGE_HEALTH_SAMPLE_CAP],
+        },
+        # Computed since the reverse index existed, exposed nowhere until now: sources whose
+        # own edge list was capped by the collector, per truncated family.
+        "truncatedSources": reverse.get("truncatedSources", {}),
+        "basis": (
+            "resolution is against ENTRIES in this index generation. "
+            "`force_app_knowledge.py relation-health` answers the different question of whether "
+            "a target still exists in force-app source; neither report supersedes the other."
+        ),
+        "gaps": gaps,
+        "indexGeneration": manifest["generation"],
+    }
+
+
 def run_capabilities(args: argparse.Namespace) -> dict[str, Any]:
     facets = dict(GLOBAL_FACETS)
     if args.metadata_type:
@@ -3251,6 +3377,11 @@ def build_parser() -> argparse.ArgumentParser:
     dossier.add_argument("--state", action="append", default=None, choices=list(ALL_LANES))
     dossier.add_argument("--include-heuristic", action="store_true")
     dossier.set_defaults(func=run_feature_dossier)
+
+    edge_health = commands.add_parser(
+        "edge-health", help="how edge targets resolve to entries in this index generation"
+    )
+    edge_health.set_defaults(func=run_edge_health)
 
     capabilities = commands.add_parser("capabilities", help="valid facets, operators, modes")
     capabilities.add_argument("--metadata-type", default=None)

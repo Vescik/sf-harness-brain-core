@@ -2744,6 +2744,87 @@ class ProjectorVersionTests(EntryFixtureMixin, unittest.TestCase):
         self.assertIn("INDEX STALE", str(raised.exception))
 
 
+class EdgeResolutionTests(EntryFixtureMixin, unittest.TestCase):
+    """4d: bare member tokens resolve, decidability is stated, and edge-health reports it.
+
+    `build_relation_index` computed a per-target `resolution` that nothing read, and
+    `by_full_name` keys on the qualified `Object.Field` while extractors emit the bare member
+    token source actually wrote — so a field with an approved entry read as `no-entry` and
+    `impact --direction outgoing` dead-ended one hop early on targets that were entries all
+    along."""
+
+    FIELD = {
+        "identity": "CustomField:c:HarnessAlphaCase__c.Status__c",
+        "facets": {"fullName": "HarnessAlphaCase__c.Status__c"}, "edges": [],
+    }
+
+    def flow_projection(self, name, targets):
+        return {
+            "identity": f"Flow:c:{name}", "facets": {"fullName": name},
+            "edges": [
+                {"target": target, "kind": "reads-field", "assurance": "source-exact"}
+                for target in targets
+            ],
+        }
+
+    def test_a_bare_member_token_resolves_to_the_entry_that_owns_it(self) -> None:
+        index = search.build_relation_index(
+            [self.FIELD, self.flow_projection("R", ["Status__c"])]
+        )
+        row = index["byTarget"][search.fold_target("Status__c")]
+        self.assertEqual("resolved-by-member", row["resolution"])
+        self.assertEqual(self.FIELD["identity"], row["targetIdentity"])
+
+    def test_two_owners_of_one_member_name_are_ambiguous_not_guessed(self) -> None:
+        other = {
+            "identity": "CustomField:c:HarnessBetaOrder__c.Status__c",
+            "facets": {"fullName": "HarnessBetaOrder__c.Status__c"}, "edges": [],
+        }
+        index = search.build_relation_index(
+            [self.FIELD, other, self.flow_projection("R", ["Status__c"])]
+        )
+        row = index["byTarget"][search.fold_target("Status__c")]
+        self.assertEqual("ambiguous", row["resolution"])
+        self.assertEqual(
+            sorted([self.FIELD["identity"], other["identity"]]), row["candidates"]
+        )
+        self.assertIsNone(row["targetIdentity"])
+
+    def test_a_qualified_full_name_still_resolves_first(self) -> None:
+        index = search.build_relation_index(
+            [self.FIELD, self.flow_projection("R", ["HarnessAlphaCase__c.Status__c"])]
+        )
+        row = index["byTarget"][search.fold_target("HarnessAlphaCase__c.Status__c")]
+        self.assertEqual("resolved", row["resolution"])
+        self.assertEqual(self.FIELD["identity"], row["targetIdentity"])
+
+    def test_decidability_follows_the_entry_edge_health_rule(self) -> None:
+        # Only an unnamespaced __c/__e/__mdt/__b/__x name can have an entry here. A standard
+        # field on a custom object (`Category__c.Id`) will never have a CustomField entry, and
+        # `ns__Thing__c` is owned by an installed package.
+        index = search.build_relation_index([
+            self.flow_projection(
+                "R", ["Status__c", "Category__c.Id", "Account", "ns__Thing__c"]
+            ),
+        ])
+        by_target = index["byTarget"]
+        self.assertTrue(by_target[search.fold_target("Status__c")]["decidable"])
+        self.assertFalse(by_target[search.fold_target("Category__c.Id")]["decidable"])
+        self.assertFalse(by_target[search.fold_target("Account")]["decidable"])
+        self.assertFalse(by_target[search.fold_target("ns__Thing__c")]["decidable"])
+
+    def test_edge_health_reports_resolution_decidability_and_truncation(self) -> None:
+        self.seed()
+        result = search.run_edge_health(argparse.Namespace())
+        self.assertEqual("EDGE_HEALTH", result["outcome"])
+        self.assertIsInstance(result["resolutionCounts"], dict)
+        self.assertIn("truncatedSources", result)
+        self.assertIn("decidableNoEntry", result)
+        self.assertIn("force-app source", result["basis"])
+        manifest = search.load_index()[1]
+        self.assertIn("edgeResolution", manifest)
+
+
 class FeatureDossierTests(EntryFixtureMixin, unittest.TestCase):
     """The dossier renders what a human approved, and is never itself citable."""
 

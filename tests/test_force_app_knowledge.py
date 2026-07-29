@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import unittest.mock
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -803,6 +804,40 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         capped = self.builder.refresh(now, warn_days=30, limit=1, dry_run=True)
         self.assertEqual(1, capped["refreshSelected"])
         self.assertEqual(2, capped["remaining"])
+
+    def test_f5_coverage_refuses_when_entries_exist_and_claims_do_not(self) -> None:
+        """4d: coverage() derives from the claims worklist, empty by construction on an entry
+        store, so it reported 0% documented over 80 approved entries and queued 25 components
+        that were already done. Refusal names the replacements rather than teaching coverage a
+        second denominator."""
+
+        self.builder.inventory()
+        entries = {
+            "CustomObject:HarnessEngagement__c": {"purpose": "Real.", "lane": "approved-current"}
+        }
+        with unittest.mock.patch.object(
+            ForceAppKnowledge, "entry_descriptions", lambda self: entries
+        ):
+            with self.assertRaises(KnowledgeBuildError) as caught:
+                self.builder.coverage()
+        self.assertIn("entry-readiness", str(caught.exception))
+
+    def test_f5_entry_readiness_reports_the_entry_side_denominator(self) -> None:
+        self.builder.inventory()
+        entries = {
+            "CustomObject:HarnessEngagement__c": {"purpose": "Real.", "lane": "approved-current"}
+        }
+        with unittest.mock.patch.object(
+            ForceAppKnowledge, "entry_descriptions", lambda self: entries
+        ):
+            result = self.builder.entry_readiness()
+        self.assertEqual("force-app-entry-readiness", result["kind"])
+        bucket = result["byMetadataType"]["CustomObject"]
+        self.assertGreaterEqual(bucket["components"], 1)
+        self.assertEqual(1, bucket["byLane"]["approved-current"])
+        self.assertGreaterEqual(result["totals"]["noEntry"], 1)
+        # The basis must name the other surfaces, or one denominator gets mistaken for another.
+        self.assertIn("coverage", result["basis"])
 
     def test_coverage_summarizes_documentation_state(self) -> None:
         self.builder.inventory()
