@@ -384,9 +384,12 @@ def validate_capability(config: dict, capability: str) -> list[str]:
                 "playwright capability requires workspace.promotedTestsPath for reviewed test promotion"
             )
     if capability == "release":
-        query_id = str(config.get("ado", {}).get("releaseQueryId", ""))
-        if not query_id:
-            failures.append("ADO saved release Query ID is missing")
+        query_id = str(config.get("ado", {}).get("releaseQueryId", "")).strip()
+        if not query_id or re.fullmatch(r"<.*>", query_id):
+            failures.append(
+                "ADO saved release Query ID is missing or still a placeholder — "
+                "set ado.releaseQueryId in config/harness.local.json to the saved query's ID"
+            )
     return failures
 
 

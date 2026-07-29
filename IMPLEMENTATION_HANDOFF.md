@@ -5,6 +5,48 @@
 > `tests/e2e/` are authoritative. Earlier two-folder or nested-`salesforce/` descriptions in this
 > iteration history are superseded.
 
+## Iteration 10 — Release-handover hardening: machine-checked template rendering (2026-07-29)
+
+### Changes
+
+- New `scripts/validate_handover_output.py`: read-only render check that re-derives the
+  expected document structure from `.ai/templates/release-handover.md` at every run (headings
+  outside comments/fences; `<placeholder>` spans match any text; the new
+  `<!-- repeat-per-item -->` marker delimits the per-item block), so user template edits are
+  enforced automatically with no code change. Allowed for every role by the guard (single
+  contained `output/handover/*.md` argument; `--template` stays human/CI-only); listed in the
+  execution contract's permitted scripts; skill step 8 runs it as a self-check and reports
+  `RENDER NON-CONFORMANT` instead of presenting a drifted draft.
+- `generate-release-handover` no longer quotes any template literal (fallback texts are
+  referenced generically), and a new `check_release_handover_contract` harness check pins the
+  contract both ways: exactly one repeat-per-item marker in the template, template loaded by
+  path, self-check present, and no template fixed text embedded in the skill — closing the
+  T11 follow-up ("template enforcement is prompt-level unless a render-check is added").
+- Missing-wiki-link visibility: the template's Technical table fallback is now
+  `No published technical documentation — [Missing Wiki Link]`, so the release manager can
+  search the document for the bracket marker and attach links manually; new manual scenario
+  `release-missing-wiki-link` pins the no-substitution behavior.
+- Skill step 9 writes an explicit output envelope `output/handover/<period>.json`
+  (schemaVersion 3, `cache-read`, `recordRef` null, `reviewStatus` draft) recording the saved
+  query with revision, every item and wiki source, the template identity
+  (`template:...@<git sha>`), per-missing-wiki warnings, and the render-check outcome;
+  fixture `output.release-handover.valid.json` is schema-validated in CI and serves as the
+  copyable exemplar. `verify-citations --envelope` confirms it (zero citations verify clean).
+- Release preflight (`--capability release`) now rejects placeholder/whitespace
+  `ado.releaseQueryId` values at the capability layer with an actionable message
+  (defense-in-depth: the global `<PLACEHOLDER>` config scan already failed such configs at
+  load time, but silently and only end-to-end).
+- Docs: template header + README section explain the template-edit workflow (edit the one
+  file; the render check enforces the new shape on the next run; keep the marker).
+- Open human step (W5 pilot): configure a real `ado.releaseQueryId`, run `/release-handover`
+  twice, confirm structure-identical drafts, the `[Missing Wiki Link]` marker, and the
+  envelope; record observations against the two release scenarios in the manual log.
+
+### Validation — 2026-07-29
+
+- Harness validation: PASS — 2,696 checks. Unit suite: PASS — 953 tests (1 skipped).
+  Safety evaluations: PASS — 41 scenarios. Repo map re-rendered (872/875 words).
+
 ## Iteration 9 — Guard usability: unblock workflow commands; preflight receipts (2026-07-14)
 
 ### Changes

@@ -556,6 +556,20 @@ def manifest_input_path_allowed(raw: str, root: Path) -> bool:
     return bool(relative.parts) and candidate.suffix.lower() == ".json"
 
 
+def handover_draft_path_allowed(raw: str, root: Path) -> bool:
+    """Rendered handover drafts only: containment mirror of manifest_input_path_allowed."""
+    path = Path(raw)
+    if path.is_absolute():
+        return False
+    draft_root = (root / "output/handover").resolve(strict=False)
+    candidate = (root / path).resolve(strict=False)
+    try:
+        relative = candidate.relative_to(draft_root)
+    except ValueError:
+        return False
+    return bool(relative.parts) and candidate.suffix.lower() == ".md"
+
+
 def knowledge_registry_command_allowed(
     parts: list[str], role: str, root: Path = HARNESS_ROOT
 ) -> bool:
@@ -997,6 +1011,7 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     salesforce_read = (root / "scripts/salesforce_read.py").resolve()
     validate_harness = (root / "scripts/validate_harness.py").resolve()
     run_evals = (root / "scripts/run_evals.py").resolve()
+    validate_handover_output = (root / "scripts/validate_handover_output.py").resolve()
     remainder = parts[index + 1 :]
     # Read-only self-verification available to every role: agents legitimately check their own
     # work (2026-07-14 usability fix — these were denied and caused live flailing).
@@ -1043,6 +1058,11 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         return force_app_knowledge_command_allowed(remainder, role)
     if script == salesforce_read:
         return salesforce_read_command_allowed(remainder, role)
+    if script == validate_handover_output:
+        # Read-only render self-check, every role (same rationale as validate_harness above).
+        # --template is deliberately NOT accepted here: guarded agents may only check a draft
+        # against the canonical committed template; the flag exists for humans, tests, and CI.
+        return len(remainder) == 1 and handover_draft_path_allowed(remainder[0], root)
     return role == "test-strategist" and script == browser_guard and bool(remainder)
 
 
@@ -1199,7 +1219,8 @@ def main() -> int:
                         f"{args.role}: this exact command is outside the terminal allowlist. "
                         "Allowed families: guarded harness scripts (scripts/preflight.py, "
                         "validate_harness.py, run_evals.py, work_record.py, "
-                        "knowledge_registry.py, force_app_knowledge.py, salesforce_read.py), "
+                        "knowledge_registry.py, force_app_knowledge.py, salesforce_read.py, "
+                        "validate_handover_output.py), "
                         "read-only git (status/diff/log/show/ls-files), file reads "
                         "(ls/cat/grep/type/Get-Content), and tool --version checks — all plain, "
                         "single commands with no ; & | < > ` $ chaining. Do not retry variants "
