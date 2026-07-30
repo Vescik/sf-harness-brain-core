@@ -9,6 +9,7 @@ from scripts import force_app_knowledge
 from scripts import knowledge_registry
 from scripts import knowledge_search
 from scripts import knowledge_store
+from scripts import salesforce_read
 
 
 # Subcommands that exist in the CLI parsers but are deliberately NOT reachable through the
@@ -22,6 +23,7 @@ INTENTIONALLY_UNGUARDED = {
     "force_app_knowledge": {},
     "knowledge_store": {},
     "knowledge_search": {},
+    "salesforce_read": {},
 }
 
 # Parser flags the guard deliberately does not accept for a guarded subcommand.
@@ -31,6 +33,7 @@ INTENTIONALLY_EXCLUDED_FLAGS: dict[str, dict[str, set[str]]] = {
     "force_app_knowledge": {},
     "knowledge_store": {},
     "knowledge_search": {},
+    "salesforce_read": {},
 }
 
 
@@ -51,7 +54,7 @@ def option_strings(parser: argparse.ArgumentParser) -> set[str]:
 
 
 class GuardParserContractTests(unittest.TestCase):
-    """Pin the role-guard allowlists to the argparse surface of both knowledge CLIs.
+    """Pin the role-guard allowlists to the argparse surface of the guarded CLIs.
 
     The guard re-implements flag validation instead of importing the parsers (it must stay
     dependency-free and fail closed), which historically drifted when a parser grew a flag
@@ -115,6 +118,30 @@ class GuardParserContractTests(unittest.TestCase):
             "knowledge_search",
             knowledge_search.build_parser(),
             guard.KNOWLEDGE_SEARCH_COMMAND_FLAGS,
+        )
+
+    def test_salesforce_read_guard_mirrors_parser(self) -> None:
+        self.contract(
+            "salesforce_read",
+            salesforce_read.build_parser(),
+            guard.SALESFORCE_READ_FLAGS,
+        )
+
+    def test_salesforce_read_guard_behavior_pins(self) -> None:
+        role = sorted(guard.SALESFORCE_READ_ROLES)[0]
+        # Bare scoped enumeration is allowed; any flagged variant of it is not.
+        self.assertTrue(guard.salesforce_read_command_allowed(["orgs"], role))
+        self.assertFalse(guard.salesforce_read_command_allowed(["orgs", "--json"], role))
+        # --org stays mandatory for records/retrieve.
+        self.assertFalse(
+            guard.salesforce_read_command_allowed(["records", "--object", "Account"], role)
+        )
+        # Repeated --metadata (argparse append) is a valid guarded shape.
+        self.assertTrue(
+            guard.salesforce_read_command_allowed(
+                ["retrieve", "--org", "dev-sbx", "--metadata", "Flow:A", "--metadata", "Flow:B"],
+                role,
+            )
         )
 
     def test_knowledge_search_is_read_only_for_every_role(self) -> None:

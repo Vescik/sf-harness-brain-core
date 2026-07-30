@@ -57,7 +57,12 @@ task depends on record data structure — through the governed facade's `review_
 only. The facade validates the statement (single read-only SELECT, FROM objects checked against
 the configured allowlist minus a hard secret-adjacent deny-set, bounded LIMIT appended or
 enforced), executes it against the identity-proven sandbox, and returns sanitized single-source
-values (emails and record-Id-shaped strings redacted, `attributes` stripped, text capped). An
+values (emails and record-Id-shaped strings redacted, `attributes` stripped, text capped). The
+test-pinned deny-set covers credential/auth surfaces and high-sensitivity org-management/log
+entities on both APIs: NamedCredential, ExternalCredential, ConnectedApplication, AuthProvider,
+AuthSession, LoginHistory, LoginIp, OauthToken, SetupAuditTrail, TwoFactorInfo,
+TwoFactorMethodsInfo, SandboxInfo, SandboxProcess, ApexLog, EventLogFile, Certificate,
+SamlSsoConfig. An
 absent `review.allowedObjectApiNames` key means all objects (equivalent to `["*"]`) — an explicit
 list remains supported for orgs holding sensitive data. The raw paths above stay denied
 regardless.

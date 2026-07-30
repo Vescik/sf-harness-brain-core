@@ -34,7 +34,9 @@ const OBJECT_API_NAME = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
 const ALIAS = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const ORG_ID = /^00D[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?$/;
 // Secret-adjacent objects stay unqueryable even in all-objects mode (case-insensitive match —
-// SOQL object names are case-insensitive on the platform).
+// SOQL object names are case-insensitive on the platform). Covers credential/auth surfaces
+// plus high-sensitivity org-management and runtime-log entities on both the data and Tooling
+// APIs. The exact set is test-pinned; widening or shrinking it is a reviewed change.
 const NEVER_QUERY_OBJECTS = Object.freeze(new Set([
   "namedcredential",
   "externalcredential",
@@ -47,6 +49,12 @@ const NEVER_QUERY_OBJECTS = Object.freeze(new Set([
   "setupaudittrail",
   "twofactorinfo",
   "twofactormethodsinfo",
+  "sandboxinfo",
+  "sandboxprocess",
+  "apexlog",
+  "eventlogfile",
+  "certificate",
+  "samlssoconfig",
 ]));
 const EMAIL_VALUE_PATTERN = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 const RECORD_ID_VALUE_PATTERN = /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/;

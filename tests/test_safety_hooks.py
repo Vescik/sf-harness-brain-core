@@ -1270,9 +1270,25 @@ class SafetyClassificationTests(unittest.TestCase):
                 {"objectApiName": "AnyCustom__c"},
             )
         )
+        # Length-bound mirror: the 8-4000 bounds also live in the facade's tool schema and
+        # statement validator (tests/test_salesforce_review.py pins the server side). A change
+        # to either bound must land in all three places.
+        self.assertIsNone(
+            safety.salesforce_review_tool_error(
+                config, "salesforce-readonly/review_soql_query", {"query": "SELECT a"}
+            )
+        )
+        self.assertIsNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/review_soql_query",
+                {"query": "SELECT Id FROM Account".ljust(4000)},
+            )
+        )
         for tool_input in (
             {},
             {"query": "SELECT"},
+            {"query": "SELECT "},
             {"query": "x" * 4001},
             {"query": 42},
             {"query": "SELECT Id FROM Account", "usernameOrAlias": "other"},

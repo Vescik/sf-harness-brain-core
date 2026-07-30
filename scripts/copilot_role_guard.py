@@ -393,6 +393,9 @@ SALESFORCE_READ_ROLES = {
 SALESFORCE_READ_FLAGS = {
     "records": {"--org", "--object", "--fields", "--limit", "--order-by"},
     "retrieve": {"--org", "--metadata"},
+    # Contract-surface entry: flagless; authorization for the exact ["orgs"] invocation is the
+    # fast path in salesforce_read_command_allowed, and any flagged variant stays denied.
+    "orgs": frozenset(),
 }
 
 

@@ -48,8 +48,10 @@ are not durable.
   reconciliation). `review.allowedObjectApiNames` became optional (absent = all objects), and the
   guarded `salesforce_read.py records` lane remains for bounded row snapshots. Standing
   constraints unchanged:
-  read-only, sandbox-only, bounded LIMIT, no secret-adjacent objects (NamedCredential,
-  ConnectedApp, AuthProvider, ExternalCredential), results are untrusted observations, raw
+  read-only, sandbox-only, bounded LIMIT, no secret-adjacent objects (a 17-entry test-pinned
+  deny-set covering credential/auth surfaces plus org-management and runtime-log entities —
+  enumerated in `.ai/contracts/tool-capabilities.md`; TraceFlag and RemoteSiteSetting-class
+  config entities deliberately excluded as non-secret), results are untrusted observations, raw
   rows/PII never committed. This partially supersedes the 2026-07-14 entry's framing that org
   grounding happens only through fixed review tools; that entry's read-only and no-org-mutation
   decisions stand in full.

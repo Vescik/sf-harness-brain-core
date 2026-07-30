@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -525,6 +526,11 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
             ("SELECT Id FROM Account LIMIT 500", "QUERY_VALIDATION_DENIED"),
             ("SELECT Id FROM NamedCredential", "OBJECT_NOT_ALLOWLISTED"),
             ("SELECT Id FROM namedcredential", "OBJECT_NOT_ALLOWLISTED"),
+            ("SELECT Body FROM ApexLog", "OBJECT_NOT_ALLOWLISTED"),
+            ("SELECT SandboxName FROM SandboxInfo", "OBJECT_NOT_ALLOWLISTED"),
+            # Server-side length floor mirrors the hook's 8-char bound and the tool schema's
+            # minLength (tests/test_safety_hooks.py pins the hook side of this mirror).
+            ("SELECT ", "QUERY_VALIDATION_DENIED"),
         )
         with tempfile.TemporaryDirectory() as name:
             facade = ReviewFacade(Path(name), allowed_objects=None)
@@ -552,6 +558,38 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
                 self.assert_valid_evidence(evidence)
             finally:
                 facade.close()
+
+    def test_never_query_deny_set_is_pinned(self) -> None:
+        # Widening or shrinking the secret-adjacent deny-set must be a deliberate, reviewed
+        # change — same discipline as the role-grant pins in test_guard_parser_contract.
+        source = (ROOT / "scripts" / "salesforce_review_server.mjs").read_text(encoding="utf-8")
+        match = re.search(
+            r"NEVER_QUERY_OBJECTS = Object\.freeze\(new Set\(\[(.*?)\]\)\)", source, re.S
+        )
+        self.assertIsNotNone(match)
+        names = set(re.findall(r'"([a-z0-9]+)"', match.group(1)))
+        self.assertEqual(
+            names,
+            {
+                "namedcredential",
+                "externalcredential",
+                "connectedapplication",
+                "authprovider",
+                "authsession",
+                "loginhistory",
+                "loginip",
+                "oauthtoken",
+                "setupaudittrail",
+                "twofactorinfo",
+                "twofactormethodsinfo",
+                "sandboxinfo",
+                "sandboxprocess",
+                "apexlog",
+                "eventlogfile",
+                "certificate",
+                "samlssoconfig",
+            },
+        )
 
     def test_configured_orgs_envelopes_are_schema_valid(self) -> None:
         with tempfile.TemporaryDirectory() as name:
