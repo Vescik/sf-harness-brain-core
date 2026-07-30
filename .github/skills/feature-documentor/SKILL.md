@@ -67,8 +67,9 @@ bound to a commit otherwise.
 
 ## Prohibitions
 
-- Never invoke or suggest direct `sf`/`sfdx`, arbitrary SOQL/SOSL, an alias, a directory, a Tooling
-  flag, or an unguarded Salesforce MCP tool.
+- Never invoke or suggest direct `sf`/`sfdx`, SOSL, an alias, a directory, a Tooling flag, or an
+  unguarded Salesforce MCP tool; composed read-only SOQL runs only through the governed facade's
+  `review_soql_query` tool, never through raw paths.
 - Never crawl without an anchor or expand an unbounded graph; use `--depth` and `--hub` to keep the
   feature boundary tight, and confirm it with the human before drafting.
 - Never treat a source token, FlexiPage, or formula as a proven object relation beyond what the

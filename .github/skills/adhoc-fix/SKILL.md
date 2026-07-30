@@ -34,8 +34,12 @@ human deploy.
    `sf project retrieve start --target-org <configured-alias> --metadata <Type:Name>`
    (the safety hook records the receipt; only configured non-production aliases are accepted).
 2. Read the retrieved source and confirm the diagnosis against it — the exact element, formula,
-   or connector that is wrong. If the retrieved state contradicts the diagnosis, stop and report
-   instead of guessing.
+   or connector that is wrong. When the defect plausibly depends on real record shape (field
+   fill, picklist values in use, lookup population), probe it through the governed reads
+   (`review_soql_query` on the facade, or `salesforce_read.py records`) rather
+   than assuming — preferred practice per the 2026-07-30 owner decision; probed numbers quoted
+   in the fix note cite the org alias and observation time. If the retrieved state
+   contradicts the diagnosis, stop and report instead of guessing.
 3. Consult Knowledge for dependents before touching the component, both layers:
    - `python scripts/knowledge_search.py context --identity <Identity>` — who reads, writes and
      grants access to it today, with per-edge assurance. `parts`, `permissions` and `incoming`

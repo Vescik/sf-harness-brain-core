@@ -6,6 +6,8 @@
   "salesforceCliMajor": 2,
   "commandTimeoutSeconds": 30,
   "maxVendorPayloadBytes": 1048576,
+  "soqlQueryTimeoutSeconds": 60,
+  "soqlMaxRows": 200,
   "profiles": {
     "orgIdentity": {
       "useToolingApi": false,

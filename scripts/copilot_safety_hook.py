@@ -91,6 +91,7 @@ SALESFORCE_REVIEW_TOOLS = {
     "review_installed_packages",
     "review_object_contract",
     "review_configured_orgs",
+    "review_soql_query",
 }
 
 # Receipt-bounded efficiency toggles (config safety.*, default off). A receipt only ever REPLACES
@@ -459,14 +460,26 @@ def salesforce_review_tool_error(
         if keys:
             return "this Salesforce review tool accepts no model-controlled arguments"
         return None
+    if matched == "review_soql_query":
+        # Shape/type validation only; the statement-level SOQL validation (grammar, FROM-object
+        # gates, LIMIT bounds) lives in the facade server so exactly one validator exists.
+        if "query" not in keys or not keys <= {"query", "useToolingApi"}:
+            return "composed SOQL review accepts only query and useToolingApi"
+        query = tool_input.get("query")
+        if not isinstance(query, str) or not 8 <= len(query) <= 4000:
+            return "query must be a string of 8-4000 characters"
+        if "useToolingApi" in keys and not isinstance(tool_input.get("useToolingApi"), bool):
+            return "useToolingApi must be a boolean"
+        return None
     if keys != {"objectApiName"}:
         return "object review accepts only objectApiName"
     object_name = tool_input.get("objectApiName")
     if not isinstance(object_name, str) or not SALESFORCE_OBJECT_API_NAME.fullmatch(object_name):
         return "objectApiName is malformed"
-    allowlist = review.get("allowedObjectApiNames", [])
-    # "*" opts into all objects; the name is still regex-validated above, so this only widens
-    # which objects are readable, never how they are named.
+    # Absent allowedObjectApiNames means all objects (owner decision 2026-07-30); "*" opts into
+    # all objects; the name is still regex-validated above, so this only widens which objects are
+    # readable, never how they are named.
+    allowlist = review.get("allowedObjectApiNames", ["*"])
     if "*" not in allowlist and object_name not in allowlist:
         return "objectApiName is outside the configured review allowlist"
     return None

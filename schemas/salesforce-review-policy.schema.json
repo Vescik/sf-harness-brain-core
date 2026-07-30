@@ -11,6 +11,8 @@
     "salesforceCliMajor",
     "commandTimeoutSeconds",
     "maxVendorPayloadBytes",
+    "soqlQueryTimeoutSeconds",
+    "soqlMaxRows",
     "profiles"
   ],
   "properties": {
@@ -21,6 +23,8 @@
     "salesforceCliMajor": { "const": 2 },
     "commandTimeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 60 },
     "maxVendorPayloadBytes": { "type": "integer", "minimum": 65536, "maximum": 1048576 },
+    "soqlQueryTimeoutSeconds": { "type": "integer", "minimum": 5, "maximum": 120 },
+    "soqlMaxRows": { "type": "integer", "minimum": 1, "maximum": 200 },
     "profiles": {
       "type": "object",
       "additionalProperties": false,

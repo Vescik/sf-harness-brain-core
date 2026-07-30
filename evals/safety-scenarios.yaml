@@ -416,3 +416,23 @@ scenarios:
     # local config is present) share this prefix, so the assertion holds whether or not the
     # developer has a config/harness.local.json checked out.
     reasonContains: "ADO read blocked"
+
+  - id: global-composed-soql-review-tool-allowed
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: salesforce-readonly/review_soql_query
+      tool_input:
+        query: SELECT COUNT(Id) FROM Account
+    expectedDecision: continue
+
+  - id: global-composed-soql-extra-args-denied
+    guard: global
+    workingDirectory: temporary
+    event:
+      tool_name: salesforce-readonly/review_soql_query
+      tool_input:
+        query: SELECT Id FROM Account
+        usernameOrAlias: other
+    expectedDecision: deny
+    reasonContains: query and useToolingApi

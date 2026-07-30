@@ -116,6 +116,19 @@ lines.on("line", (line) => {
       {attributes: {url: "/private"}, QualifiedApiName: "Name", DataType: "Text(80)"},
       {attributes: {url: "/private"}, QualifiedApiName: "Amount__c", DataType: "Number(18, 2)"}
     ]};
+  } else if (input.query.includes("COUNT(Id)")) {
+    payload = {done: true, totalSize: 1, records: [
+      {attributes: {type: "AggregateResult"}, recordCount: 1204}
+    ]};
+  } else if (input.query.includes("FROM Contact")) {
+    payload = {done: true, totalSize: 2, records: [
+      {attributes: {type: "Contact", url: "/private"}, Name: "Ada Example", Email: "ada@example.com", AccountId: "001000000000001AAA", Status__c: "Active"},
+      {attributes: {type: "Contact", url: "/private"}, Name: "Bob Example", Email: "bob@example.com", AccountId: "001000000000002AAA", Status__c: "Draft"}
+    ]};
+  } else if (input.query.includes("FROM Case")) {
+    payload = {done: false, totalSize: 5000, records: [
+      {attributes: {type: "Case", url: "/private"}, Subject: "Synthetic truncated page"}
+    ]};
   } else {
     send({jsonrpc: "2.0", id: message.id, result: {isError: true, content: [{type: "text", text: "denied"}]}});
     return;
@@ -166,13 +179,22 @@ class ReviewFacade:
         cli_host: str = HOST,
         mcp_error: bool = False,
         cli_package_error: bool = False,
+        allowed_objects: Any = "default",
+        scoped_enumeration: bool = False,
     ):
         config_path = directory / "harness.local.json"
         policy_path = directory / "salesforce-review-policy.json"
         cli_path = directory / "fake-cli.mjs"
         mcp_path = directory / "fake-mcp.mjs"
         marker_path = directory / "mcp-started.txt"
-        config_path.write_text(json.dumps(local_config(expected_host)), encoding="utf-8")
+        config = local_config(expected_host)
+        if allowed_objects is None:
+            del config["salesforce"]["review"]["allowedObjectApiNames"]
+        elif allowed_objects != "default":
+            config["salesforce"]["review"]["allowedObjectApiNames"] = allowed_objects
+        if scoped_enumeration:
+            config["safety"] = {"allowScopedEnumeration": True}
+        config_path.write_text(json.dumps(config), encoding="utf-8")
         policy_path.write_text(
             (ROOT / "config" / "salesforce-review-policy.json").read_text(encoding="utf-8"),
             encoding="utf-8",
@@ -307,6 +329,7 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
                         "review_installed_packages",
                         "review_configured_orgs",
                         "review_object_contract",
+                        "review_soql_query",
                     ],
                 )
 
@@ -417,6 +440,136 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
                 self.assertEqual(evidence["status"], "BLOCKED")
                 self.assertEqual(evidence["warnings"], ["QUERY_PROFILE_DENIED"])
                 self.assertFalse(facade.marker_path.exists())
+                self.assert_valid_evidence(evidence)
+            finally:
+                facade.close()
+
+    def test_composed_query_rows_are_sanitized_and_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name), allowed_objects=None)
+            try:
+                evidence = facade.call(
+                    "review_soql_query",
+                    {"query": "SELECT Name, Email, AccountId, Status__c FROM Contact"},
+                )
+                self.assertEqual(evidence["status"], "VERIFIED")
+                self.assert_valid_evidence(evidence)
+                facts = evidence["facts"]["soqlQuery"]
+                self.assertEqual(facts["fromObjects"], ["Contact"])
+                self.assertEqual(facts["limit"], 200)
+                self.assertFalse(facts["hasWhere"])
+                self.assertFalse(facts["useToolingApi"])
+                self.assertEqual(facts["matched"], 2)
+                self.assertEqual(facts["records"][0]["Email"], "redacted-email")
+                self.assertEqual(facts["records"][0]["AccountId"], "redacted-id")
+                self.assertEqual(facts["records"][0]["Name"], "Ada Example")
+                self.assertIn("email:records[].Email", facts["sanitization"]["redactions"])
+                self.assertIn("id:records[].AccountId", facts["sanitization"]["redactions"])
+                self.assertEqual(
+                    evidence["reconciliation"]["status"], "IDENTITY_MATCH_ONLY"
+                )
+                self.assertFalse(evidence["completeness"]["dualSource"])
+                serialized = json.dumps(evidence)
+                for forbidden in (
+                    "ada@example.com",
+                    "bob@example.com",
+                    "001000000000001AAA",
+                    "attributes",
+                    "/private",
+                ):
+                    self.assertNotIn(forbidden, serialized)
+            finally:
+                facade.close()
+
+    def test_composed_aggregate_query_is_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name), allowed_objects=None)
+            try:
+                evidence = facade.call(
+                    "review_soql_query",
+                    {"query": "SELECT COUNT(Id) recordCount FROM Opportunity"},
+                )
+                self.assertEqual(evidence["status"], "VERIFIED")
+                self.assert_valid_evidence(evidence)
+                facts = evidence["facts"]["soqlQuery"]
+                self.assertEqual(facts["records"], [{"recordCount": 1204}])
+                self.assertEqual(facts["matched"], 1)
+                self.assertEqual(facts["fromObjects"], ["Opportunity"])
+            finally:
+                facade.close()
+
+    def test_composed_query_truncation_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name), allowed_objects=None)
+            try:
+                evidence = facade.call(
+                    "review_soql_query",
+                    {"query": "SELECT Subject FROM Case LIMIT 50"},
+                )
+                self.assertEqual(evidence["status"], "INCOMPLETE")
+                self.assertIn("RESULT_TRUNCATED", evidence["warnings"])
+                self.assertTrue(evidence["completeness"]["truncated"])
+                self.assertEqual(evidence["facts"], {})
+                self.assert_valid_evidence(evidence)
+            finally:
+                facade.close()
+
+    def test_composed_query_validator_blocks_before_any_process(self) -> None:
+        denied = (
+            ("SELECT Id FROM Account; DELETE FROM Account", "QUERY_VALIDATION_DENIED"),
+            ("SELECT Id FROM Account -- comment", "QUERY_VALIDATION_DENIED"),
+            ("SELECT Id /* c */ FROM Account", "QUERY_VALIDATION_DENIED"),
+            ("SELECT Id FROM Account FOR UPDATE", "QUERY_VALIDATION_DENIED"),
+            ("UPDATE Account SET Name = 'x'", "QUERY_VALIDATION_DENIED"),
+            ("SELECT Id FROM Account WHERE Name = '${X}'", "QUERY_VALIDATION_DENIED"),
+            ("SELECT Id FROM Account LIMIT 500", "QUERY_VALIDATION_DENIED"),
+            ("SELECT Id FROM NamedCredential", "OBJECT_NOT_ALLOWLISTED"),
+            ("SELECT Id FROM namedcredential", "OBJECT_NOT_ALLOWLISTED"),
+        )
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name), allowed_objects=None)
+            try:
+                for query, warning in denied:
+                    with self.subTest(query=query):
+                        evidence = facade.call("review_soql_query", {"query": query})
+                        self.assertEqual(evidence["status"], "BLOCKED")
+                        self.assertEqual(evidence["warnings"], [warning])
+                        self.assert_valid_evidence(evidence)
+                self.assertFalse(facade.marker_path.exists())
+            finally:
+                facade.close()
+
+    def test_composed_query_respects_explicit_object_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name))
+            try:
+                evidence = facade.call(
+                    "review_soql_query", {"query": "SELECT Name FROM Contact"}
+                )
+                self.assertEqual(evidence["status"], "BLOCKED")
+                self.assertEqual(evidence["warnings"], ["OBJECT_NOT_ALLOWLISTED"])
+                self.assertFalse(facade.marker_path.exists())
+                self.assert_valid_evidence(evidence)
+            finally:
+                facade.close()
+
+    def test_configured_orgs_envelopes_are_schema_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name), scoped_enumeration=True)
+            try:
+                evidence = facade.call("review_configured_orgs")
+                self.assertEqual(evidence["status"], "VERIFIED")
+                self.assertEqual(evidence["reviewType"], "configured-orgs")
+                self.assertEqual(evidence["facts"]["orgCount"], 1)
+                self.assert_valid_evidence(evidence)
+            finally:
+                facade.close()
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name))
+            try:
+                evidence = facade.call("review_configured_orgs")
+                self.assertEqual(evidence["status"], "BLOCKED")
+                self.assertEqual(evidence["warnings"], ["SCOPED_ENUMERATION_DISABLED"])
                 self.assert_valid_evidence(evidence)
             finally:
                 facade.close()

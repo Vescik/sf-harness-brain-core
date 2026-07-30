@@ -63,6 +63,7 @@ ALLOWED_TOOLS = {
     "salesforce-readonly/review_installed_packages",
     "salesforce-readonly/review_object_contract",
     "salesforce-readonly/review_configured_orgs",
+    "salesforce-readonly/review_soql_query",
 }
 LEGACY_TOOLS = {"readFile", "editFiles", "runInTerminal", "fetch", "codebase", "githubRepo"}
 REQUIRED_SETTINGS = (

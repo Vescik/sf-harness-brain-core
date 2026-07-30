@@ -3,7 +3,7 @@ name: solution-design
 description: Run the five-phase Solution Design workflow (discover, plan, verify, execute, verify) grounded in Principles, verified Knowledge, and live Salesforce evidence.
 argument-hint: "itemId=<ADO ID> [recordId=<ID>] [objects=<ApiName,ApiName>] | or a written requirement"
 agent: solution-designer
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'vscode/askQuestions', 'agent', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'vscode/askQuestions', 'agent', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query']
 ---
 
 Use the [solution-design skill](../skills/solution-design/SKILL.md).

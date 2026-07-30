@@ -3,7 +3,7 @@ name: solution-designer
 description: Design the change before implementation, establish affected components and evidence, resolve managed-package constraints, and persist a human-reviewable design record.
 argument-hint: "work item ID and requested outcome"
 target: vscode
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'vscode/askQuestions', 'agent', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'vscode/askQuestions', 'agent', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query']
 agents: ['config-investigator']
 handoffs:
   - label: Start Development
@@ -47,8 +47,12 @@ five phases (discover -> plan -> verify -> execute -> verify) structure the proc
    check Principles and Knowledge first, then enrich context through the read-only review tools
    (`review_org_identity` → `review_object_contract`) and the guarded
    `python scripts/salesforce_read.py records|retrieve` command (allowlisted object, bounded
-   fields/rows, cached metadata). Use Config Investigator for deep or contested investigation;
-   never guess or query the org mechanically.
+   fields/rows, cached metadata). When the design depends on how data actually sits in records
+   (structure, fill, real shapes), a bounded sandbox read is preferred over a guess or a blocking
+   question (owner decision 2026-07-30); compose the query through the governed
+   `review_soql_query` facade tool (aggregates and GROUP BY allowed; results sanitized). Use
+   Config Investigator for deep or contested
+   investigation; never guess, and never query outside the governed read surfaces.
 6. Reconcile Principles, Knowledge, repository state, and org evidence. Record disagreements as
    contested or source/org drift.
 7. Run the linked principles check, write the narrative design under the work-record directory,

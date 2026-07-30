@@ -3,10 +3,15 @@
 /**
  * Narrow Salesforce org-review MCP facade.
  *
- * The model never receives a command string, SOQL string, org alias, working directory, or raw
- * vendor response. This server binds one allowlisted sandbox or scratch-org alias at startup, collects the same
+ * The model never receives a command string, org alias, working directory, or raw vendor
+ * response. This server binds one allowlisted sandbox or scratch-org alias at startup, collects
  * bounded facts through a private Salesforce CLI process and a pinned Salesforce MCP child, and
- * returns only normalized reconciliation evidence.
+ * returns only normalized reconciliation evidence. Composed read-only SOQL (owner decision
+ * 2026-07-30) is accepted through review_soql_query only: the statement is validated (single
+ * SELECT, allowlisted objects minus a secret-adjacent deny-set, bounded LIMIT), executed against
+ * the identity-proven sandbox, and returned as a sanitized, digest-bound envelope. The statement
+ * validator is defense-in-depth, not the wall — the hard boundaries remain sandbox-only binding,
+ * the read-only vendor toolset, payload caps, and the sensitive-output gate.
  */
 
 import { spawn } from "node:child_process";
@@ -28,6 +33,23 @@ const SALESFORCE_MCP_BIN = resolve(REPO_ROOT, "node_modules", "@salesforce", "mc
 const OBJECT_API_NAME = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
 const ALIAS = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const ORG_ID = /^00D[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?$/;
+// Secret-adjacent objects stay unqueryable even in all-objects mode (case-insensitive match —
+// SOQL object names are case-insensitive on the platform).
+const NEVER_QUERY_OBJECTS = Object.freeze(new Set([
+  "namedcredential",
+  "externalcredential",
+  "connectedapplication",
+  "authprovider",
+  "authsession",
+  "loginhistory",
+  "loginip",
+  "oauthtoken",
+  "setupaudittrail",
+  "twofactorinfo",
+  "twofactormethodsinfo",
+]));
+const EMAIL_VALUE_PATTERN = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
+const RECORD_ID_VALUE_PATTERN = /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/;
 const NON_PRODUCTION_HOST = /^(?:[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\.my\.salesforce\.com|[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com)$/i;
 const MAX_OUTER_MESSAGE_BYTES = 1_048_576;
 
@@ -73,6 +95,29 @@ const TOOL_DEFINITIONS = Object.freeze([
           type: "string",
           pattern: "^[A-Za-z][A-Za-z0-9_]{0,79}$",
           description: "Exact API name from the local review allowlist.",
+        },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  },
+  {
+    name: "review_soql_query",
+    title: "Run one composed read-only SOQL query against the configured sandbox",
+    description: "Execute one model-composed read-only SOQL SELECT (validated, bounded LIMIT, sanitized values) against the configured, identity-proven sandbox. Aggregates and GROUP BY are allowed; secret-adjacent objects are always denied.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["query"],
+      properties: {
+        query: {
+          type: "string",
+          minLength: 8,
+          maxLength: 4000,
+          description: "One read-only SOQL SELECT statement. No ';', comments, FOR UPDATE, or '${'. A LIMIT above the policy cap is rejected; a missing outer LIMIT is appended server-side.",
+        },
+        useToolingApi: {
+          type: "boolean",
+          description: "Run through the Tooling API (for example EntityDefinition or FieldDefinition).",
         },
       },
     },
@@ -130,10 +175,13 @@ function loadRuntime(alias) {
     throw new ReviewError("CONFIG_INVALID");
   }
   if (review.requireDualSource !== true) throw new ReviewError("CONFIG_INVALID");
-  if (!Array.isArray(review.allowedObjectApiNames) || review.allowedObjectApiNames.length === 0) {
+  // Absent allowedObjectApiNames means all objects (owner decision 2026-07-30); an explicit list
+  // remains fully supported for orgs holding sensitive data.
+  const allowedObjectApiNames = review.allowedObjectApiNames ?? ["*"];
+  if (!Array.isArray(allowedObjectApiNames) || allowedObjectApiNames.length === 0) {
     throw new ReviewError("CONFIG_INVALID");
   }
-  if (review.allowedObjectApiNames.some((name) => name !== "*" && !OBJECT_API_NAME.test(name))) {
+  if (allowedObjectApiNames.some((name) => name !== "*" && !OBJECT_API_NAME.test(name))) {
     throw new ReviewError("CONFIG_INVALID");
   }
   if (
@@ -156,7 +204,13 @@ function loadRuntime(alias) {
     policy.commandTimeoutSeconds > 60 ||
     !Number.isInteger(policy.maxVendorPayloadBytes) ||
     policy.maxVendorPayloadBytes < 65_536 ||
-    policy.maxVendorPayloadBytes > 1_048_576
+    policy.maxVendorPayloadBytes > 1_048_576 ||
+    !Number.isInteger(policy.soqlQueryTimeoutSeconds) ||
+    policy.soqlQueryTimeoutSeconds < 5 ||
+    policy.soqlQueryTimeoutSeconds > 120 ||
+    !Number.isInteger(policy.soqlMaxRows) ||
+    policy.soqlMaxRows < 1 ||
+    policy.soqlMaxRows > 200
   ) {
     throw new ReviewError("CONFIG_INVALID");
   }
@@ -170,7 +224,7 @@ function loadRuntime(alias) {
     entry,
     review,
     policy,
-    allowedObjects: new Set(review.allowedObjectApiNames),
+    allowedObjects: new Set(allowedObjectApiNames),
     allowedPackageNamespaces: new Set(review.allowedPackageNamespaces),
   };
 }
@@ -524,7 +578,7 @@ class McpJsonLineClient {
     this.pending.clear();
   }
 
-  request(method, params) {
+  request(method, params, timeoutSeconds) {
     if (!this.child?.stdin?.writable || this.closed) {
       return Promise.reject(new ReviewError("MCP_START_FAILED", "INCOMPLETE"));
     }
@@ -534,7 +588,7 @@ class McpJsonLineClient {
         this.pending.delete(String(id));
         rejectPromise(new ReviewError("MCP_TIMEOUT", "INCOMPLETE"));
         this.close();
-      }, this.runtime.policy.commandTimeoutSeconds * 1000);
+      }, (timeoutSeconds ?? this.runtime.policy.commandTimeoutSeconds) * 1000);
       this.pending.set(String(id), { resolve: resolvePromise, reject: rejectPromise, timer });
       this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
     });
@@ -546,7 +600,7 @@ class McpJsonLineClient {
     }
   }
 
-  async query(profile, replacements = {}) {
+  async query(profile, replacements = {}, timeoutSeconds) {
     let query = profile.query;
     for (const [token, value] of Object.entries(replacements)) {
       query = query.replace("${" + token + "}", value);
@@ -562,7 +616,7 @@ class McpJsonLineClient {
         directory: REPO_ROOT,
         useToolingApi: profile.useToolingApi,
       },
-    });
+    }, timeoutSeconds);
     if (result?.isError === true || !Array.isArray(result?.content) || result.content.length !== 1) {
       throw new ReviewError("MCP_TOOL_ERROR", "INCOMPLETE");
     }
@@ -958,18 +1012,190 @@ async function reviewObject(runtime, input) {
   });
 }
 
+function stripSoqlLiterals(query) {
+  // Replace single-quoted literals (with escapes) by empty literals so keyword/object scanning
+  // cannot be confused by quoted content. The raw query is what executes; this is scan-only.
+  return query.replace(/'(?:\\.|[^'\\])*'/g, "''");
+}
+
+// Best-effort statement validation for composed read-only SOQL. Defense-in-depth, not the wall:
+// the hard boundaries remain the sandbox-only binding, the read-only vendor toolset, payload
+// caps, and the sensitive-output gate.
+function validateComposedSoql(rawQuery, useToolingApi, runtime) {
+  if (typeof rawQuery !== "string" || rawQuery.length < 8 || rawQuery.length > 4000) {
+    return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+  }
+  if (useToolingApi !== undefined && typeof useToolingApi !== "boolean") {
+    return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+  }
+  if (rawQuery.includes("${")) {
+    // Would collide with the profile-substitution residual check and offers nothing legitimate.
+    return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+  }
+  const stripped = stripSoqlLiterals(rawQuery);
+  if (/;|--|\/\*/.test(stripped)) return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+  if (/\bFOR\s+UPDATE\b/i.test(stripped)) return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+  if (!/^\s*SELECT\s/i.test(stripped)) return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+  const fromOccurrences = stripped.match(/\bFROM\b/gi) ?? [];
+  const fromTargets = [...stripped.matchAll(/\bFROM\s+([A-Za-z][A-Za-z0-9_]*)\b/gi)].map((match) => match[1]);
+  if (fromTargets.length === 0 || fromTargets.length !== fromOccurrences.length) {
+    return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+  }
+  for (const target of fromTargets) {
+    if (!OBJECT_API_NAME.test(target)) return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+    if (NEVER_QUERY_OBJECTS.has(target.toLowerCase())) {
+      return { ok: false, warning: "OBJECT_NOT_ALLOWLISTED" };
+    }
+    if (!runtime.allowedObjects.has("*") && !runtime.allowedObjects.has(target)) {
+      return { ok: false, warning: "OBJECT_NOT_ALLOWLISTED" };
+    }
+  }
+  // Parenthesis depth per character (literals already stripped) distinguishes the outer LIMIT
+  // from subquery LIMITs; every LIMIT must respect the cap, and a missing outer LIMIT is added.
+  const depths = new Array(stripped.length);
+  for (let index = 0, depth = 0; index < stripped.length; index += 1) {
+    const character = stripped[index];
+    if (character === "(") depth += 1;
+    else if (character === ")") depth = Math.max(0, depth - 1);
+    depths[index] = depth;
+  }
+  const maxRows = runtime.policy.soqlMaxRows;
+  let outerLimit = null;
+  for (const match of stripped.matchAll(/\bLIMIT\s+(\d{1,9})\b/gi)) {
+    const value = Number(match[1]);
+    if (!Number.isInteger(value) || value < 1 || value > maxRows) {
+      return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
+    }
+    if (depths[match.index] === 0) outerLimit = value;
+  }
+  const executedQuery = outerLimit === null ? `${rawQuery.trimEnd()} LIMIT ${maxRows}` : rawQuery;
+  return {
+    ok: true,
+    executedQuery,
+    fromObjects: [...new Set(fromTargets)].sort(),
+    hasWhere: /\bWHERE\b/i.test(stripped),
+    limit: outerLimit ?? maxRows,
+    useToolingApi: useToolingApi === true,
+  };
+}
+
+function sanitizeSoqlValue(value, path, redactions) {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeSoqlValue(item, `${path}[]`, redactions));
+  }
+  if (value && typeof value === "object") {
+    const result = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (key === "attributes") continue;
+      result[key] = sanitizeSoqlValue(entry, `${path}.${key}`, redactions);
+    }
+    return result;
+  }
+  if (typeof value !== "string") return value;
+  if (EMAIL_VALUE_PATTERN.test(value)) {
+    redactions.add(`email:${path}`.slice(0, 200));
+    return "redacted-email";
+  }
+  if (RECORD_ID_VALUE_PATTERN.test(value)) {
+    redactions.add(`id:${path}`.slice(0, 200));
+    return "redacted-id";
+  }
+  if (value.length > 120) {
+    redactions.add(`truncated:${path}`.slice(0, 200));
+    return value.slice(0, 120);
+  }
+  return value;
+}
+
+async function reviewSoqlQuery(runtime, input) {
+  const validation = validateComposedSoql(input?.query, input?.useToolingApi, runtime);
+  if (!validation.ok) {
+    return makeEnvelope({
+      runtime,
+      reviewType: "soql-query",
+      status: "BLOCKED",
+      facts: {},
+      warnings: [validation.warning],
+    });
+  }
+  const gate = await cliIdentityGate(runtime, "soql-query");
+  if (gate.envelope) return gate.envelope;
+  const identity = gate.identity;
+  const target = baseTarget(runtime, identity.proof);
+  // The CLI leg contributes the identity proof only; result values are single-source by design
+  // (IDENTITY_MATCH_ONLY) — the two transports would race a volatile dataset, not corroborate it.
+  const cliCapture = {
+    ok: true,
+    value: { source: { ...identity.source, retrievedAt: now(), complete: true } },
+  };
+  const mcpCapture = await captureSource("salesforce-mcp", "0.30.15", async () => {
+    const retrievedAt = now();
+    const payload = await withMcp(runtime, async (client) => {
+      validateMcpIdentity(runtime, await client.query(runtime.policy.profiles.orgIdentity));
+      return client.query(
+        { query: validation.executedQuery, useToolingApi: validation.useToolingApi },
+        {},
+        runtime.policy.soqlQueryTimeoutSeconds,
+      );
+    });
+    return { payload, source: { kind: "salesforce-mcp", version: "0.30.15", complete: true, retrievedAt } };
+  });
+  if (!mcpCapture.ok) {
+    return failedEnvelope(runtime, "soql-query", cliCapture, mcpCapture, target);
+  }
+  const redactions = new Set();
+  const records = mcpCapture.value.payload.records
+    .slice(0, runtime.policy.soqlMaxRows)
+    .map((record) => sanitizeSoqlValue(record, "records[]", redactions));
+  return makeEnvelope({
+    runtime,
+    reviewType: "soql-query",
+    status: "VERIFIED",
+    target,
+    sources: { cli: cliCapture.value.source, mcp: mcpCapture.value.source },
+    facts: {
+      soqlQuery: {
+        queryDigest: createHash("sha256").update(validation.executedQuery, "utf8").digest("hex"),
+        fromObjects: validation.fromObjects,
+        hasWhere: validation.hasWhere,
+        limit: validation.limit,
+        useToolingApi: validation.useToolingApi,
+        matched: records.length,
+        records,
+        sanitization: { redactions: [...redactions].sort() },
+      },
+    },
+    reconciliation: {
+      status: "IDENTITY_MATCH_ONLY",
+      comparisons: [comparison("organization-identity", true), comparison("is-sandbox", true)],
+    },
+    completeness: { complete: true, dualSource: false, truncated: false },
+    warnings: [],
+  });
+}
+
 function validateToolInput(name, input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return false;
   const keys = Object.keys(input);
   if (name === "review_object_contract") return keys.length === 1 && keys[0] === "objectApiName";
+  if (name === "review_soql_query") {
+    if (keys.length === 1) return keys[0] === "query";
+    if (keys.length === 2) return keys.includes("query") && keys.includes("useToolingApi");
+    return false;
+  }
   return keys.length === 0;
 }
 
 async function callReviewTool(runtime, name, input) {
   if (!TOOL_DEFINITIONS.some((tool) => tool.name === name) || !validateToolInput(name, input)) {
+    const blockedReviewType = name === "review_object_contract"
+      ? "object-contract"
+      : name === "review_soql_query"
+        ? "soql-query"
+        : "org-identity";
     return makeEnvelope({
       runtime,
-      reviewType: name === "review_object_contract" ? "object-contract" : "org-identity",
+      reviewType: blockedReviewType,
       status: "BLOCKED",
       facts: {},
       warnings: ["QUERY_PROFILE_DENIED"],
@@ -978,6 +1204,7 @@ async function callReviewTool(runtime, name, input) {
   if (name === "review_org_identity") return reviewIdentity(runtime);
   if (name === "review_installed_packages") return reviewPackages(runtime);
   if (name === "review_configured_orgs") return reviewConfiguredOrgs(runtime);
+  if (name === "review_soql_query") return reviewSoqlQuery(runtime, input);
   return reviewObject(runtime, input);
 }
 
@@ -1033,7 +1260,7 @@ async function handleProtocolMessage(runtime, message) {
         protocolVersion: runtime.policy.mcpProtocolVersion,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "sf-harness-salesforce-review", version: "1.0.0" },
-        instructions: "Use only normalized reconciliation evidence. MISMATCH, INCOMPLETE, and BLOCKED are never confirmed facts.",
+        instructions: "Use only normalized reconciliation evidence. MISMATCH, INCOMPLETE, and BLOCKED are never confirmed facts. review_soql_query values are single-source sandbox observations — sanitized, bounded, and timestamped; cite them with the org context and observation time, never as production truth.",
       };
     } else if (message.method === "ping") {
       result = {};

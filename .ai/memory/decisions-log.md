@@ -30,6 +30,36 @@ are not durable.
 ---
 
 <!-- Entries are appended below this line as they occur — never fabricated at build time. -->
+## 2026-07-30 - Composed read-only SOQL is permitted and recommended (policy phase)
+
+- Context: every prior design treated "the model never composes SOQL" as a fixed constraint
+  (byte-pinned review profiles, constructed-only `salesforce_read.py` reads). The workspace owner
+  directed a rule change on 2026-07-30: agents may compose read-only SOQL, and doing so is
+  recommended — when a task depends on how data actually sits in records (structure, fill, real
+  shapes), the agent should query rather than guess or raise a blocking question. Discovery and
+  full enforcement inventory: `output/discovery-2026-07-30-model-composed-soql.md`.
+- Finding / decision: composed read-only SOQL is policy-permitted and recommended for
+  task-serving reconnaissance, through the governed `salesforce-readonly` facade only (the vendor
+  `@salesforce/mcp` stays a private child of the facade; raw CLI and raw vendor tools remain
+  denied). The mechanical surface shipped the same day: the `review_soql_query` facade tool —
+  statement-validated (single read-only SELECT, FROM-object allowlist minus a hard
+  secret-adjacent deny-set, bounded LIMIT), identity-gated per call, values sanitized
+  (emails/record-Id-shaped strings redacted) and single-source (`IDENTITY_MATCH_ONLY`
+  reconciliation). `review.allowedObjectApiNames` became optional (absent = all objects), and the
+  guarded `salesforce_read.py records` lane remains for bounded row snapshots. Standing
+  constraints unchanged:
+  read-only, sandbox-only, bounded LIMIT, no secret-adjacent objects (NamedCredential,
+  ConnectedApp, AuthProvider, ExternalCredential), results are untrusted observations, raw
+  rows/PII never committed. This partially supersedes the 2026-07-14 entry's framing that org
+  grounding happens only through fixed review tools; that entry's read-only and no-org-mutation
+  decisions stand in full.
+- Impact: agent guidance flips from "never query" to "query when data shape matters"; the
+  2026-07-14 enforcement layers stay mechanically in force until the facade tool ships, so no
+  runtime behavior changes yet — only expectations and constraint texts.
+- Approved by: workspace owner directive, 2026-07-30.
+- Related: `output/discovery-2026-07-30-model-composed-soql.md`, the 2026-07-14 MCP read-only
+  entry below, `docs/grounding-architecture.md`.
+
 ## 2026-07-23 - Ad-hoc fix express lane: bounded defect fixes without an accepted design record
 
 - Context: a diagnosed Flow defect could not be corrected by any agent — config-investigator has

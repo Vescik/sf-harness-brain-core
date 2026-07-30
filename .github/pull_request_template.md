@@ -25,7 +25,7 @@ Describe the harness behavior being changed and the developer/user outcome.
 - [ ] Every material system/package fact has a schema-valid claim/evidence reference
 - [ ] No unreviewed, stale, contested, or scope-mismatched claim is presented as trusted Knowledge
 - [ ] Approval and handoff references match the current record revision and scope/design hashes
-- [ ] Salesforce review used only the bounded facade; no raw CLI, arbitrary SOQL, or alias was exposed
+- [ ] Salesforce reads used only the governed facade/wrapper; no raw CLI, raw vendor MCP tool, or alias was exposed
 - [ ] No credential, customer data, cache, generated output, or local config is included
 
 ## Review gates

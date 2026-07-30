@@ -149,7 +149,7 @@ cached; `--force` re-runs everything (use it after re-authorizing an alias).
 4. Confirm `/` shows the twenty-four prompts once each and their argument hints.
 5. Verify Solution Designer and Development Assistant handoff buttons use `send: false`.
 6. Run one harmless ADO read, then the three bounded Salesforce review calls against the configured
-   synthetic/pilot component. Confirm no raw CLI/query/alias or sensitive payload appears in Chat.
+   synthetic/pilot component. Confirm no raw CLI/alias or sensitive payload appears in Chat.
 7. Run a negative canary: a request to deploy/query production must be denied.
 
 ### Reducing approval clicks (auto-approval)
@@ -184,12 +184,15 @@ owner decision of 2026-07-14.)
   credentials.
 - `salesforce-readonly` starts through `scripts/salesforce_review_server.mjs`. It binds one exact
   review-enabled sandbox and exposes only identity, configured-package, allowlisted-object review,
-  and (when `safety.allowScopedEnumeration` is enabled) a configured-orgs listing built purely
+  validated composed read-only SOQL (`review_soql_query`), and (when
+  `safety.allowScopedEnumeration` is enabled) a configured-orgs listing built purely
   from local configuration. Internally it reconciles fixed Salesforce MCP and private CLI receipts, redacts raw
   identity/record payloads, and returns `VERIFIED`, `MISMATCH`, `INCOMPLETE`, or `BLOCKED`.
-- The model never receives direct `sf`/`sfdx`, arbitrary SOQL, an alias, directory, Tooling flag,
-  `list_all_orgs`, or raw vendor output. MCP/CLI agreement is transport corroboration from the same
-  org, not independent package/business authority.
+- The model never receives direct `sf`/`sfdx`, an alias, directory, Tooling flag,
+  `list_all_orgs`, or raw vendor output. Composed read-only SOQL (owner decision 2026-07-30)
+  executes only through the facade's `review_soql_query` tool — statement-validated, bounded,
+  and sanitized. MCP/CLI agreement is transport corroboration from the same org, not independent
+  package/business authority.
 - Record-level and metadata reads for design/development context run through the guarded
   `python scripts/salesforce_read.py records|retrieve` command (auto-approved; allowlisted
   object, bounded fields/rows, retrieve into an ignored cache). There is no write-mode Salesforce

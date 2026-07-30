@@ -124,8 +124,9 @@ def prove_sandbox(alias: str, runner: Callable[..., Any]) -> None:
 def validate_object(object_api_name: str, review: dict[str, Any]) -> str:
     if not OBJECT_API_NAME.fullmatch(object_api_name):
         raise ReadError("objectApiName is malformed")
-    allowlist = review.get("allowedObjectApiNames", [])
-    # "*" opts into all objects; the name is still regex-validated above.
+    # Absent allowedObjectApiNames means all objects (owner decision 2026-07-30); "*" opts into
+    # all objects; the name is still regex-validated above.
+    allowlist = review.get("allowedObjectApiNames", ["*"])
     if "*" not in allowlist and object_api_name not in allowlist:
         raise ReadError("objectApiName is outside the configured review allowlist")
     return object_api_name

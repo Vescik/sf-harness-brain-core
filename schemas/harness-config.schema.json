@@ -149,7 +149,6 @@
             "apiVersion",
             "requireDualSource",
             "allowedPackageNamespaces",
-            "allowedObjectApiNames",
             "maxObjectsPerCall",
             "maxFieldsPerObject",
             "evidenceMaxAgeMinutes"
@@ -175,6 +174,7 @@
               }
             },
             "allowedObjectApiNames": {
+              "description": "Optional since the 2026-07-30 owner decision: an absent key means all objects (equivalent to [\"*\"]). An explicit list remains fully supported for orgs holding sensitive data.",
               "type": "array",
               "maxItems": 100,
               "uniqueItems": true,

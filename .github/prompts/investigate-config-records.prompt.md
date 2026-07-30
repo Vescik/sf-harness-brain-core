@@ -3,7 +3,7 @@ name: investigate-config-records
 description: Snapshot the configuration records held in one allowlisted reference-data object (statuses, settings) and draft a proposed reference-data Knowledge claim.
 argument-hint: "objectApiName=<API name> [org=<alias>] [fields=<A,B,C>] [recordId=<ID>]"
 agent: config-investigator
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'vscode/askQuestions', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_configured_orgs']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'vscode/askQuestions', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_configured_orgs', 'salesforce-readonly/review_soql_query']
 ---
 
 Use the [investigate-config-records skill](../skills/investigate-config-records/SKILL.md).

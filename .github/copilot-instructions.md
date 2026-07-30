@@ -63,9 +63,13 @@ Before a material recommendation, verdict, Knowledge promotion, handoff, or side
 2. Identify the material claims needed to proceed and the evidence policy for each claim type.
 3. Load only the applicable Tier 1, Tier 2, and Tier 3 Principles plus relevant verified Knowledge.
 4. Inspect the named Salesforce metadata repository for intended customer-owned state when relevant.
-5. Use the guarded Salesforce read capabilities (review facade, `scripts/salesforce_read.py`) to
-   ground design/development in the connected org; never expose free-form SOQL or an unbound
-   alias to the model. The only raw Salesforce CLI agents may request is human-approved
+5. Ground design/development in the connected org. When a task depends on how data actually sits
+   in records (structure, fill, real shapes), querying the sandbox is recommended — prefer a
+   bounded read over a guess or a blocking question (owner decision 2026-07-30). Compose
+   read-only SOQL through the governed facade tool `review_soql_query` (statement-validated,
+   sanitized, single-source), or use the other bounded surfaces (review facade tools,
+   `scripts/salesforce_read.py`). Raw CLI, raw vendor MCP tools, and unbound aliases stay
+   forbidden. The only raw Salesforce CLI agents may request is human-approved
    `sf project retrieve start`; agents never deploy.
 6. Reconcile sources. Transport agreement between MCP and CLI is corroboration of delivery, not an
    independent vendor or business source.

@@ -10,6 +10,7 @@ upgrade.
 | Reconciled installed package inventory | `salesforce-readonly/review_installed_packages` | investigator, design, review |
 | Reconciled allowlisted object contract | `salesforce-readonly/review_object_contract` | investigator, design, review, QA |
 | Scoped enumeration of configured org aliases (requires `safety.allowScopedEnumeration`) | `salesforce-readonly/review_configured_orgs` or `scripts/salesforce_read.py orgs` | investigator |
+| Composed read-only SOQL (statement-validated, bounded LIMIT, sanitized single-source values) | `salesforce-readonly/review_soql_query` | investigator, design, development |
 | Guarded structured record read (allowlisted objects, bounded rows, no free-form SOQL) | `scripts/salesforce_read.py records` guarded terminal command | investigator, review |
 | Guarded metadata retrieve (allowlisted types → ignored cache dir) | `scripts/salesforce_read.py retrieve` guarded terminal command | investigator, review |
 | Salesforce non-production metadata/test operations | `salesforce-development/*` guarded DX MCP | development only |
@@ -42,13 +43,24 @@ The model-facing read server is a narrow local facade bound to one configured, e
 alias. It exposes only the review tools above (configured-orgs enumeration is additionally gated
 by `safety.allowScopedEnumeration` and reflects local configuration only — never unconfigured
 orgs, ids, or hosts). Internally it executes fixed, checked-in query
-profiles through the pinned Salesforce MCP and a private Salesforce CLI allowlist, normalizes both
-receipts, removes credentials/identity details/raw records, and returns `VERIFIED`, `MISMATCH`,
+profiles — plus validated composed read-only statements for `review_soql_query` — through the
+pinned Salesforce MCP and a private Salesforce CLI allowlist, normalizes the
+receipts, removes credentials/identity details/raw sensitive values, and returns `VERIFIED`, `MISMATCH`,
 `INCOMPLETE`, or `BLOCKED`.
 
-Raw `list_all_orgs`, arbitrary `run_soql_query`, aliases, directories, Tooling flags, CLI commands,
+Raw `list_all_orgs`, raw `run_soql_query`, aliases, directories, Tooling flags, CLI commands,
 and vendor payloads are not exposed to an agent. MCP/CLI agreement is transport corroboration from
 the same org, not independent truth.
+
+Policy (owner decision 2026-07-30): composed read-only SOQL is permitted — and recommended when a
+task depends on record data structure — through the governed facade's `review_soql_query` tool
+only. The facade validates the statement (single read-only SELECT, FROM objects checked against
+the configured allowlist minus a hard secret-adjacent deny-set, bounded LIMIT appended or
+enforced), executes it against the identity-proven sandbox, and returns sanitized single-source
+values (emails and record-Id-shaped strings redacted, `attributes` stripped, text capped). An
+absent `review.allowedObjectApiNames` key means all objects (equivalent to `["*"]`) — an explicit
+list remains supported for orgs holding sensitive data. The raw paths above stay denied
+regardless.
 
 For record-level reads and metadata retrieval, the investigator and reviewer roles use the guarded
 `scripts/salesforce_read.py` wrapper rather than raw CLI. It never accepts a free-form SOQL string:

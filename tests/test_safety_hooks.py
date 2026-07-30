@@ -1236,6 +1236,65 @@ class SafetyClassificationTests(unittest.TestCase):
             )
         )
 
+    def test_composed_soql_review_tool_accepts_query_shape_only(self) -> None:
+        config = {
+            "salesforce": {
+                "orgs": [{"allowAgentRead": True, "allowAgentReview": True}],
+                "review": {
+                    "enabled": True,
+                    "requireDualSource": True,
+                },
+            }
+        }
+        # shape-valid composed queries pass the hook; statement-level SOQL validation is the
+        # facade server's job (exactly one validator exists)
+        self.assertIsNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/review_soql_query",
+                {"query": "SELECT Id FROM Account LIMIT 5"},
+            )
+        )
+        self.assertIsNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/review_soql_query",
+                {"query": "SELECT COUNT(Id) FROM Contact", "useToolingApi": False},
+            )
+        )
+        # absent allowedObjectApiNames means all objects for the object-contract path too
+        self.assertIsNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/review_object_contract",
+                {"objectApiName": "AnyCustom__c"},
+            )
+        )
+        for tool_input in (
+            {},
+            {"query": "SELECT"},
+            {"query": "x" * 4001},
+            {"query": 42},
+            {"query": "SELECT Id FROM Account", "usernameOrAlias": "other"},
+            {"query": "SELECT Id FROM Account", "useToolingApi": "yes"},
+        ):
+            with self.subTest(tool_input=tool_input):
+                self.assertIsNotNone(
+                    safety.salesforce_review_tool_error(
+                        config,
+                        "salesforce-readonly/review_soql_query",
+                        tool_input,
+                    )
+                )
+        # the raw vendor tool stays denied even though the review tool accepts a query
+        self.assertIsNotNone(
+            safety.salesforce_review_tool_error(
+                config,
+                "salesforce-readonly/run_soql_query",
+                {"query": "SELECT Id FROM Account"},
+            )
+        )
+
     def test_bare_mcp_tool_names_are_gated_not_bypassed(self) -> None:
         # VS Code sometimes passes bare tool names (no server prefix); the guard must still fire.
         for name, tool_input in (

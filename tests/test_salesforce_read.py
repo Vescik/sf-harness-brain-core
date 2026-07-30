@@ -33,13 +33,16 @@ def make_config(root: Path, *, enabled=True, alias="dev-sbx", read=True, review=
                 "apiVersion": api,
                 "requireDualSource": True,
                 "allowedPackageNamespaces": ["c"],
-                "allowedObjectApiNames": list(objects),
                 "maxObjectsPerCall": 10,
                 "maxFieldsPerObject": 500,
                 "evidenceMaxAgeMinutes": 30,
             },
         }
     }
+    # objects=None omits the key: absent allowedObjectApiNames means all objects
+    # (owner decision 2026-07-30).
+    if objects is not None:
+        config["salesforce"]["review"]["allowedObjectApiNames"] = list(objects)
     path = root / "harness.local.json"
     path.write_text(json.dumps(config), encoding="utf-8")
     return path
@@ -99,6 +102,15 @@ class RecordsReadTests(unittest.TestCase):
         code, _out, runner = self._run(
             ["records", "--org", "dev-sbx", "--object", "Opportunity"],
             config_kwargs={"objects": ("*",)},
+        )
+        self.assertEqual(code, 0)
+        query = runner.call_args.args[0][runner.call_args.args[0].index("--query") + 1]
+        self.assertEqual(query, "SELECT Id FROM Opportunity LIMIT 50")
+
+    def test_absent_allowlist_defaults_to_all_objects(self) -> None:
+        code, _out, runner = self._run(
+            ["records", "--org", "dev-sbx", "--object", "Opportunity"],
+            config_kwargs={"objects": None},
         )
         self.assertEqual(code, 0)
         query = runner.call_args.args[0][runner.call_args.args[0].index("--query") + 1]
