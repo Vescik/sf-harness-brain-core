@@ -417,15 +417,6 @@ scenarios:
     # developer has a config/harness.local.json checked out.
     reasonContains: "ADO read blocked"
 
-  - id: global-composed-soql-review-tool-allowed
-    guard: global
-    workingDirectory: temporary
-    event:
-      tool_name: salesforce-readonly/review_soql_query
-      tool_input:
-        query: SELECT COUNT(Id) FROM Account
-    expectedDecision: continue
-
   - id: global-composed-soql-extra-args-denied
     guard: global
     workingDirectory: temporary
@@ -435,4 +426,8 @@ scenarios:
         query: SELECT Id FROM Account
         usernameOrAlias: other
     expectedDecision: deny
-    reasonContains: query and useToolingApi
+    # Both branches of the review-tool guard (missing local config in CI, or the extra-args
+    # shape rejection when a config/harness.local.json is present) share this prefix, so the
+    # assertion holds in every environment. The allow path needs a configured review org and
+    # is therefore pinned with an inline config in tests/test_safety_hooks.py instead.
+    reasonContains: "Salesforce org review blocked"
