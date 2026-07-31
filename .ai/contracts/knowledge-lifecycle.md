@@ -1,7 +1,8 @@
 # Knowledge Claim Lifecycle
 
 Status: normative
-Schema version: 2
+Contract version: 2 (claim, evidence, and review records carry `schemaVersion: 3` — see
+`schemas/knowledge-claim.schema.json`)
 
 This contract defines how an observation becomes reusable Knowledge. The model may propose a
 claim, but it is never itself an evidence source and may never promote a claim to `verified`.

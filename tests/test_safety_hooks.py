@@ -1395,6 +1395,39 @@ class SafetyClassificationTests(unittest.TestCase):
                 "guardrail-reviewer",
             )
         )
+        # Completion authority: the reviewer may run `transition`; work_record.py itself
+        # restricts it to review/safe -> complete/complete via role_allows_transition.
+        self.assertTrue(
+            role_guard.work_record_command_allowed(
+                [
+                    "transition",
+                    "--record-id",
+                    "WR-1",
+                    "--role",
+                    "guardrail-reviewer",
+                ],
+                "guardrail-reviewer",
+            )
+        )
+        # The reviewer appends verdicts, not evidence, so it holds no digest grant.
+        self.assertFalse(
+            role_guard.work_record_command_allowed(
+                ["digest", "--path", "output/design.md"], "guardrail-reviewer"
+            )
+        )
+        # Evidence-producing roles mint sha256 receipts for append-evidence --artifact-sha256.
+        for evidence_role in (
+            "solution-designer",
+            "config-investigator",
+            "development-assistant",
+            "test-strategist",
+        ):
+            with self.subTest(role=evidence_role):
+                self.assertTrue(
+                    role_guard.work_record_command_allowed(
+                        ["digest", "--path", "output/design.md"], evidence_role
+                    )
+                )
         for role in role_guard.WORK_RECORD_COMMANDS:
             with self.subTest(role=role):
                 self.assertFalse(

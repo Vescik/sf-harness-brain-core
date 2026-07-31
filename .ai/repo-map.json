@@ -595,11 +595,11 @@
     }
   ],
   "sourceDigests": {
-    ".ai/contracts/execution-contract.md": "sha256:57cf00af99f053a95b33e10a197d87430a12b6efcba8ce27542eaf79125e9b9c",
-    ".ai/contracts/knowledge-lifecycle.md": "sha256:37553a1921e1b0d0b05280d60beef828c4afebb1b7d2a061f5c9822d54be5c66",
+    ".ai/contracts/execution-contract.md": "sha256:acf2c99900fd3575dc8867e8cd40a31c851fe37e2ee907a5d686addb191a207f",
+    ".ai/contracts/knowledge-lifecycle.md": "sha256:38d9204980ed6e7b31a9e57e44a1c747c255e94d5f2e72a80ddbab24cf40961b",
     ".ai/contracts/source-authority.md": "sha256:0e43a1759e993e68934f2c88390ad693f3bf5def00d4fd5026000cf84c1a935d",
     ".ai/contracts/tool-capabilities.md": "sha256:0f6006638a2632d7f4f802473e388770d43952101fa90991ce57c3b71b71e578",
-    ".ai/contracts/workflow-state-machine.md": "sha256:b2b4e313741bec172732b18977beaccfb741379b55ff4f2b422383485b0e2334",
+    ".ai/contracts/workflow-state-machine.md": "sha256:bacba0585fb0ee0f5ed68f074b714fe58b4d73709c3077b735a7cbeabc70fd0e",
     ".github/agents/config-investigator.agent.md": "sha256:e082366baebbcbaf44688a07610581f72c20dbaa8cffc2e96c8ac325aee917ba",
     ".github/agents/development-assistant.agent.md": "sha256:37a92525254e4b923b4f05a6e34659432d9497bd86b778964b4714f344899b6d",
     ".github/agents/guardrail-reviewer.agent.md": "sha256:69e2b8cd60eed926a9a7605396b6e78b9006850350bc7136299312c91b710b6a",

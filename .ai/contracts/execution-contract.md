@@ -31,8 +31,9 @@ The role guard only permits the harness's own Python scripts, and only when invo
   Select it once via "Python: Select Interpreter" → `.venv`; the integrated terminal then activates
   it automatically. Running system Python fails with `ModuleNotFoundError`.
 - Run from the repository root. Only `preflight.py`, `work_record.py`, `knowledge_registry.py`,
-  `force_app_knowledge.py`, `salesforce_read.py`, `validate_handover_output.py` (read-only
-  handover render check), and `playwright_guard.py` are permitted, each with its allowlisted
+  `knowledge_store.py`, `knowledge_search.py`, `force_app_knowledge.py`, `salesforce_read.py`,
+  `validate_handover_output.py` (read-only handover render check), `validate_harness.py`,
+  `run_evals.py`, and `playwright_guard.py` are permitted, each with its allowlisted
   subcommands.
 - **Read-only orientation is allowed for every role**: `git status|diff|log|show|blame|rev-parse|
   ls-files|grep`, listing/reading (`ls`, `dir`, `cat`, `type`, `head`, `tail`, `wc`, `grep`,
@@ -47,6 +48,11 @@ The role guard only permits the harness's own Python scripts, and only when invo
 - Consume only `verified`, fresh, scope-matched, uncontested claims as trusted Knowledge.
 - Model inference and org observation may create a `proposed` claim only. Promotion requires the
   immutable human review defined by the Knowledge lifecycle.
+- The delivery lane depends on a populated Knowledge store: human design approval
+  (`work_record.py approve`) requires at least one fresh effective claim or approved entry bound
+  to the record and claim-backed ownership for every scope component. On a fresh workspace,
+  bootstrap Knowledge first (inventory → propose / entry-draft → human approvals) before starting
+  a governed feature.
 - Principles constrain actions; they do not rewrite observations. The metadata repository describes
   intended customer-owned state; the org review describes deployed state at a timestamp.
 - Salesforce MCP and CLI agreement corroborates transport from the same org. It is not independent

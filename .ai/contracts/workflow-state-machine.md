@@ -67,6 +67,10 @@ Any active phase may move to its `incomplete` or `blocked` state when evidence o
 missing. Recovery must return through a permitted role transition; callers cannot skip directly to
 `accepted`, `safe`, or `complete`.
 
+The `qa` branch is optional by design: a record may move straight from `development/in_progress`
+to `review/ready`. Enter `qa/in_progress` when the change needs Test Strategist coverage evidence
+before review; no design or development handoff mandates the QA phase.
+
 ## Role authority
 
 - `solution-designer`: initialize a record, maintain pre-approval design state, append sourced

@@ -363,6 +363,26 @@ class WorkRecordTests(unittest.TestCase):
             *arguments,
         )
 
+    def test_digest_reports_workspace_file_hash_and_stays_root_contained(self) -> None:
+        artifact = self.root / "output" / "design-notes.md"
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_text("evidence artifact\n", encoding="utf-8")
+        digest = self.run_ok("digest", "--path", "output/design-notes.md")
+        self.assertEqual(digest["path"], "output/design-notes.md")
+        self.assertEqual(digest["sha256"], work_record.file_hash(artifact))
+        self.assertEqual(digest["sizeBytes"], artifact.stat().st_size)
+        # Absolute paths inside the root are accepted and reported root-relative.
+        absolute = self.run_ok("digest", "--path", str(artifact))
+        self.assertEqual(absolute["path"], "output/design-notes.md")
+        self.assertIn(
+            "inside the workspace root",
+            self.run_error("digest", "--path", "../escaped.md"),
+        )
+        self.assertIn(
+            "existing regular file",
+            self.run_error("digest", "--path", "output/missing.md"),
+        )
+
     def seed_knowledge_entries(self) -> dict[str, str]:
         """Approve one heuristic and one source-exact entry in the record's own workspace.
 
