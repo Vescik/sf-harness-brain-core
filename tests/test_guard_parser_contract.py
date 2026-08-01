@@ -10,6 +10,7 @@ from scripts import knowledge_registry
 from scripts import knowledge_search
 from scripts import knowledge_store
 from scripts import salesforce_read
+from scripts import work_record
 
 
 # Subcommands that exist in the CLI parsers but are deliberately NOT reachable through the
@@ -24,6 +25,10 @@ INTENTIONALLY_UNGUARDED = {
     "knowledge_store": {},
     "knowledge_search": {},
     "salesforce_read": {},
+    "work_record": {
+        "approve": "human-terminal-only: SAFE-HUMAN-001 — hard-denied for every role "
+        "in work_record_command_allowed and by the global safety hook",
+    },
 }
 
 # Parser flags the guard deliberately does not accept for a guarded subcommand.
@@ -143,6 +148,36 @@ class GuardParserContractTests(unittest.TestCase):
                 role,
             )
         )
+
+    def test_work_record_guard_covers_parser_commands(self) -> None:
+        # The work_record guard validates command membership per role plus role-binding
+        # flags — it keeps no per-command flag allowlists, so the contract() flag diff
+        # does not apply. This is the command-set half: every parser subcommand must be
+        # granted to at least one role or declared INTENTIONALLY_UNGUARDED, and a role
+        # grant for a command the parser no longer defines fails in the other direction.
+        parsers = subcommand_parsers(work_record.build_parser())
+        granted = set().union(*guard.WORK_RECORD_COMMANDS.values())
+        unguarded = INTENTIONALLY_UNGUARDED["work_record"]
+        self.assertEqual(
+            set(),
+            granted & set(unguarded),
+            "work_record: a subcommand cannot be both role-granted and intentionally unguarded",
+        )
+        self.assertEqual(
+            set(parsers),
+            granted | set(unguarded),
+            "work_record: every parser subcommand needs a role grant or an "
+            "INTENTIONALLY_UNGUARDED declaration (and stale grants must be removed)",
+        )
+
+    def test_work_record_approve_stays_unreachable_for_every_role(self) -> None:
+        # `approve` is human-terminal-only (SAFE-HUMAN-001): the guard hard-denies it
+        # before consulting the role sets, independent of the global hook's own deny.
+        for role in guard.WORK_RECORD_COMMANDS:
+            with self.subTest(role=role):
+                self.assertFalse(
+                    guard.work_record_command_allowed(["approve", "--record", "rec-1"], role)
+                )
 
     def test_knowledge_search_is_read_only_for_every_role(self) -> None:
         # Search never mutates canonical Knowledge; `build` only writes the ignored cache.
