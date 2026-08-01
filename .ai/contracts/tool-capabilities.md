@@ -56,7 +56,7 @@ Policy (owner decision 2026-07-30): composed read-only SOQL is permitted — and
 task depends on record data structure — through the governed facade's `review_soql_query` tool
 only. The facade validates the statement (single read-only SELECT, FROM objects checked against
 the configured allowlist minus a hard secret-adjacent deny-set, bounded LIMIT appended or
-enforced), executes it against the identity-proven sandbox, and returns sanitized single-source
+enforced), executes it against the identity-proven non-production org, and returns sanitized single-source
 values (emails and record-Id-shaped strings redacted, `attributes` stripped, text capped). The
 test-pinned deny-set covers credential/auth surfaces and high-sensitivity org-management/log
 entities on both APIs: NamedCredential, ExternalCredential, ConnectedApplication, AuthProvider,
@@ -67,11 +67,19 @@ absent `review.allowedObjectApiNames` key means all objects (equivalent to `["*"
 list remains supported for orgs holding sensitive data. The raw paths above stay denied
 regardless.
 
+Policy (owner decision 2026-07-31): any proven non-production org may be read. With
+`salesforce.review.allowAnyNonProduction` enabled, an alias absent from local configuration is
+admitted on live identity proof alone — a canonical sandbox, scratch, or Developer Edition host
+whose `Organization.IsSandbox` value matches that signature — and the proven identity is frozen
+for the rest of the session. Configured entries keep their pinned host/organization-ID lane, and
+an entry marked `environment: "production"` is a hard deny the toggle never overrides. Production
+signatures stay refused in every lane.
+
 For record-level reads and metadata retrieval, the investigator and reviewer roles use the guarded
 `scripts/salesforce_read.py` wrapper rather than raw CLI. It never accepts a free-form SOQL string:
 the caller supplies an allowlisted object, a validated field list, a bounded row limit (≤200), and
 an optional simple `ORDER BY`; the wrapper constructs the `SELECT`, proves the target is a live
-non-production sandbox, and there is no `WHERE`/subquery surface, so cross-object or arbitrary reads
+non-production org, and there is no `WHERE`/subquery surface, so cross-object or arbitrary reads
 are impossible. `retrieve` pulls only allowlisted metadata types into an ignored cache directory and
 never writes to the org or tracked source. Object access is bounded by `review.allowedObjectApiNames`,
 which governs both schema reviews and record reads. Setting it to `["*"]` opts into every object

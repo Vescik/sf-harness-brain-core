@@ -81,12 +81,7 @@
             "additionalProperties": false,
             "required": [
               "alias",
-              "environment",
-              "allowAgentRead",
-              "allowAgentWrite",
-              "allowAgentReview",
-              "expectedInstanceHost",
-              "expectedOrganizationId"
+              "environment"
             ],
             "properties": {
               "alias": {
@@ -94,10 +89,12 @@
                 "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
               },
               "environment": {
+                "description": "production is a deny marker (owner decision 2026-07-31): the alias is refused everywhere, even under review.allowAnyNonProduction.",
                 "enum": [
                   "development",
                   "qa",
-                  "uat"
+                  "uat",
+                  "production"
                 ]
               },
               "allowAgentRead": {
@@ -111,7 +108,7 @@
               },
               "expectedInstanceHost": {
                 "type": "string",
-                "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9-]*--[A-Za-z0-9][A-Za-z0-9-]*\\.sandbox\\.my\\.salesforce\\.com|[A-Za-z0-9][A-Za-z0-9-]*\\.scratch\\.my\\.salesforce\\.com)$"
+                "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9-]*--[A-Za-z0-9][A-Za-z0-9-]*\\.sandbox\\.my\\.salesforce\\.com|[A-Za-z0-9][A-Za-z0-9-]*\\.scratch\\.my\\.salesforce\\.com|[A-Za-z0-9][A-Za-z0-9-]*\\.develop\\.my\\.salesforce\\.com)$"
               },
               "expectedOrganizationId": {
                 "type": "string",
@@ -137,6 +134,40 @@
                     }
                   }
                 }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "environment": {
+                      "const": "production"
+                    }
+                  },
+                  "required": [
+                    "environment"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "allowAgentRead": {
+                      "const": false
+                    },
+                    "allowAgentWrite": {
+                      "const": false
+                    },
+                    "allowAgentReview": {
+                      "const": false
+                    }
+                  }
+                },
+                "else": {
+                  "required": [
+                    "allowAgentRead",
+                    "allowAgentWrite",
+                    "allowAgentReview",
+                    "expectedInstanceHost",
+                    "expectedOrganizationId"
+                  ]
+                }
               }
             ]
           }
@@ -155,6 +186,10 @@
           ],
           "properties": {
             "enabled": {
+              "type": "boolean"
+            },
+            "allowAnyNonProduction": {
+              "description": "Owner decision 2026-07-31: when true, review-mode aliases without a config entry are admitted on live identity proof alone (sandbox, scratch, or Developer Edition host + consistent Organization row). Entries marked environment=production stay denied. Default false keeps the strict allowlist.",
               "type": "boolean"
             },
             "apiVersion": {

@@ -60,9 +60,15 @@ try {
 }
 
 const entry = config?.salesforce?.orgs?.find((candidate) => candidate?.alias === org);
-if (!entry) fail(`alias '${org}' is not present in config/harness.local.json`);
-const environment = String(entry.environment).trim().toLowerCase();
-if (!new Set(["development", "qa", "uat"]).has(environment)) {
+const allowAnyNonProduction = config?.salesforce?.review?.allowAnyNonProduction === true;
+const environment = entry ? String(entry.environment).trim().toLowerCase() : null;
+if (environment === "production") {
+  fail(`alias '${org}' is marked production in local configuration`);
+}
+if (!entry && !(mode === "review" && allowAnyNonProduction)) {
+  fail(`alias '${org}' is not present in config/harness.local.json`);
+}
+if (entry && !new Set(["development", "qa", "uat"]).has(environment)) {
   fail(`alias '${org}' has an unsupported environment classification`);
 }
 if (mode === "development" && environment !== "development") {
@@ -72,10 +78,12 @@ if (mode === "review") {
   if (config?.salesforce?.review?.enabled !== true) {
     fail("Salesforce org review is disabled in local configuration");
   }
-  if (entry.allowAgentRead !== true || entry.allowAgentReview !== true) {
+  // A configured entry keeps its explicit grants even under allowAnyNonProduction; only
+  // aliases with no entry at all take the dynamic identity-proof lane.
+  if (entry && (entry.allowAgentRead !== true || entry.allowAgentReview !== true)) {
     fail(`alias '${org}' does not grant allowAgentReview`);
   }
-} else if (entry.allowAgentWrite !== true) {
+} else if (entry?.allowAgentWrite !== true) {
   fail(`alias '${org}' does not grant allowAgentWrite`);
 }
 

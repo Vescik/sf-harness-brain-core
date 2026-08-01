@@ -64,6 +64,13 @@ deploy, and org changes ship through the human-run release process. The only raw
 an agent may request is `sf project retrieve start` against a configured alias, and the safety
 hook stops each invocation for human confirmation.
 
+To let agents read any proven non-production org without a per-alias entry (scratch orgs,
+Developer Edition orgs), set `salesforce.review.allowAnyNonProduction` to `true` (owner decision
+2026-07-31). Live identity proof still runs for every session — the host must carry a canonical
+sandbox, scratch, or Developer Edition signature consistent with `Organization.IsSandbox` — and
+production stays refused everywhere. To hard-block one alias, add an entry with
+`environment: "production"`; that marker wins over the toggle.
+
 The checked-in `manifest/package.xml` is only a generic starter. Narrow it to the exact components
 in the accepted work record before retrieve, validation, or deployment; a wildcard does not grant
 scope and must not be used as a substitute for claim-backed ownership or human approval. This is

@@ -440,7 +440,9 @@ def salesforce_review_tool_error(
     review = config.get("salesforce", {}).get("review", {})
     if review.get("enabled") is not True or review.get("requireDualSource") is not True:
         return "dual-source Salesforce org review is disabled"
-    if not any(
+    # Owner decision 2026-07-31: allowAnyNonProduction admits aliases with no config entry on
+    # live identity proof (enforced by the facade), so an empty grant list is no longer a deny.
+    if review.get("allowAnyNonProduction") is not True and not any(
         org.get("allowAgentRead") is True and org.get("allowAgentReview") is True
         for org in config.get("salesforce", {}).get("orgs", [])
     ):

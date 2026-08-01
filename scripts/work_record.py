@@ -2742,6 +2742,23 @@ def command_approve(args: argparse.Namespace) -> dict[str, Any]:
     return persist_record(root, record)
 
 
+def command_digest(args: argparse.Namespace) -> dict[str, Any]:
+    root = data_root(args.root)
+    raw = Path(args.path)
+    candidate = (raw if raw.is_absolute() else root / raw).resolve()
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as exc:
+        raise WorkRecordError("digest path must stay inside the workspace root") from exc
+    if not candidate.is_file():
+        raise WorkRecordError("digest path must name an existing regular file")
+    return {
+        "path": relative.as_posix(),
+        "sha256": file_hash(candidate),
+        "sizeBytes": candidate.stat().st_size,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", help="workspace data root; defaults to the brain-core repository")
@@ -2772,6 +2789,13 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate", help="validate record, design, evidence, and handoffs")
     validate.add_argument("--record-id", required=True)
     validate.set_defaults(func=command_validate)
+
+    digest = subparsers.add_parser(
+        "digest",
+        help="print the sha256 of a workspace file for append-evidence --artifact-sha256",
+    )
+    digest.add_argument("--path", required=True)
+    digest.set_defaults(func=command_digest)
 
     context = subparsers.add_parser("context", help="return a bounded role context manifest")
     context.add_argument("--record-id", required=True)

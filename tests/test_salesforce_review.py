@@ -37,7 +37,7 @@ if (args[0] === "version") {
   }});
 } else if (args[0] === "data" && args[1] === "query") {
   out({status: 0, result: {done: true, totalSize: 1, records: [
-    {attributes: {type: "Organization", url: "/services/data/private"}, Id: "00D000000000001AAA", IsSandbox: true}
+    {attributes: {type: "Organization", url: "/services/data/private"}, Id: "00D000000000001AAA", IsSandbox: process.env.SF_FAKE_IS_SANDBOX !== "false"}
   ]}});
 } else if (args[0] === "package" && args[1] === "installed") {
   if (process.env.SF_FAKE_CLI_PACKAGE_ERROR === "1") {
@@ -99,7 +99,7 @@ lines.on("line", (line) => {
   let payload;
   if (input.query.includes("FROM Organization")) {
     payload = {done: true, totalSize: 1, records: [
-      {attributes: {type: "Organization", url: "/private"}, Id: "00D000000000001AAA", IsSandbox: true}
+      {attributes: {type: "Organization", url: "/private"}, Id: "00D000000000001AAA", IsSandbox: process.env.SF_FAKE_IS_SANDBOX !== "false"}
     ]};
   } else if (input.query.includes("FROM InstalledSubscriberPackage")) {
     const build = process.env.SF_FAKE_MISMATCH === "1" ? 5 : 4;
@@ -182,6 +182,10 @@ class ReviewFacade:
         cli_package_error: bool = False,
         allowed_objects: Any = "default",
         scoped_enumeration: bool = False,
+        alias: str = "dev-sbx",
+        drop_org_entry: bool = False,
+        allow_any_non_production: bool = False,
+        is_sandbox: bool = True,
     ):
         config_path = directory / "harness.local.json"
         policy_path = directory / "salesforce-review-policy.json"
@@ -195,6 +199,10 @@ class ReviewFacade:
             config["salesforce"]["review"]["allowedObjectApiNames"] = allowed_objects
         if scoped_enumeration:
             config["safety"] = {"allowScopedEnumeration": True}
+        if drop_org_entry:
+            config["salesforce"]["orgs"] = []
+        if allow_any_non_production:
+            config["salesforce"]["review"]["allowAnyNonProduction"] = True
         config_path.write_text(json.dumps(config), encoding="utf-8")
         policy_path.write_text(
             (ROOT / "config" / "salesforce-review-policy.json").read_text(encoding="utf-8"),
@@ -217,9 +225,10 @@ class ReviewFacade:
             "SF_FAKE_INSTANCE_HOST": cli_host,
             "SF_FAKE_MCP_ERROR": "1" if mcp_error else "0",
             "SF_FAKE_CLI_PACKAGE_ERROR": "1" if cli_package_error else "0",
+            "SF_FAKE_IS_SANDBOX": "true" if is_sandbox else "false",
         }
         self.process = subprocess.Popen(
-            ["node", str(ROOT / "scripts" / "salesforce_review_server.mjs"), "--org", "dev-sbx"],
+            ["node", str(ROOT / "scripts" / "salesforce_review_server.mjs"), "--org", alias],
             cwd=ROOT,
             env=env,
             stdin=subprocess.PIPE,
@@ -309,6 +318,97 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
             ).iter_errors(evidence)
         )
         self.assertNotEqual(errors, [])
+
+    def test_dynamic_lane_admits_unlisted_alias_on_live_proof(self) -> None:
+        # Owner decision 2026-07-31: with allowAnyNonProduction, an alias with no config entry
+        # is admitted purely on live identity proof and reported as environment=dynamic.
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(
+                Path(name),
+                alias="scratch-box",
+                drop_org_entry=True,
+                allow_any_non_production=True,
+                cli_host=SCRATCH_HOST,
+                allowed_objects=None,
+            )
+            try:
+                facade.request(
+                    "initialize",
+                    {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "1"},
+                    },
+                )
+                identity = facade.call("review_org_identity")
+                soql = facade.call("review_soql_query", {"query": "SELECT Id FROM Contact"})
+            finally:
+                facade.close()
+            for evidence in (identity, soql):
+                self.assert_valid_evidence(evidence)
+                self.assertEqual(evidence["status"], "VERIFIED")
+                self.assertEqual(evidence["target"]["environment"], "dynamic")
+                serialized = json.dumps(evidence)
+                self.assertNotIn(SCRATCH_HOST, serialized)
+                self.assertNotIn(ORG_ID, serialized)
+            self.assertTrue(identity["target"]["isSandbox"])
+
+    def test_dynamic_lane_verifies_developer_edition_with_is_sandbox_false(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(
+                Path(name),
+                alias="devmp",
+                drop_org_entry=True,
+                allow_any_non_production=True,
+                cli_host="orgfarm-x-dev-ed.develop.my.salesforce.com",
+                is_sandbox=False,
+                allowed_objects=None,
+            )
+            try:
+                facade.request(
+                    "initialize",
+                    {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "1"},
+                    },
+                )
+                identity = facade.call("review_org_identity")
+            finally:
+                facade.close()
+            self.assert_valid_evidence(identity)
+            self.assertEqual(identity["status"], "VERIFIED")
+            self.assertEqual(identity["target"]["environment"], "dynamic")
+            self.assertFalse(identity["target"]["isSandbox"])
+
+    def test_dynamic_lane_refuses_spoofed_developer_edition_sandbox_flag(self) -> None:
+        # A develop.my.salesforce.com host must report IsSandbox=false; true means the org's
+        # signature is inconsistent and the identity gate fails closed.
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(
+                Path(name),
+                alias="devmp",
+                drop_org_entry=True,
+                allow_any_non_production=True,
+                cli_host="orgfarm-x-dev-ed.develop.my.salesforce.com",
+                is_sandbox=True,
+                allowed_objects=None,
+            )
+            try:
+                facade.request(
+                    "initialize",
+                    {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "1"},
+                    },
+                )
+                identity = facade.call("review_org_identity")
+            finally:
+                facade.close()
+            self.assert_valid_evidence(identity)
+            self.assertNotEqual(identity["status"], "VERIFIED")
+            self.assertIn("NOT_SANDBOX", identity["warnings"])
 
     def test_tools_are_exact_and_verified_evidence_is_redacted(self) -> None:
         with tempfile.TemporaryDirectory() as name:
@@ -817,16 +917,13 @@ class SalesforceReviewConfigContractTests(unittest.TestCase):
             self.assertIn("REVIEW_DISABLED", completed.stderr)
             self.assertFalse(marker_path.exists())
 
-    def test_server_refuses_developer_edition_or_dev_hub_host(self) -> None:
+    def _startup_refusal(self, config: dict[str, Any]) -> subprocess.CompletedProcess:
         with tempfile.TemporaryDirectory() as name:
             directory = Path(name)
             config_path = directory / "harness.local.json"
             policy_path = directory / "salesforce-review-policy.json"
             marker_path = directory / "mcp-started.txt"
-            config_path.write_text(
-                json.dumps(local_config("acme.develop.my.salesforce.com")),
-                encoding="utf-8",
-            )
+            config_path.write_text(json.dumps(config), encoding="utf-8")
             policy_path.write_text(
                 (ROOT / "config" / "salesforce-review-policy.json").read_text(
                     encoding="utf-8"
@@ -853,9 +950,32 @@ class SalesforceReviewConfigContractTests(unittest.TestCase):
                 timeout=10,
                 check=False,
             )
-            self.assertEqual(completed.returncode, 2)
-            self.assertIn("CONFIG_INVALID", completed.stderr)
             self.assertFalse(marker_path.exists())
+            return completed
+
+    def test_server_refuses_production_host_pins(self) -> None:
+        # A production my.salesforce.com host never matches the non-production pin pattern.
+        completed = self._startup_refusal(local_config("acme.my.salesforce.com"))
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("CONFIG_INVALID", completed.stderr)
+
+    def test_server_refuses_alias_marked_production_even_with_allow_any(self) -> None:
+        # environment=production is the owner's explicit deny marker; allowAnyNonProduction
+        # never overrides it.
+        config = local_config()
+        config["salesforce"]["orgs"][0] = {"alias": "dev-sbx", "environment": "production"}
+        config["salesforce"]["review"]["allowAnyNonProduction"] = True
+        completed = self._startup_refusal(config)
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("ALIAS_MARKED_PRODUCTION", completed.stderr)
+
+    def test_server_refuses_unlisted_alias_without_allow_any_non_production(self) -> None:
+        config = local_config()
+        config["salesforce"]["orgs"] = []
+        completed = self._startup_refusal(config)
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("ALIAS_NOT_ALLOWLISTED", completed.stderr)
+
 
 
 class PinnedSalesforceMcpCompatibilityTests(unittest.TestCase):

@@ -41,6 +41,7 @@
     ],
     "review": {
       "enabled": false,
+      "allowAnyNonProduction": false,
       "apiVersion": "67.0",
       "requireDualSource": true,
       "allowedPackageNamespaces": [],

@@ -77,6 +77,7 @@ WORK_RECORD_COMMANDS = {
         "transition",
         "accept-handoff",
         "append-evidence",
+        "digest",
         "attach-rule",
         "bind-claim",
         "add-question",
@@ -91,6 +92,7 @@ WORK_RECORD_COMMANDS = {
         "context",
         "accept-handoff",
         "append-evidence",
+        "digest",
         "add-question",
         "capture-org-review",
         "create-handoff",
@@ -101,6 +103,7 @@ WORK_RECORD_COMMANDS = {
         "transition",
         "accept-handoff",
         "append-evidence",
+        "digest",
         "capture-repository",
         "run-verification",
         "create-handoff",
@@ -111,13 +114,17 @@ WORK_RECORD_COMMANDS = {
         "transition",
         "accept-handoff",
         "append-evidence",
+        "digest",
         "capture-repository",
         "run-verification",
         "create-handoff",
     },
+    # `transition` mirrors work_record.py role_allows_transition, which limits the reviewer to
+    # review/safe -> complete/complete — without the grant, completion had no agent entry point.
     "guardrail-reviewer": {
         "validate",
         "context",
+        "transition",
         "accept-handoff",
         "capture-repository",
         "capture-org-review",
@@ -529,7 +536,7 @@ def work_record_command_allowed(parts: list[str], role: str) -> bool:
         return flag_values(parts[1:], "--role") == [role]
     if command == "create-handoff":
         return flag_values(parts[1:], "--from-role") == [role]
-    return command in {"init", "validate"}
+    return command in {"init", "validate", "digest"}
 
 
 def proposal_draft_path_allowed(raw: str, root: Path) -> bool:

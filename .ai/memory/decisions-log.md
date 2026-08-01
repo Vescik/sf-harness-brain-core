@@ -249,3 +249,27 @@ are not durable.
 - Approved by: workspace owner directive of 2026-07-13 (Windows-rollout goal); formal team
   sign-off pending at pilot review.
 - Related: `docs/compatibility.md` (upgrade policy), `SECURITY.md` (dependency posture).
+
+## 2026-07-31 - Any non-production org is permitted for agent reads; production is the only deny
+
+- Context: the review lane admitted only aliases pre-registered in `config/harness.local.json`
+  with pinned host/organization-ID identity, and only sandbox/scratch hosts. Testing the
+  workspace against ad-hoc orgs (scratch orgs, Developer Edition orgs) required a config edit for
+  every alias, and Developer Edition hosts were refused outright.
+- Finding / decision: owner reverses the allowlist-only posture. New
+  `salesforce.review.allowAnyNonProduction` toggle (default `false`): when enabled, an alias with
+  no config entry is admitted on live identity proof alone — the host must match the canonical
+  sandbox (`*--*.sandbox.my.salesforce.com`), scratch (`*.scratch.my.salesforce.com`), or
+  Developer Edition (`*.develop.my.salesforce.com`) signature and `Organization.IsSandbox` must
+  match that signature (true for sandbox/scratch, false for Dev Edition). The proven identity is
+  frozen for the rest of the session. Explicit entries keep the pinned lane; the new
+  `environment: "production"` entry value is a hard deny marker no toggle overrides; production
+  signatures (other hosts, prod-like aliases) stay refused everywhere.
+- Impact: `verify_salesforce_org.py` (dynamic lane), `start_salesforce_mcp.mjs`,
+  `salesforce_review_server.mjs` (dynamic runtime + identity freeze), `copilot_safety_hook.py`
+  review gate, `salesforce_read.py`, `schemas/harness-config.schema.json`,
+  `schemas/salesforce-org-review-evidence.schema.json` (target.environment gains `dynamic`,
+  `isSandbox` becomes a real boolean), and the pinned tests. Dev Edition envelopes report
+  `isSandbox: false` by design.
+- Approved by: workspace owner (chat, 2026-07-31).
+- Related: entry "2026-07-30 - Composed read-only SOQL is permitted and recommended (policy phase)".

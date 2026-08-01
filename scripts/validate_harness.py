@@ -194,6 +194,7 @@ def check_required_files(audit: Audit) -> None:
         "schemas/force-app-knowledge-worklist.schema.json",
         "schemas/knowledge-claims-index.schema.json",
         "schemas/knowledge-entry.schema.json",
+        "schemas/knowledge-feature-entry.schema.json",
         "schemas/knowledge-profile-flow.schema.json",
         "schemas/knowledge-profile-customfield.schema.json",
         "schemas/knowledge-profile-apex.schema.json",
