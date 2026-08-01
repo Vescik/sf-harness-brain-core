@@ -13,7 +13,7 @@ upgrade.
 | Composed read-only SOQL (statement-validated, bounded LIMIT, sanitized single-source values) | `salesforce-readonly/review_soql_query` | investigator, design, development |
 | Guarded structured record read (allowlisted objects, bounded rows, no free-form SOQL) | `scripts/salesforce_read.py records` guarded terminal command | investigator, review |
 | Guarded metadata retrieve (allowlisted types → ignored cache dir) | `scripts/salesforce_read.py retrieve` guarded terminal command | investigator, review |
-| Salesforce non-production metadata/test operations | `salesforce-development/*` guarded DX MCP | development only |
+| Salesforce non-production source retrieve into the project (per-invocation human confirmation; the only direct `sf` command not denied) | `sf project retrieve start` guarded terminal command | development only |
 | Browser exploration/test generation | pinned `playwright-cli` through guarded terminal execution | Test Strategist only |
 | Interactive human confirmation | `vscode/askQuestions` | prompts and approval gates |
 | Subagent delegation | `agent` plus explicit `agents` allowlist | Designer, Developer |
@@ -88,7 +88,15 @@ readable). On a full-copy sandbox that means record reads can reach copied produ
 all objects — prefer an explicit list when the org holds sensitive data, or restrict which roles
 hold record-read access (currently investigator and reviewer only).
 
-Development mode registers only approved metadata, testing, and code-analysis capabilities for one
-locally authorized, allowlisted development sandbox. All reads use the facade. Development starts
-in the named metadata root only after an approval reference enables shared-sandbox writes. It does
-not enable broad data tools, `ALLOW_ALL_ORGS`, default orgs, users, DevOps Center, or non-GA tools.
+Development mode exists only as a launcher lane (`start_salesforce_mcp.mjs --mode development`),
+not as a configured MCP server: `.vscode/mcp.json` registers no `salesforce-development` entry and
+`validate_harness.py` fails if one reappears (owner decision 2026-07-14), so no agent-facing
+`salesforce-development` tool surface exists; the safety hook keeps its dev-tool classifier as
+defense in depth. If a human starts that lane it registers only metadata, testing, and
+code-analysis toolsets for one locally authorized alias granting `allowAgentWrite`, requires the
+shared-sandbox approval reference, is disabled on Windows, and still proves live non-production
+identity first. It does not enable broad data tools, `ALLOW_ALL_ORGS`, default orgs, users,
+DevOps Center, or non-GA tools. Ordinary development work needs none of it: reads go through the
+facade, repository edits stay in `force-app`/`manifest`/`tests/e2e`, org retrieves use
+`sf project retrieve start` behind a per-invocation human confirmation (every other direct
+`sf`/`sfdx` invocation is denied), and deploys are always performed by a human.

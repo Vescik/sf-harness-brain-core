@@ -598,7 +598,7 @@
     ".ai/contracts/execution-contract.md": "sha256:acf2c99900fd3575dc8867e8cd40a31c851fe37e2ee907a5d686addb191a207f",
     ".ai/contracts/knowledge-lifecycle.md": "sha256:38d9204980ed6e7b31a9e57e44a1c747c255e94d5f2e72a80ddbab24cf40961b",
     ".ai/contracts/source-authority.md": "sha256:0e43a1759e993e68934f2c88390ad693f3bf5def00d4fd5026000cf84c1a935d",
-    ".ai/contracts/tool-capabilities.md": "sha256:bdf2c5a57ae91d122cc708db147c2f7e012b396f9413cbdf774d95610fe86d59",
+    ".ai/contracts/tool-capabilities.md": "sha256:1eeeea6b0e6809b9296153428b64abc62c7e3a2a21bcd33f4e9367546239012c",
     ".ai/contracts/workflow-state-machine.md": "sha256:bacba0585fb0ee0f5ed68f074b714fe58b4d73709c3077b735a7cbeabc70fd0e",
     ".github/agents/config-investigator.agent.md": "sha256:e082366baebbcbaf44688a07610581f72c20dbaa8cffc2e96c8ac325aee917ba",
     ".github/agents/development-assistant.agent.md": "sha256:37a92525254e4b923b4f05a6e34659432d9497bd86b778964b4714f344899b6d",

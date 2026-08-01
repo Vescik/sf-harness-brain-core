@@ -1160,6 +1160,24 @@ def check_placeholders(audit: Audit) -> None:
     audit.require(found == EXPECTED_HUMAN_PLACEHOLDERS, f"human placeholder register drifted: found {sorted(found)}")
 
 
+def check_contracts_match_mcp(audit: Audit) -> None:
+    """Normative contracts must not advertise MCP servers that mcp.json does not configure.
+
+    The capability map kept advertising the removed salesforce-development DX MCP as a live
+    surface. The alternation lists every server name the contracts have referenced; extend
+    it when a server is added or renamed.
+    """
+    mcp = load_json(ROOT / ".vscode/mcp.json", audit)
+    servers = set(mcp.get("servers", {})) if isinstance(mcp, dict) else set()
+    referenced = re.compile(r"`(ado-readonly|salesforce-readonly|salesforce-development)/")
+    for path in sorted((ROOT / ".ai/contracts").glob("*.md")):
+        for name in sorted(set(referenced.findall(path.read_text(encoding="utf-8")))):
+            audit.require(
+                name in servers,
+                f"{relative(path)}: references MCP server '{name}/' absent from .vscode/mcp.json",
+            )
+
+
 def main() -> int:
     audit = Audit()
     check_required_files(audit)
@@ -1170,6 +1188,7 @@ def main() -> int:
     check_ci(audit)
     check_schemas_and_evals(audit)
     check_grounding_contracts(audit)
+    check_contracts_match_mcp(audit)
     check_repo_map(audit)
     check_placeholders(audit)
     check_secret_signatures(audit)
