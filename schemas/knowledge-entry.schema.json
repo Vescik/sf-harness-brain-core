@@ -51,9 +51,14 @@
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sourceApiVersion", "sourceTreeDigest", "packageVersionId"],
+      "required": ["sourceApiVersion", "sourceTreeDigest", "packageVersionId", "collectorVersion"],
       "properties": {
         "sourceApiVersion": { "type": "string", "pattern": "^[0-9]{2,3}\\.[0-9]$" },
+        "collectorVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "description": "force_app_knowledge.COLLECTOR_VERSION at draft time — dates a factsDigest move for an auditor. Deliberately outside the facts and reviewed digests."
+        },
         "sourceTreeDigest": {
           "$ref": "#/$defs/sha256",
           "description": "Digest of the analysed source scope content. Never a commit SHA and never derived from the containing commit (contract §5.4)."

@@ -180,6 +180,8 @@ def synth_workspace(root: Path, entries: int) -> None:
                     sorted((item["path"], item["sourceDigest"]) for item in fragments)
                 ),
                 "packageVersionId": None,
+                # Synthetic corpus, not collector output — 0.0.0 keeps that visible.
+                "collectorVersion": "0.0.0",
             },
             "source": {"fragments": fragments},
             "lifecycle": {"state": "approved", "contentDigest": "sha256:" + "0" * 64},

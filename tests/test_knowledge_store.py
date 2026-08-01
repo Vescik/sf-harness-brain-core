@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import shutil
 import tempfile
@@ -162,6 +163,25 @@ class KnowledgeStoreTests(unittest.TestCase):
         result = store.command_entry_status(argparse.Namespace(identity=identity))
         self.assertEqual(1, len(result["entries"]))
         return result["entries"][0]
+
+    def test_draft_stamps_collector_version_outside_the_digests(self) -> None:
+        from scripts.force_app_knowledge import COLLECTOR_VERSION
+
+        drafted = self.draft()
+        frontmatter, body = store.split_entry(
+            (self.temp / drafted["path"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(COLLECTOR_VERSION, frontmatter["scope"]["collectorVersion"])
+        # The stamp dates a factsDigest move for a future auditor; it must never BE one.
+        # Facts and the reviewed digest ignore scope, so a collector release alone cannot
+        # open a re-approval window.
+        stripped = copy.deepcopy(frontmatter)
+        del stripped["scope"]["collectorVersion"]
+        self.assertEqual(store.facts_digest(frontmatter), store.facts_digest(stripped))
+        self.assertEqual(
+            store.reviewed_content_digest(frontmatter, body),
+            store.reviewed_content_digest(stripped, body),
+        )
 
     def test_draft_approve_happy_path_and_decoy_exclusion(self) -> None:
         drafted = self.draft()

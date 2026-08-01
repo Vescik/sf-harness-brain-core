@@ -805,7 +805,7 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
         if purpose.strip()
         else "## Purpose\n\n<AGENT_DESCRIPTION>\n"
     )
-    from scripts.force_app_knowledge import file_digest
+    from scripts.force_app_knowledge import COLLECTOR_VERSION, file_digest
 
     fragment_path = ROOT / component["path"]
     fragments = [{"path": component["path"], "sourceDigest": f"sha256:{file_digest(fragment_path)}"}]
@@ -827,6 +827,9 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
             "sourceApiVersion": args.source_api_version,
             "sourceTreeDigest": canonical_digest(sorted((f["path"], f["sourceDigest"]) for f in fragments)),
             "packageVersionId": None,
+            # Dates a factsDigest move for a future auditor; lives in scope so a collector
+            # release alone never moves factsDigest or the reviewed digest.
+            "collectorVersion": COLLECTOR_VERSION,
         },
         "source": {"fragments": fragments},
         "lifecycle": {"state": "draft", "contentDigest": "sha256:" + "0" * 64},
