@@ -28,9 +28,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 try:
-    from verify_salesforce_org import configured_identity, verify_is_sandbox
+    from verify_salesforce_org import allow_any_non_production, configured_identity, verify_is_sandbox
 except ModuleNotFoundError:  # imported as scripts.salesforce_read by unit tests
-    from scripts.verify_salesforce_org import configured_identity, verify_is_sandbox
+    from scripts.verify_salesforce_org import (
+        allow_any_non_production,
+        configured_identity,
+        verify_is_sandbox,
+    )
 
 HARNESS_ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = HARNESS_ROOT / "config" / "harness.local.json"
@@ -96,9 +100,21 @@ def load_review_context(alias: str) -> tuple[dict[str, Any], dict[str, Any]]:
         ),
         None,
     )
+    if entry is not None and str(entry.get("environment", "")).lower() == "production":
+        raise ReadError(f"alias '{alias}' is marked production in local configuration")
     if entry is None:
-        raise ReadError(f"alias '{alias}' is not present in config/harness.local.json")
-    if entry.get("allowAgentRead") is not True or entry.get("allowAgentReview") is not True:
+        # Owner decision 2026-07-31: allowAnyNonProduction admits unlisted aliases on live
+        # identity proof (prove_sandbox runs the dynamic lane for them).
+        if review.get("allowAnyNonProduction") is not True:
+            raise ReadError(f"alias '{alias}' is not present in config/harness.local.json")
+        entry = {
+            "alias": alias,
+            "environment": "dynamic",
+            "allowAgentRead": True,
+            "allowAgentReview": True,
+            "allowAgentWrite": False,
+        }
+    elif entry.get("allowAgentRead") is not True or entry.get("allowAgentReview") is not True:
         raise ReadError(f"alias '{alias}' does not grant agent read/review")
     if not API_VERSION.fullmatch(str(review.get("apiVersion", ""))):
         raise ReadError("review.apiVersion is missing or malformed")
@@ -106,17 +122,22 @@ def load_review_context(alias: str) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def prove_sandbox(alias: str, runner: Callable[..., Any]) -> None:
-    """Reuse the harness sandbox proof; refuse to read otherwise."""
+    """Reuse the harness non-production proof; refuse to read otherwise."""
 
     identity = configured_identity(alias)
-    if identity is None:
+    if identity is not None:
+        ok, reason = verify_is_sandbox(
+            alias,
+            expected_host=identity[0],
+            expected_org_id=identity[1],
+            runner=runner,
+        )
+    elif allow_any_non_production():
+        # Dynamic lane (owner decision 2026-07-31): live proof of a non-production host and
+        # a consistent Organization row, with no configured pins to compare against.
+        ok, reason = verify_is_sandbox(alias, runner=runner)
+    else:
         raise ReadError("configured sandbox identity is missing or invalid")
-    ok, reason = verify_is_sandbox(
-        alias,
-        expected_host=identity[0],
-        expected_org_id=identity[1],
-        runner=runner,
-    )
     if not ok:
         raise ReadError(f"sandbox proof failed: {reason}")
 

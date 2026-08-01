@@ -373,7 +373,7 @@
         "isSandbox"
       ],
       "properties": {
-        "environment": { "enum": ["development", "qa", "uat"] },
+        "environment": { "enum": ["development", "qa", "uat", "dynamic"] },
         "apiVersion": { "type": "string", "pattern": "^[0-9]{2}\\.0$" },
         "aliasPolicyMatched": { "const": true },
         "expectedHostMatched": { "type": "boolean" },
@@ -389,7 +389,7 @@
             "aliasPolicyMatched": { "const": true },
             "expectedHostMatched": { "const": true },
             "expectedOrgIdMatched": { "const": true },
-            "isSandbox": { "const": true }
+            "isSandbox": { "type": "boolean" }
           }
         }
       ]
@@ -764,7 +764,7 @@
       "required": ["identityPolicyMatched", "isSandbox"],
       "properties": {
         "identityPolicyMatched": { "const": true },
-        "isSandbox": { "const": true }
+        "isSandbox": { "type": "boolean" }
       }
     },
     "package": {

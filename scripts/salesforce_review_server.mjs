@@ -58,7 +58,8 @@ const NEVER_QUERY_OBJECTS = Object.freeze(new Set([
 ]));
 const EMAIL_VALUE_PATTERN = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
 const RECORD_ID_VALUE_PATTERN = /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/;
-const NON_PRODUCTION_HOST = /^(?:[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\.my\.salesforce\.com|[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com)$/i;
+const NON_PRODUCTION_HOST = /^(?:[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\.my\.salesforce\.com|[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com|[a-z0-9][a-z0-9-]*\.develop\.my\.salesforce\.com)$/i;
+const DEV_EDITION_HOST = /^[a-z0-9][a-z0-9-]*\.develop\.my\.salesforce\.com$/i;
 const MAX_OUTER_MESSAGE_BYTES = 1_048_576;
 
 const EXPECTED_QUERIES = Object.freeze({
@@ -163,21 +164,38 @@ function readJson(path, code) {
 function loadRuntime(alias) {
   const config = readJson(CONFIG_PATH, "CONFIG_MISSING");
   const policy = readJson(POLICY_PATH, "CONFIG_INVALID");
-  const entry = config?.salesforce?.orgs?.find((candidate) => candidate?.alias === alias);
+  const configured = config?.salesforce?.orgs?.find((candidate) => candidate?.alias === alias);
   const review = config?.salesforce?.review;
-  if (!entry) throw new ReviewError("ALIAS_NOT_ALLOWLISTED");
-  if (entry.allowAgentRead !== true || entry.allowAgentReview !== true) {
+  if (configured?.environment === "production") {
+    throw new ReviewError("ALIAS_MARKED_PRODUCTION");
+  }
+  // Owner decision 2026-07-31: with review.allowAnyNonProduction, an alias without a config
+  // entry is admitted on live identity proof alone (sandbox, scratch, or Developer Edition
+  // host signature); the proven identity is frozen on first proof for the session. Explicit
+  // entries keep the pinned lane unchanged, and environment=production is a hard deny marker.
+  const dynamic = !configured && review?.allowAnyNonProduction === true;
+  if (!configured && !dynamic) throw new ReviewError("ALIAS_NOT_ALLOWLISTED");
+  const entry = configured ?? {
+    alias,
+    environment: "dynamic",
+    allowAgentRead: true,
+    allowAgentReview: true,
+    allowAgentWrite: false,
+  };
+  if (configured && (entry.allowAgentRead !== true || entry.allowAgentReview !== true)) {
     throw new ReviewError("ALIAS_PERMISSION_DENIED");
   }
   if (review?.enabled !== true) throw new ReviewError("REVIEW_DISABLED");
-  if (!["development", "qa", "uat"].includes(entry.environment)) {
-    throw new ReviewError("CONFIG_INVALID");
-  }
-  if (!NON_PRODUCTION_HOST.test(String(entry.expectedInstanceHost ?? ""))) {
-    throw new ReviewError("CONFIG_INVALID");
-  }
-  if (!ORG_ID.test(String(entry.expectedOrganizationId ?? ""))) {
-    throw new ReviewError("CONFIG_INVALID");
+  if (configured) {
+    if (!["development", "qa", "uat"].includes(entry.environment)) {
+      throw new ReviewError("CONFIG_INVALID");
+    }
+    if (!NON_PRODUCTION_HOST.test(String(entry.expectedInstanceHost ?? ""))) {
+      throw new ReviewError("CONFIG_INVALID");
+    }
+    if (!ORG_ID.test(String(entry.expectedOrganizationId ?? ""))) {
+      throw new ReviewError("CONFIG_INVALID");
+    }
   }
   if (!/^\d{2}\.0$/.test(String(review.apiVersion ?? ""))) {
     throw new ReviewError("CONFIG_INVALID");
@@ -232,6 +250,8 @@ function loadRuntime(alias) {
     entry,
     review,
     policy,
+    dynamic,
+    discovered: { host: null, orgId: null, isSandbox: null },
     allowedObjects: new Set(allowedObjectApiNames),
     allowedPackageNamespaces: new Set(review.allowedPackageNamespaces),
   };
@@ -441,6 +461,10 @@ async function collectCliIdentity(runtime) {
   } catch {
     throw new ReviewError("CLI_SCHEMA_MISMATCH");
   }
+  const host = instance.hostname.toLowerCase();
+  const expectedHost = runtime.dynamic
+    ? runtime.discovered.host ?? host
+    : runtime.entry.expectedInstanceHost.toLowerCase();
   if (
     instance.protocol !== "https:" ||
     instance.port ||
@@ -449,12 +473,16 @@ async function collectCliIdentity(runtime) {
     instance.pathname !== "/" ||
     instance.search ||
     instance.hash ||
-    instance.hostname.toLowerCase() !== runtime.entry.expectedInstanceHost.toLowerCase()
+    host !== expectedHost ||
+    !NON_PRODUCTION_HOST.test(host)
   ) {
     throw new ReviewError("IDENTITY_HOST_MISMATCH");
   }
   const displayOrgId = String(display?.id ?? display?.orgId ?? "");
-  if (displayOrgId !== runtime.entry.expectedOrganizationId) {
+  const expectedOrgId = runtime.dynamic
+    ? runtime.discovered.orgId ?? displayOrgId
+    : runtime.entry.expectedOrganizationId;
+  if (!ORG_ID.test(displayOrgId) || displayOrgId !== expectedOrgId) {
     throw new ReviewError("IDENTITY_ORG_ID_MISMATCH");
   }
 
@@ -475,15 +503,21 @@ async function collectCliIdentity(runtime) {
   if (!Array.isArray(records) || records.length !== 1) {
     throw new ReviewError("CLI_SCHEMA_MISMATCH");
   }
-  if (records[0]?.Id !== runtime.entry.expectedOrganizationId) {
+  if (records[0]?.Id !== expectedOrgId) {
     throw new ReviewError("IDENTITY_ORG_ID_MISMATCH");
   }
-  if (records[0]?.IsSandbox !== true) throw new ReviewError("NOT_SANDBOX");
+  const wantSandbox = !DEV_EDITION_HOST.test(host);
+  if (records[0]?.IsSandbox !== wantSandbox) throw new ReviewError("NOT_SANDBOX");
+  if (runtime.dynamic) {
+    runtime.discovered.host = host;
+    runtime.discovered.orgId = displayOrgId;
+    runtime.discovered.isSandbox = wantSandbox;
+  }
   return {
     proof: {
       expectedHostMatched: true,
       expectedOrgIdMatched: true,
-      isSandbox: true,
+      isSandbox: wantSandbox,
     },
     source: { kind: "salesforce-cli", version: cliVersion, complete: true, retrievedAt },
   };
@@ -673,11 +707,24 @@ async function withMcp(runtime, callback) {
 function validateMcpIdentity(runtime, payload) {
   if (payload.records.length !== 1) throw new ReviewError("MCP_SCHEMA_MISMATCH", "INCOMPLETE");
   const record = payload.records[0];
-  if (record?.Id !== runtime.entry.expectedOrganizationId) {
+  const recordId = String(record?.Id ?? "");
+  const expectedOrgId = runtime.dynamic
+    ? runtime.discovered.orgId ?? recordId
+    : runtime.entry.expectedOrganizationId;
+  if (!ORG_ID.test(recordId) || recordId !== expectedOrgId) {
     throw new ReviewError("IDENTITY_ORG_ID_MISMATCH");
   }
-  if (record?.IsSandbox !== true) throw new ReviewError("NOT_SANDBOX");
-  return { expectedOrgIdMatched: true, isSandbox: true };
+  const wantSandbox = runtime.dynamic
+    ? runtime.discovered.isSandbox ?? record?.IsSandbox
+    : !DEV_EDITION_HOST.test(String(runtime.entry.expectedInstanceHost ?? ""));
+  if (typeof record?.IsSandbox !== "boolean" || record.IsSandbox !== wantSandbox) {
+    throw new ReviewError("NOT_SANDBOX");
+  }
+  if (runtime.dynamic) {
+    runtime.discovered.orgId = recordId;
+    runtime.discovered.isSandbox = record.IsSandbox;
+  }
+  return { expectedOrgIdMatched: true, isSandbox: record.IsSandbox };
 }
 
 function normalizedPackage(namespace, name, version) {
@@ -859,7 +906,10 @@ async function reviewIdentity(runtime) {
   const identity = gate.identity;
   const cliCapture = {
     ok: true,
-    value: { ...identity, facts: { expectedOrgIdMatched: true, isSandbox: true } },
+    value: {
+      ...identity,
+      facts: { expectedOrgIdMatched: true, isSandbox: identity.proof.isSandbox === true },
+    },
   };
   const target = baseTarget(runtime, identity.proof);
   const mcpCapture = await captureSource("salesforce-mcp", "0.30.15", async () => {
@@ -882,7 +932,7 @@ async function reviewIdentity(runtime) {
     status: "VERIFIED",
     target,
     sources: { cli: cliCapture.value.source, mcp: mcpCapture.value.source },
-    facts: { identityPolicyMatched: true, isSandbox: true },
+    facts: { identityPolicyMatched: true, isSandbox: identity.proof.isSandbox === true },
     reconciliation: {
       status: "MATCH",
       comparisons: [comparison("organization-identity", true), comparison("is-sandbox", true)],

@@ -126,7 +126,74 @@ class SalesforceProofTests(unittest.TestCase):
                 runner=runner,
             )
         self.assertTrue(ok)
-        self.assertEqual(reason, "Organization.IsSandbox=true")
+        self.assertEqual(reason, f"non-production identity proven for host '{SANDBOX_HOST}'")
+
+    def _display_and_query(self, host: str, org_id: str, is_sandbox: bool) -> list[SimpleNamespace]:
+        return [
+            SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "status": 0,
+                        "result": {"instanceUrl": f"https://{host}", "id": org_id},
+                    }
+                ),
+                stderr="",
+            ),
+            SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "status": 0,
+                        "result": {"records": [{"Id": org_id, "IsSandbox": is_sandbox}]},
+                    }
+                ),
+                stderr="",
+            ),
+        ]
+
+    def test_dynamic_lane_accepts_sandbox_scratch_and_dev_edition(self) -> None:
+        # Owner decision 2026-07-31: no pins supplied -> the live identity itself must prove a
+        # non-production host with a consistent Organization row.
+        for host, is_sandbox in (
+            (SANDBOX_HOST, True),
+            (SCRATCH_HOST, True),
+            ("orgfarm-x-dev-ed.develop.my.salesforce.com", False),
+        ):
+            with self.subTest(host=host):
+                runner = Mock(side_effect=self._display_and_query(host, ORG_ID, is_sandbox))
+                with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
+                    ok, reason = verifier.verify_is_sandbox("dev-box", runner=runner)
+                self.assertTrue(ok, reason)
+
+    def test_dynamic_lane_rejects_production_signature_and_identity_drift(self) -> None:
+        cases = [
+            # Production host never parses as non-production, with or without pins.
+            self._display_and_query("acme.my.salesforce.com", ORG_ID, False),
+            # Dev Edition host must report IsSandbox=false; true is a spoofed signature.
+            self._display_and_query("orgfarm-x-dev-ed.develop.my.salesforce.com", ORG_ID, True),
+            # Sandbox host reporting IsSandbox=false stays refused in the dynamic lane too.
+            self._display_and_query(SANDBOX_HOST, ORG_ID, False),
+        ]
+        # Organization row naming a different org than the authorized alias is drift.
+        drift = self._display_and_query(SANDBOX_HOST, ORG_ID, True)
+        drift[1] = SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "status": 0,
+                    "result": {"records": [{"Id": "00D000000000009AAA", "IsSandbox": True}]},
+                }
+            ),
+            stderr="",
+        )
+        cases.append(drift)
+        for side_effect in cases:
+            with self.subTest(case=side_effect[0].stdout[:80]):
+                runner = Mock(side_effect=side_effect)
+                with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
+                    ok, _ = verifier.verify_is_sandbox("dev-box", runner=runner)
+                self.assertFalse(ok)
 
     def test_scratch_org_with_exact_identity_and_is_sandbox_passes(self) -> None:
         runner = Mock(
@@ -166,7 +233,7 @@ class SalesforceProofTests(unittest.TestCase):
                 runner=runner,
             )
         self.assertTrue(ok)
-        self.assertEqual(reason, "Organization.IsSandbox=true")
+        self.assertEqual(reason, f"non-production identity proven for host '{SCRATCH_HOST}'")
 
     def test_scratch_org_still_requires_is_sandbox_true(self) -> None:
         runner = Mock(
