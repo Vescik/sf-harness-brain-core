@@ -165,9 +165,11 @@ The workspace pre-approves its own guarded scripts so agents run them without a 
 click, via `chat.tools.terminal.autoApprove` in `.vscode/settings.json`:
 
 - Auto-approved: `preflight.py`, `work_record.py` (except `approve`), `knowledge_registry.py`
-  (except `promote`/`review`), `force_app_knowledge.py`, `playwright_guard.py`, and
-  `salesforce_read.py` (guarded read-only records/metadata; see §6). The regexes are anchored and
-  reject shell metacharacters, so chained or redirected commands never auto-run.
+  (except `promote`/`review`), `knowledge_store.py` (except `entry-approve`/`feature-approve`/
+  `entry-revoke`/`feature-revoke` — those stay on the chat-confirmation lane), `knowledge_search.py`
+  (read-only), `force_app_knowledge.py`, `playwright_guard.py`, and `salesforce_read.py` (guarded
+  read-only records/metadata; see §6). The regexes are anchored and reject shell metacharacters, so
+  chained or redirected commands never auto-run.
 - Never auto-approved: `work_record.py approve` (human-only, SAFE-HUMAN-001) and raw
   `sf`/`sfdx`/`rm`/`del` (explicitly denied — a deny always wins). Auto-approval only skips the
   click; the role guard and safety hook still enforce the real boundaries.
