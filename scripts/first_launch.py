@@ -8,9 +8,13 @@ deliberately not on the role-guard allowlist. It:
   2. installs the pinned dependencies (npm ci, hash-pinned pip lock into .venv);
   3. creates config/harness.local.json from the tracked example if absent;
   4. collects ADO configuration interactively;
-  5. walks you through authorizing each SANDBOX (``sf org login web``), auto-fills the
-     expected host + organization id from ``sf org display``, and refuses to record any
-     org that is not a genuine sandbox (mirrors SAFE-ENV-001);
+  5. walks you through authorizing each NON-PRODUCTION org (``sf org login web``) —
+     sandbox, scratch org, or Developer Edition — auto-fills the expected host +
+     organization id from ``sf org display``, and refuses anything else. The live
+     ``Organization.IsSandbox`` value must match what the hostname implies (true for a
+     sandbox or scratch org, false for a Developer Edition), which is the proof; a
+     Developer Edition also switches ``review.allowAnyNonProduction`` on, without which
+     preflight would reject the entry this script just wrote (mirrors SAFE-ENV-001);
   6. runs preflight / validate to confirm the setup.
 
 Windows note: only REVIEW (read-only) Salesforce mode is supported there; development/write
@@ -44,6 +48,11 @@ EXAMPLE_PATH = REPO_ROOT / "config" / "harness.example.json"
 SANDBOX_HOST_PATTERN = re.compile(
     r"^[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\.my\.salesforce\.com$"
 )
+SCRATCH_HOST_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com$")
+# Onboarding accepted sandboxes only while the runtime had already admitted scratch orgs and
+# Developer Editions (owner decision 2026-07-31), so the one org shape a tester is most likely
+# to have could not be onboarded at all and had to be hand-written into the config.
+DEV_EDITION_HOST_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*\.develop\.my\.salesforce\.com$")
 MIN_PYTHON = (3, 11)
 IS_WINDOWS = os.name == "nt"
 
@@ -203,9 +212,27 @@ def collect_ado(pending: dict[str, object]) -> None:
         pending["ado.releaseQueryId"] = ado_query
 
 
+def classify_non_production_host(host: str) -> tuple[bool, bool] | None:
+    """Return (recognized, expected_is_sandbox) for a non-production host, else None.
+
+    `Organization.IsSandbox` is true for a sandbox or scratch org and false for a Developer
+    Edition, so the live value is checked against what the hostname implies rather than
+    being required to be true. Production hosts match nothing here and are refused.
+    """
+    if SANDBOX_HOST_PATTERN.match(host) or SCRATCH_HOST_PATTERN.match(host):
+        return True, True
+    if DEV_EDITION_HOST_PATTERN.match(host):
+        return True, False
+    return None
+
+
 def authorize_sandboxes(sf_path: str, pending: dict[str, object]) -> None:
-    step("Sandbox authorization (review-only; writes stay disabled)")
-    warn("Only genuine sandboxes are accepted (*--*.sandbox.my.salesforce.com, IsSandbox=true).")
+    step("Non-production org authorization (review-only; writes stay disabled)")
+    warn(
+        "Accepted: sandbox (*--*.sandbox.my.salesforce.com), scratch org, or Developer "
+        "Edition (*.develop.my.salesforce.com). Production is refused. Organization.IsSandbox "
+        "must match the host: true for sandbox/scratch, false for Developer Edition."
+    )
     for env_name in ("development", "qa", "uat"):
         answer = prompt(f"Authorize the '{env_name}' sandbox now? [y/N]").lower()
         if answer not in {"y", "yes"}:
@@ -236,12 +263,15 @@ def authorize_sandboxes(sf_path: str, pending: dict[str, object]) -> None:
         org_id = result.get("id") or result.get("orgId") or ""
         host = urlsplit(instance_url).hostname or ""
 
-        if not SANDBOX_HOST_PATTERN.match(host):
+        classified = classify_non_production_host(host)
+        if classified is None:
             warn(
-                f"REFUSED: '{host}' is not a sandbox host "
-                "(needs *--*.sandbox.my.salesforce.com). Not recorded."
+                f"REFUSED: '{host}' is not a recognized non-production host (needs "
+                "*--*.sandbox.my.salesforce.com, *.scratch.my.salesforce.com, or "
+                "*.develop.my.salesforce.com). Not recorded."
             )
             continue
+        _, expected_is_sandbox = classified
 
         query = sf_json(
             sf_path,
@@ -255,11 +285,23 @@ def authorize_sandboxes(sf_path: str, pending: dict[str, object]) -> None:
             ],
         )
         records = ((query or {}).get("result") or {}).get("records") or []
-        if not records or records[0].get("IsSandbox") is not True:
-            warn(f"REFUSED: live Organization.IsSandbox is not true for '{alias}'. Not recorded.")
+        if not records or records[0].get("IsSandbox") is not expected_is_sandbox:
+            warn(
+                f"REFUSED: live Organization.IsSandbox is not {str(expected_is_sandbox).lower()} "
+                f"for '{alias}', which its host signature requires. Not recorded."
+            )
             continue
 
         pending[f"org.{env_name}"] = {"alias": alias, "host": host, "orgId": org_id}
+        if not expected_is_sandbox:
+            # A Developer Edition entry is only usable once the toggle is on: preflight keeps
+            # the strict sandbox/scratch shape while it is off, so onboarding would otherwise
+            # write a config its own verification step rejects.
+            pending["review.allowAnyNonProduction"] = True
+            warn(
+                f"'{alias}' is a Developer Edition; enabling "
+                "salesforce.review.allowAnyNonProduction so the identity proof accepts it."
+            )
         ok(f"recorded '{env_name}': {alias} -> {host} ({org_id})")
 
 
@@ -299,6 +341,8 @@ def apply_config(pending: dict[str, object]) -> None:
 
     if pending.get("review.objects"):
         cfg["salesforce"]["review"]["allowedObjectApiNames"] = pending["review.objects"]
+    if pending.get("review.allowAnyNonProduction"):
+        cfg["salesforce"]["review"]["allowAnyNonProduction"] = True
 
     with CONFIG_PATH.open("w", encoding="utf-8") as fh:
         json.dump(cfg, fh, indent=2)
