@@ -84,8 +84,11 @@ use guarded Playwright browser testing (macOS/Linux); the example omits them and
 The file holds identifiers, allowlists, and paths, not secrets. ADO uses OAuth through VS Code; Salesforce uses
 existing CLI authorization; Playwright uses a human-created persistent profile outside Git.
 Alias names and environment labels are not treated as proof: Salesforce MCP startup first checks
-the locally authorized sandbox instance hostname, then queries `Organization.IsSandbox`, and stops
-unless Salesforce returns `true`. Direct agent use of `sf`, `sfdx`, or an unguarded Salesforce MCP
+the locally authorized instance hostname against the canonical sandbox, scratch-org, and
+Developer Edition signatures, then queries `Organization.IsSandbox` and stops unless the value
+matches what that hostname implies — `true` for a sandbox or scratch org, `false` for a
+Developer Edition. What the gates require is the receipt's `nonProduction` verdict, not
+`isSandbox` on its own. Direct agent use of `sf`, `sfdx`, or an unguarded Salesforce MCP
 launcher is denied.
 
 Set `ADO_ORGANIZATION` to the exact non-secret organization slug in local configuration before
@@ -108,7 +111,14 @@ approved workstation-management mechanism. Do not substitute an independent orga
 script from the repository root, which checks prerequisites, installs the pinned dependencies,
 creates `config/harness.local.json`, collects your ADO settings, walks you through authorizing
 each sandbox (auto-filling its host and org id, refusing anything that is not a real sandbox),
-and runs the verification gates:
+and runs the verification gates.
+
+> **Developer Edition orgs are not yet supported by this script.** It accepts only
+> `*--*.sandbox.my.salesforce.com` with `IsSandbox=true`, while the runtime does admit a
+> Developer Edition under `allowAnyNonProduction` (see §3). Until the script catches up, add
+> such an alias to `config/harness.local.json` by hand — host, organization ID, and the
+> `allowAgentRead`/`allowAgentReview` grants — and verify it with
+> `python scripts/verify_salesforce_org.py --org <alias>`.
 
 ```bash
 python scripts/first_launch.py

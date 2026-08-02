@@ -205,9 +205,13 @@ sf org display --target-org my_review_sbx --json
 
 From the JSON `result`, copy the host part of `instanceUrl` (looks like
 `mydomain--sbxname.sandbox.my.salesforce.com`) into `expectedInstanceHost` and `id` into
-`expectedOrganizationId` in `config\harness.local.json`. Only genuine sandboxes are accepted:
-the host must match `*--*.sandbox.my.salesforce.com` and the org must report `IsSandbox=true` —
-production and Developer Edition orgs are refused by design.
+`expectedOrganizationId` in `config\harness.local.json`. Only non-production orgs are accepted:
+the host must carry a sandbox (`*--*.sandbox.my.salesforce.com`), scratch-org, or Developer
+Edition (`*.develop.my.salesforce.com`) signature, and live `Organization.IsSandbox` must agree
+with it — `true` for a sandbox or scratch org, `false` for a Developer Edition. Production is
+refused by design. A Developer Edition additionally needs
+`salesforce.review.allowAnyNonProduction: true` and, for now, a hand-written config entry
+(`first_launch.py` does not offer that path yet).
 
 ## Part 8 — Final verification
 

@@ -112,8 +112,12 @@ file directly only if you skip the script. For a fully manual, zero-assumptions 
 ## Step 6 — Authorize a sandbox (review-only)
 
 Windows supports **review (read-only)** only. Authorize a genuine **sandbox** (full-copy or
-partial) — the harness accepts `*--*.sandbox.my.salesforce.com` (or a scratch org). A Developer
-Edition org (`*.develop.my.salesforce.com`, `IsSandbox=false`) is **rejected** on purpose.
+partial) — the harness accepts `*--*.sandbox.my.salesforce.com`, a scratch org, and, since the
+2026-07-31 owner decision, a Developer Edition (`*.develop.my.salesforce.com`) when
+`salesforce.review.allowAnyNonProduction` is `true`. A Developer Edition reports
+`IsSandbox=false` by design and is still proven live — the host signature and that value must
+agree. Production stays refused everywhere. Note that `first_launch.py` does not yet offer the
+Developer Edition path; such an alias has to be added to the config by hand.
 
 ```powershell
 # alias MUST match the alias in harness.local.json
@@ -170,7 +174,7 @@ Get-Content .cache\denials.log -Tail 20
 | `Organization name is required. Provide it as a parameter…` | ADO MCP URL is org-less because the env var is unset | Step 4 |
 | `preflight --capability ado` fails: "ADO_ORGANIZATION must exactly match…" | env var missing or mismatched | Step 4 (exact match, no trailing spaces) |
 | `Salesforce MCP startup blocked: development mode is disabled on Windows` / `exit code 2` | Stale MCP config — the `salesforce-development` server was removed 2026-07-14 | Pull the latest `main` and reload VS Code; only `salesforce-readonly` and `ado-readonly` should be listed |
-| `MCP startup blocked: … Organization.IsSandbox … proof failed` | target org isn't a real sandbox, or config still has `<PLACEHOLDER>` values | Step 5/6: authorize a real sandbox, fill host/orgId |
+| `MCP startup blocked: … Organization.IsSandbox … proof failed` | the org is production, the host signature and live `IsSandbox` disagree, or config still has `<PLACEHOLDER>` values. A Developer Edition reporting `false` is **not** the fault — that is expected | Step 5/6: authorize a non-production org, fill host/orgId; for a Developer Edition also set `allowAnyNonProduction` |
 | `webidl.util.markAsUncloneable is not a function` | Node < 22 | Install Node 22+ (Step 1) |
 | ADO call still runs without being scoped / lists all orgs | Known hook-matching gap (see below) | Track the hardening fix; interim, do not rely on the hook to block bare-named MCP tools |
 

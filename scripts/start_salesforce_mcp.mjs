@@ -117,7 +117,15 @@ const verification = spawnSync(python, verificationArgs, {
   shell: false,
 });
 if (verification.status !== 0) {
-  fail("live Organization.IsSandbox and configured identity proof failed; MCP server was not started");
+  // Naming only the sandbox flag sent readers chasing it, when the usual cause is a
+  // production target, a host/identity mismatch, or a Developer Edition without
+  // allowAnyNonProduction. `Organization.IsSandbox` is one input to the proof, not the verdict.
+  fail(
+    "live non-production identity proof failed (host signature, organization ID, or " +
+    "Organization.IsSandbox consistency); MCP server was not started. A Developer Edition " +
+    "reports IsSandbox=false by design and needs salesforce.review.allowAnyNonProduction. " +
+    `Run: python scripts/verify_salesforce_org.py --org ${org}`,
+  );
 }
 
 let executable = process.execPath;
