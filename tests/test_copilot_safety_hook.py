@@ -52,6 +52,16 @@ class HumanApprovalBoundaryTests(unittest.TestCase):
             "shell/execute",
             "executeCommand",
             "runTask",
+            # Copilot CLI names its shell tool after the binary and sends it capitalised.
+            # None of the substring tokens above matches it, so every command-scoped gate
+            # was unreachable in the CLI while the hook itself looked healthy (FIND-04).
+            "Bash",
+            "bash",
+            "sh",
+            "zsh",
+            "pwsh",
+            "PowerShell",
+            "cmd",
         ):
             with self.subTest(tool_name=tool_name):
                 actual, reason = self.run_hook(
@@ -60,6 +70,33 @@ class HumanApprovalBoundaryTests(unittest.TestCase):
                 )
                 self.assertEqual(actual, "deny")
                 self.assertIn("SAFE-HUMAN-001", reason)
+
+    def test_shell_binary_names_are_matched_exactly_not_by_substring(self) -> None:
+        """The short shell names must never become substring tokens.
+
+        "sh" as a substring matches publish, push and refresh, and would push non-command
+        tool inputs through the command rules. The long host tokens (terminal, execute, …)
+        stay substring-matched; these do not.
+        """
+        for tool_name in (
+            "publish",
+            "push_changes",
+            "refresh_token",
+            "run_soql_query",
+            "run_tests",
+            "apply_patch",
+            "view",
+            "ado-readonly-wit_get_work_item",
+        ):
+            with self.subTest(tool_name=tool_name):
+                self.assertFalse(safety.is_terminal_tool(tool_name))
+
+    def test_non_terminal_tool_carrying_command_text_is_not_gated_as_a_command(self) -> None:
+        """A read tool whose input happens to contain the words is not a shell invocation."""
+        actual, _ = self.run_hook(
+            "view", "python3 scripts/work_record.py approve --record-id WR-1"
+        )
+        self.assertEqual(actual, "continue")
 
     def test_non_approval_work_record_commands_are_not_caught_by_this_gate(self) -> None:
         self.assertFalse(

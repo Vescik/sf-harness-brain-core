@@ -279,6 +279,11 @@ BUILTIN_TOOL_NAMES = frozenset({
     "get_task_output", "fetch_webpage", "open_simple_browser", "run_vscode_command",
     "get_search_view_results", "test_failure", "get_project_setup_info",
 })
+# Shell tools named after the binary they run. Matched EXACTLY (see is_terminal_tool):
+# Copilot CLI sends `Bash`, and short names like "sh" cannot be substring-matched safely.
+SHELL_BINARY_TOOL_NAMES = frozenset({
+    "bash", "sh", "zsh", "fish", "dash", "ksh", "pwsh", "powershell", "cmd",
+})
 SALESFORCE_OBJECT_API_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,79}$")
 WORK_RECORD_SCRIPT = re.compile(
     r"(?:^|[\s\"';&|()])(?:[A-Za-z]:)?/?(?:[^\s\"';&|()]+/)*"
@@ -534,13 +539,25 @@ def terminal_command(tool_input: Any) -> str:
 
 
 def is_terminal_tool(tool_name: str) -> bool:
-    """Return whether a Copilot tool name represents terminal/shell execution."""
+    """Return whether a Copilot tool name represents terminal/shell execution.
 
+    Two kinds of matching, deliberately — do not merge them into one list:
+
+    * SUBSTRING for the long, unambiguous host tokens. "terminal" covers run_in_terminal /
+      execute/runInTerminal / get_terminal_output; runtask/runcommands are VS Code runners
+      that can spawn a shell. A bare "run" substring once matched the MCP tools
+      run_soql_query / run_tests, which is why only these specific tokens are listed.
+    * EXACT for shell binary names. Copilot CLI names its shell tool `Bash` (the hook payload
+      carries the capitalised form), which matched none of the substring tokens — so in the
+      CLI every command-scoped human-approval gate below was unreachable while the hook
+      itself looked healthy, because the name-independent text checks still fired.
+      These must NOT be substrings: "sh" would match publish, push, refresh and any MCP tool
+      containing those letters, and would send non-command tool inputs through the command
+      rules.
+    """
     lowered = tool_name.lower()
-    # Match real shell/task/command execution tokens. "terminal" covers run_in_terminal /
-    # execute/runInTerminal / get_terminal_output; runtask/runcommands are VS Code runners that can
-    # spawn shell. A bare "run" substring wrongly matched MCP tools like run_soql_query / run_tests,
-    # so it is excluded in favor of these specific tokens.
+    if lowered in SHELL_BINARY_TOOL_NAMES:
+        return True
     return any(
         token in lowered
         for token in ("terminal", "execute", "shell", "runtask", "run_task", "runcommands", "run_commands")
