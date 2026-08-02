@@ -21,11 +21,11 @@ from jsonschema import Draft202012Validator
 try:
     from copilot_safety_hook import is_salesforce_sandbox_origin
     from schema_format import FORMAT_CHECKER
-    from verify_salesforce_org import verify_is_sandbox
+    from verify_salesforce_org import is_allowed_non_production_host, verify_is_sandbox
 except ModuleNotFoundError:  # imported as scripts.preflight by unit tests
     from scripts.copilot_safety_hook import is_salesforce_sandbox_origin
     from scripts.schema_format import FORMAT_CHECKER
-    from scripts.verify_salesforce_org import verify_is_sandbox
+    from scripts.verify_salesforce_org import is_allowed_non_production_host, verify_is_sandbox
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,6 +96,24 @@ def validate_origins(values: list[str], label: str) -> list[str]:
 def validate_config(config: dict) -> list[str]:
     failures: list[str] = []
     aliases: set[str] = set()
+    # Owner decision 2026-07-31: `allowAnyNonProduction` admits any org that proves it is
+    # not production. It was honoured by the safety hook, the read facade and
+    # verify_salesforce_org, but never here — so preflight, the gate every skill runs
+    # first, still rejected a Developer Edition host and blocked the whole workspace on an
+    # org the other three validators accept. Production stays refused either way: by alias
+    # pattern, by `environment`, and by the host shapes below (a bare `*.my.salesforce.com`
+    # production host matches none of them).
+    allow_any_non_production = (
+        config.get("salesforce", {}).get("review", {}).get("allowAnyNonProduction") is True
+    )
+    host_allowed = (
+        is_allowed_non_production_host if allow_any_non_production
+        else (lambda host: is_salesforce_sandbox_origin(f"https://{host}"))
+    )
+    host_requirement = (
+        "a sandbox, scratch org, or Developer Edition" if allow_any_non_production
+        else "an explicit sandbox or scratch org"
+    )
     review_hosts: set[str] = set()
     review_org_ids: set[str] = set()
     for org in config.get("salesforce", {}).get("orgs", []):
@@ -114,9 +132,9 @@ def validate_config(config: dict) -> list[str]:
             failures.append(f"Salesforce review requires read permission: {alias}")
         expected_host = str(org.get("expectedInstanceHost", "")).lower()
         expected_org_id = str(org.get("expectedOrganizationId", ""))
-        if not is_salesforce_sandbox_origin(f"https://{expected_host}"):
+        if not host_allowed(expected_host):
             failures.append(
-                f"Configured Salesforce identity host is not an explicit sandbox or scratch org: {alias}"
+                f"Configured Salesforce identity host is not {host_requirement}: {alias}"
             )
         if org.get("allowAgentReview") is True:
             if expected_host in review_hosts:

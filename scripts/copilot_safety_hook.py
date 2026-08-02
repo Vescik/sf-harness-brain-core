@@ -52,6 +52,10 @@ SCRATCH_HOST = re.compile(
     r"^[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com$",
     re.IGNORECASE,
 )
+DEV_EDITION_HOST = re.compile(
+    r"^[a-z0-9][a-z0-9-]*\.develop\.my\.salesforce\.com$",
+    re.IGNORECASE,
+)
 
 SALESFORCE_HOST_SUFFIXES = (
     ".salesforce.com",
@@ -391,7 +395,18 @@ def load_config(root: Path) -> dict[str, Any] | None:
         return None
 
 
-def is_salesforce_sandbox_origin(origin: str) -> bool:
+def is_non_production_salesforce_origin(origin: str) -> bool:
+    """Sandbox, scratch org, or Developer Edition — every shape that is provably not production.
+
+    Deliberately wider than is_salesforce_sandbox_origin(), which stays strict for the
+    browser allowlist. This one guards mentions of an org URL in a tool call, where a
+    Developer Edition is a legitimate target under the 2026-07-31 allowAnyNonProduction
+    decision; denying it there blocked org reads the read facade itself permits.
+    """
+    return _origin_matches(origin, (SANDBOX_HOST, SCRATCH_HOST, DEV_EDITION_HOST))
+
+
+def _origin_matches(origin: str, host_patterns: tuple) -> bool:
     try:
         parsed = urlparse(origin)
         port = parsed.port
@@ -403,14 +418,15 @@ def is_salesforce_sandbox_origin(origin: str) -> bool:
         and parsed.password is None
         and port is None
         and bool(parsed.hostname)
-        and bool(
-            SANDBOX_HOST.fullmatch(parsed.hostname or "")
-            or SCRATCH_HOST.fullmatch(parsed.hostname or "")
-        )
+        and any(pattern.fullmatch(parsed.hostname or "") for pattern in host_patterns)
         and parsed.path in ("", "/")
         and not parsed.query
         and not parsed.fragment
     )
+
+
+def is_salesforce_sandbox_origin(origin: str) -> bool:
+    return _origin_matches(origin, (SANDBOX_HOST, SCRATCH_HOST))
 
 
 def allowed_origins(config: dict[str, Any]) -> set[str]:
@@ -864,7 +880,7 @@ def main() -> int:
     for raw_url in extract_urls(text):
         parsed_url = urlparse(raw_url.rstrip(".,);]"))
         hostname = (parsed_url.hostname or "").lower()
-        if hostname.endswith(SALESFORCE_HOST_SUFFIXES) and not is_salesforce_sandbox_origin(
+        if hostname.endswith(SALESFORCE_HOST_SUFFIXES) and not is_non_production_salesforce_origin(
             f"{parsed_url.scheme}://{parsed_url.netloc}"
         ):
             print(json.dumps(hook_response("deny", "Non-sandbox Salesforce URL blocked by SAFE-ENV-001.")))

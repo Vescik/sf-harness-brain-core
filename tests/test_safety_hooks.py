@@ -1575,6 +1575,30 @@ class SafetyClassificationTests(unittest.TestCase):
             )
         )
 
+    def test_non_production_origin_admits_developer_edition_but_never_production(self) -> None:
+        """URL mentions are checked against the wider non-production set.
+
+        A Developer Edition is a legitimate org under allowAnyNonProduction; denying its
+        URL blocked reads the facade itself permits. The browser allowlist stays strict
+        (see the test below) — that is a different surface.
+        """
+        for origin in (
+            "https://acme--dev.sandbox.my.salesforce.com",
+            "https://mpsadev.scratch.my.salesforce.com",
+            "https://orgfarm-x-dev-ed.develop.my.salesforce.com",
+        ):
+            with self.subTest(origin=origin):
+                self.assertTrue(safety.is_non_production_salesforce_origin(origin))
+
+        for origin in (
+            "https://acme.my.salesforce.com",
+            "https://login.salesforce.com",
+            "https://orgfarm-x-dev-ed.develop.my.salesforce.com:443",
+            "https://orgfarm-x-dev-ed.develop.my.salesforce.com/unexpected-path",
+        ):
+            with self.subTest(origin=origin):
+                self.assertFalse(safety.is_non_production_salesforce_origin(origin))
+
     def test_allowed_origins_include_configured_scratch_but_not_developer_edition(self) -> None:
         config = {
             "browser": {

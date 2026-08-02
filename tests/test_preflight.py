@@ -132,6 +132,34 @@ class PreflightValidationTests(unittest.TestCase):
         )
         self.assertEqual(list(Draft202012Validator(schema).iter_errors(config)), [])
 
+    def test_developer_edition_host_is_accepted_when_any_non_production_is_allowed(self) -> None:
+        """allowAnyNonProduction must reach preflight, not just the hook and the facade.
+
+        Preflight is the gate every skill runs first, so while it rejected a Developer
+        Edition the whole workspace was unusable on an org the read facade and
+        verify_salesforce_org both accept.
+        """
+        config = safe_config()
+        config["salesforce"]["orgs"][0]["expectedInstanceHost"] = (
+            "orgfarm-x-dev-ed.develop.my.salesforce.com"
+        )
+        self.assertTrue(any("Developer Edition" not in item and "sandbox" in item
+                            for item in preflight.validate_config(config)))
+
+        config["salesforce"]["review"]["allowAnyNonProduction"] = True
+        self.assertEqual(
+            [item for item in preflight.validate_config(config) if "identity host" in item],
+            [],
+        )
+
+    def test_production_host_stays_rejected_even_when_any_non_production_is_allowed(self) -> None:
+        config = safe_config()
+        config["salesforce"]["review"]["allowAnyNonProduction"] = True
+        config["salesforce"]["orgs"][0]["expectedInstanceHost"] = "acme.my.salesforce.com"
+        self.assertTrue(
+            any("identity host" in item for item in preflight.validate_config(config))
+        )
+
     def test_developer_edition_host_is_rejected_by_logic_and_schema(self) -> None:
         config = safe_config()
         develop_host = "acme.develop.my.salesforce.com"
