@@ -28,10 +28,11 @@
     "profiles": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["orgIdentity", "installedPackages", "objectEntity", "objectFields"],
+      "required": ["orgIdentity", "installedPackages", "installedPackagesAll", "objectEntity", "objectFields"],
       "properties": {
         "orgIdentity": { "$ref": "#/$defs/fixedProfile" },
         "installedPackages": { "$ref": "#/$defs/packageProfile" },
+        "installedPackagesAll": { "$ref": "#/$defs/fixedProfile" },
         "objectEntity": { "$ref": "#/$defs/objectProfile" },
         "objectFields": { "$ref": "#/$defs/objectProfile" }
       }

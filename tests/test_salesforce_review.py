@@ -875,15 +875,30 @@ class SalesforceReviewConfigContractTests(unittest.TestCase):
             with self.subTest(key=key):
                 self.assertNotEqual(list(self.validator.iter_errors(populated)), [])
 
-    def test_enabled_review_requires_both_nonempty_allowlists(self) -> None:
+    def test_enabled_review_requires_a_nonempty_object_allowlist(self) -> None:
         enabled = self.review_config(enabled=True)
         self.assertEqual(list(self.validator.iter_errors(enabled)), [])
 
-        for key in ("allowedPackageNamespaces", "allowedObjectApiNames"):
-            empty = copy.deepcopy(enabled)
-            empty[key] = []
-            with self.subTest(key=key):
-                self.assertNotEqual(list(self.validator.iter_errors(empty)), [])
+        empty_objects = copy.deepcopy(enabled)
+        empty_objects["allowedObjectApiNames"] = []
+        self.assertNotEqual(list(self.validator.iter_errors(empty_objects)), [])
+
+    def test_enabled_review_accepts_empty_or_wildcard_package_allowlist(self) -> None:
+        """Empty means the org has NO managed packages; ["*"] means all of them.
+
+        Requiring at least one namespace made review mode unusable on any org without a
+        managed package (a Developer Edition, a clean sandbox): preflight validates the
+        whole config, so the rejection blocked every skill, including ADO-only work.
+        """
+        for namespaces in ([], ["*"], ["examplepkg"]):
+            candidate = copy.deepcopy(self.review_config(enabled=True))
+            candidate["allowedPackageNamespaces"] = namespaces
+            with self.subTest(namespaces=namespaces):
+                self.assertEqual(list(self.validator.iter_errors(candidate)), [])
+
+        rejected = copy.deepcopy(self.review_config(enabled=True))
+        rejected["allowedPackageNamespaces"] = ["not a namespace"]
+        self.assertNotEqual(list(self.validator.iter_errors(rejected)), [])
 
     def test_server_refuses_to_start_when_review_is_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as name:

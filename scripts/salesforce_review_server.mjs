@@ -210,10 +210,15 @@ function loadRuntime(alias) {
   if (allowedObjectApiNames.some((name) => name !== "*" && !OBJECT_API_NAME.test(name))) {
     throw new ReviewError("CONFIG_INVALID");
   }
+  // An empty list means NO managed packages are in scope — the correct statement for an
+  // org that has none, and previously unrepresentable: the config was rejected outright,
+  // which blocked preflight and therefore every skill. ["*"] means all installed packages.
   if (
     !Array.isArray(review.allowedPackageNamespaces) ||
-    review.allowedPackageNamespaces.length === 0 ||
-    review.allowedPackageNamespaces.some((namespace) => !/^[A-Za-z][A-Za-z0-9]{0,14}$/.test(namespace))
+    review.allowedPackageNamespaces.some(
+      (namespace) => namespace !== "*" && !/^[A-Za-z][A-Za-z0-9]{0,14}$/.test(namespace),
+    ) ||
+    (review.allowedPackageNamespaces.includes("*") && review.allowedPackageNamespaces.length > 1)
   ) {
     throw new ReviewError("CONFIG_INVALID");
   }
@@ -738,9 +743,13 @@ function normalizedPackage(namespace, name, version) {
   };
 }
 
+function packageInScope(runtime, namespace) {
+  return runtime.allowedPackageNamespaces.has("*") || runtime.allowedPackageNamespaces.has(namespace);
+}
+
 function normalizeCliPackages(runtime, result) {
   if (!Array.isArray(result)) throw new ReviewError("CLI_SCHEMA_MISMATCH", "INCOMPLETE");
-  const scoped = result.filter((item) => runtime.allowedPackageNamespaces.has(item?.SubscriberPackageNamespace));
+  const scoped = result.filter((item) => packageInScope(runtime, item?.SubscriberPackageNamespace));
   if (scoped.length >= 500) throw new ReviewError("RESULT_TRUNCATED", "INCOMPLETE");
   return scoped.map((item) => normalizedPackage(
     item?.SubscriberPackageNamespace,
@@ -750,7 +759,7 @@ function normalizeCliPackages(runtime, result) {
 }
 
 function normalizeMcpPackages(runtime, payload) {
-  const scoped = payload.records.filter((item) => runtime.allowedPackageNamespaces.has(item?.SubscriberPackage?.NamespacePrefix));
+  const scoped = payload.records.filter((item) => packageInScope(runtime, item?.SubscriberPackage?.NamespacePrefix));
   if (scoped.length !== payload.records.length) {
     throw new ReviewError("MCP_SCHEMA_MISMATCH", "INCOMPLETE");
   }
@@ -967,6 +976,17 @@ async function reviewPackages(runtime) {
     const retrievedAt = now();
     const packages = await withMcp(runtime, async (client) => {
       validateMcpIdentity(runtime, await client.query(runtime.policy.profiles.orgIdentity));
+      // Empty scope: there is nothing to ask for. An `IN ()` list is not valid SOQL, so the
+      // query is skipped rather than malformed — identity is still proven above.
+      if (runtime.allowedPackageNamespaces.size === 0) return [];
+      // "*": every installed package. A namespace IN-list cannot express that, so this uses
+      // the separate fixed profile that omits the namespace predicate.
+      if (runtime.allowedPackageNamespaces.has("*")) {
+        return normalizeMcpPackages(
+          runtime,
+          await client.query(runtime.policy.profiles.installedPackagesAll),
+        );
+      }
       const namespaces = [...runtime.allowedPackageNamespaces]
         .sort()
         .map((namespace) => `'${namespace}'`)

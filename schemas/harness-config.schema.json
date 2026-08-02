@@ -200,12 +200,13 @@
               "const": true
             },
             "allowedPackageNamespaces": {
+              "description": "Namespaces of managed packages in review scope. An empty list means NO managed packages (correct for an org that has none — a Developer Edition or a clean sandbox); [\"*\"] means every installed package. An explicit list stays the tightest option and is preferred where the set is known.",
               "type": "array",
               "maxItems": 20,
               "uniqueItems": true,
               "items": {
                 "type": "string",
-                "pattern": "^[A-Za-z][A-Za-z0-9]{0,14}$"
+                "pattern": "^(\\*|[A-Za-z][A-Za-z0-9]{0,14})$"
               }
             },
             "allowedObjectApiNames": {
@@ -248,9 +249,6 @@
               },
               "then": {
                 "properties": {
-                  "allowedPackageNamespaces": {
-                    "minItems": 1
-                  },
                   "allowedObjectApiNames": {
                     "minItems": 1
                   }
