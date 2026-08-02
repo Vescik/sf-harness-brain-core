@@ -45,7 +45,7 @@ snapshot that fills the row cap is treated as transactional and returned unresol
    citable ref with `python scripts/knowledge_store.py entry-status --identity <Identity>`; the
    `context` pack is never itself citable, and Apex-layer entries generally cannot be cited as
    positive grounding at all (contract §8.1 grounds only `source-exact`, fully covered sections).
-2. Call `review_org_identity` first. Stop unless it is `VERIFIED` for the exact configured sandbox.
+2. Call `review_org_identity` first. Stop unless it is `VERIFIED` for the exact configured org with `nonProduction: true` (a Developer Edition legitimately reports `isSandbox: false`).
 3. Call `review_object_contract` for the object's accessible field contract. Choose the snapshot
    fields from that contract only: the natural key (`Name`, a `DeveloperName`-like field, or an
    external-id field) plus the configuration-bearing fields (status values, flags, ordering,

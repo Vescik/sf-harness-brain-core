@@ -930,7 +930,7 @@ def assert_fresh_environment_receipt(
     environment = record["environment"]
     if not (
         environment.get("status") == "verified"
-        and environment.get("isSandbox") is True
+        and environment.get("nonProduction") is True
         and environment.get("alias")
         and environment.get("verificationRef")
         and environment.get("verifiedAt")
@@ -945,8 +945,8 @@ def assert_fresh_environment_receipt(
         or receipt.get("reviewType") != "org-identity"
         or receipt.get("status") != "VERIFIED"
         or receipt.get("generatedAt") != environment["verifiedAt"]
-        or receipt.get("facts", {}).get("isSandbox") is not True
-        or receipt.get("target", {}).get("isSandbox") is not True
+        or receipt.get("facts", {}).get("nonProduction") is not True
+        or receipt.get("target", {}).get("nonProduction") is not True
     ):
         raise WorkRecordError("environment verification is not a VERIFIED sandbox identity receipt")
     entry, config = configured_org(root, str(environment["alias"]))
@@ -1364,8 +1364,8 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
             or receipt.get("reviewType") != "org-identity"
             or receipt.get("status") != "VERIFIED"
             or receipt.get("generatedAt") != environment["verifiedAt"]
-            or receipt.get("facts", {}).get("isSandbox") is not True
-            or receipt.get("target", {}).get("isSandbox") is not True
+            or receipt.get("facts", {}).get("nonProduction") is not True
+            or receipt.get("target", {}).get("nonProduction") is not True
         ):
             raise WorkRecordError("environment verification is not a VERIFIED org-identity receipt")
 
@@ -1396,7 +1396,7 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
             raise WorkRecordError("SAFE/complete state cannot rely on partial evidence")
         if not (
             environment.get("status") == "verified"
-            and environment.get("isSandbox") is True
+            and environment.get("nonProduction") is True
             and environment.get("verificationRef")
             and environment.get("verifiedAt")
         ):
@@ -1639,6 +1639,7 @@ def command_init(args: argparse.Namespace) -> dict[str, Any]:
             "status": "unverified",
             "alias": args.environment_alias,
             "isSandbox": None,
+            "nonProduction": None,
             "verificationRef": None,
             "verifiedAt": None,
         },
@@ -2243,6 +2244,15 @@ def command_capture_org_review(args: argparse.Namespace) -> dict[str, Any]:
     elif args.object_api_name:
         raise WorkRecordError("--object-api-name is valid only for object review")
     envelope = call_salesforce_review_facade(root, alias, tool, arguments)
+    # State the dynamic-lane exclusion instead of leaving it to emerge from the environment
+    # comparison below. A dynamic receipt reports environment "dynamic", which never equals a
+    # configured development/qa/uat entry — true today, but silent, and silence is how the
+    # sandbox/non-production conflation survived three layers.
+    if envelope.get("target", {}).get("environment") == "dynamic":
+        raise WorkRecordError(
+            "a work record requires a receipt for a configured org; the dynamic "
+            "allowAnyNonProduction lane cannot supply one"
+        )
     if envelope.get("target", {}).get("environment") != org_entry.get("environment"):
         raise WorkRecordError("Salesforce review receipt targets the wrong configured environment")
     evidence_id = f"EV-SF-{envelope['reviewType'].upper().replace('-', '_')}-{envelope['runId']}"
@@ -2269,13 +2279,14 @@ def command_capture_org_review(args: argparse.Namespace) -> dict[str, Any]:
     if envelope["reviewType"] == "org-identity":
         if (
             envelope["status"] == "VERIFIED"
-            and envelope.get("facts", {}).get("isSandbox") is True
-            and envelope.get("target", {}).get("isSandbox") is True
+            and envelope.get("facts", {}).get("nonProduction") is True
+            and envelope.get("target", {}).get("nonProduction") is True
         ):
             record["environment"] = {
                 "status": "verified",
                 "alias": alias,
                 "isSandbox": envelope["facts"]["isSandbox"],
+                "nonProduction": envelope["facts"]["nonProduction"],
                 "verificationRef": reference["path"],
                 "verifiedAt": envelope["generatedAt"],
             }
@@ -2284,6 +2295,7 @@ def command_capture_org_review(args: argparse.Namespace) -> dict[str, Any]:
                 "status": "unverified",
                 "alias": alias,
                 "isSandbox": None,
+                "nonProduction": None,
                 "verificationRef": None,
                 "verifiedAt": None,
             }
@@ -2598,7 +2610,7 @@ def command_append_review(args: argparse.Namespace) -> dict[str, Any]:
         environment = record["environment"]
         if not (
             environment["status"] == "verified"
-            and environment["isSandbox"] is True
+            and environment["nonProduction"] is True
             and environment["verificationRef"]
         ):
             raise WorkRecordError("SAFE requires verified sandbox evidence")

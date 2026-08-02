@@ -290,6 +290,7 @@ class WorkRecordTests(unittest.TestCase):
                 "expectedHostMatched": True,
                 "expectedOrgIdMatched": True,
                 "isSandbox": True,
+                "nonProduction": True,
             },
             "sources": {
                 "cli": {
@@ -305,7 +306,7 @@ class WorkRecordTests(unittest.TestCase):
                     "retrievedAt": now,
                 },
             },
-            "facts": {"identityPolicyMatched": True, "isSandbox": True},
+            "facts": {"identityPolicyMatched": True, "isSandbox": True, "nonProduction": True},
             "reconciliation": {
                 "status": "MATCH",
                 "comparisons": [
@@ -319,6 +320,62 @@ class WorkRecordTests(unittest.TestCase):
         receipt["sha256"] = work_record.canonical_embedded_digest(receipt)
         work_record.validate_salesforce_review_envelope(self.root, receipt)
         return receipt
+
+    def _receipt_with(self, **overrides) -> dict:
+        """Build the standard identity receipt, then patch target/facts and re-digest."""
+        receipt = self._salesforce_identity_receipt(self.root, "SBX-DEV", "review_org_identity", {})
+        for section, values in overrides.items():
+            receipt[section].update(values)
+        receipt.pop("sha256", None)
+        receipt["sha256"] = work_record.canonical_embedded_digest(receipt)
+        return receipt
+
+    def test_developer_edition_receipt_verifies_the_environment(self) -> None:
+        """`isSandbox: false` is correct for a Developer Edition and must not block.
+
+        Salesforce reports IsSandbox=false for a DE org, so gating on it made an
+        owner-admitted DE unusable: the review returned VERIFIED while every downstream
+        gate refused. The gate is `nonProduction`.
+        """
+        receipt = self._receipt_with(
+            target={"isSandbox": False}, facts={"isSandbox": False}
+        )
+        self.facade_patch.stop()
+        with patch.object(work_record, "call_salesforce_review_facade", return_value=receipt):
+            current = self.initialize()
+            current = self.bind_claim(current)
+            current = self.append_source_evidence(current)
+            current = self.capture_identity(current)
+        self.facade_patch.start()
+        environment = json.loads(
+            (self.root / ".ai" / "change-records" / self.record_id / "record.json").read_text()
+        )["environment"]
+        self.assertEqual(environment["status"], "verified")
+        self.assertFalse(environment["isSandbox"])
+        self.assertTrue(environment["nonProduction"])
+
+    def test_receipt_without_non_production_fact_is_refused(self) -> None:
+        """Fail closed: a receipt predating the fact cannot satisfy the gate (owner decision)."""
+        receipt = self._salesforce_identity_receipt(self.root, "SBX-DEV", "review_org_identity", {})
+        del receipt["target"]["nonProduction"]
+        del receipt["facts"]["nonProduction"]
+        receipt.pop("sha256", None)
+        receipt["sha256"] = work_record.canonical_embedded_digest(receipt)
+        self.facade_patch.stop()
+        with patch.object(work_record, "call_salesforce_review_facade", return_value=receipt):
+            current = self.initialize()
+            current = self.bind_claim(current)
+            current = self.append_source_evidence(current)
+            error = self.run_error(
+                "capture-org-review",
+                "--record-id", self.record_id,
+                "--expected-revision", str(current["recordRevision"]),
+                "--expected-record-hash", current["recordHash"],
+                "--role", "solution-designer",
+                "--review-type", "identity",
+            )
+        self.facade_patch.start()
+        self.assertIn("nonProduction", error)
 
     def _initialize_git_repository(self) -> None:
         commands = [

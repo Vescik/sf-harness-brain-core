@@ -67,7 +67,7 @@ The facade exposes only:
 - `review_soql_query` (composed read-only SOQL; statement-validated, values sanitized and
   single-source)
 
-The facade binds one configured allowlisted sandbox, runs fixed evidence profiles — plus
+The facade binds one configured allowlisted non-production org (sandbox, scratch org, or an owner-admitted Developer Edition), runs fixed evidence profiles — plus
 validated composed statements for `review_soql_query` — through the pinned
 Salesforce MCP and a private CLI allowlist, sanitizes the receipts, and reconciles what is
 dual-sourced. Results are `VERIFIED`, `MISMATCH`, `INCOMPLETE`, or `BLOCKED`.

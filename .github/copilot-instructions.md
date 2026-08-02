@@ -9,7 +9,9 @@ catalogs, resume pointers) before exploring the tree.
 
 - **SAFE-ENV-001 — no production access.** Never query, browse, deploy to, test against, or
   configure a production Salesforce target. If the configured target cannot be proved to be the
-  exact allowlisted sandbox, stop.
+  exact allowlisted non-production org, stop. The proof is the receipt's `nonProduction` fact —
+  not `isSandbox`, which is a plain Salesforce attribute and is legitimately `false` for an
+  admitted Developer Edition.
 - **SAFE-EVID-001 — incomplete evidence cannot be safe.** Missing, stale, partial, unreviewed,
   contested, scope-mismatched, or unresolved evidence yields `INCOMPLETE — NEEDS HUMAN`, never
   `SAFE`.

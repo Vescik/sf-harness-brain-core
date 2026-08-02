@@ -273,3 +273,34 @@ are not durable.
   `isSandbox: false` by design.
 - Approved by: workspace owner (chat, 2026-07-31).
 - Related: entry "2026-07-30 - Composed read-only SOQL is permitted and recommended (policy phase)".
+
+## 2026-08-02 - `nonProduction` is the org-safety verdict; `isSandbox` is only an attribute
+
+- Context: the 2026-07-31 decision admitted Developer Edition orgs, and the review facade proves
+  them correctly — but the *receipt* still carried the verdict in `isSandbox`, which Salesforce
+  reports as `false` for a Dev Edition by design. Every consumer gate demanded `isSandbox is
+  True`, and `change-record.schema.json` pinned `isSandbox: {const: true}` for a verified
+  environment. Measured live: `preflight` PASSED and the review returned `VERIFIED`, yet the
+  receipt read `target.isSandbox: false` and the agent refused, quoting SAFE-ENV-001's "exact
+  allowlisted sandbox". The 2026-07-31 migration was half-finished — it relaxed the evidence
+  schema and never followed through to the record schema, the gates, or the agent-facing text.
+- Finding / decision: split the two meanings. The receipt gains `nonProduction` — the security
+  verdict, set only where the proof already holds (live host matches `NON_PRODUCTION_HOST` **and**
+  `Organization.IsSandbox` matches what that host shape implies). `isSandbox` stays as Salesforce's
+  attribute, explicitly documented as not a gate. Every gate keys on `nonProduction`.
+  **Fail-closed:** a receipt without the fact does not pass — no fallback to `isSandbox`, so the
+  weaker predicate cannot remain the real boundary. Receipts expire in 30 minutes, so the
+  migration costs at most one `capture-org-review`.
+- Impact: `salesforce_review_server.mjs` (proof, `baseTarget`, identity facts; `validateMcpIdentity`
+  now fails closed instead of comparing a record to itself when no identity is frozen),
+  `schemas/salesforce-org-review-evidence.schema.json` (`nonProduction` required in `target` and
+  `identityFacts`; new `unprovenTarget` pins the enumeration receipt's all-false shape so it can
+  no longer be misread as a failed proof), `schemas/change-record.schema.json` (verified
+  environments now require `nonProduction: true`; `isSandbox` relaxed to a plain boolean),
+  `work_record.py` (six gates + an explicit reject of the dynamic lane, previously only emergent),
+  and the agent-facing wording in SAFE-ENV-001, two skills, the facade's tool descriptions and
+  `docs/grounding-architecture.md`. New tests pin a **configured** Dev Edition (the shape the owner
+  actually runs, previously uncovered — both existing Dev Edition tests used the dynamic lane).
+- Approved by: workspace owner (chat, 2026-08-02).
+- Related: entry "2026-07-31 - Any non-production org is permitted for agent reads; production is
+  the only deny".

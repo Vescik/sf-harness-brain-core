@@ -28,7 +28,7 @@ to the governed record reads instead of rejecting them (owner decision 2026-07-3
    meaning needs reviewed human evidence; live deployed configuration may use org observation.
 3. Define the smallest factual proposition. For a negative claim, require completeness, permission,
    pagination, and freshness proof before absence is eligible.
-4. Call `review_org_identity` first. Stop unless it is `VERIFIED` for the exact configured sandbox.
+4. Call `review_org_identity` first. Stop unless it is `VERIFIED` for the exact configured org with `nonProduction: true` (a Developer Edition legitimately reports `isSandbox: false`).
 5. Call only the necessary guarded review tool:
    - `review_installed_packages` for package identity/version;
    - `review_object_contract` for an allowlisted object's accessible existence/field contract.

@@ -92,6 +92,7 @@
             "properties": { "status": { "const": "NOT_RUN" } },
             "required": ["status"]
           },
+          "target": { "$ref": "#/$defs/unprovenTarget" },
           "completeness": { "$ref": "#/$defs/singleSourceVerifiedCompleteness" },
           "warnings": { "maxItems": 0 }
         }
@@ -370,7 +371,8 @@
         "aliasPolicyMatched",
         "expectedHostMatched",
         "expectedOrgIdMatched",
-        "isSandbox"
+        "isSandbox",
+        "nonProduction"
       ],
       "properties": {
         "environment": { "enum": ["development", "qa", "uat", "dynamic"] },
@@ -378,8 +380,29 @@
         "aliasPolicyMatched": { "const": true },
         "expectedHostMatched": { "type": "boolean" },
         "expectedOrgIdMatched": { "type": "boolean" },
-        "isSandbox": { "type": "boolean" }
+        "isSandbox": {
+          "description": "Salesforce's Organization.IsSandbox. Descriptive only — legitimately false for a Developer Edition. Never gate on this; gate on nonProduction.",
+          "type": "boolean"
+        },
+        "nonProduction": {
+          "description": "The security verdict: the live host matched a sandbox/scratch/Developer Edition shape AND Organization.IsSandbox matched what that shape implies. False whenever no identity proof was performed.",
+          "type": "boolean"
+        }
       }
+    },
+    "unprovenTarget": {
+      "description": "A receipt that performs NO identity proof (the configured-orgs enumeration is answered from local config alone). Every proof flag is pinned false so the shape cannot be confused with a proof that failed — the accidental all-false target of an unproven receipt is exactly what made a reader refuse a healthy org.",
+      "allOf": [
+        { "$ref": "#/$defs/target" },
+        {
+          "properties": {
+            "expectedHostMatched": { "const": false },
+            "expectedOrgIdMatched": { "const": false },
+            "isSandbox": { "const": false },
+            "nonProduction": { "const": false }
+          }
+        }
+      ]
     },
     "provenTarget": {
       "allOf": [
@@ -389,7 +412,8 @@
             "aliasPolicyMatched": { "const": true },
             "expectedHostMatched": { "const": true },
             "expectedOrgIdMatched": { "const": true },
-            "isSandbox": { "type": "boolean" }
+            "isSandbox": { "type": "boolean" },
+            "nonProduction": { "const": true }
           }
         }
       ]
@@ -761,10 +785,11 @@
     "identityFacts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["identityPolicyMatched", "isSandbox"],
+      "required": ["identityPolicyMatched", "isSandbox", "nonProduction"],
       "properties": {
         "identityPolicyMatched": { "const": true },
-        "isSandbox": { "type": "boolean" }
+        "isSandbox": { "type": "boolean" },
+        "nonProduction": { "const": true }
       }
     },
     "package": {

@@ -381,6 +381,43 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
             self.assertEqual(identity["target"]["environment"], "dynamic")
             self.assertFalse(identity["target"]["isSandbox"])
 
+    def test_pinned_lane_verifies_developer_edition_as_non_production(self) -> None:
+        """A CONFIGURED Developer Edition entry — the shape a real owner actually runs.
+
+        Both pre-existing Developer Edition tests drop the org entry, i.e. they only cover
+        the dynamic lane. The owner's `devmp` is configured, so it takes the pinned lane,
+        and that path had zero coverage — which is why the live failure was not caught:
+        `isSandbox` is legitimately false here, and everything downstream must key on
+        `nonProduction` instead.
+        """
+        dev_host = "orgfarm-x-dev-ed.develop.my.salesforce.com"
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(
+                Path(name),
+                expected_host=dev_host,
+                cli_host=dev_host,
+                is_sandbox=False,
+                allowed_objects=None,
+            )
+            try:
+                facade.request(
+                    "initialize",
+                    {
+                        "protocolVersion": "2025-06-18",
+                        "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "1"},
+                    },
+                )
+                identity = facade.call("review_org_identity")
+            finally:
+                facade.close()
+            self.assert_valid_evidence(identity)
+            self.assertEqual(identity["status"], "VERIFIED")
+            self.assertEqual(identity["target"]["environment"], "development")
+            self.assertFalse(identity["target"]["isSandbox"])
+            self.assertTrue(identity["target"]["nonProduction"])
+            self.assertTrue(identity["facts"]["nonProduction"])
+
     def test_dynamic_lane_refuses_spoofed_developer_edition_sandbox_flag(self) -> None:
         # A develop.my.salesforce.com host must report IsSandbox=false; true means the org's
         # signature is inconsistent and the identity gate fails closed.
@@ -699,6 +736,20 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
                 self.assertEqual(evidence["status"], "VERIFIED")
                 self.assertEqual(evidence["reviewType"], "configured-orgs")
                 self.assertEqual(evidence["facts"]["orgCount"], 1)
+                # Enumeration performs no identity proof, so its target must be pinned to the
+                # unproven shape. Left unpinned, a VERIFIED receipt whose flags merely default
+                # to false is indistinguishable from a proof that FAILED — a reader acted on
+                # exactly that and refused a healthy org.
+                self.assertEqual(
+                    {k: v for k, v in evidence["target"].items() if isinstance(v, bool)},
+                    {
+                        "aliasPolicyMatched": True,
+                        "expectedHostMatched": False,
+                        "expectedOrgIdMatched": False,
+                        "isSandbox": False,
+                        "nonProduction": False,
+                    },
+                )
                 self.assert_valid_evidence(evidence)
             finally:
                 facade.close()

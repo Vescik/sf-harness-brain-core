@@ -591,6 +591,7 @@
         "status",
         "alias",
         "isSandbox",
+        "nonProduction",
         "verificationRef",
         "verifiedAt"
       ],
@@ -609,6 +610,14 @@
           "maxLength": 128
         },
         "isSandbox": {
+          "description": "Salesforce's Organization.IsSandbox, mirrored from the receipt. Descriptive only — legitimately false for a Developer Edition.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "nonProduction": {
+          "description": "The security verdict mirrored from the receipt. This is what a verified environment requires; isSandbox is not.",
           "type": [
             "boolean",
             "null"
@@ -642,6 +651,9 @@
               "isSandbox": {
                 "type": "null"
               },
+              "nonProduction": {
+                "type": "null"
+              },
               "verificationRef": {
                 "type": "null"
               },
@@ -669,6 +681,9 @@
                 "minLength": 1
               },
               "isSandbox": {
+                "type": "boolean"
+              },
+              "nonProduction": {
                 "const": true
               },
               "verificationRef": {

@@ -4,7 +4,9 @@
  * Narrow Salesforce org-review MCP facade.
  *
  * The model never receives a command string, org alias, working directory, or raw vendor
- * response. This server binds one allowlisted sandbox or scratch-org alias at startup, collects
+ * response. This server binds one allowlisted non-production alias at startup (sandbox, scratch
+ * org, or an owner-admitted Developer Edition; the receipt's nonProduction fact is the
+ * verdict, isSandbox is only Salesforce's attribute), collects
  * bounded facts through a private Salesforce CLI process and a pinned Salesforce MCP child, and
  * returns only normalized reconciliation evidence. Composed read-only SOQL (owner decision
  * 2026-07-30) is accepted through review_soql_query only: the statement is validated (single
@@ -73,14 +75,14 @@ const TOOL_DEFINITIONS = Object.freeze([
   {
     name: "review_org_identity",
     title: "Review configured non-production Salesforce identity",
-    description: "Reconcile the configured sandbox or scratch-org identity through bounded Salesforce CLI and MCP reads.",
+    description: "Reconcile the configured non-production org identity through bounded Salesforce CLI and MCP reads.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   {
     name: "review_installed_packages",
     title: "Review installed Salesforce packages",
-    description: "Reconcile normalized package namespace, name, and version facts for the configured sandbox.",
+    description: "Reconcile normalized package namespace, name, and version facts for the configured non-production org.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
@@ -111,7 +113,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
   {
     name: "review_soql_query",
-    title: "Run one composed read-only SOQL query against the configured sandbox",
+    title: "Run one composed read-only SOQL query against the configured non-production org",
     description: "Execute one model-composed read-only SOQL SELECT (validated, bounded LIMIT, sanitized values) against the configured, identity-proven sandbox. Aggregates and GROUP BY are allowed; secret-adjacent objects are always denied.",
     inputSchema: {
       type: "object",
@@ -316,6 +318,7 @@ function baseTarget(runtime, proof = {}) {
     expectedHostMatched: proof.expectedHostMatched === true,
     expectedOrgIdMatched: proof.expectedOrgIdMatched === true,
     isSandbox: proof.isSandbox === true,
+    nonProduction: proof.nonProduction === true,
   };
 }
 
@@ -523,6 +526,11 @@ async function collectCliIdentity(runtime) {
       expectedHostMatched: true,
       expectedOrgIdMatched: true,
       isSandbox: wantSandbox,
+      // Reaching this point already proves it: the live host passed NON_PRODUCTION_HOST
+      // above (or IDENTITY_HOST_MISMATCH) and IsSandbox matched what that host shape
+      // implies (or NOT_SANDBOX). `isSandbox` stays as a description of the org — it is
+      // legitimately false for a Developer Edition — while this is the security verdict.
+      nonProduction: true,
     },
     source: { kind: "salesforce-cli", version: cliVersion, complete: true, retrievedAt },
   };
@@ -719,8 +727,15 @@ function validateMcpIdentity(runtime, payload) {
   if (!ORG_ID.test(recordId) || recordId !== expectedOrgId) {
     throw new ReviewError("IDENTITY_ORG_ID_MISMATCH");
   }
+  // Fail closed when the CLI leg has not frozen an identity yet: the old
+  // `?? record?.IsSandbox` fallback compared the record to ITSELF and always passed, so
+  // this leg would have asserted its own truth. Unreachable today only because every
+  // caller goes through cliIdentityGate first — which is not an invariant worth betting on.
+  if (runtime.dynamic && runtime.discovered.isSandbox === null) {
+    throw new ReviewError("NOT_SANDBOX");
+  }
   const wantSandbox = runtime.dynamic
-    ? runtime.discovered.isSandbox ?? record?.IsSandbox
+    ? runtime.discovered.isSandbox
     : !DEV_EDITION_HOST.test(String(runtime.entry.expectedInstanceHost ?? ""));
   if (typeof record?.IsSandbox !== "boolean" || record.IsSandbox !== wantSandbox) {
     throw new ReviewError("NOT_SANDBOX");
@@ -729,7 +744,7 @@ function validateMcpIdentity(runtime, payload) {
     runtime.discovered.orgId = recordId;
     runtime.discovered.isSandbox = record.IsSandbox;
   }
-  return { expectedOrgIdMatched: true, isSandbox: record.IsSandbox };
+  return { expectedOrgIdMatched: true, isSandbox: record.IsSandbox, nonProduction: true };
 }
 
 function normalizedPackage(namespace, name, version) {
@@ -917,7 +932,11 @@ async function reviewIdentity(runtime) {
     ok: true,
     value: {
       ...identity,
-      facts: { expectedOrgIdMatched: true, isSandbox: identity.proof.isSandbox === true },
+      facts: {
+        expectedOrgIdMatched: true,
+        isSandbox: identity.proof.isSandbox === true,
+        nonProduction: identity.proof.nonProduction === true,
+      },
     },
   };
   const target = baseTarget(runtime, identity.proof);
@@ -941,7 +960,11 @@ async function reviewIdentity(runtime) {
     status: "VERIFIED",
     target,
     sources: { cli: cliCapture.value.source, mcp: mcpCapture.value.source },
-    facts: { identityPolicyMatched: true, isSandbox: identity.proof.isSandbox === true },
+    facts: {
+      identityPolicyMatched: true,
+      isSandbox: identity.proof.isSandbox === true,
+      nonProduction: identity.proof.nonProduction === true,
+    },
     reconciliation: {
       status: "MATCH",
       comparisons: [comparison("organization-identity", true), comparison("is-sandbox", true)],
