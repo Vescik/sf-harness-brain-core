@@ -342,3 +342,41 @@ are not durable.
   agent; owner chose all layers plus the test.
 - Not verified live: the symptom was observed in the Copilot host, this fix is text-only and has
   not been re-driven against a live session.
+
+## 2026-08-03 - Org-usage layer: owner gate decisions D-1..D-6 (+D-5'), Phase 1 authorized
+
+- Context: the org-usage layer (agents run governed SOQL when documenting metadata and persist
+  aggregates/shape in the entry's `orgUsage` section) was designed 2026-07-29, transport-amended
+  2026-07-30 (`review_soql_query` replaces the probe catalog), and re-planned 2026-08-03 by a
+  9-agent workflow with adversarial verification
+  (`output/plan-2026-08-03-org-usage-implementation.md` — A-minimal architecture + B grafts,
+  zero CI-pin churn). The owner answered the gate questions in chat, 2026-08-03:
+- **D-1 (gate 1, containment):** org-bearing entries live only in the **private company clone**
+  ("to będzie używane w company, w prywatnym sklonowanym repo"). Mechanism: attach refuses
+  unless origin matches `orgUsage.allowedOriginRemotes` (allowlist-shaped; shipped EMPTY on the
+  public product repo = attach refuses everywhere; a failing `git remote` is a refusal).
+  Merge-back of org-bearing entries to the public origin is permanently forbidden.
+- **D-2 (gate 4, expiry):** `maxOrgUsageAgeDays = 90` — PROVISIONAL: the sandbox refresh
+  cadence and per-alias full-copy-vs-partial facts are still owed before Phase 4; if cadence
+  proves < 90d the value must be trimmed. `compute_org_lane` applies
+  `min(stored expiresAt, observedAt + current policy)` so tightening expires retroactively.
+- **D-3 (governance):** schema-as-instrument, click-free attach. The human approves the
+  INSTRUMENT once (closed kind enum + per-kind result shapes + executor derivers + sanitization
+  + expiry + allowlist), not each number; attach/detach stay in the authoring bucket of the
+  verb-partition test. Empty allowlist remains the brake.
+- **D-4:** dynamic-lane receipts refused — attach is configured-org only (orgIdDigest needs the
+  configured `expectedOrganizationId`).
+- **D-5 + D-5' (owner modification):** sampling defaults LIMIT 25 / CreatedDate DESC /
+  ≤20 columns / §2.3 exclusion rules ACCEPTED, **with query freedom**: the agent may compose
+  several probes of one kind with different WHERE criteria (per status etc.) and aggregate
+  queries at its discretion. Consequence: the instrument closes over the **kind enum + per-kind
+  result shapes**, NOT a fixed label list — labels are free slugs, queryText stays in the
+  receipt, only executor-derived numbers persist.
+- **D-6:** no new prompt/skill — sampling folds into batch-knowledge + propose-force-app-knowledge
+  as a default-on step (dedicated investigate-usage prompt only if the pilot shows the need).
+- Phase 1 implemented same day on branch `feat/org-usage-layer` (contract v1.2 §2.3/§3/§4/§5.5/
+  §5.7/§6.6/§14.3; `orgUsage` $defs family + wave-1 pin in knowledge-entry schema; policy block
+  90d; harness-config `fullCopy`/`refreshedAt`; `.cache/org-usage/.gitkeep`). No executor, guard,
+  or consumer behavior changed yet — Phases 2-3 next, Phase 4 blocked on the owed D-2 facts.
+- Approved by: workspace owner (chat, 2026-08-03).
+- Related: entries "2026-07-30 - model-composed SOQL", "2026-07-14 - MCP is read-only".

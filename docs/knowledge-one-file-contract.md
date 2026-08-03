@@ -1,7 +1,18 @@
-# Knowledge One-File Entry — frozen contract v1.1 (T07 Phase 0)
+# Knowledge One-File Entry — frozen contract v1.2
 
 ```text
-Status:                 CONTRACT v1.1 — adversarial review findings applied
+Status:                 CONTRACT v1.2 — org-usage amendment (2026-08-03) layered over
+                        the adversarially reviewed v1.1
+Amendment v1.2:         adds §2.3 (orgUsage), §3 receipt-cache encoding, §4 org lanes,
+                        two §5.5 rows, §5.7, §6.6, §14.3. Owner decisions D-1..D-6 and
+                        D-5' recorded 2026-08-03 in .ai/memory/decisions-log.md. Design
+                        lineage: output/org-usage-layer-master-2026-07-29.md as amended
+                        by output/discovery-2026-07-30-model-composed-soql.md and
+                        output/plan-2026-08-03-org-usage-implementation.md. The v1.2
+                        machinery (entry-org-attach/detach, compute_org_lane, validators)
+                        lands in plan Phases 2-3; this text is normative for it, ahead
+                        of it. v1.1 text below is unchanged unless a section says v1.2.
+Status (v1.1):          CONTRACT v1.1 — adversarial review findings applied
 Review outcome:         3 independent reviewers, unanimous ACCEPT WITH REQUIRED CHANGES
                         (2026-07-24); all 34 required changes incorporated below and
                         recorded in docs/knowledge-one-file-review-package.md §6
@@ -36,6 +47,12 @@ knowledge about force-app source artifacts**. Deterministic home assignment is k
 | `component-description`, `component-inventory` | **entry-home**; v1 drafting frozen at P2 (metadata-repository is their only allowed evidence) | n/a |
 | `automation-inventory`, `field-schema`, `object-existence`, `object-relation`, `component-relation`, `integration`, `object-ownership` | **entry-home**; v1 metadata-repository drafting frozen at P2 | **v1-home** (org-describe, tooling, SME, vendor legs stay v1) |
 | `reference-data`, `business-meaning`, `process`, `glossary`, `runtime-behavior`, `package-limitation`, and all remaining types | n/a | **v1-home**, unchanged |
+
+**Org-usage amendment (v1.2):** org-observed *usage* of an entry's artifact — aggregates and
+shape from governed SOQL probes — lives inside the entry as the digest-excluded `orgUsage`
+section (§2.3), machine-attested and expiring. This moves no claim-type home: v1 org/SME/vendor
+legs stay v1-home, and `orgUsage` is not evidence for any claim type — it is disclosure, not
+grounding (§8.1 unchanged).
 
 **Freeze scoping** (implemented T07 P2): the registry refuses a repository-only proposal for
 an entry-home claim type when — and only when — the metadata type has an implemented entry
@@ -90,6 +107,7 @@ subscriber-owned twins are distinct files by construction.
 | `sensitivity` | ✓ | `public` \| `internal-sanitized`; **digest-bound** (inside `reviewedContentDigest`) — a sensitivity flip forces re-approval (review R1-12) |
 | `approval.reviewedContentDigest` | ✓ | `null` until approved |
 | `approval.reviewedBy` / `.reviewedAt` / `.mechanism` | ✓ | mirror of the ledger record (§6.1); the **ledger**, not the file, is authoritative for who/when/how (review R2-12) |
+| `orgUsage` |  | v1.2: digest-EXCLUDED machine-attested org observation (§2.3); wave-1 = CustomObject and CustomField entries only; written only by `entry-org-attach` (§6.6) |
 
 ### 2.2. Body (attested semantics)
 
@@ -103,6 +121,45 @@ subscriber-owned twins are distinct files by construction.
 Body must never contain: credentials, raw record data, runtime payloads, instructions,
 copies of `typeFacts`, or claims about closed-package internals / runtime behavior /
 vendor guarantees (v1 semantic claims with evidence remain the home for those).
+
+### 2.3. `orgUsage` — org-observed usage (v1.2: digest-excluded, machine-attested, expiring)
+
+Optional frontmatter section holding what governed read-only SOQL probes observed about the
+artifact's records in one or more configured non-production orgs. Owner decisions (2026-08-03):
+D-LICENSE/D-ENTRY place it here; D-3 makes the closed schema the approved instrument (§6.6);
+D-5' gives the agent query freedom inside it.
+
+Shape (schema `$defs.orgUsage`): per-`orgKey` blocks keyed by configured alias, each carrying
+`environment`, `orgIdDigest` (sha256 of the configured `expectedOrganizationId` — never the raw
+`00D` id), optional `fullCopy`, `observedAt`/`expiresAt`, `shapeVersion`, `transport:
+mcp-review-facade`, `assurance: org-observed` (a const INSIDE the section — it can never appear
+in the shared assurance map), a `probes` map, optional `recordStructure` rows (D-NEST:
+dotted-path shape summaries only; exemplar values stay live-only), and `receiptDigest`.
+
+**Probes (D-5', owner 2026-08-03).** The agent composes read-only SOQL freely through the
+`review_soql_query` facade — several probes of one kind with different `WHERE` criteria are
+legal and encouraged when data diversity depends on status or other conditions, and aggregate
+queries are the routine case. Labels are free slugs (`record-sample-status-active`); the CLOSED
+instrument is the `kind` enum (`object-shape`, `record-type-distribution`, `field-fill`,
+`field-cardinality`, `picklist-distribution`, `recency-window`, `lookup-shape`,
+`record-sample`) plus the per-kind results shape. The entry stores `queryDigest` only; exact
+`queryText` lives in the gitignored receipt (§3).
+
+**Closed value vocabulary.** Persisted values are integers, `"n/m"` ratio strings, ISO
+timestamps, and suppression-floored group keys (≤80 chars, executor-sanitized, floor +
+otherBucket applied executor-side). Never stored: raw rows, record Ids (resolve-then-drop;
+querying BY Id stays legal), free text, or org data in `notes`/`limitations`/descriptions —
+that path is the laundering anti-pattern this section exists to close. The 10–50-row sample
+itself is visible in the transcript and receipt only; what persists are counts
+(`record-sample.results.fieldFill`) and `recordStructure` shape rows. Aggregates are
+authoritative for counts and fill; sample-derived ratios are rendered sample-anecdotal.
+
+**Sampling defaults (D-5).** Explicit `LIMIT 25` (band 10–50; policy `orgUsage.sampleRows` /
+`sampleRowsMax`), `ORDER BY CreatedDate DESC`, at most `maxSampleColumns` contract-derived
+columns. Email-type fields and forbidden-key-token fields are never sampled by value — their
+fill is still measured by the aggregate field-fill probe (counts without values). Sandbox
+numbers answer shape and presence, never production volume (mandatory limitation; `fullCopy`
+labels representativeness).
 
 ## 3. Identity, encoding, and Windows path policy
 
@@ -134,6 +191,13 @@ one identity, fails closed (`ambiguous` / not effective — never served).
 **No reparse points (review R1-10):** symlinks/junctions anywhere under `.ai/knowledge/`
 fail the build; governed-path matching casefolds the relative path before matching.
 
+**Receipt cache (v1.2).** Attach receipts live under
+`.cache/org-usage/<safe-name-encoded identity>/<runId>.json` (gitignored by the existing
+`.cache/**` rule). The identity segment reuses THIS section's safe-name encoding — `:` is
+illegal on Windows, so the raw `Type:ns:FullName` identity never appears in a path — and the
+`runId` is a colon-free `YYYYMMDDTHHMMSSZ-<8-hex>` stamp. The full path obeys the same
+≤200-char budget and fails closed when exceeded.
+
 ## 4. Lifecycle lanes and effectiveness
 
 User-facing state is binary. The effective lane is **computed at read time by the
@@ -159,6 +223,31 @@ currency may be made **only from the reader/verify executor's output receipt**
 (SAFE-TOOL-001 alignment). Directly reading frontmatter never establishes approval; an
 agent reporting `approved` from a raw file read violates the contract. Golden eval 25
 covers the honest reader; eval R-06 covers the lazy reader.
+
+**Org lanes (v1.2).** `compute_org_lane` is a parallel, read-time computation that never
+touches the approval lanes above:
+
+```text
+org-fresh          sectionDigest == recomputed AND == LATEST org-ledger record (§6.6)
+                   AND now < min(stored expiresAt, observedAt + current policy
+                   orgUsage.maxOrgUsageAgeDays)   [tightening the policy expires
+                   existing blocks retroactively — expiresAt is a ceiling, not a grant]
+                   AND orgIdDigest == sha256(configured expectedOrganizationId)
+                   AND observedAt >= configured org refreshedAt (when set)
+org-expired        the min() clock has elapsed
+org-superseded     orgIdDigest mismatch (sandbox refresh reissued the org Id) OR
+                   observedAt < configured refreshedAt (owner-declared refresh that the
+                   org Id survived — the fallback detector)
+org-not-effective  sectionDigest/org-ledger mismatch (tamper, or a crash between entry
+                   write and ledger append — §6.6 names the recovery)
+org-absent         no orgUsage, no block for the requested orgKey, or detached
+```
+
+Presentation rule: **expired means absent** — consumers never render the numbers of an
+expired/superseded/not-effective block, only the lane name and its `observedAt`. Every
+disclosure of an org number carries `observedAt` + `orgKey`. Wall-clock staleness is recomputed
+at query time by every consumer — an index built yesterday must not serve yesterday's
+`org-fresh` (§14.3).
 
 ## 5. Digest boundary
 
@@ -217,6 +306,8 @@ fragment-scope digest (§2.1) is computable before any commit exists.
 | `keywords` edit | stays current, but only executor-mediated + ledger-logged |
 | Frontmatter `state`/approval block hand-edited | recomputation or ledger mismatch → not effective |
 | Old approved bytes restored (git revert/restore) | ledger-latest check fails → `revoked`/not current (§6.1; review R1-1) |
+| `orgUsage` attached / re-attached / detached / expired (v1.2) | **nothing** — all three §5 digests exclude it (§5.7); only the org lane (§4) moves |
+| `orgUsage` hand-edited (v1.2) | `sectionDigest`/org-ledger mismatch → `org-not-effective`; approval lane untouched |
 
 **Unimplemented row — collector/assurance drift (recorded 2026-07-25).** `compute_lane` decides
 `approved-current` vs `approved-drifted` solely from `regenerate_fragment_digest`, which compares
@@ -268,6 +359,17 @@ One shared strict parser is used by the executor, lane computation, and all proj
 - strings inside typeFacts/body: NFC; identity normalization: NFKC (§3);
 - the parser is versioned; a parser version bump is treated like a profile MAJOR bump for
   lane purposes unless byte-equivalence is proven on the corpus.
+
+### 5.7. `orgUsage` digest placement (v1.2)
+
+`orgUsage` sits OUTSIDE all three digests of this section. `factsDigest` (§5.1) enumerates its
+five inputs literally; `reviewedContentDigest` (§5.3) closes over
+`{identity, profileMajor, factsDigest, semanticsDigest, sensitivity}` — attach therefore
+provably cannot move an approval, and the implementation pins that invariant with a test
+(attach → byte-identical `reviewedContentDigest`, approval lane unchanged; plan Phase 2).
+Integrity comes from the parallel org ledger + `sectionDigest` + `receiptDigest` (§6.6);
+authority is machine attestation — org data must never read as human-approved. §5.4 is
+unaffected: `orgUsage` timestamps are not digest inputs.
 
 ## 6. Approval mechanism
 
@@ -364,6 +466,45 @@ command lands in one bucket or the other and is asserted the moment it is added.
 the hook's coverage was pinned for two of the eight, which is how the completion audit could
 record "the hook fires for 2 of the 8 mutation commands" as an open finding against an invariant
 that was in fact holding.
+
+### 6.6. Machine-attested org attach (v1.2 — schema-as-instrument, click-free)
+
+Owner decision D-3 (2026-08-03): `entry-org-attach` / `entry-org-detach` write `orgUsage`
+WITHOUT a chat click. What the human approved once is the INSTRUMENT: the closed
+persistable-shape schema (kind enum + per-kind results shapes + closed value vocabulary, §2.3),
+the executor's derivers (every persisted number is derived by the executor from facade
+envelopes it validated itself — nothing agent-authored enters `results`), sanitization, expiry,
+and the containment allowlist. The §6.5 verb-partition test keeps both commands in the
+authoring bucket: they spend no click and write no approval record — that is the design, and
+re-adding an ask row for them would re-litigate D-3, not harden it.
+
+- **Roles:** `config-investigator` only (`ORG_ATTACH_ROLES`) — narrower than the knowledge
+  mutation roles; the curator never gains org authority.
+- **Org ledger:** `.ai/knowledge/artifacts-org-ledger.jsonl` — a separate append-only file
+  with the same monotonic-sequence mechanics as the approval ledger, which attach never
+  touches. Record: `{sequence, action: attach|detach, identity, orgKey, orgUsageDigest,
+  observedAt, expiresAt, shapeVersion, transport, receiptDigest}`.
+- **Write ordering + recovery:** receipt (cache) → entry (atomic write) → org-ledger append. A
+  crash between the last two leaves `org-not-effective` (§4) and a failing validate check —
+  indistinguishable from tampering BY DESIGN. Recovery is explicit and only ever forward:
+  re-run `entry-org-attach` (fresh observation) or `entry-org-detach`; never hand-align the
+  ledger or the section.
+- **Containment (gate 1; owner D-1 2026-08-03):** org-bearing entries live only in the private
+  company clone. Attach refuses unless the workspace's `git remote` output matches the
+  `orgUsage.allowedOriginRemotes` allowlist — empty allowlist (the shipped default) refuses
+  everywhere and is the standing kill switch; a failing or absent `git remote` subprocess is a
+  REFUSAL, never a pass; validate fails when any entry carries a non-empty `orgUsage.orgs` and
+  the origin check does not pass. Merging org-bearing entries back to the public origin is
+  permanently forbidden.
+- **Identity gate:** every probe envelope must prove the SAME configured org
+  (`nonProduction: true`; `orgIdDigest` match against the configured
+  `expectedOrganizationId`). ANY identity or environment mismatch mid-run aborts the WHOLE
+  attach — the probes of one attach are one org snapshot, never a mix; partial results are
+  dropped and reported, never persisted. Dynamic-lane receipts are refused (owner D-4:
+  configured-org only, since `orgIdDigest` needs a configured expectation).
+- **Freshness at attach:** `expiresAt = observedAt + policy maxOrgUsageAgeDays` at attach
+  time; §4's min() rule lets a later policy tightening expire existing blocks without
+  re-attach.
 
 ## 7. Flow intentional errors (pilot scope)
 
@@ -778,6 +919,17 @@ requested lane** — three cases, all executed against the reference corpus:
 
 The last row is the one worth keeping. A traversal from an unknown name still returns edges, so a
 reader who saw only the rows would read "nothing is wrong" out of a result that verified nothing.
+
+### 14.3. Org-lane disclosure (v1.2)
+
+Wherever a consumer shape carries a lifecycle label, org-bearing rows additionally carry
+`{orgLane, orgKey, observedAt, expiresAt}` recomputed at query time — never read from an index
+built earlier (§4's presentation rule; a projection may cache the fields, but the lane verdict
+is recomputed against the wall clock on every read). `entry-status` / `entry-check` disclose
+the org lane beside the approval lane and never blend them; search/context render org numbers
+only for `org-fresh` blocks, labeled `org-observed <orgKey> @ <observedAt>`. An expired block
+is rendered as absent plus its lane name — a consumer that shows yesterday's count unlabeled
+has broken this contract.
 
 ## 15. The source-drift window: what a `lifecycle` label is, and is not
 

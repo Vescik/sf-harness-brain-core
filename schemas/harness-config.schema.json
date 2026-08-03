@@ -113,6 +113,15 @@
               "expectedOrganizationId": {
                 "type": "string",
                 "pattern": "^00D[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?$"
+              },
+              "fullCopy": {
+                "type": "boolean",
+                "description": "Gate-4 owner fact (org-usage layer): true = full-copy sandbox, false = partial/developer. Labels orgUsage blocks so consumers can weigh representativeness; absent = unknown. Sandbox numbers answer shape/presence, never production volume."
+              },
+              "refreshedAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Owner-set instant of the last sandbox refresh for this alias. Fallback refresh detector for the org-usage layer: orgUsage blocks observed before this instant are org-superseded even when the Organization Id survived the refresh (orgIdDigest alone cannot detect that case)."
               }
             },
             "allOf": [
