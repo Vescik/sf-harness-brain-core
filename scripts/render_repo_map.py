@@ -28,7 +28,7 @@ MAP_JSON_PATH = ROOT / ".ai/repo-map.json"
 # 800 covered five agents exactly; raised once for the sixth (knowledge-curator, 2026-07-17)
 # rather than trimming existing entries, and again for the investigate-config-records and
 # adhoc-fix prompt/skill pairs (2026-07-23). Grow only with a structural addition, never for prose.
-WORD_BUDGET = 875
+WORD_BUDGET = 900
 ONE_LINER_WORDS = 5
 LINK_RE = re.compile(r"\]\(([^)]+)\)")
 

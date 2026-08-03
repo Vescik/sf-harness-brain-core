@@ -34,7 +34,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 ## Roles (`.github/agents/`)
 
-- **config-investigator** — Read-only evidence collector for allowlisted …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority, tool-capabilities; skills: feature-documentor, inventory-force-app, investigate-config-records, investigate-object, propose-force-app-knowledge, update-knowledge-base.
+- **config-investigator** — Read-only evidence collector for allowlisted …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority, tool-capabilities; skills: feature-documentor, inventory-force-app, investigate-config-records, investigate-object, propose-force-app-knowledge, selected-files-knowledge, update-knowledge-base.
 - **development-assistant** — Implement a human-accepted Salesforce design …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: execution-contract, tool-capabilities, workflow-state-machine; skills: adhoc-fix. Hands off to: guardrail-reviewer, solution-designer.
 - **guardrail-reviewer** — Independently review a design or …. Loads instructions: managed-package-constraints, organization-principles, salesforce-best-practices; contracts: source-authority, tool-capabilities, workflow-state-machine; skills: check-against-principles. Hands off to: development-assistant, solution-designer.
 - **knowledge-curator** — Maintains governed Knowledge from repository …. Loads instructions: managed-package-constraints; contracts: knowledge-lifecycle, source-authority, workflow-state-machine; skills: approve-knowledge-drafts, batch-knowledge, curate-knowledge-keywords, propose-force-app-knowledge, search-knowledge.
@@ -62,6 +62,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `relation-health` — Read-only report of verified object-relation/component-relation …
 - `search-ado` — Read-only Azure DevOps text search …
 - `search-knowledge` — Read-only search across both Knowledge …
+- `selected-files-knowledge` — Convert an explicitly selected handful …
 - `solution-design` — Five-phase Solution Design workflow (discover, …
 - `suggest-test-cases` — Rank existing synced Test Cases …
 - `sync-test-cases` — Synchronize an allowlisted Azure Test …
@@ -84,6 +85,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `/inventory-force-app` → config-investigator
 - `/investigate-config-records` → config-investigator
 - `/investigate-object` → config-investigator
+- `/pin-knowledge` → config-investigator
 - `/propose-force-app-knowledge` → config-investigator
 - `/refresh-force-app-knowledge` → config-investigator
 - `/relation-health` → config-investigator

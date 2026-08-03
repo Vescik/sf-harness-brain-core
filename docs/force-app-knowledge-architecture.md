@@ -202,6 +202,22 @@ pause the batch instead of improvising.
 Credential values, source bodies, records, tokens, private keys, and inferred business semantics
 are never included.
 
+## Selected-files lane (`/pin-knowledge`)
+
+For "document exactly these files" — a small, usually mixed-type selection pinned to Copilot
+chat or named in the prompt — the `selected-files-knowledge` skill runs the same entry/claim
+mechanics at file granularity. `python scripts/force_app_knowledge.py resolve --path/--name`
+maps the human's gesture onto inventory components mechanically (casefolded paths, companion
+`-meta.xml` siblings, LWC/Aura bundle members, directory expansion; a file defining several
+components expands to all of them; ambiguity is reported, never guessed) and attaches each
+match's lane and current documentation status. After the human approves the per-component plan,
+entry-profiled components run `entry-draft`/`entry-describe` + one `/approve-drafts-knowledge`
+chunk, and the rest run one `draft --component <Type:Name> …` call (mutually exclusive with
+`--metadata-type`; CLI-capped at the 25-spec approval chunk) + one `approve-claim` command.
+Expansions beyond 25 components are refused with a pointer to `/batch-knowledge`. The common
+first failure is by design a remedy, not an error: an uncommitted pinned file stops the lane
+with "commit first — evidence binds to a commit".
+
 ## Coverage and health (read-only, advisory)
 
 Three deterministic reports make usage and validity visible without mutating any claim:
@@ -313,14 +329,17 @@ Public prompts:
 
 - `/inventory-force-app` — inventory only.
 - `/propose-force-app-knowledge` — draft and optionally submit explicitly selected IDs.
+- `/pin-knowledge` — document exactly the pinned/named files (selected-files lane).
 - `/refresh-force-app-knowledge` — drift/expiry selection, re-draft, propose, chat approval.
 - `/curate-knowledge` — knowledge-curator maintenance session (health | refresh | batch).
 
 Investigator prompts route to `config-investigator`; maintenance routes to the dedicated
 `knowledge-curator` role, which has the same knowledge command surface but no Salesforce org
-tools. Hooks permit only fixed-root metadata preflight, the bounded inventory/draft/refresh
-commands, and the governed registry proposal/approval commands. Hidden skills are
-`inventory-force-app` and `propose-force-app-knowledge`.
+tools. Hooks permit only fixed-root metadata preflight, the bounded
+inventory/resolve/draft/refresh commands, and the governed registry proposal/approval
+commands. The prompts are thin routers; the procedures live in the hidden skills
+(`inventory-force-app`, `propose-force-app-knowledge`, `batch-knowledge`,
+`selected-files-knowledge`, and the curation/relations skills they reference).
 
 ## Evidence boundaries
 

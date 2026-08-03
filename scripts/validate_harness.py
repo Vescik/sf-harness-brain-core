@@ -27,7 +27,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 6, "prompts": 24, "skills": 25, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 25, "skills": 26, "instructions": 3}
 # Budget for each grounding subprocess below. entry-check parses and validates every entry at
 # roughly 4.5 ms per entry (measured at 9 000), so a corpus in the low tens of thousands is the
 # constraint here, not the code. Raise this deliberately from a measurement — never to silence a
@@ -1139,8 +1139,8 @@ def check_repo_map(audit: Audit) -> None:
     repo_map = load_json(ROOT / ".ai/repo-map.json", audit)
     audit.require(
         # Keep in sync with render_repo_map.WORD_BUDGET.
-        isinstance(repo_map.get("wordCount"), int) and repo_map["wordCount"] <= 875,
-        "repo-map.md exceeds its 875-word budget",
+        isinstance(repo_map.get("wordCount"), int) and repo_map["wordCount"] <= 900,
+        "repo-map.md exceeds its 900-word budget",
     )
     digests = repo_map.get("sourceDigests", {})
     expected_sources = (

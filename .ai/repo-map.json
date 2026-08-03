@@ -18,6 +18,7 @@
           "investigate-config-records",
           "investigate-object",
           "propose-force-app-knowledge",
+          "selected-files-knowledge",
           "update-knowledge-base"
         ]
       },
@@ -383,6 +384,13 @@
     },
     {
       "agent": "config-investigator",
+      "argumentHint": "[files=<path|name,...>] [recordId=<ID>]",
+      "description": "Turn a small pinned or named selection of force-app files into governed Knowledge — mechanical resolution, a human-approved plan, then per-lane draft/describe/propose with one approval pass.",
+      "name": "pin-knowledge",
+      "path": ".github/prompts/pin-knowledge.prompt.md"
+    },
+    {
+      "agent": "config-investigator",
       "argumentHint": "[recordId=<ID>] [claimIds=<ID,ID,...>]",
       "description": "Draft governed force-app Knowledge candidates and optionally submit an explicitly selected subset as proposed claims.",
       "name": "propose-force-app-knowledge",
@@ -564,6 +572,11 @@
       "path": ".github/skills/search-knowledge/SKILL.md"
     },
     {
+      "description": "Convert an explicitly selected handful of force-app files (pinned to chat or named in the prompt) into governed Knowledge - mechanical path/name resolution, a human-approved plan, then per-lane draft/describe/propose with one approval pass per lane. Mixed metadata types are legal; selections beyond one approval chunk route to batch-knowledge.",
+      "name": "selected-files-knowledge",
+      "path": ".github/skills/selected-files-knowledge/SKILL.md"
+    },
+    {
       "description": "Five-phase Solution Design workflow (discover, plan, verify the plan, execute the design package, verify the outcome) grounded in Principles, verified Knowledge, and live Salesforce evidence. Produces a human-reviewable design with per-decision rule traceability and an implementation/verification plan for Development.",
       "name": "solution-design",
       "path": ".github/skills/solution-design/SKILL.md"
@@ -600,7 +613,7 @@
     ".ai/contracts/source-authority.md": "sha256:0e43a1759e993e68934f2c88390ad693f3bf5def00d4fd5026000cf84c1a935d",
     ".ai/contracts/tool-capabilities.md": "sha256:1eeeea6b0e6809b9296153428b64abc62c7e3a2a21bcd33f4e9367546239012c",
     ".ai/contracts/workflow-state-machine.md": "sha256:bacba0585fb0ee0f5ed68f074b714fe58b4d73709c3077b735a7cbeabc70fd0e",
-    ".github/agents/config-investigator.agent.md": "sha256:7fe1ebc87ff90ab85f64d86012df6a7505cbda8e167853c7d3ce183b21e72a12",
+    ".github/agents/config-investigator.agent.md": "sha256:4dd092724e5602151b70ebf37d21efee56f6cfdf62a3aeb3884bff156a73a839",
     ".github/agents/development-assistant.agent.md": "sha256:37a92525254e4b923b4f05a6e34659432d9497bd86b778964b4714f344899b6d",
     ".github/agents/guardrail-reviewer.agent.md": "sha256:69e2b8cd60eed926a9a7605396b6e78b9006850350bc7136299312c91b710b6a",
     ".github/agents/knowledge-curator.agent.md": "sha256:0ffce5361b7448d2307040ed589e1abdb5fd67e96836c15b831b3510df3fc6e4",
@@ -622,6 +635,7 @@
     ".github/prompts/inventory-force-app.prompt.md": "sha256:fbe782d0d3473eb32dbdc5b23fca697978a4128d3073c4b9fe485347a5ce8634",
     ".github/prompts/investigate-config-records.prompt.md": "sha256:fdb2a0c03a14d975c4952d1f1ce5ed4e2f4886c450c0976f409808459ec1c900",
     ".github/prompts/investigate-object.prompt.md": "sha256:fe4f75afa73b664f5af3c702994bf9fa12759fd345c342e6fdfc9a5f64cad24f",
+    ".github/prompts/pin-knowledge.prompt.md": "sha256:44ca46b5d013686e6a3a25cd56d5c8cd6ebe5732e0557d5c6072406daecef9f5",
     ".github/prompts/propose-force-app-knowledge.prompt.md": "sha256:5c9975656ae968bbf9aed29c40c3036e2a25fac852f514fe3883aff1722b7e57",
     ".github/prompts/refresh-force-app-knowledge.prompt.md": "sha256:2549542a8a56c781227c4cdc1a9c8c9f0af89ae750ee16fd4878a494e982f8fc",
     ".github/prompts/relation-health.prompt.md": "sha256:851706da0bf00bfa040460b74b6ea9d1c7b344847e7723aeccf5e1e3b582829e",
@@ -652,6 +666,7 @@
     ".github/skills/relation-health/SKILL.md": "sha256:b744dfc2c829496afc804be03610bd653baac1fb8e81d969ab0a68a8f0b32442",
     ".github/skills/search-ado/SKILL.md": "sha256:4c6a1e155d7cf3b2079953837681ebd89e6226b4ff98f8ae30f079640b788cc7",
     ".github/skills/search-knowledge/SKILL.md": "sha256:56540a235494fdd8ed14b0091f48c2eda2444aec6b9ed5e644b06c44638ad0f2",
+    ".github/skills/selected-files-knowledge/SKILL.md": "sha256:70bd67c387af55aec9ae80542b9e11822d27d3a2280ca07d93170f7a838dbdf9",
     ".github/skills/solution-design/SKILL.md": "sha256:17eb58966f1f4f245f6e47eb49131933056857cf1516274ae3e03a0b7d790ae8",
     ".github/skills/suggest-test-cases/SKILL.md": "sha256:4ebb53a086698f440d2fbd85716cb7758f959317dda6233ad4f1fd945bf888df",
     ".github/skills/sync-test-cases/SKILL.md": "sha256:86b1af1a8415d07f548e7160a565933be7dfede396e55341345fe76ffccfe529",
@@ -660,5 +675,5 @@
     ".github/skills/update-relations/SKILL.md": "sha256:5c6e3f55a32f965edf5456033e89912598b8e2cf2c5a9152d4841420c2b3e121",
     "config/repo-map-seed.json": "sha256:16c1d6dc23374ef4b610ec06f711c8403c3c3e8eddd1c13361520b6d7220a48a"
   },
-  "wordCount": 872
+  "wordCount": 886
 }

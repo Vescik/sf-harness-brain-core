@@ -444,6 +444,16 @@ are not durable.
   traversal; spaces/colons legal for Layout names and component ids), and tests incl. the
   adversarial-review round (multi-component files, companions, case-insensitivity, guard
   accept/deny matrix, cap boundaries).
+- Phase 2 implemented same day: public prompt `pin-knowledge` + hidden skill
+  `selected-files-knowledge` (selection sources in priority order, mechanical resolve,
+  always plan + go-ahead, entry/claim execution with approvals counted by CLAIM — each
+  `approve-claim` command caps at 25 specs and a component can produce several claims;
+  oversized mixed selections are split per metadata type via `/batch-knowledge` or re-pinned),
+  count pins 24→25 / 25→26, repo-map word budget 875→900 (synced in `render_repo_map.py` and
+  `validate_harness.py`), regenerated repo map, two `agent-scenarios.yaml` behavioral
+  scenarios, config-investigator routing + record-free list, and the architecture doc's
+  selected-files section. Both phases passed an adversarial verification round
+  (8 + 3 findings, all fixed and re-probed) on top of the deterministic gate.
 - Approved by: workspace owner (chat, 2026-08-03).
 - Related: entries "2026-08-03 - Documenting existing state is record-free",
   "2026-07-27 - Knowledge v2 one-file entries".

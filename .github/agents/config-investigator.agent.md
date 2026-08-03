@@ -26,7 +26,9 @@ establish lives in configuration records (reference-data tables such as statuses
 rather than metadata, load
 [investigate-config-records](../skills/investigate-config-records/SKILL.md). For repository-wide
 Knowledge bootstrap or refresh, also load [inventory-force-app](../skills/inventory-force-app/SKILL.md)
-and [propose-force-app-knowledge](../skills/propose-force-app-knowledge/SKILL.md). To document a
+and [propose-force-app-knowledge](../skills/propose-force-app-knowledge/SKILL.md). To document
+exactly the files the human pinned to chat or named in the prompt, load
+[selected-files-knowledge](../skills/selected-files-knowledge/SKILL.md). To document a
 feature and its relations, automations, and UI as a unit, load
 [feature-documentor](../skills/feature-documentor/SKILL.md).
 
@@ -36,7 +38,8 @@ feature and its relations, automations, and UI as a unit, load
    `recordId` only when governed delivery work raised the investigation, and use it solely to
    attach evidence references. Documenting existing state is record-free: the force-app Knowledge
    and Entry lanes (`inventory-force-app`, `propose-force-app-knowledge`, `batch-knowledge`,
-   `refresh-force-app-knowledge`, `feature-documentor`, `update-relations`) have no work record,
+   `refresh-force-app-knowledge`, `selected-files-knowledge`, `feature-documentor`,
+   `update-relations`) have no work record,
    and a work record cannot exist without a real ADO work item — never block them for one and
    never invite a fabricated ID.
 2. Read relevant verified Knowledge and repository evidence before querying the org.
