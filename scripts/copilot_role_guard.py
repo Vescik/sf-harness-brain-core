@@ -83,7 +83,6 @@ WORK_RECORD_COMMANDS = {
         "append-evidence",
         "digest",
         "attach-rule",
-        "bind-claim",
         "add-question",
         "resolve-question",
         "capture-repository",
@@ -138,105 +137,19 @@ WORK_RECORD_COMMANDS = {
     },
 }
 
-# Knowledge mutation is intentionally narrower than filesystem edit permission. Models may validate
-# the registry, and only the Investigator may submit a schema-valid proposed claim/evidence set.
-# `approve-claim` (owner decision 2026-07-14) lets the Investigator REQUEST promotion/rejection;
-# the safety hook answers `ask`, so a human confirms every invocation in chat and the registry
-# records the local-config reviewer identity with mechanism copilot-chat-confirmation. The
-# file-based review/promote commands remain human-terminal-only.
-_KNOWLEDGE_READ_COMMANDS = {
-    "validate",
-    "query",
-    "explain",
-    "render-indexes",
-    "reconcile",
-    "keyword-report",
-    "stale-report",
-    "verify-citations",
-}
-# Roles that may submit proposals and request chat-approved promotion. The curator exists so
 # Knowledge maintenance does not require the org-facing investigator surface.
 KNOWLEDGE_MUTATION_ROLES = frozenset({"config-investigator", "knowledge-curator"})
-KNOWLEDGE_REGISTRY_COMMANDS = {
-    "solution-designer": set(_KNOWLEDGE_READ_COMMANDS),
-    "config-investigator": _KNOWLEDGE_READ_COMMANDS | {"propose", "approve-claim"},
-    "knowledge-curator": _KNOWLEDGE_READ_COMMANDS | {"propose", "approve-claim"},
-    "development-assistant": set(_KNOWLEDGE_READ_COMMANDS),
-    "test-strategist": set(_KNOWLEDGE_READ_COMMANDS),
-    "guardrail-reviewer": set(_KNOWLEDGE_READ_COMMANDS),
-}
-
-# Per-subcommand flag allowlists for the two knowledge CLIs. tests/test_guard_parser_contract.py
-# diffs these against the scripts' argparse parsers, so a parser flag added without a guard
-# decision (or a guard typo) fails CI instead of silently denying/allowing at runtime.
-KNOWLEDGE_QUERY_FLAGS = frozenset({
-    "--claim-id",
-    "--domain",
-    "--claim-type",
-    "--subject-kind",
-    "--subject-identity",
-    "--environment",
-    "--org-key",
-    "--package-namespace",
-    "--keyword",
-    "--text",
-    "--feature",
-    "--uses-object",
-    "--uses-field",
-    "--invokes",
-    "--related",
-    "--depth",
-    "--search",
-    "--top",
-    "--at",
-})
-# Flags that do not count as a semantic filter on their own (query must narrow by content).
-KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS = frozenset({"--at", "--depth", "--top"})
-KNOWLEDGE_APPROVE_FLAGS = frozenset({
-    "--claim-id",
-    "--expected-revision",
-    "--claim-spec",
-    "--decision",
-    "--rationale",
-    "--manifest",
-})
-KNOWLEDGE_PROPOSE_FLAGS = frozenset(
-    {"--claim-file", "--evidence-file", "--expected-revision", "--refresh-verified"}
-)
-KNOWLEDGE_COMMAND_FLAGS = {
-    "validate": frozenset(),
-    "keyword-report": frozenset(),
-    "render-indexes": frozenset({"--check"}),
-    "reconcile": frozenset({"--claim-file"}),
-    "query": KNOWLEDGE_QUERY_FLAGS,
-    "explain": frozenset({"--identity", "--kind", "--at"}),
-    "stale-report": frozenset({"--warn-days", "--at"}),
-    "verify-citations": frozenset({"--envelope", "--claim-ref", "--at"}),
-    "propose": KNOWLEDGE_PROPOSE_FLAGS,
-    "approve-claim": KNOWLEDGE_APPROVE_FLAGS,
-}
-
 # Roles allowed to run force_app_knowledge.py at all (extraction/drafting authority).
 FORCE_APP_KNOWLEDGE_ROLES = frozenset({"config-investigator", "knowledge-curator"})
 FORCE_APP_COMMAND_FLAGS = {
     "inventory": frozenset(),
-    "dashboard": frozenset({"--warn-days"}),
-    "worklist": frozenset({"--metadata-type", "--write"}),
-    "coverage": frozenset({"--write"}),
     "entry-readiness": frozenset(),
-    "relations-worklist": frozenset({"--metadata-type", "--write"}),
-    "relation-health": frozenset({"--write"}),
-    "relations-draft": frozenset({"--observed-at", "--metadata-type", "--limit", "--include-heuristic"}),
-    "refresh": frozenset({"--observed-at", "--metadata-type", "--warn-days", "--limit", "--dry-run"}),
-    "draft": frozenset({"--observed-at", "--metadata-type", "--component"}),
+    "entry-edge-health": frozenset(),
     # Read-only path/name -> component mapping for the selected-files lane; --write only saves
     # the derived view under the ignored .cache/knowledge-proposals/ workspace.
     "resolve": frozenset({"--path", "--name", "--write"}),
-    # The public /feature-documentor prompt runs these two; leaving them unguarded made its
-    # core procedure impossible for the agent it is addressed to (evidence-doc F-14). Both
-    # write only under the ignored .cache/knowledge-proposals/ workspace.
+    # Writes only under the ignored .cache/knowledge-proposals/ workspace (evidence-doc F-14).
     "feature-crawl": frozenset({"--feature", "--anchors", "--depth", "--hub"}),
-    "feature-draft": frozenset({"--feature", "--observed-at"}),
 }
 
 # One-file Knowledge Entry executor (docs/knowledge-one-file-contract.md v1.1). Reads are
@@ -282,6 +195,9 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-status": frozenset({"--identity"}),
     "entry-coverage": frozenset(),
     "entry-check": frozenset({"--changed-since"}),
+    # Read-only citation verdicts (entryRefs); the entry-side successor of the registry's
+    # verify-citations, relocated in v1-retirement P0. Reads stay universal.
+    "entry-verify-citations": frozenset({"--envelope", "--entry-ref"}),
     "entry-org-attach": frozenset({"--identity", "--org", "--probes-file"}),
     "entry-org-detach": frozenset({"--identity", "--org", "--rationale"}),
     # Feature Entries (contract §13). The boundary rule is human-authored, so propose/describe
@@ -544,7 +460,6 @@ def work_record_command_allowed(parts: list[str], role: str) -> bool:
         "accept-handoff",
         "append-review",
         "attach-rule",
-        "bind-claim",
         "bind-entry",
         "add-question",
         "resolve-question",
@@ -556,33 +471,6 @@ def work_record_command_allowed(parts: list[str], role: str) -> bool:
     if command == "create-handoff":
         return flag_values(parts[1:], "--from-role") == [role]
     return command in {"init", "validate", "digest"}
-
-
-def proposal_draft_path_allowed(raw: str, root: Path) -> bool:
-    path = Path(raw)
-    if path.is_absolute():
-        return False
-    draft_root = (root / ".cache/knowledge-proposals").resolve(strict=False)
-    candidate = (root / path).resolve(strict=False)
-    try:
-        relative = candidate.relative_to(draft_root)
-    except ValueError:
-        return False
-    return bool(relative.parts) and candidate.suffix.lower() in {".yaml", ".yml"}
-
-
-def manifest_input_path_allowed(raw: str, root: Path) -> bool:
-    """Draft-manifest JSON for approve-claim --manifest: same containment as proposal drafts."""
-    path = Path(raw)
-    if path.is_absolute():
-        return False
-    draft_root = (root / ".cache/knowledge-proposals").resolve(strict=False)
-    candidate = (root / path).resolve(strict=False)
-    try:
-        relative = candidate.relative_to(draft_root)
-    except ValueError:
-        return False
-    return bool(relative.parts) and candidate.suffix.lower() == ".json"
 
 
 def handover_draft_path_allowed(raw: str, root: Path) -> bool:
@@ -599,209 +487,14 @@ def handover_draft_path_allowed(raw: str, root: Path) -> bool:
     return bool(relative.parts) and candidate.suffix.lower() == ".md"
 
 
-def knowledge_registry_command_allowed(
-    parts: list[str], role: str, root: Path = HARNESS_ROOT
-) -> bool:
-    if not parts or "--root" in parts or any(part.startswith("--root=") for part in parts):
-        return False
-    command = parts[0]
-    if command not in KNOWLEDGE_REGISTRY_COMMANDS.get(role, set()):
-        return False
-    if command in {"validate", "keyword-report"}:
-        return len(parts) == 1
-    if command == "render-indexes":
-        return parts[1:] in ([], ["--check"])
-    if command == "reconcile":
-        # Read-only classification of a DRAFT claim against the registry; input stays in the
-        # ignored proposal workspace like propose inputs.
-        if len(parts) == 3 and parts[1] == "--claim-file":
-            return proposal_draft_path_allowed(parts[2], root)
-        if len(parts) == 2 and parts[1].startswith("--claim-file="):
-            return proposal_draft_path_allowed(parts[1].split("=", 1)[1], root)
-        return False
-    if command == "query":
-        allowed_flags = KNOWLEDGE_QUERY_FLAGS
-        semantic_filter_seen = False
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                if flag not in allowed_flags or not value:
-                    return False
-                semantic_filter_seen = semantic_filter_seen or flag not in KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS
-                index += 1
-                continue
-            if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
-                return False
-            semantic_filter_seen = semantic_filter_seen or token not in KNOWLEDGE_QUERY_NON_SEMANTIC_FLAGS
-            index += 2
-        return index == len(parts) and semantic_filter_seen
-    if command == "explain":
-        # Read-only composite subject view; requires the identity so it cannot dump the store.
-        allowed_flags = KNOWLEDGE_COMMAND_FLAGS["explain"]
-        identity_seen = False
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                if flag not in allowed_flags or not value:
-                    return False
-                identity_seen = identity_seen or flag == "--identity"
-                index += 1
-                continue
-            if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
-                return False
-            identity_seen = identity_seen or token == "--identity"
-            index += 2
-        return identity_seen
-    if command in {"stale-report", "verify-citations"}:
-        # Read-only advisory reports; envelope inputs stay repository-contained at runtime.
-        allowed_flags = KNOWLEDGE_COMMAND_FLAGS[command]
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                if flag not in allowed_flags or not value:
-                    return False
-                index += 1
-                continue
-            if token not in allowed_flags or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
-                return False
-            index += 2
-        return True
-    if command == "approve-claim":
-        if role not in KNOWLEDGE_MUTATION_ROLES:
-            return False
-        allowed_flags = KNOWLEDGE_APPROVE_FLAGS
-        seen: dict[str, str] = {}
-        claim_specs: list[str] = []
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag = token
-                if index + 1 >= len(parts) or parts[index + 1].startswith("--"):
-                    return False
-                value = parts[index + 1]
-                index += 2
-            if flag not in allowed_flags or not value:
-                return False
-            if flag == "--claim-spec":
-                claim_specs.append(value)
-            else:
-                seen[flag] = value
-        if seen.get("--decision", "verify") not in {"verify", "reject"}:
-            return False
-        if "--manifest" in seen:
-            # Manifest form: one human confirmation covers a draft manifest's low-risk claims
-            # (policy-limited to component-inventory). Verify-only, standalone, and the manifest
-            # must be the JSON the drafting run wrote under the ignored proposal workspace.
-            return (
-                "--claim-id" not in seen
-                and "--expected-revision" not in seen
-                and not claim_specs
-                and seen.get("--decision", "verify") == "verify"
-                and manifest_input_path_allowed(seen["--manifest"], root)
-            )
-        if claim_specs:
-            # Batch form: one human confirmation covers up to 25 explicit claim:revision pairs.
-            return (
-                "--claim-id" not in seen
-                and "--expected-revision" not in seen
-                and len(claim_specs) <= 25
-                and all(
-                    re.fullmatch(r"KCLM-[A-Z0-9][A-Z0-9-]{2,79}:\d+", spec)
-                    for spec in claim_specs
-                )
-            )
-        return (
-            bool(re.fullmatch(r"KCLM-[A-Z0-9][A-Z0-9-]{2,79}", seen.get("--claim-id", "")))
-            and seen.get("--expected-revision", "").isdigit()
-        )
-    if command != "propose" or role not in KNOWLEDGE_MUTATION_ROLES:
-        return False
-    # --refresh-verified is the explicit acknowledgement that a verified/stale claim is being
-    # demoted to a new proposed revision (refresh workflow); the registry enforces when it is
-    # actually applicable, the guard only recognizes the bare flag.
-    values: dict[str, list[str]] = {
-        flag: [] for flag in KNOWLEDGE_PROPOSE_FLAGS - {"--refresh-verified"}
-    }
-    index = 1
-    while index < len(parts):
-        token = parts[index]
-        if token == "--refresh-verified":
-            index += 1
-            continue
-        if "=" in token:
-            flag, value = token.split("=", 1)
-            if flag not in values or not value:
-                return False
-            values[flag].append(value)
-            index += 1
-            continue
-        if token not in values or index + 1 >= len(parts) or parts[index + 1].startswith("--"):
-            return False
-        values[token].append(parts[index + 1])
-        index += 2
-    if (
-        len(values["--claim-file"]) != 1
-        or not values["--evidence-file"]
-        or len(values["--evidence-file"]) > 10
-        or len(values["--expected-revision"]) != 1
-        or not values["--expected-revision"][0].isdigit()
-    ):
-        return False
-    draft_paths = [*values["--claim-file"], *values["--evidence-file"]]
-    return all(proposal_draft_path_allowed(value, root) for value in draft_paths)
-
-
 def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
     if not parts or parts[0] not in FORCE_APP_COMMAND_FLAGS:
         return False
-    if parts[0] == "dashboard":
-        # Read-only aggregate health page under output/; the one force-app knowledge command
-        # every role may run — it drafts nothing and reads only derived views.
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag != "--warn-days" or not value.isdigit() or not (0 <= int(value) <= 365):
-                return False
-        return True
     if role not in FORCE_APP_KNOWLEDGE_ROLES:
         return False
     if parts == ["inventory"]:
         return True
-    if parts[0] == "worklist":
-        # Derived read-only batch status; --write only saves the derived view under the
-        # ignored .cache/knowledge-proposals/ workspace.
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if token == "--write":
-                index += 1
-                continue
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag != "--metadata-type" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
-                return False
-        return True
-    if parts[0] in {"feature-crawl", "feature-draft"}:
+    if parts[0] == "feature-crawl":
         index = 1
         seen_feature = False
         while index < len(parts):
@@ -829,9 +522,6 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
                     return False
             elif flag == "--depth":
                 if not value.isdigit() or not 1 <= int(value) <= 3:
-                    return False
-            elif flag == "--observed-at":
-                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", value):
                     return False
         return seen_feature
     if parts[0] == "resolve":
@@ -868,126 +558,7 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
             else:
                 return False
         return seen_input
-    if parts[0] == "coverage":
-        # Read-only documentation-coverage summary; --write only saves the derived view under the
-        # ignored .cache/knowledge-proposals/ workspace.
-        return parts[1:] in ([], ["--write"])
-    if parts[0] == "relations-worklist":
-        # Derived read-only edge-granular relation-claim status; --write only saves the derived
-        # view under the ignored .cache/knowledge-proposals/ workspace. Same shape as worklist.
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if token == "--write":
-                index += 1
-                continue
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag != "--metadata-type" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
-                return False
-        return True
-    if parts[0] == "relation-health":
-        # Read-only orphaned relation-claim report; --write only saves the derived view under the
-        # ignored .cache/knowledge-proposals/ workspace. Never mutates Knowledge.
-        return parts[1:] in ([], ["--write"])
-    if parts[0] == "relations-draft":
-        # Drafts only proposed-candidate files under the ignored .cache/knowledge-proposals/
-        # workspace, same authority as draft. --limit is bounded to guard against an unbounded
-        # repo-wide sweep dumping thousands of drafts in one call.
-        text_validators = {
-            "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
-            "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
-        }
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if token == "--include-heuristic":
-                index += 1
-                continue
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag == "--limit":
-                if not value.isdigit() or not (1 <= int(value) <= 2000):
-                    return False
-                continue
-            pattern = text_validators.get(flag)
-            if pattern is None or not re.fullmatch(pattern, value):
-                return False
-        return True
-    if parts[0] == "refresh":
-        # Selects only drifted/expired/expiring verified claims and delegates to draft with the
-        # same authority; outputs stay under the ignored .cache/knowledge-proposals/ workspace.
-        # --warn-days is bounded to a year so a typo cannot select the entire verified store,
-        # and --limit shares the relations-draft anti-sweep bound.
-        text_validators = {
-            "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
-            "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
-        }
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if token == "--dry-run":
-                index += 1
-                continue
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag == "--limit":
-                if not value.isdigit() or not (1 <= int(value) <= 2000):
-                    return False
-                continue
-            if flag == "--warn-days":
-                if not value.isdigit() or not (0 <= int(value) <= 365):
-                    return False
-                continue
-            pattern = text_validators.get(flag)
-            if pattern is None or not re.fullmatch(pattern, value):
-                return False
-        return True
-    if parts[0] != "draft":
-        return False
-    validators = {
-        "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
-        "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
-        # Selected-files lane: an inventory component id (Type:Name; names carry spaces —
-        # Layouts). Capped below at the 25-spec chat-approval chunk — a larger selection
-        # belongs in /batch-knowledge. Mutually exclusive with --metadata-type: the type
-        # filter would silently drop selected components of other types (draft() raises the
-        # same refusal; the guard mirrors it so the denial is immediate and typed).
-        "--component": r"[A-Za-z][A-Za-z0-9_]{0,79}:[A-Za-z0-9_. \-]{1,200}",
-    }
-    component_count = 0
-    seen_metadata_type = False
-    index = 1
-    while index < len(parts):
-        token = parts[index]
-        if "=" in token:
-            flag, value = token.split("=", 1)
-            index += 1
-        else:
-            flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-            index += 2
-        pattern = validators.get(flag)
-        if pattern is None or not re.fullmatch(pattern, value):
-            return False
-        if flag == "--metadata-type":
-            seen_metadata_type = True
-        if flag == "--component":
-            component_count += 1
-            if component_count > 25:
-                return False
-    return not (seen_metadata_type and component_count)
+    return False
 
 
 # Read-only orientation commands available to every role. Rationale: a default-deny terminal
@@ -1083,7 +654,6 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     preflight = (root / "scripts/preflight.py").resolve()
     browser_guard = (root / "scripts/playwright_guard.py").resolve()
     work_record = (root / "scripts/work_record.py").resolve()
-    knowledge_registry = (root / "scripts/knowledge_registry.py").resolve()
     force_app_knowledge = (root / "scripts/force_app_knowledge.py").resolve()
     salesforce_read = (root / "scripts/salesforce_read.py").resolve()
     validate_harness = (root / "scripts/validate_harness.py").resolve()
@@ -1125,8 +695,6 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         return True
     if script == work_record:
         return work_record_command_allowed(remainder, role)
-    if script == knowledge_registry:
-        return knowledge_registry_command_allowed(remainder, role, root)
     if script == (root / "scripts/knowledge_store.py").resolve():
         return knowledge_store_command_allowed(remainder, role)
     if script == (root / "scripts/knowledge_search.py").resolve():
@@ -1248,8 +816,6 @@ def is_governed_record_path(relative_path: str) -> bool:
         re.fullmatch(r"\.ai/change-records/[^/]+/record\.json", relative_path)
         or re.fullmatch(r"\.ai/change-records/[^/]+/handoffs/[^/]+\.json", relative_path)
         or re.fullmatch(r"\.ai/change-records/[^/]+/evidence/[^/]+\.json", relative_path)
-        or re.fullmatch(r"\.ai/knowledge/(claims|evidence|reviews)/[^/]+\.(yaml|yml|json)", relative_path)
-        or re.fullmatch(r"\.ai/knowledge/(automation-map|business-processes|current-implementation|field-descriptions|glossary|integration-map|known-limitations|object-descriptions|object-relations)\.md", relative_path)
         or re.fullmatch(r"\.ai/knowledge/artifacts/.+\.md", lowered)
         or lowered == ".ai/knowledge/artifacts-ledger.jsonl"
         # Feature Entries and their ledger. The FILE needs its own arm, not just the ledger:
@@ -1296,7 +862,7 @@ def main() -> int:
                         f"{args.role}: this exact command is outside the terminal allowlist. "
                         "Allowed families: guarded harness scripts (scripts/preflight.py, "
                         "validate_harness.py, run_evals.py, work_record.py, "
-                        "knowledge_registry.py, force_app_knowledge.py, salesforce_read.py, "
+                        "force_app_knowledge.py, salesforce_read.py, "
                         "validate_handover_output.py), "
                         "read-only git (status/diff/log/show/ls-files), file reads "
                         "(ls/cat/grep/type/Get-Content), and tool --version checks — all plain, "

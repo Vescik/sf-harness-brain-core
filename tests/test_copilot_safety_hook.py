@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from scripts import copilot_role_guard as role_guard
 from scripts import copilot_safety_hook as safety
-from scripts import knowledge_registry, work_record
+from scripts import work_record
 
 
 def decision(output: dict[str, object]) -> tuple[str, str]:
@@ -70,45 +70,6 @@ class HumanApprovalBoundaryTests(unittest.TestCase):
                 )
                 self.assertEqual(actual, "deny")
                 self.assertIn("SAFE-HUMAN-001", reason)
-
-    def test_file_based_knowledge_review_and_promote_are_denied(self) -> None:
-        """The claim-approval power itself, in a session with no role guard.
-
-        The per-agent role guard grants review/promote to NO role, but it is absent when no
-        custom agent is selected — plain Copilot chat in the workspace — and only this hook
-        stands between a typed request and promotion. Denying costs nothing because the
-        command is legitimate for no role.
-        """
-        for command in (
-            "python3 scripts/knowledge_registry.py review --claim-id C1 --decision approve",
-            "python3 scripts/knowledge_registry.py promote --claim-id C1",
-            ".venv/bin/python scripts/knowledge_registry.py promote --claim-id C1",
-            "python3 -m scripts.knowledge_registry review --claim-id C1",
-        ):
-            with self.subTest(command=command):
-                actual, reason = self.run_hook("run_in_terminal", command)
-                self.assertEqual(actual, "deny")
-                self.assertIn("SAFE-HUMAN-001", reason)
-
-    def test_governed_knowledge_commands_keep_their_own_decisions(self) -> None:
-        """The deny must not swallow the request path or the read commands.
-
-        `query --status review` is the trap: matching the verb anywhere would refuse a plain
-        read because a flag value happens to be the word "review".
-        """
-        ask_actual, _ = self.run_hook(
-            "run_in_terminal", "python3 scripts/knowledge_registry.py approve-claim --claim-id C1"
-        )
-        self.assertEqual(ask_actual, "ask")
-        for command in (
-            "python3 scripts/knowledge_registry.py explain --claim-id C1",
-            "python3 scripts/knowledge_registry.py query --status review",
-            "python3 scripts/knowledge_registry.py propose --file draft.yaml",
-            "python3 scripts/knowledge_registry.py validate",
-        ):
-            with self.subTest(command=command):
-                actual, _ = self.run_hook("run_in_terminal", command)
-                self.assertEqual(actual, "continue")
 
     def test_shell_binary_names_are_matched_exactly_not_by_substring(self) -> None:
         """The short shell names must never become substring tokens.
@@ -175,88 +136,6 @@ class AgentCommandSurfaceTests(unittest.TestCase):
                 self.assertFalse(
                     role_guard.work_record_command_allowed(["approve"], role)
                 )
-
-    def test_knowledge_allowlists_keep_human_lifecycle_commands_out(self) -> None:
-        implemented = self.subcommands(knowledge_registry.build_parser())
-        agent_allowed = set().union(*role_guard.KNOWLEDGE_REGISTRY_COMMANDS.values())
-        self.assertEqual(agent_allowed - implemented, set())
-        # Only the file-based human review/promotion mechanisms stay agent-forbidden; the
-        # read-only reconcile/render-indexes checks are legitimate agent self-verification
-        # (2026-07-14 usability fix — denying them caused live flailing).
-        self.assertEqual(implemented - agent_allowed, {"review", "promote"})
-        self.assertTrue(
-            role_guard.knowledge_registry_command_allowed(
-                ["query", "--domain", "object-model"], "solution-designer"
-            )
-        )
-        self.assertFalse(
-            role_guard.knowledge_registry_command_allowed(
-                ["query", "--at", "2026-07-10T12:00:00Z"],
-                "solution-designer",
-            )
-        )
-        self.assertFalse(
-            role_guard.knowledge_registry_command_allowed(
-                ["query", "--domain", "object-model", "--unknown", "value"],
-                "solution-designer",
-            )
-        )
-        # Usage-registry query flags and the read-only report commands are agent-allowed.
-        self.assertTrue(
-            role_guard.knowledge_registry_command_allowed(
-                ["query", "--uses-object", "HarnessInvoice__c"], "development-assistant"
-            )
-        )
-        self.assertTrue(
-            role_guard.knowledge_registry_command_allowed(
-                ["stale-report", "--warn-days", "30"], "guardrail-reviewer"
-            )
-        )
-        self.assertTrue(
-            role_guard.knowledge_registry_command_allowed(
-                ["verify-citations", "--envelope", "output/handover/x.json"], "guardrail-reviewer"
-            )
-        )
-        self.assertFalse(
-            role_guard.knowledge_registry_command_allowed(
-                ["stale-report", "--unknown", "1"], "guardrail-reviewer"
-            )
-        )
-        self.assertTrue(
-            role_guard.knowledge_registry_command_allowed(
-                [
-                    "propose",
-                    "--claim-file",
-                    ".cache/knowledge-proposals/claim.yaml",
-                    "--evidence-file",
-                    ".cache/knowledge-proposals/evidence.yaml",
-                    "--expected-revision",
-                    "0",
-                ],
-                "config-investigator",
-            )
-        )
-        for unsafe_path in (
-            "output/claim.yaml",
-            ".ai/knowledge/claims/CLM-FAKE.yaml",
-            ".cache/knowledge-proposals/../../config/harness.example.json",
-        ):
-            with self.subTest(unsafe_path=unsafe_path):
-                self.assertFalse(
-                    role_guard.knowledge_registry_command_allowed(
-                        [
-                            "propose",
-                            "--claim-file",
-                            unsafe_path,
-                            "--evidence-file",
-                            ".cache/knowledge-proposals/evidence.yaml",
-                            "--expected-revision",
-                            "0",
-                        ],
-                        "config-investigator",
-                    )
-                )
-
 
 if __name__ == "__main__":
     unittest.main()

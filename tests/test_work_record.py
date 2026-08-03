@@ -55,37 +55,70 @@ SEAM_FIELD = """<?xml version="1.0" encoding="UTF-8"?>
 
 class WorkRecordTests(unittest.TestCase):
     record_id = "ADO-example-project-123"
-    claim_id = "KCLM-ACCOUNT-OWNERSHIP"
+    entry_id = "CustomObject:c:Account"
     rule_ids = ["SAFE-EVID-001", "MP-OWN-001", "ORG-KNOW-001", "SF-BULK-001"]
 
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory(prefix="work-record-v2-")
         self.root = Path(self.temporary.name)
-        self.claim_effective = True
         self._create_contract_root()
-        self.claim = self._ownership_claim()
-        claim_path = self.root / ".ai" / "knowledge" / "claims" / f"{self.claim_id}.yaml"
-        claim_path.parent.mkdir(parents=True, exist_ok=True)
-        claim_path.write_text(yaml.safe_dump(self.claim, sort_keys=False), encoding="utf-8")
-        self.claim_path = claim_path
+        # Fake approved-current lane for the scoped component's owning object, mirroring how
+        # the v1 tests patched the registry: flow tests exercise the record gates, while the
+        # real store is exercised end to end by seed_knowledge_entries-based tests below.
+        self.entry_effective = True
+        self.entry_lane = {
+            "identity": self.entry_id,
+            "lane": "approved-current",
+            "reviewedContentDigest": "sha256:" + "a" * 64,
+            "factsDigest": "sha256:" + "b" * 64,
+            "sourceTreeDigest": "sha256:" + "c" * 64,
+            "profile": "salesforce.custom-object@1",
+        }
+        entry_path = self.root / ".ai" / "knowledge" / "artifacts" / "CustomObject" / "c" / "Account.md"
+        entry_path.parent.mkdir(parents=True, exist_ok=True)
+        entry_path.write_text("fixture entry artifact for required-read hashing\n", encoding="utf-8")
+        self.entry_path = entry_path
         self._initialize_git_repository()
-        self.claim_patch = patch.object(
+        from scripts import knowledge_store
+
+        self._real_lane_for_identity = knowledge_store.lane_for_identity
+        self._real_assert_groundable = work_record._assert_entry_is_groundable
+        self.lane_patch = patch.object(
+            knowledge_store,
+            "lane_for_identity",
+            side_effect=self._lane_for_identity,
+        )
+        self.groundable_patch = patch.object(
             work_record,
-            "effective_knowledge_claim",
-            side_effect=self._effective_claim,
+            "_assert_entry_is_groundable",
+            side_effect=self._assert_groundable,
         )
         self.facade_patch = patch.object(
             work_record,
             "call_salesforce_review_facade",
             side_effect=self._salesforce_identity_receipt,
         )
-        self.claim_patch.start()
+        self.lane_patch.start()
+        self.groundable_patch.start()
         self.facade_patch.start()
 
     def tearDown(self) -> None:
         self.facade_patch.stop()
-        self.claim_patch.stop()
+        self.groundable_patch.stop()
+        self.lane_patch.stop()
         self.temporary.cleanup()
+
+    def _lane_for_identity(self, root: Path, identity: str):
+        if identity == self.entry_id:
+            if not self.entry_effective:
+                return None
+            return dict(self.entry_lane)
+        return self._real_lane_for_identity(root, identity)
+
+    def _assert_groundable(self, root: Path, entry_id: str) -> None:
+        if entry_id == self.entry_id:
+            return
+        self._real_assert_groundable(root, entry_id)
 
     def _create_contract_root(self) -> None:
         schema_names = [
@@ -227,51 +260,6 @@ class WorkRecordTests(unittest.TestCase):
             json.dumps(policy, indent=2), encoding="utf-8"
         )
 
-    def _ownership_claim(self) -> dict:
-        return {
-            "schemaVersion": 3,
-            "claimId": self.claim_id,
-            "revision": 2,
-            "domain": "current-implementation",
-            "claimType": "object-ownership",
-            "subject": {"kind": "object", "identity": "Account"},
-            "assertion": {"predicate": "ownership-classification", "value": "package-owned"},
-            "statement": "Account ownership is package-bound in the reviewed scope.",
-            "polarity": "positive",
-            "status": "verified",
-            "assurance": "corroborated",
-            "scope": {
-                "environment": "development",
-                "orgKey": "ORG-TEST",
-                "packageNamespace": "pkg",
-                "packageKey": "PKG-TEST",
-                "packageVersion": "3.4.0",
-                "repositoryCommit": None,
-            },
-            "evidenceRefs": ["KEVD-ACCOUNT-OWNERSHIP"],
-            "reviewRef": "KREV-ACCOUNT-OWNERSHIP",
-            "observedAt": "2026-07-10T09:00:00Z",
-            "verifiedAt": "2026-07-10T09:05:00Z",
-            "reviewBy": "2099-08-09T09:05:00Z",
-            "sensitivity": "internal-sanitized",
-            "keywords": ["account", "ownership"],
-            "limitations": [],
-            "supersedes": [],
-            "supersededBy": None,
-            "contradicts": [],
-            "relatedClaims": [],
-        }
-
-    def _effective_claim(self, root: Path, claim_id: str) -> dict:
-        if claim_id != self.claim_id or not self.claim_effective:
-            raise work_record.WorkRecordError(f"Knowledge claim is not effective: {claim_id}")
-        claim = yaml.safe_load(self.claim_path.read_text(encoding="utf-8"))
-        return {
-            "claim": claim,
-            "sha256": work_record.file_hash(self.claim_path),
-            "path": f".ai/knowledge/claims/{claim_id}.yaml",
-        }
-
     def _salesforce_identity_receipt(self, root: Path, alias: str, tool: str, arguments: dict) -> dict:
         self.assertEqual(alias, "SBX-DEV")
         self.assertEqual(tool, "review_org_identity")
@@ -343,7 +331,7 @@ class WorkRecordTests(unittest.TestCase):
         self.facade_patch.stop()
         with patch.object(work_record, "call_salesforce_review_facade", return_value=receipt):
             current = self.initialize()
-            current = self.bind_claim(current)
+            current = self.bind_entry(current)
             current = self.append_source_evidence(current)
             current = self.capture_identity(current)
         self.facade_patch.start()
@@ -364,7 +352,7 @@ class WorkRecordTests(unittest.TestCase):
         self.facade_patch.stop()
         with patch.object(work_record, "call_salesforce_review_facade", return_value=receipt):
             current = self.initialize()
-            current = self.bind_claim(current)
+            current = self.bind_entry(current)
             current = self.append_source_evidence(current)
             error = self.run_error(
                 "capture-org-review",
@@ -535,14 +523,14 @@ class WorkRecordTests(unittest.TestCase):
             arguments.extend(["--rule-id", rule_id])
         return self.run_ok(*arguments)
 
-    def bind_claim(self, current: dict) -> dict:
+    def bind_entry(self, current: dict) -> dict:
         return self.command(
-            "bind-claim",
+            "bind-entry",
             current,
             "--role",
             "solution-designer",
-            "--claim-id",
-            self.claim_id,
+            "--entry-id",
+            self.entry_id,
         )
 
     def append_source_evidence(self, current: dict) -> dict:
@@ -608,7 +596,7 @@ class WorkRecordTests(unittest.TestCase):
 
     def prepare_waiting(self, *, include_repository: bool = True) -> dict:
         current = self.initialize()
-        current = self.bind_claim(current)
+        current = self.bind_entry(current)
         current = self.append_source_evidence(current)
         if include_repository:
             current = self.capture_repository(current)
@@ -665,11 +653,14 @@ class WorkRecordTests(unittest.TestCase):
             "test-metadata-validate",
         )
 
-    def test_init_forces_unknown_ownership_and_rejects_self_declared_environment_proof(self) -> None:
+    def test_init_keeps_components_bare_and_rejects_self_declared_environment_proof(self) -> None:
         created = self.initialize()
         record = work_record.load_record(self.root, self.record_id)
-        self.assertEqual(record["scope"]["components"][0]["ownership"], "unknown")
-        self.assertIsNone(record["scope"]["components"][0]["ownershipClaimRef"])
+        # Components carry only name and type; grounding is computed from bound entries at
+        # the SAFE/approval gates, never stored on the component (v1 retirement, owner D-B).
+        self.assertEqual(
+            {"name": "Account", "type": "CustomObject"}, record["scope"]["components"][0]
+        )
         self.assertEqual(record["environment"]["status"], "unverified")
         self.assertEqual(created["groundingHash"], work_record.grounding_hash(record))
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
@@ -684,11 +675,11 @@ class WorkRecordTests(unittest.TestCase):
                 ]
             )
 
-    def test_bind_claim_derives_package_ownership_and_rejects_ineffective_claim(self) -> None:
+    def test_bind_entry_records_lane_digests_and_rejects_missing_entry(self) -> None:
         current = self.initialize()
-        self.claim_effective = False
+        self.entry_effective = False
         error = self.run_error(
-            "bind-claim",
+            "bind-entry",
             "--record-id",
             self.record_id,
             "--expected-revision",
@@ -697,20 +688,53 @@ class WorkRecordTests(unittest.TestCase):
             current["recordHash"],
             "--role",
             "solution-designer",
-            "--claim-id",
-            self.claim_id,
+            "--entry-id",
+            self.entry_id,
         )
-        self.assertIn("not effective", error)
-        self.claim_effective = True
-        bound = self.bind_claim(current)
+        self.assertIn("does not exist", error)
+        self.entry_effective = True
+        self.bind_entry(current)
         record = work_record.load_record(self.root, self.record_id)
-        component = record["scope"]["components"][0]
-        self.assertEqual(component["ownership"], "package-owned")
-        self.assertEqual(component["ownershipClaimRef"], self.claim_id)
-        self.assertEqual(component["packageNamespace"], "pkg")
-        self.assertEqual(component["packageVersion"], "3.4.0")
-        self.assertNotEqual(bound["scopeHash"], current["scopeHash"])
-        self.assertEqual(record["claimRefs"][0]["sha256"], work_record.file_hash(self.claim_path))
+        reference = record["entryRefs"][0]
+        self.assertEqual(reference["entryId"], self.entry_id)
+        self.assertEqual(reference["reviewedContentDigest"], self.entry_lane["reviewedContentDigest"])
+        self.assertEqual(reference["profile"], self.entry_lane["profile"])
+
+    def test_components_cannot_carry_ownership_fields(self) -> None:
+        # Negative pin for the v1 retirement: ownership/package identity were claim-bound
+        # component state; the fields are gone, not optional. Reintroducing them must fail
+        # at parse time, before any record is written.
+        error = self.run_error(
+            "init",
+            "--record-id",
+            "ADO-example-project-998",
+            "--organization",
+            "example-org",
+            "--project",
+            "example-project",
+            "--work-item-id",
+            "998",
+            "--work-item-type",
+            "Story",
+            "--work-item-url",
+            "https://dev.azure.com/example-org/example-project/_workitems/edit/998",
+            "--work-item-revision",
+            "1",
+            "--fetched-at",
+            "2026-07-10T09:00:00Z",
+            "--title",
+            "Ownership field regression probe",
+            "--requested-outcome",
+            "Must be refused before a record exists.",
+            "--workspace-root",
+            "brain-core",
+            "--component",
+            json.dumps({"name": "Account", "type": "CustomObject", "ownership": "package-owned"}),
+            "--rule-id",
+            self.rule_ids[0],
+        )
+        self.assertIn("unknown component fields", error)
+        self.assertIn("ownership", error)
 
     def test_entry_grounding_requires_source_exact_sections_with_full_coverage(self) -> None:
         identities = self.seed_knowledge_entries()
@@ -773,28 +797,28 @@ class WorkRecordTests(unittest.TestCase):
             [identities["CustomField"]], [item["entryId"] for item in record["entryRefs"]]
         )
 
-    def test_claim_file_drift_invalidates_the_exact_binding(self) -> None:
-        self.bind_claim(self.initialize())
-        self.claim_path.write_text(self.claim_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    def test_entry_lane_drift_invalidates_the_exact_binding(self) -> None:
+        self.bind_entry(self.initialize())
+        self.entry_lane["reviewedContentDigest"] = "sha256:" + "f" * 64
         error = self.run_error("validate", "--record-id", self.record_id)
-        self.assertIn("differs from its persisted source", error)
+        self.assertIn("digest differs from the bound reference", error)
 
-    def test_rehashed_component_ownership_fabrication_is_rejected(self) -> None:
-        self.bind_claim(self.initialize())
+    def test_rehashed_component_ownership_fabrication_is_schema_refused(self) -> None:
+        # The ownership fields were deleted with the claim registry; hand-writing them back
+        # into a persisted record must fail schema validation, not silently round-trip.
+        self.bind_entry(self.initialize())
         path = self.root / ".ai" / "change-records" / self.record_id / "record.json"
         record = json.loads(path.read_text(encoding="utf-8"))
         component = record["scope"]["components"][0]
         component["ownership"] = "subscriber-owned"
-        component["packageNamespace"] = None
-        component["packageVersion"] = None
         record["scopeHash"] = work_record.scope_hash(record["scope"])
         record["groundingHash"] = work_record.grounding_hash(record)
         work_record.atomic_write_json(path, record)
         error = self.run_error("validate", "--record-id", self.record_id)
-        self.assertIn("does not match its structural Knowledge claim", error)
+        self.assertIn("change record", error)
 
     def test_complete_durable_evidence_requires_a_real_nonempty_stable_artifact(self) -> None:
-        current = self.bind_claim(self.initialize())
+        current = self.bind_entry(self.initialize())
         error = self.run_error(
             "append-evidence",
             "--record-id",
@@ -834,7 +858,7 @@ class WorkRecordTests(unittest.TestCase):
         self.assertGreater(appended["recordRevision"], current["recordRevision"])
 
     def test_repository_receipt_is_derived_and_ignores_only_record_self_mutation(self) -> None:
-        current = self.capture_repository(self.append_source_evidence(self.bind_claim(self.initialize())))
+        current = self.capture_repository(self.append_source_evidence(self.bind_entry(self.initialize())))
         record = work_record.load_record(self.root, self.record_id)
         repository = record["repositories"][0]
         self.assertEqual(repository["dirtyPaths"], [])
@@ -872,7 +896,7 @@ class WorkRecordTests(unittest.TestCase):
 
     def test_blocking_question_requires_a_bound_resolution_before_approval(self) -> None:
         current = self.initialize()
-        current = self.bind_claim(current)
+        current = self.bind_entry(current)
         current = self.append_source_evidence(current)
         current = self.capture_repository(current)
         current = self.capture_identity(current)
@@ -922,7 +946,7 @@ class WorkRecordTests(unittest.TestCase):
             "--question-id",
             "BQ-ownership",
             "--resolution-ref",
-            self.claim_id,
+            self.entry_id,
         )
         approved = self.approve(current)
         self.assertEqual(approved["state"], {"phase": "design", "status": "accepted"})
@@ -1001,7 +1025,7 @@ class WorkRecordTests(unittest.TestCase):
         validated = self.run_ok("validate", "--record-id", self.record_id)
         self.assertTrue(validated["valid"])
 
-    def test_handoff_binds_exact_rules_claims_scope_and_record_hash(self) -> None:
+    def test_handoff_binds_exact_rules_entries_scope_and_record_hash(self) -> None:
         current = self.approve(self.prepare_waiting())
         created = self.command(
             "create-handoff",
@@ -1013,7 +1037,7 @@ class WorkRecordTests(unittest.TestCase):
             "--reason",
             "Transfer the approved grounded design.",
             "--summary",
-            "Use only the persisted scope, rules, claims, and evidence.",
+            "Use only the persisted scope, rules, entries, and evidence.",
             "--next-phase",
             "development",
             "--next-status",
@@ -1031,12 +1055,86 @@ class WorkRecordTests(unittest.TestCase):
         record = work_record.load_record(self.root, self.record_id)
         self.assertEqual(handoff["recordHash"], work_record.json_hash(record))
         self.assertEqual(handoff["groundingHash"], record["groundingHash"])
-        self.assertEqual(handoff["claimRefs"], record["claimRefs"])
+        self.assertEqual(handoff["entryRefs"], record["entryRefs"])
         self.assertEqual(handoff["ruleRefs"], record["ruleRefs"])
-        handoff["claimRefs"] = []
+        handoff["entryRefs"] = []
         work_record.atomic_write_json(path, handoff)
         error = self.run_error("validate", "--record-id", self.record_id)
         self.assertIn("stale grounding", error)
+
+    def test_approval_is_fail_closed_on_uncovered_and_unprofiled_components(self) -> None:
+        # Owner D-B: every scope component must be covered by a bound approved entry, and a
+        # metadata type without an entry profile blocks approval outright — the remedy is a
+        # new profile, never a pass-through.
+        arguments = [
+            "init",
+            "--record-id",
+            "ADO-example-project-997",
+            "--organization",
+            "example-org",
+            "--project",
+            "example-project",
+            "--work-item-id",
+            "997",
+            "--work-item-type",
+            "Story",
+            "--work-item-url",
+            "https://dev.azure.com/example-org/example-project/_workitems/edit/997",
+            "--work-item-revision",
+            "1",
+            "--fetched-at",
+            "2026-07-10T09:00:00Z",
+            "--title",
+            "Coverage gate probe",
+            "--requested-outcome",
+            "Exercise the entry-coverage approval gate.",
+            "--workspace-root",
+            "brain-core",
+            "--component",
+            json.dumps({"name": "Account", "type": "CustomObject"}),
+            "--component",
+            json.dumps({"name": "Uncovered__c", "type": "CustomObject"}),
+            "--component",
+            json.dumps({"name": "Account-Account Layout", "type": "Layout"}),
+            "--environment-alias",
+            "SBX-DEV",
+        ]
+        for rule_id in self.rule_ids:
+            arguments.extend(["--rule-id", rule_id])
+        saved_record_id = self.record_id
+        self.record_id = "ADO-example-project-997"
+        try:
+            current = self.run_ok(*arguments)
+            current = self.bind_entry(current)
+            current = self.append_source_evidence(current)
+            current = self.capture_repository(current)
+            current = self.capture_identity(current)
+            current = self.transition(current, "solution-designer", "design", "draft", "Start design.")
+            current = self.transition(
+                current, "solution-designer", "design", "awaiting_human", "Request review."
+            )
+            error = self.run_error(
+                "approve",
+                "--record-id",
+                self.record_id,
+                "--expected-revision",
+                str(current["recordRevision"]),
+                "--expected-record-hash",
+                current["recordHash"],
+                "--expected-design-hash",
+                current["designHash"],
+                "--approver",
+                "Human Reviewer",
+                "--mechanism",
+                "human-terminal",
+                "--approval-ref",
+                "terminal:review-session-123",
+            )
+        finally:
+            self.record_id = saved_record_id
+        self.assertIn("entry-backed component grounding", error)
+        self.assertIn("Uncovered__c is not covered by a bound approved entry", error)
+        self.assertIn("has no entry profile", error)
 
     def test_handoff_fixtures_match_v2_schema(self) -> None:
         schema = json.loads((ROOT / "schemas" / "handoff-envelope.schema.json").read_text())

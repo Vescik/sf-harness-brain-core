@@ -73,9 +73,8 @@ HEURISTIC_REF_KINDS = frozenset(
         "launches-flow",
     }
 )
-# Canonical vocabulary of every reference kind this extractor can emit. knowledge_registry.py
-# classifies the same kinds into FIELD/OBJECT/INVOKE/EXTERNAL sets for usage derivation; the two
-# vocabularies must not drift — tests/test_kind_contract.py pins the invariants between them.
+# Canonical vocabulary of every reference kind this extractor can emit
+# (force_app_knowledge.ALL_REF_KINDS is derived from it).
 ALL_REF_KINDS = OBJECT_REF_KINDS | frozenset(
     {
         "subflow",

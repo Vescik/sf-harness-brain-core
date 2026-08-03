@@ -436,37 +436,6 @@ class KnowledgeStoreTests(unittest.TestCase):
             work_record.validate_entry_refs(self.temp, [reference], require_current=True)
         work_record.validate_entry_refs(self.temp, [reference], require_current=False)
 
-    def test_repo_only_claims_are_shadowed_by_approved_entries(self) -> None:
-        from scripts import work_record
-
-        drafted = self.draft()
-        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
-        claims_dir = self.temp / ".ai/knowledge/claims"
-        evidence_dir = self.temp / ".ai/knowledge/evidence"
-        claims_dir.mkdir(parents=True)
-        evidence_dir.mkdir(parents=True)
-        (claims_dir / "KCLM-ROUTER-DESC-001.yaml").write_text(
-            "claimId: KCLM-ROUTER-DESC-001\nevidenceRefs: [KEVD-ROUTER-SRC-001]\n",
-            encoding="utf-8",
-        )
-        expected = {
-            "claimType": "component-description",
-            "subject": {"kind": "automation", "identity": "HarnessAlphaRouter"},
-        }
-        (evidence_dir / "KEVD-ROUTER-SRC-001.yaml").write_text(
-            "evidenceId: KEVD-ROUTER-SRC-001\nsourceType: metadata-repository\n",
-            encoding="utf-8",
-        )
-        with self.assertRaises(work_record.WorkRecordError) as ctx:
-            work_record._assert_not_shadowed(self.temp, "KCLM-ROUTER-DESC-001", expected)
-        self.assertIn("shadowed-by-entry", str(ctx.exception))
-        # An org-observation leg of the same claim type keeps its v1 standing.
-        (evidence_dir / "KEVD-ROUTER-SRC-001.yaml").write_text(
-            "evidenceId: KEVD-ROUTER-SRC-001\nsourceType: salesforce-org-review\n",
-            encoding="utf-8",
-        )
-        work_record._assert_not_shadowed(self.temp, "KCLM-ROUTER-DESC-001", expected)
-
     # --- remaining adversarial-review evals (R-09..R-24) ---------------------------
 
     def test_r09_reparse_point_under_knowledge_fails_closed(self) -> None:
@@ -629,39 +598,72 @@ class CrossPlatformDeterminismTests(KnowledgeStoreTests):
 
 
 class EntryCitationVerificationTests(KnowledgeStoreTests):
-    """verify-citations must cover both citation kinds, or an envelope is half-checked."""
-
-    def registry(self):
-        from scripts.knowledge_registry import KnowledgeRegistry
-
-        return KnowledgeRegistry(self.temp)
+    """Entry citation verdicts live in the store (v1 retirement P0), not the registry."""
 
     def test_verdicts_track_the_entry_lifecycle(self) -> None:
         drafted = self.draft()
         ref = {"entryId": drafted["identity"], "reviewedContentDigest": drafted["reviewedContentDigest"]}
-        self.assertEqual("not-approved", self.registry().verify_entry_citations([ref])[0]["verdict"])
+        self.assertEqual("not-approved", store.verify_entry_citations(self.temp, [ref])[0]["verdict"])
 
         self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
-        self.assertEqual("current", self.registry().verify_entry_citations([ref])[0]["verdict"])
+        self.assertEqual("current", store.verify_entry_citations(self.temp, [ref])[0]["verdict"])
 
         flow = self.temp / "force-app/main/default/flows/HarnessAlphaRouter.flow-meta.xml"
         flow.write_text(FLOW_XML.replace("<status>Active</status>", "<status>Draft</status>"), encoding="utf-8")
-        drifted = self.registry().verify_entry_citations([ref])[0]
+        drifted = store.verify_entry_citations(self.temp, [ref])[0]
         self.assertEqual("drifted", drifted["verdict"])
         self.assertEqual("warning", drifted["severity"])
 
         store.command_entry_revoke(argparse.Namespace(identity=drafted["identity"], rationale="x"))
-        self.assertEqual("revoked", self.registry().verify_entry_citations([ref])[0]["verdict"])
+        self.assertEqual("revoked", store.verify_entry_citations(self.temp, [ref])[0]["verdict"])
 
     def test_missing_and_mismatched_citations_are_invalid(self) -> None:
-        registry = self.registry()
-        self.assertEqual("missing", registry.verify_entry_citations([{"entryId": "Flow:c:Nope"}])[0]["verdict"])
+        self.assertEqual(
+            "missing", store.verify_entry_citations(self.temp, [{"entryId": "Flow:c:Nope"}])[0]["verdict"]
+        )
         drafted = self.draft()
         self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
         stale = {"entryId": drafted["identity"], "reviewedContentDigest": "sha256:" + "0" * 64}
-        verdict = self.registry().verify_entry_citations([stale])[0]
+        verdict = store.verify_entry_citations(self.temp, [stale])[0]
         self.assertEqual("digest-mismatch", verdict["verdict"])
         self.assertEqual("invalid", verdict["severity"])
+
+    def test_cli_requires_exactly_one_source_and_reads_envelopes(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        for bad in (
+            argparse.Namespace(envelope=None, entry_ref=[]),
+            argparse.Namespace(envelope="x.json", entry_ref=["Flow:c:Nope"]),
+        ):
+            with self.assertRaises(store.StoreError):
+                store.command_entry_verify_citations(bad)
+        envelope = self.temp / "output" / "envelope.json"
+        envelope.parent.mkdir(parents=True, exist_ok=True)
+        envelope.write_text(
+            json.dumps(
+                {
+                    "entryRefs": [
+                        {"entryId": drafted["identity"], "reviewedContentDigest": drafted["reviewedContentDigest"]},
+                        "Flow:c:Nope",
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        report = store.command_entry_verify_citations(
+            argparse.Namespace(envelope=str(envelope), entry_ref=[])
+        )
+        self.assertEqual(2, report["citationCount"])
+        self.assertEqual({"ok": 1, "warning": 0, "invalid": 1}, report["counts"])
+        bare = store.command_entry_verify_citations(
+            argparse.Namespace(envelope=None, entry_ref=[drafted["identity"]])
+        )
+        self.assertEqual("current", bare["citations"][0]["verdict"])
+        with self.assertRaises(store.StoreError):
+            store.command_entry_verify_citations(
+                argparse.Namespace(envelope="/etc/hosts", entry_ref=[])
+            )
+
 
     def test_entry_coverage_separates_gaps_from_unprofiled_types(self) -> None:
         drafted = self.draft()
@@ -1176,7 +1178,7 @@ class WorkflowReachabilityTests(unittest.TestCase):
 
     def test_the_curator_agent_loads_the_skills_its_prompts_use(self) -> None:
         agent = (self.HARNESS / ".github/agents/knowledge-curator.agent.md").read_text(encoding="utf-8")
-        for skill in ("approve-knowledge-drafts", "propose-force-app-knowledge", "batch-knowledge"):
+        for skill in ("approve-knowledge-drafts", "search-knowledge"):
             with self.subTest(skill=skill):
                 self.assertIn(skill, agent, f"knowledge-curator does not load {skill}")
 

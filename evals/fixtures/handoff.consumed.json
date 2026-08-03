@@ -6,34 +6,6 @@
   "createdAt": "2026-07-10T10:00:00Z",
   "designHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "groundingHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-  "claimRefs": [
-    {
-      "assertion": {
-        "predicate": "ownership-classification",
-        "value": "platform"
-      },
-      "claimId": "KCLM-DEMO-PLATFORM",
-      "claimType": "object-ownership",
-      "path": ".ai/knowledge/claims/KCLM-DEMO-PLATFORM.yaml",
-      "revision": 2,
-      "reviewBy": "2026-08-09T09:00:00Z",
-      "reviewRef": "KREV-DEMO-PLATFORM",
-      "scope": {
-        "environment": "development",
-        "orgKey": "ORG-DEMO",
-        "packageKey": null,
-        "packageNamespace": null,
-        "packageVersion": null,
-        "repositoryCommit": null
-      },
-      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "subject": {
-        "identity": "PlatformCapabilityA",
-        "kind": "object"
-      },
-      "verifiedAt": "2026-07-10T09:00:00Z"
-    }
-  ],
   "evidenceRefs": [],
   "expectedNextState": {
     "phase": "development",
@@ -64,10 +36,6 @@
     "components": [
       {
         "name": "PlatformCapabilityA",
-        "ownership": "platform",
-        "ownershipClaimRef": "KCLM-DEMO-PLATFORM",
-        "packageNamespace": null,
-        "packageVersion": null,
         "type": "PlatformCapability"
       }
     ],
@@ -83,5 +51,14 @@
   "summary": "The receiving role loaded the persisted record rather than relying on chat prose.",
   "toRole": "development-assistant",
   "unresolvedQuestions": [],
-  "updatedAt": "2026-07-10T10:05:00Z"
+  "updatedAt": "2026-07-10T10:05:00Z",
+  "entryRefs": [
+    {
+      "entryId": "Flow:c:DemoRouting",
+      "reviewedContentDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "factsDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "sourceTreeDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "profile": "salesforce.flow@1"
+    }
+  ]
 }

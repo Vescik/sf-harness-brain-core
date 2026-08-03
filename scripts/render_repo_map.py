@@ -5,7 +5,7 @@ The atlas is the agent-facing orientation map (directory purposes, role -> files
 skills/contracts/commands catalogs, resume pointers). Everything except the seeded directory
 purposes and resume lines is parsed from existing frontmatter and headings, so the map can never
 drift from its sources; `render --check` fails when the committed artifacts drift, mirroring
-`knowledge_registry.py render-indexes --check`.
+`knowledge_store.py entry-check`.
 """
 
 from __future__ import annotations

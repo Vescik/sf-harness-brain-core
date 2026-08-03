@@ -30,7 +30,7 @@ The role guard only permits the harness's own Python scripts, and only when invo
 - **`python` must be the workspace `.venv` interpreter** so `jsonschema`/`PyYAML` are importable.
   Select it once via "Python: Select Interpreter" → `.venv`; the integrated terminal then activates
   it automatically. Running system Python fails with `ModuleNotFoundError`.
-- Run from the repository root. Only `preflight.py`, `work_record.py`, `knowledge_registry.py`,
+- Run from the repository root. Only `preflight.py`, `work_record.py`,
   `knowledge_store.py`, `knowledge_search.py`, `force_app_knowledge.py`, `salesforce_read.py`,
   `validate_handover_output.py` (read-only handover render check), `validate_harness.py`,
   `run_evals.py`, and `playwright_guard.py` are permitted, each with its allowlisted
@@ -42,17 +42,20 @@ The role guard only permits the harness's own Python scripts, and only when invo
   and every mutating command remain denied — orient freely, mutate only through the guarded
   scripts.
 
-## Claims and Knowledge
+## Knowledge
 
-- Classify each material factual assertion as a claim and apply the evidence policy for its type.
-- Consume only `verified`, fresh, scope-matched, uncontested claims as trusted Knowledge.
-- Model inference and org observation may create a `proposed` claim only. Promotion requires the
-  immutable human review defined by the Knowledge lifecycle.
+- Ground each material factual assertion per SAFE-CLAIM-001: approved entries for
+  repository-source facts, fresh governed receipts or unexpired org-usage blocks for org
+  state, `UNVERIFIED` with source and bounds for everything else.
+- Consume only `approved-current`, scope-matched entries as trusted Knowledge.
+- Model inference and org observation may create drafts and reports only. Approval requires the
+  human's digest-pinned chat confirmation through the governed executor.
 - The delivery lane depends on a populated Knowledge store: human design approval
-  (`work_record.py approve`) requires at least one fresh effective claim or approved entry bound
-  to the record and claim-backed ownership for every scope component. On a fresh workspace,
-  bootstrap Knowledge first (inventory → propose / entry-draft → human approvals) before starting
-  a governed feature.
+  (`work_record.py approve`) requires at least one approved entry bound to the record and
+  entry-backed grounding for every scope component (the component's own entry or its owning
+  CustomObject's; a metadata type without an entry profile blocks approval). On a fresh
+  workspace, bootstrap Knowledge first (inventory → entry-draft → describe → human approvals)
+  before starting a governed feature.
 - Principles constrain actions; they do not rewrite observations. The metadata repository describes
   intended customer-owned state; the org review describes deployed state at a timestamp.
 - Salesforce MCP and CLI agreement corroborates transport from the same org. It is not independent
@@ -87,13 +90,13 @@ Every generated report, draft, or returned structured context states:
 - completeness (`complete` or `partial`) and warnings;
 - review status (`draft`, `accepted`, `rejected`, or `promoted`);
 - files written and verification performed.
-- material `ruleRefs`, `claimRefs`, `entryRefs` (approved Knowledge Entries, SAFE-CLAIM-001 v2),
-  and `evidenceRefs`, including missing/stale/contested/shadowed refs.
+- material `ruleRefs` and `entryRefs` (approved Knowledge Entries, SAFE-CLAIM-001 v2),
+  and `evidenceRefs`, including missing/drifted/expired refs.
 
 Never silently overwrite a human-reviewed artifact. Sanitize output names and keep writes inside
 the documented brain or named Salesforce workspace root.
 
-Authoritative work records, handoffs, claims, evidence, reviews, and approvals are mutated only by
+Authoritative work records, handoffs, entries, ledgers, and approvals are mutated only by
 their deterministic tools with expected-revision checks. Ignored cache/output and conversation
 history cannot be the sole durable source for a handoff.
 

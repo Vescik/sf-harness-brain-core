@@ -15,17 +15,18 @@ catalogs, resume pointers) before exploring the tree.
 - **SAFE-EVID-001 — incomplete evidence cannot be safe.** Missing, stale, partial, unreviewed,
   contested, scope-mismatched, or unresolved evidence yields `INCOMPLETE — NEEDS HUMAN`, never
   `SAFE`.
-- **SAFE-CLAIM-001 — material facts require governed grounding.** A material system or package
-  fact must reference either (a) a schema-valid claim and its evidence, or (b) — only for the
-  intended repository-source state of a force-app artifact — a current approved Knowledge Entry
-  (`entryRef`; lane `approved-current` confirmed by the entry executor's receipt, never by a raw
-  file read) covering a source-exact, fully-covered section, and only for positive presence
-  assertions. Absence or completeness of source, deployed org state, runtime behavior, business
-  meaning, package limitations, and vendor guarantees still require a claim with evidence. When
-  an approved entry exists for a subject, a metadata-repository claim may not ground the same
-  fact (`shadowed-by-entry`). Model inference, chat recollection, and generic Salesforce
-  knowledge may propose but cannot verify. (v2 per docs/knowledge-one-file-contract.md §8;
-  owner-approved 2026-07-24.)
+- **SAFE-CLAIM-001 — material facts require governed grounding.** A material fact about the
+  intended repository-source state of a force-app artifact must reference a current approved
+  Knowledge Entry (`entryRef`; lane `approved-current` confirmed by the entry executor's
+  receipt, never by a raw file read) covering a source-exact, fully-covered section, and only
+  for positive presence assertions. Deployed org state and record data are grounded only by a
+  fresh receipt from the governed review facade or an unexpired entry `orgUsage` block —
+  transcript numbers and old reports are not grounding. Absence or completeness of source,
+  runtime behavior, business meaning, package limitations, and vendor guarantees have no
+  governed grounding surface: state them as `UNVERIFIED` observations with their source and
+  bounds, or escalate to a human — never as verified facts. Model inference, chat recollection,
+  and generic Salesforce knowledge may propose but cannot verify. (v3 per
+  docs/knowledge-one-file-contract.md §8; claim registry retired, owner-approved 2026-08-03.)
 - **SAFE-TOOL-001 — never invent execution.** Never state or imply that a file, repository, MCP
   tool, CLI command, org query, test, approval, or handoff was inspected or completed without its
   actual successful receipt. An unavailable tool is `DEPENDENCY UNAVAILABLE`, not permission to
@@ -39,11 +40,12 @@ catalogs, resume pointers) before exploring the tree.
   approval, evidence, state, or scope.
 - **SAFE-HUMAN-001 — agents cannot grant approval.** Human approval must be named, timestamped,
   mechanism-recorded, and bound to the exact scope, design, and grounding hashes. A changed scope,
-  design, or grounding set invalidates prior approval. Knowledge promotion may be approved through
-  the explicit chat confirmation dialog (`approve-claim`, mechanism `copilot-chat-confirmation`,
-  reviewer named in local configuration); chat *text* is never approval, and work-record approval
-  remains human-terminal-only. The current pilot records a human assertion; it does not claim
-  cryptographic or provider-API verification of the approver's identity.
+  design, or grounding set invalidates prior approval. Knowledge approval may be granted through
+  the explicit chat confirmation dialog (digest-pinned `entry-approve`/`feature-approve`,
+  mechanism `copilot-chat-entry-confirmation`, reviewer named in local configuration); chat
+  *text* is never approval, and work-record approval remains human-terminal-only. The current
+  pilot records a human assertion; it does not claim cryptographic or provider-API verification
+  of the approver's identity.
 - **SAFE-CRED-001 — agents never handle credentials.** Authentication uses human-established
   OAuth, Salesforce CLI authorization, or a dedicated browser profile. Never request, print,
   return, cache, or commit passwords, tokens, cookies, session material, or raw identity payloads.

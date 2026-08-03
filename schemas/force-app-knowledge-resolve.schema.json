@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:sf-harness-brain-core:force-app-knowledge-resolve.schema.json",
   "title": "force-app Knowledge selected-files resolution",
-  "description": "Derived read-only mapping of pinned file paths / mentioned component names onto inventory components, with the lane (entry vs claim) and current documentation status per match. Recomputed from the inventory on every invocation; ambiguity is reported, never resolved by the tool.",
+  "description": "Derived read-only mapping of pinned file paths / mentioned component names onto inventory components, with the lane (entry for profiled types, none otherwise) and current documentation status per match. Recomputed from the inventory on every invocation; ambiguity is reported, never resolved by the tool.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -82,13 +82,12 @@
           "metadataType": { "type": "string", "minLength": 1 },
           "name": { "type": "string", "minLength": 1 },
           "path": { "type": "string", "pattern": "^force-app/" },
-          "lane": { "enum": ["entry", "claim"] },
+          "lane": { "enum": ["entry", "none"] },
           "status": {
             "enum": [
               "no-entry", "draft", "not-effective", "revoked",
               "approved-current", "approved-drifted",
-              "pending", "drafted", "proposed", "verified-current",
-              "stale-refresh", "blocked"
+              "no-entry-profile"
             ]
           },
           "described": { "type": "boolean" },

@@ -1,6 +1,6 @@
 ---
 name: check-feature-coverage
-description: Compare a current Azure DevOps Feature and selected BRD requirements with full child Story claims, producing a traceable coverage matrix, gaps, orphans, ambiguity, and package warnings before design.
+description: Compare a current Azure DevOps Feature and selected BRD requirements with full child Story content, producing a traceable coverage matrix, gaps, orphans, ambiguity, and package warnings before design.
 user-invocable: false
 ---
 
@@ -37,12 +37,13 @@ For BRD attachments:
      and `outgoing` are keyed by relation kind, so iterate the keys; a kind with no key has no
      rows, which is not proof that nothing depends on the component. A row with `hydrated: false`
      failed re-reading and stays out of the coverage denominator on either side of the matrix;
-   - `python scripts/knowledge_registry.py query --subject-identity <ApiName> --claim-type
-     package-limitation` for vendor/package facts, **and `--uses-object <Object>`** for dependent
-     automations of unprofiled types (Workflow, ApprovalProcess, Layout, AuraDefinitionBundle…).
-     Those have no entry, so dropping this query would hide them from a release gate while the
-     result still read as a clean bill of health.
-   Treat only effective claims as facts. An empty result from either layer is a recorded gap and
+   - **Unprofiled-type dependents are an UNCOVERED class, and the matrix must say so** (owner
+     D-C, 2026-08-03): metadata types without an entry profile (Workflow, ApprovalProcess,
+     Layout, AuraDefinitionBundle, …) have no governed dependency lookup since the claim
+     registry retired. The coverage matrix MUST carry an explicit `not covered: <type list>`
+     line naming every such type present in the inventory — a result without that line reads
+     as a clean bill of health it did not earn.
+   Treat only approved-current entries as facts. An empty result is a recorded gap and
    is NEVER proof that nothing depends on the component.
 5. Save all mandatory sections using the Feature Health template and the output envelope.
 
@@ -56,9 +57,9 @@ uncovered requirement, no blocking ambiguity, and no unresolved relevant package
 Query both layers through [search-knowledge](../search-knowledge/SKILL.md) and keep their
 authorities apart. Approved one-file Knowledge Entries ground intended repository-source facts
 (what a component declares, what touches a field) and are cited as `entryRef` with the entry
-path and digests. The claim registry grounds org state, runtime behavior, business meaning, and
-package/vendor facts, cited as `claimRef` + `evidenceRef`. Where an approved entry exists for a
-subject it shadows a metadata-repository claim about the same fact (SAFE-CLAIM-001 v2) — cite
+path and digests. Org usage is grounded only by an unexpired entry `orgUsage` block, cited
+with its orgKey and observedAt; runtime behavior, business meaning, and vendor guarantees have
+no governed Knowledge surface — mark them `UNVERIFIED` with their source instead of citing
 the entry. Absence, deployed state, and semantics are never grounded by an entry, and a missing
 search hit is never proof of absence.
 
@@ -66,11 +67,11 @@ Cite what the executor gives you, not what the view shows: obtain the citable re
 `python scripts/knowledge_store.py entry-status --identity <Identity>`. A search result, a
 `context` pack and a generated dossier are never themselves citable.
 
-An entry can be approved, current and still refuse to ground a claim: contract §8.1 grounds only
+An entry can be approved, current and still refuse to ground a fact: contract §8.1 grounds only
 sections marked `source-exact` with full coverage, and the executor enforces that when the
 `entryRef` is bound. **Apex-layer entries generally cannot be cited as positive grounding** —
 their facts are regex-derived and honestly marked heuristic. Measured on the 189-component
 reference package: 48 of 52 ApexClass, 5 of 5 ApexTrigger, 3 of 93 CustomField and 2 of 2
 ValidationRule entries are refused. Read them for orientation, report the fact as inferred, and
-ground it on a claim with its own evidence. The refusal is the contract working, not a tooling
+report the fact as ungrounded instead. The refusal is the contract working, not a tooling
 failure — never retry it with a different ref shape.

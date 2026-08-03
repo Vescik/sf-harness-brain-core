@@ -34,10 +34,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 try:
-    from scripts.knowledge_registry import canonical_digest
+    from scripts.knowledge_digest import canonical_digest
     from scripts.relation_kinds import edge_assurance
 except ModuleNotFoundError:  # invoked as `python scripts/knowledge_store.py`
-    from knowledge_registry import canonical_digest  # type: ignore
+    from knowledge_digest import canonical_digest  # type: ignore
     from relation_kinds import edge_assurance  # type: ignore
 
 ARTIFACTS_ROOT = ROOT / ".ai/knowledge/artifacts"
@@ -486,6 +486,47 @@ def lane_for_identity(root: Path, identity: str) -> dict[str, Any] | None:
             if lane["identity"] == identity:
                 return lane
     return None
+
+
+def verify_entry_citations(root: Path, entry_refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Advisory verdicts for cited Knowledge Entries (SAFE-CLAIM-001 v2 entryRefs).
+
+    Relocated from KnowledgeRegistry (v1 retirement P0): the entry layer owns its own
+    citation verdicts so an envelope check survives the claim registry's removal."""
+
+    results: list[dict[str, Any]] = []
+    for reference in entry_refs:
+        entry_id = str(reference.get("entryId", ""))
+        record: dict[str, Any] = {"entryId": entry_id}
+        lane = lane_for_identity(root, entry_id) if entry_id else None
+        if lane is None:
+            record.update(verdict="missing", severity="invalid", reason="no entry with this identity")
+        elif lane["lane"] == "revoked":
+            record.update(verdict="revoked", severity="invalid", reason="approval was revoked")
+        elif lane["lane"] == "draft":
+            record.update(verdict="not-approved", severity="invalid", reason="entry is still a draft")
+        elif lane["lane"] == "not-effective":
+            record.update(
+                verdict="not-effective",
+                severity="invalid",
+                reason="; ".join(lane.get("problems", [])) or "entry failed its integrity checks",
+            )
+        elif reference.get("reviewedContentDigest") and lane.get("reviewedContentDigest") != reference["reviewedContentDigest"]:
+            record.update(
+                verdict="digest-mismatch",
+                severity="invalid",
+                reason="cited content digest is not the entry's current approved digest",
+            )
+        elif lane["lane"] == "approved-drifted":
+            record.update(
+                verdict="drifted",
+                severity="warning",
+                reason="source moved on since approval; re-approve before citing as current",
+            )
+        else:
+            record.update(verdict="current", severity="ok", reason="approved-current")
+        results.append(record)
+    return results
 
 
 def regenerate_fragment_digest(frontmatter: dict[str, Any]) -> bool:
@@ -1401,6 +1442,45 @@ def identity_from_entry_path(path: Path) -> str | None:
     except StoreError:
         return None
     return identity_of(metadata_type, namespace, full_name)
+
+
+def command_entry_verify_citations(args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only verdicts for an envelope's entryRefs (or bare --entry-ref identities)."""
+
+    if bool(args.envelope) == bool(args.entry_ref):
+        raise StoreError("entry-verify-citations requires exactly one of --envelope or --entry-ref")
+    if args.envelope:
+        envelope_path = Path(args.envelope)
+        if not envelope_path.is_absolute():
+            envelope_path = ROOT / envelope_path
+        envelope_path = envelope_path.resolve()
+        try:
+            envelope_path.relative_to(ROOT)
+        except ValueError as exc:
+            raise StoreError(f"envelope path escapes repository root: {args.envelope}") from exc
+        if not envelope_path.is_file():
+            raise StoreError(f"envelope file does not exist: {args.envelope}")
+        try:
+            envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise StoreError(f"envelope is not valid JSON: {exc}") from exc
+        if not isinstance(envelope, dict):
+            raise StoreError("envelope must contain one JSON object")
+        raw = envelope.get("entryRefs") or []
+        refs = [item if isinstance(item, dict) else {"entryId": str(item)} for item in raw]
+    else:
+        refs = [{"entryId": spec} for spec in args.entry_ref]
+    citations = verify_entry_citations(ROOT, refs)
+    severities = [item["severity"] for item in citations]
+    return {
+        "citationCount": len(citations),
+        "counts": {
+            "ok": severities.count("ok"),
+            "warning": severities.count("warning"),
+            "invalid": severities.count("invalid"),
+        },
+        "citations": citations,
+    }
 
 
 def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
@@ -2319,6 +2399,19 @@ def build_parser() -> argparse.ArgumentParser:
         "(collision checks always cover the whole corpus)",
     )
     check.set_defaults(func=command_entry_check)
+
+    verify = commands.add_parser(
+        "entry-verify-citations",
+        help="advisory verdicts for cited entries (an envelope's entryRefs or bare identities)",
+    )
+    verify.add_argument("--envelope", default=None, help="JSON envelope carrying an entryRefs array")
+    verify.add_argument(
+        "--entry-ref",
+        action="append",
+        default=[],
+        help="entry identity to verify (repeatable); no digest pin — envelopes carry those",
+    )
+    verify.set_defaults(func=command_entry_verify_citations)
 
     propose = commands.add_parser("feature-propose", help="write a feature's boundary rule as a draft")
     propose.add_argument("--slug", required=True)

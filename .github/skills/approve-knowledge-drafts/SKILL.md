@@ -63,8 +63,7 @@ so it is written after the facts exist and from the artifact's actual source:
 
 The agent may not: approve without the human's confirmation click, approve entries outside the
 rendered digest set, author or alter the review surface, edit entry files directly (the artifacts
-path is governed — writes flow only through the executor), or promote v1 claims from here
-(that is `approve-claim` in the claim registry).
+path is governed — writes flow only through the executor).
 
 Batching follows the contract: chunks containing prose changes stay within the 25-entry cap; the
 larger facts-only path is for re-approvals whose attested body is unchanged. Splitting a chunk is

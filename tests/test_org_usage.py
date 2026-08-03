@@ -20,7 +20,7 @@ from scripts import copilot_role_guard as guard
 from scripts import knowledge_store as store
 from scripts import validate_harness
 from scripts.force_app_knowledge import file_digest
-from scripts.knowledge_registry import canonical_digest
+from scripts.knowledge_digest import canonical_digest
 
 ORG_ID = "00D000000000001EAA"
 ALLOWED_REMOTE = "git@example.com:acme/private-pilot.git"

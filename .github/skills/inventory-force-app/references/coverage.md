@@ -1,6 +1,6 @@
 # force-app extraction coverage
 
-| Source artifact | Sanitized inventory | Governed claim candidates |
+| Source artifact | Sanitized inventory | Governed entry candidates |
 |---|---|---|
 | Custom object | API name, labels, deployment/sharing values | positive object-existence |
 | Custom field | API name, label, type, selected flags, formula, references | field-schema and object-relation |
@@ -15,6 +15,6 @@
 
 Object/field usage for Apex and validation rules is a source-token heuristic (dynamic references,
 standard-field usage, and unresolved variable types may be missing or approximate); the drafted
-claim records this limitation. Never extract credential values, raw record data, private keys,
+entry records this limitation. Never extract credential values, raw record data, private keys,
 tokens, complete source content, or inferred business semantics. Repository evidence does not prove
 deployed org state.

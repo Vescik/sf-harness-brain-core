@@ -14,5 +14,5 @@ and show detected scope before generation. Ask for missing
 manual deployment steps with `#tool:vscode/askQuestions` and record an explicit `None` when the
 human confirms there are none.
 
-Save the draft under `output/documentation/`, include rule/claim/evidence references, and append the
+Save the draft under `output/documentation/`, include rule/entry references, and append the
 artifact reference to the work record. Publication to ADO remains a human action.

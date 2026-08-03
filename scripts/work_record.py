@@ -338,10 +338,6 @@ def grounding_hash(record: dict[str, Any]) -> str:
                 deepcopy(record.get("ruleRefs", [])),
                 key=lambda item: item.get("ruleId", ""),
             ),
-            "claimRefs": sorted(
-                deepcopy(record.get("claimRefs", [])),
-                key=lambda item: item.get("claimId", ""),
-            ),
             # entryRefs join the grounding hash only when present so hashes of entry-less
             # records (and all pre-v2 fixtures) stay stable (SAFE-CLAIM-001 v2, additive).
             **(
@@ -378,28 +374,19 @@ def parse_component(raw: str) -> dict[str, Any]:
         raise WorkRecordError(f"--component must be a JSON object: {exc}") from exc
     if not isinstance(component, dict):
         raise WorkRecordError("--component must be a JSON object")
-    allowed = {"name", "type", "ownership", "packageNamespace", "packageVersion"}
+    allowed = {"name", "type"}
     unknown = sorted(set(component) - allowed)
     if unknown:
-        raise WorkRecordError(f"unknown component fields: {', '.join(unknown)}")
+        raise WorkRecordError(
+            f"unknown component fields: {', '.join(unknown)} "
+            "(components carry only name and type; grounding comes from bound entries)"
+        )
     missing = sorted({"name", "type"} - set(component))
     if missing:
         raise WorkRecordError(f"missing component fields: {', '.join(missing)}")
-    if component.get("ownership", "unknown") != "unknown":
-        raise WorkRecordError(
-            "component ownership starts unknown; bind a fresh verified object-ownership claim"
-        )
-    if component.get("packageNamespace") is not None or component.get("packageVersion") is not None:
-        raise WorkRecordError(
-            "package namespace/version must be derived from a bound ownership claim"
-        )
     normalized = {
         "name": str(component["name"]).strip(),
         "type": str(component["type"]).strip(),
-        "ownership": "unknown",
-        "ownershipClaimRef": None,
-        "packageNamespace": None,
-        "packageVersion": None,
     }
     if not normalized["name"] or not normalized["type"]:
         raise WorkRecordError("component name and type cannot be blank")
@@ -452,112 +439,6 @@ def validate_rule_refs(root: Path, references: list[dict[str, Any]]) -> None:
             raise WorkRecordError(f"rule reference changed or is stale: {rule_id}")
 
 
-def effective_knowledge_claim(root: Path, claim_id: str) -> dict[str, Any]:
-    """Resolve one currently effective claim through the governed Knowledge registry."""
-
-    try:
-        from scripts.knowledge_registry import ContractError, KnowledgeRegistry
-    except ModuleNotFoundError:
-        try:
-            from knowledge_registry import ContractError, KnowledgeRegistry
-        except ModuleNotFoundError as exc:
-            raise WorkRecordError("the governed Knowledge registry is unavailable") from exc
-    try:
-        result = KnowledgeRegistry(root).effective_claim(claim_id)
-    except ContractError as exc:
-        raise WorkRecordError(f"Knowledge claim is not effective: {claim_id}: {exc}") from exc
-    if not isinstance(result, dict):
-        raise WorkRecordError(f"Knowledge registry returned an invalid claim result: {claim_id}")
-    return result
-
-
-def claim_reference_from_result(
-    root: Path,
-    claim_id: str,
-    result: dict[str, Any],
-) -> dict[str, Any]:
-    claim = result.get("claim")
-    sha256 = result.get("sha256")
-    relative_path = result.get("path")
-    if not isinstance(claim, dict) or claim.get("claimId") != claim_id:
-        raise WorkRecordError(f"Knowledge registry returned the wrong claim identity: {claim_id}")
-    if claim.get("status") != "verified":
-        raise WorkRecordError(f"Knowledge claim is not verified: {claim_id}")
-    expected_path = f".ai/knowledge/claims/{claim_id}.yaml"
-    if relative_path != expected_path or not isinstance(sha256, str) or not SHA256.fullmatch(sha256):
-        raise WorkRecordError(f"Knowledge registry returned an invalid claim binding: {claim_id}")
-    path = contained_path(root, expected_path)
-    if file_hash(path) != sha256:
-        raise WorkRecordError(f"Knowledge claim changed while it was being bound: {claim_id}")
-    required = {
-        "revision",
-        "claimType",
-        "subject",
-        "assertion",
-        "scope",
-        "reviewRef",
-        "verifiedAt",
-        "reviewBy",
-    }
-    missing = sorted(required - set(claim))
-    if missing:
-        raise WorkRecordError(
-            f"Knowledge claim is missing binding fields ({', '.join(missing)}): {claim_id}"
-        )
-    if not claim.get("reviewRef") or not claim.get("verifiedAt"):
-        raise WorkRecordError(f"Knowledge claim lacks a verified human-review binding: {claim_id}")
-    return {
-        "claimId": claim_id,
-        "revision": claim["revision"],
-        "path": expected_path,
-        "sha256": sha256,
-        "claimType": claim["claimType"],
-        "subject": deepcopy(claim["subject"]),
-        "assertion": deepcopy(claim["assertion"]),
-        "scope": deepcopy(claim["scope"]),
-        "reviewRef": claim["reviewRef"],
-        "verifiedAt": claim["verifiedAt"],
-        "reviewBy": claim["reviewBy"],
-    }
-
-
-def resolved_claim_ref(root: Path, claim_id: str) -> dict[str, Any]:
-    return claim_reference_from_result(root, claim_id, effective_knowledge_claim(root, claim_id))
-
-
-def persisted_claim_ref(root: Path, claim_id: str) -> dict[str, Any]:
-    """Reconstruct a historical binding without treating the claim as current."""
-
-    expected_path = f".ai/knowledge/claims/{claim_id}.yaml"
-    path = contained_path(root, expected_path)
-    claim = load_yaml(path)
-    result = {
-        "claim": {**claim, "status": "verified"},
-        "sha256": file_hash(path),
-        "path": expected_path,
-    }
-    # The reference stores only the verified projection. Overriding status here permits
-    # historical validation after the registry later marks the source claim stale or
-    # superseded; current gates always resolve through effective_knowledge_claim instead.
-    return claim_reference_from_result(root, claim_id, result)
-
-
-# claimTypes whose metadata-repository evidence leg is entry-home under the one-file model
-# (docs/knowledge-one-file-contract.md §1). Their repo-evidence claims are shadowed by an
-# approved entry for the same subject (SAFE-CLAIM-001 v2, owner-approved 2026-07-24).
-ENTRY_HOME_CLAIM_TYPES = frozenset(
-    {
-        "automation-inventory",
-        "component-description",
-        "component-inventory",
-        "field-schema",
-        "integration",
-        "object-existence",
-        "object-ownership",
-        "object-relation",
-        "component-relation",
-    }
-)
 ENTRY_REF_FIELDS = frozenset(
     {"entryId", "reviewedContentDigest", "factsDigest", "sourceTreeDigest", "profile"}
 )
@@ -604,48 +485,6 @@ def _entry_identity_lanes(root: Path) -> dict[str, str]:
     return lanes
 
 
-def _claim_evidence_source_types(root: Path, claim_id: str) -> set[str]:
-    """Evidence sourceTypes backing a claim; unknown/unreadable receipts yield an empty set.
-
-    Shadowing restricts only provably repo-only claims — when evidence cannot be read the
-    claim keeps its v1 standing and the registry's own validation remains the gate."""
-    try:
-        claim = load_yaml(contained_path(root, f".ai/knowledge/claims/{claim_id}.yaml"))
-    except (WorkRecordError, FileNotFoundError, OSError):
-        return set()
-    source_types: set[str] = set()
-    for evidence_id in claim.get("evidenceRefs", []):
-        try:
-            evidence = load_yaml(contained_path(root, f".ai/knowledge/evidence/{evidence_id}.yaml"))
-        except (WorkRecordError, FileNotFoundError, OSError):
-            return set()
-        source_type = evidence.get("sourceType")
-        if isinstance(source_type, str):
-            source_types.add(source_type)
-    return source_types
-
-
-def _assert_not_shadowed(root: Path, claim_id: str, expected: dict[str, Any]) -> None:
-    if expected["claimType"] not in ENTRY_HOME_CLAIM_TYPES:
-        return
-    source_types = _claim_evidence_source_types(root, claim_id)
-    if not source_types or source_types != {"metadata-repository"}:
-        return  # org/other evidence legs remain v1-home (contract §1 table)
-    subject_identity = str(expected.get("subject", {}).get("identity", ""))
-    for identity, lane in _entry_identity_lanes(root).items():
-        if lane not in {"approved-current", "approved-drifted"}:
-            continue
-        _type, namespace_segment, full_name = identity.split(":", 2)
-        candidates = {full_name}
-        if namespace_segment != "c":
-            candidates.add(f"{namespace_segment}__{full_name}")
-        if subject_identity in candidates:
-            raise WorkRecordError(
-                f"Knowledge claim is shadowed-by-entry ({identity}); metadata-repository "
-                f"claims cannot ground facts an approved entry owns: {claim_id}"
-            )
-
-
 def _assert_entry_is_groundable(root: Path, entry_id: str) -> None:
     """Refuse an entry whose sections contract §8.1 will not ground.
 
@@ -674,7 +513,7 @@ def _assert_entry_is_groundable(root: Path, entry_id: str) -> None:
             f"(assurance {marker}, extractionCoverage {extent}): {entry_id}; "
             f"contract §8.1 grounds positive assertions only on sections marked "
             f"{GROUNDING_ASSURANCE} with extractionCoverage: {GROUNDING_COVERAGE} — "
-            f"ground this on a claimRef with its own evidence instead"
+            f"ground this on a qualifying entry or on work-record evidence instead"
         )
 
 
@@ -714,78 +553,36 @@ def validate_entry_refs(
             )
 
 
-def validate_claim_refs(
-    root: Path,
-    references: list[dict[str, Any]],
-    *,
-    require_current: bool,
-) -> None:
-    seen: set[str] = set()
-    for reference in references:
-        claim_id = str(reference.get("claimId", ""))
-        if claim_id in seen:
-            raise WorkRecordError(f"duplicate Knowledge claim reference: {claim_id}")
-        seen.add(claim_id)
-        expected = resolved_claim_ref(root, claim_id) if require_current else persisted_claim_ref(root, claim_id)
-        if reference != expected:
-            qualifier = "effective" if require_current else "persisted"
-            raise WorkRecordError(f"Knowledge claim reference differs from its {qualifier} source: {claim_id}")
-        if require_current:
-            _assert_not_shadowed(root, claim_id, expected)
+def component_entry_coverage_problems(record: dict[str, Any]) -> list[str]:
+    """Fail-closed entry coverage for every scope component (v1 retirement, owner D-B).
 
+    A component is grounded when a bound entryRef's identity names the component itself
+    or its owning CustomObject. A metadata type without an entry profile cannot be
+    grounded at all and blocks SAFE — the remedy is extending knowledge_store.PROFILES,
+    never widening this gate."""
 
-def validate_component_claim_bindings(root: Path, record: dict[str, Any]) -> None:
-    by_id = {item["claimId"]: item for item in record.get("claimRefs", [])}
-    alias = record.get("environment", {}).get("alias")
-    configured_environment: str | None = None
-    if alias:
-        entry, _ = configured_org(root, str(alias))
-        configured_environment = str(entry["environment"])
+    profiles = set(_knowledge_store().PROFILES)
+    bound: set[tuple[str, str]] = set()
+    for item in record.get("entryRefs", []):
+        parts = str(item.get("entryId", "")).split(":", 2)
+        if len(parts) == 3:
+            bound.add((parts[0], parts[2]))
+    problems: list[str] = []
     for component in record["scope"]["components"]:
-        claim_id = component.get("ownershipClaimRef")
-        if component["ownership"] == "unknown":
-            if claim_id is not None:
-                raise WorkRecordError("unknown component ownership cannot cite an ownership claim")
+        raw_type = component["type"]
+        name = component["name"]
+        component_type = "CustomObject" if raw_type.lower() in {"customobject", "object"} else raw_type
+        if component_type not in profiles:
+            problems.append(
+                f"{raw_type}:{name} has no entry profile, so no approved entry can ground it"
+            )
             continue
-        reference = by_id.get(claim_id)
-        if reference is None:
-            raise WorkRecordError(
-                f"component ownership claim is not bound: {component['name']}"
-            )
-        subject = reference["subject"]
-        assertion = reference["assertion"]
-        if (
-            reference["claimType"] != "object-ownership"
-            or component["type"].lower() not in {"customobject", "object"}
-            or subject.get("kind") != "object"
-            or subject.get("identity") != component["name"]
-            or assertion.get("predicate") != "ownership-classification"
-            or assertion.get("value") != component["ownership"]
-        ):
-            raise WorkRecordError(
-                f"component ownership does not match its structural Knowledge claim: {component['name']}"
-            )
-        claim_scope = reference["scope"]
-        claim_environment = claim_scope.get("environment")
-        if claim_environment != "not-applicable" and claim_environment != configured_environment:
-            raise WorkRecordError(
-                f"component ownership claim targets a different environment: {component['name']}"
-            )
-        if component["ownership"] == "package-owned":
-            if (
-                component["packageNamespace"] != claim_scope.get("packageNamespace")
-                or component["packageVersion"] != claim_scope.get("packageVersion")
-            ):
-                raise WorkRecordError(
-                    f"component package identity does not match its ownership claim: {component['name']}"
-                )
-        elif any(
-            claim_scope.get(field) is not None
-            for field in ("packageNamespace", "packageKey", "packageVersion")
-        ):
-            raise WorkRecordError(
-                f"non-package component cites package-scoped ownership: {component['name']}"
-            )
+        candidates = {(component_type, name)}
+        if "." in name:
+            candidates.add(("CustomObject", name.split(".", 1)[0]))
+        if not candidates & bound:
+            problems.append(f"{raw_type}:{name} is not covered by a bound approved entry")
+    return problems
 
 
 def workspace_path(root: Path, workspace_root: str) -> Path:
@@ -1239,11 +1036,9 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
     if calculated_scope != record.get("scopeHash"):
         raise WorkRecordError("scopeHash does not match the canonical scope")
     if grounding_hash(record) != record.get("groundingHash"):
-        raise WorkRecordError("groundingHash does not match rules, claims, scope, repositories, and environment")
+        raise WorkRecordError("groundingHash does not match rules, entries, scope, repositories, and environment")
     validate_rule_refs(root, record.get("ruleRefs", []))
-    validate_claim_refs(root, record.get("claimRefs", []), require_current=False)
     validate_entry_refs(root, record.get("entryRefs", []), require_current=False)
-    validate_component_claim_bindings(root, record)
 
     record_dir = record_directory(root, record["recordId"])
     design = _resolve_record_relative(record_dir, root, record["design"]["path"])
@@ -1370,9 +1165,7 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
             raise WorkRecordError("environment verification is not a VERIFIED org-identity receipt")
 
     valid_resolution_refs = (
-        {item["claimId"] for item in record.get("claimRefs", [])}
-        | {item["entryId"] for item in record.get("entryRefs", [])}
-        | evidence_ids
+        {item["entryId"] for item in record.get("entryRefs", [])} | evidence_ids
     )
     for question in record.get("blockingQuestions", []):
         if question["status"] == "open" and question.get("resolutionRef") is not None:
@@ -1406,19 +1199,17 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
             {item["tier"] for item in record["ruleRefs"]}
         ):
             raise WorkRecordError("SAFE/complete state requires applicable rules from kernel and Tiers 1-3")
-        if not record["claimRefs"] and not record.get("entryRefs"):
+        if not record.get("entryRefs"):
             raise WorkRecordError(
-                "SAFE/complete state requires fresh verified Knowledge grounding (claims or entries)"
+                "SAFE/complete state requires fresh approved Knowledge grounding (entries)"
             )
-        validate_claim_refs(root, record["claimRefs"], require_current=True)
         validate_entry_refs(root, record.get("entryRefs", []), require_current=True)
-        bound_claims = {item["claimId"] for item in record["claimRefs"]}
-        if any(
-            component["ownership"] == "unknown"
-            or component["ownershipClaimRef"] not in bound_claims
-            for component in record["scope"]["components"]
-        ):
-            raise WorkRecordError("SAFE/complete state requires claim-backed component ownership")
+        coverage_problems = component_entry_coverage_problems(record)
+        if coverage_problems:
+            raise WorkRecordError(
+                "SAFE/complete state requires entry-backed component grounding: "
+                + "; ".join(coverage_problems)
+            )
         repository = next(
             (
                 item
@@ -1469,7 +1260,6 @@ def validate_record_semantics(root: Path, record: dict[str, Any], *, check_desig
             if (
                 handoff.get("groundingHash") != record["groundingHash"]
                 or handoff.get("ruleRefs") != record["ruleRefs"]
-                or handoff.get("claimRefs") != record["claimRefs"]
                 or handoff.get("entryRefs", []) != record.get("entryRefs", [])
             ):
                 raise WorkRecordError("pending handoff binds to stale grounding")
@@ -1644,7 +1434,6 @@ def command_init(args: argparse.Namespace) -> dict[str, Any]:
             "verifiedAt": None,
         },
         "ruleRefs": rule_refs,
-        "claimRefs": [],
         "contextRefs": [],
         "assumptions": [],
         "unknowns": [],
@@ -1733,7 +1522,6 @@ def command_context(args: argparse.Namespace) -> dict[str, Any]:
         "scope": deepcopy(record["scope"]),
         "groundingHash": record["groundingHash"],
         "ruleRefs": deepcopy(record["ruleRefs"]),
-        "claimRefs": deepcopy(record["claimRefs"]),
         **({"entryRefs": deepcopy(record["entryRefs"])} if record.get("entryRefs") else {}),
         "environment": deepcopy(record["environment"]),
         "contextRefs": deepcopy(record["contextRefs"]),
@@ -1946,107 +1734,6 @@ def command_attach_rule(args: argparse.Namespace) -> dict[str, Any]:
     return persist_record(root, record)
 
 
-def command_bind_claim(args: argparse.Namespace) -> dict[str, Any]:
-    root = data_root(args.root)
-    if args.role != "solution-designer":
-        raise WorkRecordError("only solution-designer may bind verified Knowledge claims")
-    record = load_record(root, args.record_id)
-    check_expected(record, args.expected_revision, args.expected_record_hash)
-    if record["currentHandoffId"]:
-        raise WorkRecordError("consume the pending handoff before changing grounding")
-    if current_approval(record) is not None or state_pair(record) not in {
-        ("intake", "draft"),
-        ("intake", "incomplete"),
-        ("intake", "blocked"),
-        ("design", "draft"),
-        ("design", "awaiting_human"),
-        ("design", "incomplete"),
-        ("design", "blocked"),
-    }:
-        raise WorkRecordError("Knowledge grounding can change only before human design approval")
-
-    reference = resolved_claim_ref(root, args.claim_id)
-    replaced_claim_id: str | None = None
-    if reference["claimType"] == "object-ownership":
-        subject = reference["subject"]
-        assertion = reference["assertion"]
-        asserted_ownership = assertion.get("value")
-        if (
-            subject.get("kind") != "object"
-            or assertion.get("predicate") != "ownership-classification"
-            or not isinstance(asserted_ownership, str)
-            or asserted_ownership not in {"package-owned", "subscriber-owned", "platform"}
-        ):
-            raise WorkRecordError("object-ownership claim has an invalid structural assertion")
-        matches = [
-            component
-            for component in record["scope"]["components"]
-            if component["name"] == subject.get("identity")
-            and component["type"].lower() in {"customobject", "object"}
-        ]
-        if len(matches) != 1:
-            raise WorkRecordError(
-                "object-ownership claim must identify exactly one scoped CustomObject"
-            )
-        component = matches[0]
-        replaced_claim_id = component.get("ownershipClaimRef")
-        if replaced_claim_id and replaced_claim_id != args.claim_id and any(
-            question.get("status") == "resolved"
-            and question.get("resolutionRef") == replaced_claim_id
-            for question in record["blockingQuestions"]
-        ):
-            raise WorkRecordError(
-                "cannot replace an ownership claim used to resolve a blocking question"
-            )
-        ownership = asserted_ownership
-        claim_scope = reference["scope"]
-        if ownership == "package-owned":
-            namespace = claim_scope.get("packageNamespace")
-            version = claim_scope.get("packageVersion")
-            if not namespace or not version:
-                raise WorkRecordError(
-                    "package-owned claim must bind package namespace and version"
-                )
-        else:
-            if any(
-                claim_scope.get(field) is not None
-                for field in ("packageNamespace", "packageKey", "packageVersion")
-            ):
-                raise WorkRecordError(
-                    "non-package ownership claim cannot bind package identity"
-                )
-            namespace = None
-            version = None
-        component.update(
-            {
-                "ownership": ownership,
-                "ownershipClaimRef": args.claim_id,
-                "packageNamespace": namespace,
-                "packageVersion": version,
-            }
-        )
-
-    by_id = {item["claimId"]: item for item in record["claimRefs"]}
-    if replaced_claim_id and replaced_claim_id != args.claim_id:
-        by_id.pop(replaced_claim_id, None)
-    by_id[args.claim_id] = reference
-    record["claimRefs"] = sorted(by_id.values(), key=lambda item: item["claimId"])
-    record["scopeHash"] = scope_hash(record["scope"])
-    before = deepcopy(record["state"])
-    timestamp = utc_now()
-    record["groundingHash"] = grounding_hash(record)
-    append_event(
-        record,
-        action="bind-claim",
-        role=args.role,
-        from_state=before,
-        note=f"Bound effective Knowledge claim {args.claim_id}.",
-        at=timestamp,
-    )
-    bump(record, timestamp)
-    return persist_record(root, record)
-
-
 def command_bind_entry(args: argparse.Namespace) -> dict[str, Any]:
     root = data_root(args.root)
     if args.role != "solution-designer":
@@ -2147,11 +1834,11 @@ def command_resolve_question(args: argparse.Namespace) -> dict[str, Any]:
     )
     if question is None or question["status"] != "open":
         raise WorkRecordError("blocking question is missing or already resolved")
-    valid_refs = {item["claimId"] for item in record["claimRefs"]} | {
+    valid_refs = {item["entryId"] for item in record.get("entryRefs", [])} | {
         item["evidenceId"] for item in record["evidenceRefs"]
     }
     if args.resolution_ref not in valid_refs:
-        raise WorkRecordError("question resolution must cite a bound claim or evidence ID")
+        raise WorkRecordError("question resolution must cite a bound entry or evidence ID")
     before = deepcopy(record["state"])
     timestamp = utc_now()
     question["status"] = "resolved"
@@ -2387,7 +2074,6 @@ def _required_reads(root: Path, record: dict[str, Any], values: Iterable[str]) -
     directory = record_directory(root, record["recordId"])
     requested = [
         record["design"]["path"],
-        *(item["path"] for item in record.get("claimRefs", [])),
         *(entry_relative_path(root, item["entryId"]) for item in record.get("entryRefs", [])),
         *values,
     ]
@@ -2498,7 +2184,6 @@ def command_create_handoff(args: argparse.Namespace) -> dict[str, Any]:
         "designHash": record["design"]["sha256"],
         "groundingHash": record["groundingHash"],
         "ruleRefs": deepcopy(record["ruleRefs"]),
-        "claimRefs": deepcopy(record["claimRefs"]),
         **({"entryRefs": deepcopy(record["entryRefs"])} if record.get("entryRefs") else {}),
         "requiredReads": _required_reads(root, record, args.required_read or []),
         "evidenceRefs": selected_evidence,
@@ -2548,7 +2233,6 @@ def command_accept_handoff(args: argparse.Namespace) -> dict[str, Any]:
         or handoff["designHash"] != record["design"]["sha256"]
         or handoff["groundingHash"] != record["groundingHash"]
         or handoff["ruleRefs"] != record["ruleRefs"]
-        or handoff["claimRefs"] != record["claimRefs"]
         or handoff.get("entryRefs", []) != record.get("entryRefs", [])
     ):
         raise WorkRecordError("handoff grounding, scope, or design no longer matches the record")
@@ -2679,19 +2363,17 @@ def command_approve(args: argparse.Namespace) -> dict[str, Any]:
         {item["tier"] for item in record["ruleRefs"]}
     ):
         raise WorkRecordError("human approval requires applicable rules from kernel and Tiers 1-3")
-    if not record["claimRefs"] and not record.get("entryRefs"):
+    if not record.get("entryRefs"):
         raise WorkRecordError(
-            "human approval requires at least one fresh verified Knowledge claim or approved entry"
+            "human approval requires at least one approved Knowledge entry"
         )
-    validate_claim_refs(root, record["claimRefs"], require_current=True)
     validate_entry_refs(root, record.get("entryRefs", []), require_current=True)
-    bound_claims = {item["claimId"] for item in record["claimRefs"]}
-    if any(
-        component["ownership"] == "unknown"
-        or component["ownershipClaimRef"] not in bound_claims
-        for component in record["scope"]["components"]
-    ):
-        raise WorkRecordError("human approval requires claim-backed component ownership")
+    coverage_problems = component_entry_coverage_problems(record)
+    if coverage_problems:
+        raise WorkRecordError(
+            "human approval requires entry-backed component grounding: "
+            + "; ".join(coverage_problems)
+        )
     repository = next(
         (
             item
@@ -2791,7 +2473,7 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument(
         "--component",
         action="append",
-        help='JSON object with name and type; ownership is derived later from verified Knowledge',
+        help='JSON object with name and type; grounding comes from entries bound before SAFE',
     )
     init.add_argument("--path", action="append")
     init.add_argument("--environment-alias")
@@ -2852,17 +2534,6 @@ def build_parser() -> argparse.ArgumentParser:
     attach_rule.add_argument("--rule-id", required=True)
     attach_rule.set_defaults(func=command_attach_rule)
 
-    bind_claim = subparsers.add_parser(
-        "bind-claim",
-        help="bind one currently effective Knowledge claim and derive object ownership",
-    )
-    bind_claim.add_argument("--record-id", required=True)
-    bind_claim.add_argument("--expected-revision", required=True, type=int)
-    bind_claim.add_argument("--expected-record-hash", required=True)
-    bind_claim.add_argument("--role", required=True, choices=sorted(AGENT_ROLES))
-    bind_claim.add_argument("--claim-id", required=True)
-    bind_claim.set_defaults(func=command_bind_claim)
-
     bind_entry = subparsers.add_parser(
         "bind-entry",
         help="bind an approved-current Knowledge entry to the record grounding",
@@ -2885,7 +2556,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_question.set_defaults(func=command_add_question)
 
     resolve_question = subparsers.add_parser(
-        "resolve-question", help="resolve a blocking question with a bound claim/evidence ID"
+        "resolve-question", help="resolve a blocking question with a bound entry/evidence ID"
     )
     resolve_question.add_argument("--record-id", required=True)
     resolve_question.add_argument("--expected-revision", required=True, type=int)

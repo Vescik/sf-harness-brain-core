@@ -62,8 +62,9 @@ configuration returns `DEPENDENCY UNAVAILABLE`; never construct replacement WIQL
    a warning when the template is locally modified). Add one warning per item rendered with
    the missing-documentation fallback; record the step-8 render-check outcome in
    `verification`; name both saved files in `filesWritten` and the draft in `artifactPath`.
-   Confirm the envelope with `python scripts/knowledge_registry.py verify-citations
-   --envelope output/handover/<period>.json`.
+   Confirm the envelope's entry citations with
+   `python scripts/knowledge_store.py entry-verify-citations --envelope
+   output/handover/<period>.json`.
 
 ## Return
 

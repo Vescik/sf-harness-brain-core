@@ -42,6 +42,6 @@ not automatically an error (e.g. a technical/enabler story is legitimate).
 ## 6. Early warnings
 
 <!--
-Conflicts with .ai/knowledge/known-limitations.md, if any Story touches a known managed
+Conflicts with limitations recorded on approved Knowledge Entries, if any Story touches a known managed
 package limitation. Catching this here is cheaper than after the design phase.
 -->

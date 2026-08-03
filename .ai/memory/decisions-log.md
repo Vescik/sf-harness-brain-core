@@ -457,3 +457,82 @@ are not durable.
 - Approved by: workspace owner (chat, 2026-08-03).
 - Related: entries "2026-08-03 - Documenting existing state is record-free",
   "2026-07-27 - Knowledge v2 one-file entries".
+
+## 2026-08-03 - v1 claim registry retirement approved; P0 decoupling executed
+
+- Context: the workspace operates on one-file Knowledge Entries (2026-07-27 decision), but
+  the v1 claim registry (claims/evidence/reviews, worklists, batch promotion) still owns
+  large parts of the code and text surface. Its status surfaces (worklist, coverage,
+  dashboard, stale-report) compute from a claim corpus that is empty (zero claims were
+  ever committed) and frozen by `enforce_entry_home_freeze`, so they read "nothing
+  documented" forever regardless of entry approvals. Full inventory:
+  `output/discovery-2026-08-03-v1-claim-registry-removal.md`.
+- Finding / decision: the owner approved removing the v1 claim registry entirely, in
+  phases (P0 relocations -> P1 work-record surgery -> P2 engine deletion -> P3 text ->
+  P4 data/docs -> P5 live verification). Owner decisions D-A..D-G (org/vendor/SME
+  observation home, work-record ownership gate replacement, unprofiled-type dependency
+  lookups, envelope verification, relation lane, keyword curation, envelope claimRefs
+  fields) remain open and gate the later phases.
+- Impact (P0, this entry): the entry store no longer depends on the retiring module.
+  `canonical` / `canonical_digest` moved verbatim to the new leaf `scripts/knowledge_digest.py`
+  (digest bytes pinned by `tests/test_knowledge_digest.py`; a serialization change would
+  silently revoke every approved entry); entry citation verdicts moved to
+  `knowledge_store.verify_entry_citations` with a new read-only `entry-verify-citations`
+  CLI (guard-listed, named in generate-release-handover; the registry method now
+  delegates); `force_app_knowledge.entry_home_types` reads `knowledge_store.PROFILES`
+  instead of the registry mirror constant. A dependency-direction test pins that
+  `knowledge_store.py` never re-imports `knowledge_registry`. No v1 behavior changed;
+  registry CLI surface, guard tables for it, and all v1 tests are untouched until P2.
+- Approved by: workspace owner (chat, 2026-08-03).
+- Related: entry "2026-07-27 - Knowledge v2 one-file entries";
+  `output/discovery-2026-08-03-v1-claim-registry-removal.md`.
+
+## 2026-08-03 - v1 retirement gate decisions D-A/D-B/D-C/D-G; P1 work-record surgery executed
+
+- Context: the phased v1 claim-registry removal (see the P0 entry above) left seven owner
+  decisions open. Four gate P1/P2 and were put to the owner explicitly.
+- Finding / decision (owner, chat 2026-08-03):
+  D-B - work-record component grounding is ENTRY-BASED and FAIL-CLOSED: every scope
+  component must be covered by a bound approved-current entry (the component itself or its
+  owning CustomObject); a metadata type without an entry profile blocks SAFE/approval, and
+  the remedy is extending knowledge_store.PROFILES, never widening the gate.
+  D-A - org/vendor/SME observations lose the registry: investigate-config-records and
+  investigate-object become read-only investigations reporting into output/ (org sampling
+  stays entry-org-attach); semantic org facts live as prose, uncited.
+  D-C - check-feature-coverage drops the registry dependency lookup and must NAME the
+  metadata types its result did not cover; a mechanical inventory-based lookup is backlog.
+  D-G - claimRefs/ownership fields are REMOVED from change-record/handoff/output envelope
+  schemas outright (no legacy compatibility fields; no records exist on disk).
+- Impact (P1, this entry): work_record.py loses bind-claim, claimRefs, the KnowledgeRegistry
+  import and the ownership fields on components (components are name+type only); SAFE and
+  human-approval gates now require entryRefs plus component_entry_coverage_problems() == [].
+  The three envelope schemas and all envelope fixtures dropped claim shapes; the governed
+  output-envelope arm now REQUIRES entryRefs (was: claimRefs minItems 1 — without the
+  required key the arm would have been fail-open). test_work_record.py re-grounded on a
+  patched entry lane, with new negative pins: ownership fields refused at parse and at
+  schema, approval fail-closed on uncovered components and unprofiled types.
+- Approved by: workspace owner (chat, 2026-08-03, AskUserQuestion with recommendations).
+- Related: the P0 entry above; output/discovery-2026-08-03-v1-claim-registry-removal.md.
+
+## 2026-08-04 - v1 retirement executed end to end (P2-P4); docs archival deferred
+
+- Context: continuation of the phased v1 claim-registry removal (P0/P1 entries above).
+- Finding / decision: P2a/P2b/P3/P4 executed. The engine is gone
+  (scripts/knowledge_registry.py, the collector's claim-drafting half, guard/hook surfaces,
+  CI steps, six v1 schemas, the claim keys of knowledge-policy.json); the text layer speaks
+  entries only (six prompts + seven skills + knowledge-lifecycle.md deleted; investigate-*
+  rewritten read-only per D-A; SAFE-CLAIM-001 v3 + SAFE-HUMAN-001 + ORG-KNOW-001..003
+  rewritten; counts prompts 25->19, skills 26->19, contracts 5->4); the empty v1 data files
+  (.ai/knowledge claims/evidence/reviews dirs, claims-index.json, 11 rendered domain stubs)
+  are deleted with their write-guard arms, and .ai/knowledge/README.md now documents the
+  entry store. The normative org-sampling spec lives in investigate-object/SKILL.md.
+  Historical docs that describe the v1 system (docs/spec-p5-attested-claim-lane-2026-07-27.md,
+  docs/force-app-knowledge-architecture.md, the knowledge plans/threads) stay in docs/ as
+  decision records; moving them out of the repo belongs to the separately owner-gated
+  workspace-cleanup plan, not to this retirement.
+- Impact: the P5 attested-claim lane design is permanently superseded (no registry to attach
+  it to). check-feature-coverage must name unprofiled-type dependents as an uncovered class
+  (owner D-C). Live verification of the surviving flows against real Copilot (retirement P5)
+  is still outstanding.
+- Approved by: workspace owner (chat, 2026-08-03, direction + D-A..D-G).
+- Related: the two v1-retirement entries above; output/discovery-2026-08-03-v1-claim-registry-removal.md.

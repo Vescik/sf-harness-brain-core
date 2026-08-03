@@ -48,7 +48,6 @@ human deploy.
      and `outgoing` are keyed by relation kind — iterate the keys, and treat a missing kind as
      silence rather than as "nothing depends on this". A row with `hydrated: false` failed
      re-reading — it is an unknown in the fix note, never a dependent you have accounted for;
-   - `python scripts/knowledge_registry.py query --subject-identity <component>` plus the
      `--uses-object`/`--uses-field` searches, which stay the only home for dependents of
      unprofiled types.
    An empty result from either layer is a recorded gap and is NEVER proof that nothing depends on
@@ -72,7 +71,7 @@ human deploy.
    after-the-fact guardrail review — the human opens the guardrail-reviewer role on the fix note
    and changed files; record the verdict by appending a `Review outcome` section to the note.
 8. If the defect or its fix reveals durable facts worth keeping (error surface, config meaning),
-   propose them through the normal Knowledge lane afterwards; this skill itself writes no claims.
+   route them through `/pin-knowledge` afterwards; this skill itself writes no Knowledge.
 
 ## Prohibitions
 

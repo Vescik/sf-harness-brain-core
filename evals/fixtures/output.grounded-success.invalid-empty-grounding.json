@@ -16,7 +16,6 @@
   },
   "sourceRefs": [],
   "ruleRefs": [],
-  "claimRefs": [],
   "evidenceRefs": [],
   "knowledgeSnapshotAt": null,
   "reconciliation": {
@@ -31,7 +30,10 @@
   "reviewStatus": "draft",
   "assumptions": [],
   "warnings": [],
-  "filesWritten": ["output/documentation/1201.md"],
+  "filesWritten": [
+    "output/documentation/1201.md"
+  ],
   "verification": [],
-  "artifactPath": "output/documentation/1201.md"
+  "artifactPath": "output/documentation/1201.md",
+  "entryRefs": []
 }

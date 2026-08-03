@@ -111,13 +111,8 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         )
         (self.root / "schemas").mkdir()
         for name in (
-            "knowledge-claim.schema.json",
-            "knowledge-evidence.schema.json",
             "force-app-knowledge-inventory.schema.json",
-            "force-app-knowledge-draft-manifest.schema.json",
-            "force-app-knowledge-worklist.schema.json",
             "force-app-knowledge-resolve.schema.json",
-            "force-app-relations-worklist.schema.json",
         ):
             shutil.copy2(ROOT / "schemas" / name, self.root / "schemas" / name)
         (self.root / "config").mkdir()
@@ -125,7 +120,6 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             ROOT / "config/knowledge-policy.json",
             self.root / "config/knowledge-policy.json",
         )
-        (self.root / ".ai/knowledge/claims").mkdir(parents=True)
         subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
         subprocess.run(["git", "config", "user.email", "fixture@example.invalid"], cwd=self.root, check=True)
         subprocess.run(["git", "config", "user.name", "Fixture"], cwd=self.root, check=True)
@@ -135,109 +129,6 @@ class ForceAppKnowledgeTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temporary.cleanup()
-
-    def minimal_crawl(self) -> dict:
-        return {
-            "feature": "Alpha", "slug": "alpha",
-            "repositoryCommit": "0" * 40,
-            "anchors": ["HarnessEngagement__c"], "depth": 1, "objects": [],
-            "hubStopList": [], "unresolvedAnchors": [],
-            "relations": {"outbound": [], "inbound": [], "junctions": []},
-            "automations": [], "ui": [], "supporting": [],
-            "limitations": [], "sourceTreeDigest": "sha256:" + "0" * 64,
-            "generatedAt": "2026-07-29T00:00:00Z",
-        }
-
-    def test_f4_the_crawl_dossier_is_a_proposal_and_lives_in_the_cache(self) -> None:
-        """F4 half 1: the crawl dossier is a PROPOSAL whose input JSON already lives in the
-        disposable cache, and it shared output/feature-dossiers/<slug>.md with the
-        approved-entry dossier — a different content model — so whichever writer ran last
-        silently replaced the other."""
-
-        path = self.builder.render_dossier(self.minimal_crawl(), {"bundles": [], "claimCount": 0})
-        self.assertIn(
-            ".cache/knowledge-proposals/feature-dossiers", str(path).replace("\\", "/")
-        )
-        self.assertTrue(
-            path.read_text(encoding="utf-8").startswith("# Feature Dossier — ")
-        )
-
-    def test_f4_the_crawl_writer_refuses_an_entry_model_file(self) -> None:
-        target = self.builder.dossier_root / "alpha.md"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("# Feature — Alpha\n\napproved-entry model\n", encoding="utf-8")
-        with self.assertRaises(KnowledgeBuildError):
-            self.builder.render_dossier(self.minimal_crawl(), {"bundles": [], "claimCount": 0})
-
-    def test_clean_inventory_generates_schema_valid_sanitized_drafts(self) -> None:
-        inventory = self.builder.inventory()
-        self.assertTrue(inventory["workspaceStatus"]["clean"])
-        self.assertEqual("complete", inventory["completeness"]["status"])
-        self.assertNotIn(
-            "never-export-this-secret",
-            self.builder.inventory_path.read_text(encoding="utf-8"),
-        )
-
-        manifest = self.builder.draft(
-            datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc)
-        )
-        # 11 claims: object, field, relation, trigger automation, approval-process automation,
-        # named-credential integration, generic component-inventory for the LWC bundle and the
-        # permission set, plus three AI description stubs (trigger, approval process, LWC) —
-        # full coverage means no recognized component drafts nothing.
-        self.assertEqual(11, manifest["claimCount"])
-        claims = [
-            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
-            for bundle in manifest["bundles"]
-            if "claimFile" in bundle
-        ]
-        self.assertEqual(
-            {
-                "object-existence",
-                "field-schema",
-                "object-relation",
-                "automation-inventory",
-                "integration",
-                "component-inventory",
-                "component-description",
-            },
-            {claim["claimType"] for claim in claims},
-        )
-        descriptions = [c for c in claims if c["claimType"] == "component-description"]
-        self.assertEqual(3, len(descriptions))
-        for claim in descriptions:
-            self.assertEqual("inferred", claim["assurance"])
-            self.assertIn("<AGENT_", claim["assertion"]["value"]["description"])
-        self.assertNotIn("runtime-behavior", {claim["claimType"] for claim in claims})
-        approval = next(
-            claim
-            for claim in claims
-            if claim["subject"]["identity"] == "HarnessEngagement__c.HarnessEngagement_Approval_v2"
-        )
-        self.assertEqual("automation-inventory", approval["claimType"])
-        facts = approval["assertion"]["value"]["facts"]
-        self.assertEqual("HarnessEngagement__c", facts["object"])
-        self.assertTrue(facts["active"])
-        self.assertEqual(2, facts["stepCount"])
-        permission_set = next(
-            claim
-            for claim in claims
-            if claim["subject"]["identity"] == "PermissionSet:HarnessEngagement_Manager"
-        )
-        self.assertEqual("component-inventory", permission_set["domain"])
-        for bundle in manifest["bundles"]:
-            if "claimFile" not in bundle:
-                continue
-            # Manifest commands must run on Windows terminals too: a bare `python`
-            # launcher with forward-slash paths, never a venv-relative interpreter.
-            self.assertTrue(
-                bundle["command"].startswith("python scripts/knowledge_registry.py propose"),
-                bundle["command"],
-            )
-            self.assertNotIn(".venv", bundle["command"])
-            self.assertNotIn("\\", bundle["command"])
-            evidence = (self.root / bundle["evidenceFile"]).read_text(encoding="utf-8")
-            self.assertNotIn("never-export-this-secret", evidence)
 
     def test_companion_meta_files_do_not_mint_duplicate_components(self) -> None:
         # X.cls-meta.xml describes X.cls (already parsed as ApexClass) — no "Cls:X" duplicate.
@@ -281,49 +172,6 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertNotIn(
             "force-app/main/default/staticresources/Assets.resource", generic_paths
         )
-
-    def test_metadata_type_filter_drafts_one_type_per_batch(self) -> None:
-        self.builder.inventory()
-        manifest = self.builder.draft(
-            datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc), "ApprovalProcess"
-        )
-        self.assertEqual("ApprovalProcess", manifest["metadataTypeFilter"])
-        # One automation claim + one description stub for the single approval process.
-        self.assertEqual(2, manifest["claimCount"])
-        claims = [
-            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
-            for bundle in manifest["bundles"]
-            if "claimFile" in bundle
-        ]
-        self.assertTrue(
-            all("HarnessEngagement_Approval_v2" in claim["subject"]["identity"] for claim in claims)
-        )
-        with self.assertRaisesRegex(KnowledgeBuildError, "available types"):
-            self.builder.draft(
-                datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc), "NoSuchType"
-            )
-
-    def test_drafts_seed_candidate_keywords_from_usage(self) -> None:
-        self.builder.inventory()
-        manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
-        claims = [
-            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
-            for bundle in manifest["bundles"]
-            if "claimFile" in bundle
-        ]
-        for claim in claims:
-            # keywords always stays empty until a curated taxonomy term is approved.
-            self.assertEqual([], claim["keywords"])
-            # candidateKeywords is advisory and never exceeds the schema's cap of five.
-            self.assertLessEqual(len(claim["candidateKeywords"]), 5)
-        # The trigger's usage registry (operates on HarnessEngagement__c) seeds an advisory candidate term.
-        trigger = next(
-            claim
-            for claim in claims
-            if claim["claimType"] == "automation-inventory"
-            and claim["subject"]["identity"] == "HarnessEngagementTrigger"
-        )
-        self.assertIn("harnessengagement", trigger["candidateKeywords"])
 
     def test_flow_usage_registry_records_objects_and_fields(self) -> None:
         flow_xml = """<?xml version="1.0" encoding="UTF-8"?>
@@ -467,12 +315,6 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         references = {(ref["kind"], ref["target"]) for ref in flow["references"]}
         self.assertIn(("references-field", "HarnessEngagement__c.Discount__c"), references)
 
-        claims = self.builder.candidate_claims(flow)
-        statement = next(
-            claim for claim in claims if claim["claimType"] == "automation-inventory"
-        )["statement"]
-        self.assertIn("3 error surface(s)", statement)
-        self.assertIn("Discount cannot exceed 20%", statement)
 
     def test_flow_error_paths_survive_loops_and_report_every_route(self) -> None:
         flow_xml = """<?xml version="1.0" encoding="UTF-8"?>
@@ -600,57 +442,6 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             {(ref["kind"], ref["target"]) for ref in layout["references"]},
         )
 
-    def test_worklist_derives_component_status_from_ground_truth(self) -> None:
-        self.builder.inventory()
-        # Fresh registry, no drafts: everything is pending.
-        result = self.builder.worklist()
-        self.assertEqual({"pending"}, set(result["counts"]))
-        self.assertTrue(all(item["status"] == "pending" for item in result["items"]))
-        self.assertTrue(
-            all(state["state"] == "missing" for item in result["items"] for state in item["claims"])
-        )
-
-        # Current drafts flip components to drafted.
-        manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
-        result = self.builder.worklist()
-        self.assertEqual({"drafted"}, set(result["counts"]))
-
-        # Walk one single-claim component (the permission set) through the claim lifecycle.
-        bundle = next(
-            item
-            for item in manifest["bundles"]
-            if "claimFile" in item
-            and yaml.safe_load((self.root / item["claimFile"]).read_text(encoding="utf-8"))[
-                "subject"
-            ]["identity"]
-            == "PermissionSet:HarnessEngagement_Manager"
-        )
-        claim = yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
-        canonical_path = self.root / ".ai/knowledge/claims" / f"{claim['claimId']}.yaml"
-
-        def component_status() -> str:
-            worklist = self.builder.worklist(metadata_type="PermissionSet")
-            self.assertEqual(1, len(worklist["items"]))
-            return worklist["items"][0]["status"]
-
-        canonical_path.write_text(yaml.safe_dump(claim, sort_keys=False), encoding="utf-8")
-        self.assertEqual("proposed", component_status())
-
-        verified = dict(claim, status="verified", revision=2, reviewRef="KREV-TEST-1",
-                        verifiedAt="2026-07-10T12:00:00Z")
-        canonical_path.write_text(yaml.safe_dump(verified, sort_keys=False), encoding="utf-8")
-        self.assertEqual("verified-current", component_status())
-
-        stale = dict(verified, evidenceRefs=["KEVD-SOMETHING-ELSE-0000000001"])
-        canonical_path.write_text(yaml.safe_dump(stale, sort_keys=False), encoding="utf-8")
-        self.assertEqual("stale-refresh", component_status())
-
-        rejected = dict(claim, status="rejected", revision=2, reviewRef="KREV-TEST-1")
-        canonical_path.write_text(yaml.safe_dump(rejected, sort_keys=False), encoding="utf-8")
-        worklist = self.builder.worklist(metadata_type="PermissionSet")
-        self.assertEqual("blocked", worklist["items"][0]["status"])
-        self.assertIn("rejected", worklist["items"][0]["reason"])
-
     APEX_SERVICE = """public with sharing class HarnessEngagementService {
     public void run() {
         List<HarnessEngagement__c> rows = [
@@ -734,95 +525,6 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             {ref["target"] for ref in component["references"] if ref["kind"] == "invokes-class"},
         )
 
-    def test_refresh_selects_only_drifted_and_expiring_claims(self) -> None:
-        self.builder.inventory()
-        manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
-        claims_root = self.root / ".ai/knowledge/claims"
-        by_type: dict[str, dict] = {}
-        for bundle in manifest["bundles"]:
-            if "claimFile" not in bundle:
-                continue
-            claim = yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
-            verified = dict(
-                claim,
-                status="verified",
-                revision=2,
-                reviewRef="KREV-TEST-1",
-                verifiedAt="2026-07-10T12:00:00Z",
-                reviewBy="2027-07-10T12:00:00Z",
-            )
-            (claims_root / f"{claim['claimId']}.yaml").write_text(
-                yaml.safe_dump(verified, sort_keys=False), encoding="utf-8"
-            )
-            by_type.setdefault(claim["claimType"], verified)
-
-        now = datetime(2026, 7, 17, 12, 0, tzinfo=timezone.utc)
-        result = self.builder.refresh(now)
-        self.assertEqual(0, result["refreshSelected"])
-        self.assertEqual("no-op", result["reviewStatus"])
-
-        def rewrite(record: dict, **overrides) -> dict:
-            updated = dict(record, **overrides)
-            (claims_root / f"{record['claimId']}.yaml").write_text(
-                yaml.safe_dump(updated, sort_keys=False), encoding="utf-8"
-            )
-            return updated
-
-        expired = rewrite(by_type["component-inventory"], reviewBy="2026-07-01T00:00:00Z")
-        expiring = rewrite(by_type["object-existence"], reviewBy="2026-08-01T00:00:00Z")
-        drifted = rewrite(by_type["field-schema"], evidenceRefs=["KEVD-SOMETHING-ELSE-0000000001"])
-
-        # Dry run reports the selection without touching the drafts workspace.
-        manifest_before = (self.root / ".cache/knowledge-proposals/force-app-drafts/manifest.json").read_bytes()
-        preview = self.builder.refresh(now, warn_days=30, dry_run=True)
-        self.assertTrue(preview["dryRun"])
-        self.assertEqual(3, preview["refreshSelected"])
-        self.assertEqual(1, preview["driftCount"])
-        self.assertEqual(1, preview["expiredCount"])
-        self.assertEqual(1, preview["expiringCount"])
-        self.assertEqual(
-            {expired["claimId"], expiring["claimId"], drifted["claimId"]},
-            {entry["claimId"] for entry in preview["selection"]},
-        )
-        self.assertEqual(
-            manifest_before,
-            (self.root / ".cache/knowledge-proposals/force-app-drafts/manifest.json").read_bytes(),
-        )
-
-        # Default horizon: drift and expired only; expiring claims wait for warn-days.
-        result = self.builder.refresh(now)
-        self.assertEqual(2, result["refreshSelected"])
-        self.assertEqual(0, result["expiringCount"])
-        self.assertEqual(2, result["claimCount"])
-        drafted_ids = {
-            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))["claimId"]
-            for bundle in result["bundles"]
-            if "claimFile" in bundle
-        }
-        self.assertEqual({expired["claimId"], drifted["claimId"]}, drafted_ids)
-
-        # The limit caps a run and reports the remainder for the next pass.
-        capped = self.builder.refresh(now, warn_days=30, limit=1, dry_run=True)
-        self.assertEqual(1, capped["refreshSelected"])
-        self.assertEqual(2, capped["remaining"])
-
-    def test_f5_coverage_refuses_when_entries_exist_and_claims_do_not(self) -> None:
-        """4d: coverage() derives from the claims worklist, empty by construction on an entry
-        store, so it reported 0% documented over 80 approved entries and queued 25 components
-        that were already done. Refusal names the replacements rather than teaching coverage a
-        second denominator."""
-
-        self.builder.inventory()
-        entries = {
-            "CustomObject:HarnessEngagement__c": {"purpose": "Real.", "lane": "approved-current"}
-        }
-        with unittest.mock.patch.object(
-            ForceAppKnowledge, "entry_descriptions", lambda self: entries
-        ):
-            with self.assertRaises(KnowledgeBuildError) as caught:
-                self.builder.coverage()
-        self.assertIn("entry-readiness", str(caught.exception))
-
     def test_f5_entry_readiness_reports_the_entry_side_denominator(self) -> None:
         self.builder.inventory()
         entries = {
@@ -837,63 +539,10 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertGreaterEqual(bucket["components"], 1)
         self.assertEqual(1, bucket["byLane"]["approved-current"])
         self.assertGreaterEqual(result["totals"]["noEntry"], 1)
-        # The basis must name the other surfaces, or one denominator gets mistaken for another.
-        self.assertIn("coverage", result["basis"])
-
-    def test_coverage_summarizes_documentation_state(self) -> None:
-        self.builder.inventory()
-        # No claims yet: everything undocumented, 0% coverage, all queued to document next.
-        result = self.builder.coverage(write=True)
-        self.assertEqual("force-app-knowledge-coverage", result["kind"])
-        self.assertEqual(0, result["totals"]["documented"])
-        self.assertGreater(result["totals"]["undocumented"], 0)
-        self.assertEqual(0, result["totals"]["coveragePercent"])
-        self.assertEqual(result["totals"]["undocumented"], len(result["documentNext"]))
-        self.assertIn("CustomObject", result["byMetadataType"])
-        self.assertTrue(
-            (self.root / ".cache/knowledge-proposals/force-app-coverage.json").is_file()
-        )
-
-        # Verified claim citing the component's current evidence -> documented.
-        inventory = json.loads(self.builder.inventory_path.read_text(encoding="utf-8"))
-        obj = next(c for c in inventory["components"] if c["metadataType"] == "CustomObject")
-        candidate = self.builder.candidate_claims(obj)[0]
-        claim_id = self.builder.expected_claim_id(candidate)
-        current_evidence = stable_id(
-            "KEVD", obj["id"], f"repo-{digest_bytes(canonical(obj).encode('utf-8'))}"
-        )
-        claim_file = self.root / ".ai/knowledge/claims" / f"{claim_id}.yaml"
-        claim_file.write_text(
-            yaml.safe_dump(
-                {"revision": 2, "status": "verified", "evidenceRefs": [current_evidence]}
-            ),
-            encoding="utf-8",
-        )
-        documented = self.builder.coverage()
-        self.assertEqual(1, documented["byMetadataType"]["CustomObject"]["documented"])
-
-        # Same claim citing stale evidence (source drifted since verification) -> drifted.
-        claim_file.write_text(
-            yaml.safe_dump(
-                {"revision": 2, "status": "verified", "evidenceRefs": ["KEVD-STALE-0000000001"]}
-            ),
-            encoding="utf-8",
-        )
-        drifted = self.builder.coverage()
-        self.assertEqual(1, drifted["byMetadataType"]["CustomObject"]["drifted"])
-        self.assertTrue(any(e["status"] == "stale-refresh" for e in drifted["documentNext"]))
-
-    def test_worklist_write_persists_schema_valid_derived_view(self) -> None:
-        self.builder.inventory()
-        result = self.builder.worklist(metadata_type="CustomObject", write=True)
-        path = self.root / result["path"]
-        self.assertTrue(path.is_file())
-        saved = json.loads(path.read_text(encoding="utf-8"))
-        self.assertEqual("force-app-knowledge-worklist", saved["kind"])
-        self.assertEqual("CustomObject", saved["metadataTypeFilter"])
-        self.assertNotIn("path", saved)
-        with self.assertRaisesRegex(KnowledgeBuildError, "available types"):
-            self.builder.worklist(metadata_type="NoSuchType")
+        # The basis must name its denominator and the companion surface, or one report gets
+        # mistaken for another.
+        self.assertIn("live entry-profiled force-app components", result["basis"])
+        self.assertIn("entry-edge-health", result["basis"])
 
     def test_resolve_maps_paths_and_names_onto_components(self) -> None:
         self.builder.inventory()
@@ -950,8 +599,11 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         # Entry-profiled types route to the entry lane even before the first entry exists.
         self.assertEqual("entry", items["CustomField:HarnessEngagement__c.Account__c"]["lane"])
         self.assertEqual("no-entry", items["CustomField:HarnessEngagement__c.Account__c"]["status"])
-        self.assertEqual("claim", items["NamedCredential:HarnessBilling"]["lane"])
-        self.assertEqual("pending", items["NamedCredential:HarnessBilling"]["status"])
+        # A type without an entry profile has NO Knowledge lane since the claim registry
+        # retired; the gap is reported, never a pseudo-status.
+        self.assertEqual("none", items["NamedCredential:HarnessBilling"]["lane"])
+        self.assertEqual("no-entry-profile", items["NamedCredential:HarnessBilling"]["status"])
+        self.assertIn("knowledge_store.PROFILES", items["NamedCredential:HarnessBilling"]["reason"])
 
     def test_resolve_reports_ambiguity_and_never_guesses(self) -> None:
         write(
@@ -1050,22 +702,9 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         refused = result["selections"][0]
         self.assertEqual("unsupported", refused["resolution"])
         self.assertIn("expands to 31 components", refused["reason"])
-        self.assertIn("/batch-knowledge", refused["reason"])
+        self.assertIn("split it per metadata type", refused["reason"])
         # The refused expansion computes no statuses and reports no components.
         self.assertEqual([], result["components"])
-        # `draft()` itself stays uncapped for internal callers: the same 31 components draft
-        # fine when passed programmatically (relations-draft passes far larger sets).
-        inventory = self.builder.load_inventory()
-        big_ids = {
-            component["id"]
-            for component in inventory["components"]
-            if component["path"].endswith("HarnessBig.labels-meta.xml")
-        }
-        self.assertEqual(31, len(big_ids))
-        manifest = self.builder.draft(
-            datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc), component_ids=big_ids
-        )
-        self.assertGreaterEqual(manifest["claimCount"], 31)
 
     def test_resolve_requires_inputs_and_bounds_them(self) -> None:
         self.builder.inventory()
@@ -1086,47 +725,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertEqual("force-app-knowledge-resolve", saved["kind"])
         self.assertNotIn("path", saved)
 
-    def test_draft_component_filter_drafts_only_selected_components(self) -> None:
-        self.builder.inventory()
-        manifest = self.builder.draft(
-            datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc),
-            component_ids={"ApprovalProcess:HarnessEngagement__c.HarnessEngagement_Approval_v2"},
-        )
-        self.assertEqual(2, manifest["claimCount"])
-        claims = [
-            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
-            for bundle in manifest["bundles"]
-            if "claimFile" in bundle
-        ]
-        self.assertTrue(
-            all("HarnessEngagement_Approval_v2" in claim["subject"]["identity"] for claim in claims)
-        )
-        # A mistyped id fails loudly instead of silently drafting nothing.
-        with self.assertRaisesRegex(KnowledgeBuildError, "unknown component ids"):
-            self.builder.draft(
-                datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc),
-                component_ids={"Flow:No_Such_Flow"},
-            )
-        # A type filter would run before the id filter and silently drop other-type selections,
-        # so combining them is refused outright.
-        with self.assertRaisesRegex(KnowledgeBuildError, "mutually exclusive"):
-            self.builder.draft(
-                datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc),
-                "ApexTrigger",
-                component_ids={"NamedCredential:HarnessBilling"},
-            )
-
-    def test_cli_component_cap_is_a_cli_boundary_not_a_draft_limit(self) -> None:
-        from scripts.force_app_knowledge import cli_component_ids
-
-        self.assertIsNone(cli_component_ids([]))
-        self.assertEqual({"Flow:A"}, cli_component_ids(["Flow:A"]))
-        exactly = [f"Flow:F{i}" for i in range(25)]
-        self.assertEqual(set(exactly), cli_component_ids(exactly))
-        with self.assertRaisesRegex(KnowledgeBuildError, "at most 25"):
-            cli_component_ids(exactly + ["Flow:F25"])
-
-    def test_selected_files_guard_bounds_resolve_and_draft_component(self) -> None:
+    def test_selected_files_guard_bounds_resolve(self) -> None:
         from scripts import copilot_role_guard as role_guard
 
         for role in ("config-investigator", "knowledge-curator"):
@@ -1178,122 +777,15 @@ class ForceAppKnowledgeTests(unittest.TestCase):
                 self.assertTrue(
                     role_guard.force_app_knowledge_command_allowed(good, investigator)
                 )
-
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(
-                ["draft", "--component", "Flow:Feature_Flag_Check",
-                 "--component=CustomField:Obj.Field__c"],
-                investigator,
-            )
-        )
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(
-                ["draft", "--component", "Layout:Account-Account Layout"], investigator
-            )
-        )
-        # The type filter would silently drop other-type selections; the combination is denied.
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["draft", "--metadata-type", "Flow", "--component", "Flow:A"], investigator
-            )
-        )
-        for bad_component in ("NoColonHere", "bad-type:Name", "Flow:"):
-            with self.subTest(component=bad_component):
-                self.assertFalse(
-                    role_guard.force_app_knowledge_command_allowed(
-                        ["draft", "--component", bad_component], investigator
-                    )
-                )
-        chunk = [token for i in range(25) for token in ("--component", f"Flow:F{i}")]
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(["draft", *chunk], investigator)
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["draft", *chunk, "--component", "Flow:F25"], investigator
-            )
-        )
-
-    def test_dashboard_renders_with_graceful_panels_and_escaping(self) -> None:
-        # Without an inventory the coverage/relation panels degrade to "unavailable" and the
-        # command still succeeds; nothing raises on a store this root does not carry.
-        result = self.builder.dashboard()
-        page_path = self.root / "output/knowledge-dashboard.html"
-        self.assertTrue(page_path.is_file())
-        self.assertEqual("unavailable", result["sections"]["coverage"])
-        page = page_path.read_text(encoding="utf-8")
-        self.assertIn("unavailable", page)
-        self.assertNotIn("<script", page)
-
-        # With an inventory, coverage renders; a hostile statement in a claim is escaped.
-        self.builder.inventory()
-        manifest = self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
-        bundle = next(item for item in manifest["bundles"] if "claimFile" in item)
-        claim = yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
-        claim["candidateKeywords"] = ["<script>alert(1)</script>"]
-        (self.root / ".ai/knowledge/claims" / f"{claim['claimId']}.yaml").write_text(
-            yaml.safe_dump(claim, sort_keys=False), encoding="utf-8"
-        )
-        result = self.builder.dashboard()
-        self.assertEqual("ok", result["sections"]["coverage"])
-        page = page_path.read_text(encoding="utf-8")
-        self.assertNotIn("<script>alert(1)</script>", page)
-
-    def test_dashboard_guard_allows_every_role_with_bounded_flags(self) -> None:
-        from scripts import copilot_role_guard as role_guard
-
-        for role in (
-            "solution-designer",
-            "config-investigator",
-            "knowledge-curator",
-            "development-assistant",
-            "test-strategist",
-            "guardrail-reviewer",
-        ):
-            with self.subTest(role=role):
-                self.assertTrue(
-                    role_guard.force_app_knowledge_command_allowed(["dashboard"], role)
-                )
-                self.assertTrue(
-                    role_guard.force_app_knowledge_command_allowed(
-                        ["dashboard", "--warn-days", "45"], role
-                    )
-                )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["dashboard", "--warn-days", "9999"], "solution-designer"
-            )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["dashboard", "--unknown"], "solution-designer"
-            )
-        )
-        # The all-roles carve-out never leaks into the drafting commands.
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(["inventory"], "solution-designer")
-        )
-
-    def test_worklist_requires_a_current_inventory(self) -> None:
-        with self.assertRaisesRegex(KnowledgeBuildError, "run inventory first"):
-            self.builder.worklist()
+    def test_changed_source_invalidates_the_cached_inventory(self) -> None:
         self.builder.inventory()
         field = self.root / "force-app/main/default/objects/HarnessEngagement__c/fields/Account__c.field-meta.xml"
         field.write_text(FIELD_XML.replace("Account</label>", "Client Account</label>"), encoding="utf-8")
         with self.assertRaisesRegex(KnowledgeBuildError, "changed after inventory"):
-            self.builder.worklist()
-
-    def test_dirty_or_changed_source_cannot_be_commit_bound_evidence(self) -> None:
-        self.builder.inventory()
-        field = self.root / "force-app/main/default/objects/HarnessEngagement__c/fields/Account__c.field-meta.xml"
-        field.write_text(FIELD_XML.replace("Account</label>", "Client Account</label>"), encoding="utf-8")
-        with self.assertRaisesRegex(KnowledgeBuildError, "changed after inventory"):
-            self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
+            self.builder.resolve(paths=[], names=["HarnessBilling"])
 
         inventory = self.builder.inventory()
         self.assertFalse(inventory["workspaceStatus"]["clean"])
-        with self.assertRaisesRegex(KnowledgeBuildError, "not clean at HEAD"):
-            self.builder.draft(datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc))
 
 
 NEW_STYLE_NAMED_CREDENTIAL_XML = """<?xml version="1.0" encoding="UTF-8"?>
@@ -1797,17 +1289,6 @@ class WorkflowParserTests(unittest.TestCase):
         self.assertEqual(["Id", "Status"], message["fields"])
         self.assertIn(("reads-field", "Case.Status"), self.references)
 
-    def test_workflow_routes_to_automation_claim_with_stub(self) -> None:
-        claims = self.builder.candidate_claims(self.workflow)
-        claim_types = [claim["claimType"] for claim in claims]
-        self.assertIn("automation-inventory", claim_types)
-        self.assertIn("component-description", claim_types)
-        automation = next(
-            claim for claim in claims if claim["claimType"] == "automation-inventory"
-        )
-        self.assertEqual("automation-map", automation["domain"])
-
-
 APEX_SERVICE_SOURCE = """public with sharing class HarnessBillingService implements Queueable, Database.AllowsCallouts {
     @AuraEnabled
     public static void bill(Id harnessEngagementId) {
@@ -2157,11 +1638,6 @@ class RecordDataModelTests(unittest.TestCase):
         self.assertIn(("uses-matching-rule", "Contact.Standard_Lead_Match"), references)
         self.assertIn(("references-field", "Lead.Email"), references)
         self.assertIn(("references-field", "Contact.Email"), references)
-        claims = self.builder.candidate_claims(component)
-        automation = next(
-            claim for claim in claims if claim["claimType"] == "automation-inventory"
-        )
-        self.assertIn("duplicate lead", automation["statement"])
 
 
 class LwcDeepeningTests(unittest.TestCase):
@@ -2772,8 +2248,6 @@ class RuleFileTests(unittest.TestCase):
         self.assertIn(("filters-field", "Case.Priority"), references)
         self.assertIn(("assigns-to", "Tier1_Support"), references)
         self.assertIn(("uses-template", "unfiled$public/CaseAck"), references)
-        claims = self.builder.candidate_claims(component)
-        self.assertIn("automation-inventory", [claim["claimType"] for claim in claims])
 
     def test_escalation_rules_actions(self) -> None:
         path = (
@@ -2946,8 +2420,6 @@ class IntegrationFamilyTests(unittest.TestCase):
         self.assertEqual("OData4", facts["sourceType"])
         self.assertEqual("erp.example.test", facts["endpointHost"])
         self.assertTrue(facts["isWritable"])
-        claims = self.builder.candidate_claims(component)
-        self.assertIn("integration", [claim["claimType"] for claim in claims])
 
 
 class VfAuraLabelsTests(unittest.TestCase):
@@ -3039,8 +2511,6 @@ class VfAuraLabelsTests(unittest.TestCase):
             "This harnessEngagement is blocked by finance.", label["facts"]["value"]
         )
         self.assertEqual(2, by_id["CustomLabels:CustomLabels"]["facts"]["labelCount"])
-        claims = self.builder.candidate_claims(label)
-        self.assertIn("blocked by finance", claims[0]["statement"])
 
     def test_label_consumers_emit_uses_label(self) -> None:
         apex = self.base / "classes/Banner.cls"
@@ -3495,8 +2965,7 @@ class EmailStaticResourceTests(unittest.TestCase):
             "<type>text</type><subject>Your case was escalated</subject></EmailTemplate>\n",
         )
         component = self.builder.parse_email_template(path)
-        claims = self.builder.candidate_claims(component)
-        self.assertIn("Your case was escalated", claims[0]["statement"])
+        self.assertEqual("Your case was escalated", component["facts"]["subject"])
 
     def test_static_resource_cache_posture(self) -> None:
         path = self.base / "staticresources/Assets.resource-meta.xml"
@@ -3647,8 +3116,6 @@ class AuthCspEventChannelTests(unittest.TestCase):
         )
         component = self.builder.parse_integration(cors, "CorsWhitelistOrigin")
         self.assertEqual("portal.example.test", component["facts"]["endpointHost"])
-        claims = self.builder.candidate_claims(component)
-        self.assertIn("integration", [claim["claimType"] for claim in claims])
 
     def test_event_channel_member_cdc_base_object_heuristic(self) -> None:
         path = (
@@ -3738,27 +3205,6 @@ class CriteriaInfrastructureTests(unittest.TestCase):
             [{"field": "Case.Status", "operator": "equals", "value": "New"}],
             ForceAppKnowledge._criteria_entries(rule_style),
         )
-
-    def test_relation_candidates_per_reference_heuristic(self) -> None:
-        component = {
-            "id": "Flow:Demo",
-            "metadataType": "Flow",
-            "name": "Demo",
-            "path": "force-app/main/default/flows/Demo.flow-meta.xml",
-            "references": [
-                {"kind": "references-field", "target": "HarnessEngagement__c.Status__c"},
-                {
-                    "kind": "references-field",
-                    "target": "HarnessEngagement__c.Guess__c",
-                    "heuristic": True,
-                },
-            ],
-        }
-        first, second = self.builder.relation_candidates(component)
-        self.assertEqual("observed", first["assurance"])
-        self.assertFalse(first["assertion"]["value"]["heuristic"])
-        self.assertEqual("inferred", second["assurance"])
-        self.assertTrue(second["assertion"]["value"]["heuristic"])
 
 
 if __name__ == "__main__":
@@ -3960,10 +3406,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         write(base / "classes/HarnessEngagementService.cls", ENTRY_EDGE_APEX_SOURCE)
         (self.root / "schemas").mkdir()
         for name in (
-            "knowledge-claim.schema.json",
-            "knowledge-evidence.schema.json",
             "force-app-knowledge-inventory.schema.json",
-            "force-app-relation-health.schema.json",
             "knowledge-entry.schema.json",
             "knowledge-profile-customfield.schema.json",
         ):
@@ -3973,7 +3416,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         (self.root / "config/harness.local.json").write_text(
             json.dumps({"knowledge": {"chatReviewer": "Reviewer Person"}}), encoding="utf-8"
         )
-        (self.root / ".ai/knowledge/claims").mkdir(parents=True)
+        (self.root / ".ai/knowledge").mkdir(parents=True)
         self.purpose = self.root / "purpose.md"
         self.purpose.write_text("Links an engagement to its invoice.", encoding="utf-8")
         self.commit("fixture")
@@ -4016,12 +3459,12 @@ class EntryEdgeHealthTests(unittest.TestCase):
 
     def test_deleted_edge_target_is_reported_as_an_orphan(self) -> None:
         self.approved_entry("HarnessEngagement__c.Invoice__c")
-        healthy = self.builder.relation_health()["entryEdges"]
+        healthy = self.builder.entry_edge_report()
         self.assertEqual({"approved-current": 1}, healthy["entriesByLane"])
         self.assertEqual(0, healthy["findingCount"], healthy["findings"])
 
         self.drop_invoice_object()
-        report = self.builder.relation_health()["entryEdges"]
+        report = self.builder.entry_edge_report()
         # The audit's own reproduction: the lane count is unchanged, so a check that only
         # counted lanes would still say HEALTHY here.
         self.assertEqual({"approved-current": 1}, report["entriesByLane"])
@@ -4046,7 +3489,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         entry = self.root / ".ai/knowledge/artifacts/CustomField/c/HarnessEngagement__c%2EAccount__c.md"
         # The edge is really stored — silence here is a decision, not an empty graph.
         self.assertIn("target: Account\n", entry.read_text(encoding="utf-8"))
-        report = self.builder.relation_health()["entryEdges"]
+        report = self.builder.entry_edge_report()
         self.assertEqual(0, report["findingCount"], report["findings"])
 
     def test_removed_subject_component_is_reported_before_its_edges(self) -> None:
@@ -4054,7 +3497,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         shutil.rmtree(self.root / "force-app/main/default/objects/HarnessEngagement__c/fields")
         self.commit("delete the described fields")
         self.builder.inventory()
-        report = self.builder.relation_health()["entryEdges"]
+        report = self.builder.entry_edge_report()
         reasons = {finding["reason"] for finding in report["findings"]}
         self.assertIn("component removed", reasons)
         # An entry whose own subject is gone is one finding, not one per stale edge.
@@ -4076,7 +3519,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         self.assertIn("target: Invoice__c\n", body, "fixture must store the bare-name edge")
         self.assertIn("kind: object-token", body)
 
-        report = self.builder.relation_health()["entryEdges"]
+        report = self.builder.entry_edge_report()
         self.assertEqual(0, report["findingCount"], report["findings"])
         self.assertNotIn(identity, {finding.get("identity") for finding in report["findings"]})
         # Present, not merely unreported: the name was settled against the live field index.
@@ -4102,7 +3545,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         for component in components:
             self.approved_entry(component["name"], component["metadataType"])
 
-        report = self.builder.relation_health()["entryEdges"]
+        report = self.builder.entry_edge_report()
         self.assertEqual({"approved-current": len(components)}, report["entriesByLane"])
         self.assertEqual(0, report["findingCount"], report["findings"])
         self.assertIn("0 approved-entry edge targets were left undecidable", report["note"])
@@ -4123,7 +3566,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         self.commit("delete the Invoice__c field")
         self.builder.inventory()
 
-        report = self.builder.relation_health()["entryEdges"]
+        report = self.builder.entry_edge_report()
         self.assertEqual(1, report["findingCount"], report["findings"])
         self.assertEqual("var-field-ref", report["findings"][0]["kind"])
         self.assertEqual(
@@ -4152,7 +3595,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         self.approved_entry("HarnessEngagement__c.Invoice__c")
         self.drop_invoice_object()
 
-        report = self.builder.relation_health()["entryEdges"]
+        report = self.builder.entry_edge_report()
         findings = [
             finding for finding in report["findings"] if finding.get("kind") == "relationship"
         ]
@@ -4167,7 +3610,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         self.approved_entry("HarnessEngagement__c.Invoice__c")
         (self.root / ".ai/knowledge/artifacts-ledger.jsonl").write_text("", encoding="utf-8")
         self.drop_invoice_object()
-        report = self.builder.relation_health()["entryEdges"]
+        report = self.builder.entry_edge_report()
         self.assertEqual({"not-effective": 1}, report["entriesByLane"])
         reasons = {finding["reason"] for finding in report["findings"]}
         self.assertIn("approved state without any ledger record (quarantined)", reasons)

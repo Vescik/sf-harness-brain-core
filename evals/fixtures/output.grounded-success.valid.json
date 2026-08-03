@@ -18,9 +18,13 @@
     "ado:example-org/example-project/1201@7",
     "repo:brain-core@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
-  "ruleRefs": ["SAFE-EVID-001", "MP-GEN-001"],
-  "claimRefs": ["KCLM-EXAMPLE-COMPONENT-OWNERSHIP"],
-  "evidenceRefs": ["KEVD-EXAMPLE-COMPONENT-CONTRACT"],
+  "ruleRefs": [
+    "SAFE-EVID-001",
+    "MP-GEN-001"
+  ],
+  "evidenceRefs": [
+    "KEVD-EXAMPLE-COMPONENT-CONTRACT"
+  ],
   "knowledgeSnapshotAt": "2026-07-10T11:55:00Z",
   "reconciliation": {
     "status": "matched",
@@ -34,9 +38,20 @@
   "reviewStatus": "draft",
   "assumptions": [],
   "warnings": [],
-  "filesWritten": ["output/documentation/1201.md"],
+  "filesWritten": [
+    "output/documentation/1201.md"
+  ],
   "verification": [
     "Validated the output envelope and compared the accepted record hashes with the persisted record."
   ],
-  "artifactPath": "output/documentation/1201.md"
+  "artifactPath": "output/documentation/1201.md",
+  "entryRefs": [
+    {
+      "entryId": "Flow:c:DemoRouting",
+      "reviewedContentDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "factsDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "sourceTreeDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "profile": "salesforce.flow@1"
+    }
+  ]
 }
