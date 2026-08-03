@@ -374,6 +374,11 @@ are not durable.
   receipt, only executor-derived numbers persist.
 - **D-6:** no new prompt/skill — sampling folds into batch-knowledge + propose-force-app-knowledge
   as a default-on step (dedicated investigate-usage prompt only if the pilot shows the need).
+  **Amended same day (owner, chat):** `/feature-documentor` also samples BY DEFAULT — anchors
+  only (not all wave-1 boundary members): step 6a attaches to each wave-1 anchor's entry when a
+  review org is configured, and the dossier cites the entries' fresh `orgUsage` (orgKey +
+  observedAt) instead of transcript numbers. Feature Entries themselves still cannot carry
+  `orgUsage` (wave-1 pin); the feature lane consumes it from the artifact entries.
 - Phase 1 implemented same day on branch `feat/org-usage-layer` (contract v1.2 §2.3/§3/§4/§5.5/
   §5.7/§6.6/§14.3; `orgUsage` $defs family + wave-1 pin in knowledge-entry schema; policy block
   90d; harness-config `fullCopy`/`refreshedAt`; `.cache/org-usage/.gitkeep`).

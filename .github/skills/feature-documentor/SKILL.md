@@ -56,6 +56,20 @@ bound to a commit otherwise.
    (allowlisted types only, ≤25 components per call, `review_org_identity` gate first). Record
    disk-vs-org drift as claim limitations and in the dossier's Limitations section. Degrade
    gracefully to repository-only when no org is available and mark completeness partial.
+6a. **Anchor org sampling (default when a review org is configured — owner decision
+   2026-08-03).** For each anchor object that has a CustomObject Knowledge Entry and whose org
+   lane is not already `org-fresh` (recompute with
+   `python scripts/knowledge_store.py entry-status --identity <id>` — never from chat history):
+   compose probes and run the governed
+   `python scripts/knowledge_store.py entry-org-attach --identity <id> --org <alias>
+   --probes-file <path>` exactly as the batch-knowledge skill's entry-lane org-sampling step
+   describes (aggregates plus one bounded `LIMIT 25` sample; several WHERE-conditioned probes
+   of one kind are legal; row values never persist — the executor derives counts and shapes and
+   attaches click-free). The dossier's usage statements then cite the entries' fresh `orgUsage`
+   (orgKey + observedAt) instead of transcript numbers; an expired or superseded block is
+   absent — never cite it. When no org is configured, containment refuses, or the anchor has no
+   entry yet, skip silently and record `orgUsage: skipped (<reason>)` in the dossier's
+   Limitations section; this step never blocks the repository-side drafting.
 7. Before selecting candidates, look up what the registry already knows so proposals never duplicate
    related Knowledge: `python scripts/knowledge_registry.py query --subject-identity <identity>` and
    `python scripts/knowledge_registry.py query --feature "<Feature>"`.

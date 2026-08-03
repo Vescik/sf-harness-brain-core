@@ -275,6 +275,7 @@ class RecordFreeKnowledgeLaneTests(unittest.TestCase):
         # that gained the org-sampling step (org-usage layer, 2026-08-03).
         ".github/skills/batch-knowledge/SKILL.md",
         ".github/skills/propose-force-app-knowledge/SKILL.md",
+        ".github/skills/feature-documentor/SKILL.md",
     )
     RECORD = re.compile(r"work[- ]record|`recordid`", re.I)
     DEMAND = re.compile(

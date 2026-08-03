@@ -3,7 +3,7 @@ name: feature-documentor
 description: Document a Salesforce feature from anchor objects — discover its relations, automations, and UI, draft feature-tagged proposed claims, and render a reviewed dossier.
 argument-hint: "feature=<name> anchors=<Object__c,Object__c> [depth=<n>] [hubs=<Object__c,...>] [claimIds=<ID,...>]"
 agent: config-investigator
-tools: ['read', 'search', 'execute/runInTerminal']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query']
 ---
 
 Use the [feature-documentor skill](../skills/feature-documentor/SKILL.md).
@@ -19,5 +19,8 @@ The outcome is schema-valid `proposed` claims tagged with the feature plus a dra
 `.cache/knowledge-proposals/feature-dossiers/` — never verified facts: promotion needs a separate human chat approval,
 and the dossier is never published to ADO or a production wiki from here. Reconcile against the live
 org through the guarded `python scripts/salesforce_read.py retrieve` only when a review org is
-configured. Report the boundary summary, crawl and dossier paths, drafted claim IDs, org drift,
-limitations, and the required human review.
+configured; when it is, anchor org sampling is the default too — governed `entry-org-attach` on
+each wave-1 anchor's entry per the skill's step 6a, so the dossier cites persisted, expiring
+`orgUsage` instead of transcript numbers. Report the boundary summary, crawl and dossier paths,
+drafted claim IDs, org drift, `orgUsage` attach/skip outcomes, limitations, and the required
+human review.
