@@ -486,3 +486,30 @@ are not durable.
 - Approved by: workspace owner (chat, 2026-08-03).
 - Related: entry "2026-07-27 - Knowledge v2 one-file entries";
   `output/discovery-2026-08-03-v1-claim-registry-removal.md`.
+
+## 2026-08-03 - v1 retirement gate decisions D-A/D-B/D-C/D-G; P1 work-record surgery executed
+
+- Context: the phased v1 claim-registry removal (see the P0 entry above) left seven owner
+  decisions open. Four gate P1/P2 and were put to the owner explicitly.
+- Finding / decision (owner, chat 2026-08-03):
+  D-B - work-record component grounding is ENTRY-BASED and FAIL-CLOSED: every scope
+  component must be covered by a bound approved-current entry (the component itself or its
+  owning CustomObject); a metadata type without an entry profile blocks SAFE/approval, and
+  the remedy is extending knowledge_store.PROFILES, never widening the gate.
+  D-A - org/vendor/SME observations lose the registry: investigate-config-records and
+  investigate-object become read-only investigations reporting into output/ (org sampling
+  stays entry-org-attach); semantic org facts live as prose, uncited.
+  D-C - check-feature-coverage drops the registry dependency lookup and must NAME the
+  metadata types its result did not cover; a mechanical inventory-based lookup is backlog.
+  D-G - claimRefs/ownership fields are REMOVED from change-record/handoff/output envelope
+  schemas outright (no legacy compatibility fields; no records exist on disk).
+- Impact (P1, this entry): work_record.py loses bind-claim, claimRefs, the KnowledgeRegistry
+  import and the ownership fields on components (components are name+type only); SAFE and
+  human-approval gates now require entryRefs plus component_entry_coverage_problems() == [].
+  The three envelope schemas and all envelope fixtures dropped claim shapes; the governed
+  output-envelope arm now REQUIRES entryRefs (was: claimRefs minItems 1 — without the
+  required key the arm would have been fail-open). test_work_record.py re-grounded on a
+  patched entry lane, with new negative pins: ownership fields refused at parse and at
+  schema, approval fail-closed on uncovered components and unprofiled types.
+- Approved by: workspace owner (chat, 2026-08-03, AskUserQuestion with recommendations).
+- Related: the P0 entry above; output/discovery-2026-08-03-v1-claim-registry-removal.md.

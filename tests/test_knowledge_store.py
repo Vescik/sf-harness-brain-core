@@ -436,37 +436,6 @@ class KnowledgeStoreTests(unittest.TestCase):
             work_record.validate_entry_refs(self.temp, [reference], require_current=True)
         work_record.validate_entry_refs(self.temp, [reference], require_current=False)
 
-    def test_repo_only_claims_are_shadowed_by_approved_entries(self) -> None:
-        from scripts import work_record
-
-        drafted = self.draft()
-        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
-        claims_dir = self.temp / ".ai/knowledge/claims"
-        evidence_dir = self.temp / ".ai/knowledge/evidence"
-        claims_dir.mkdir(parents=True)
-        evidence_dir.mkdir(parents=True)
-        (claims_dir / "KCLM-ROUTER-DESC-001.yaml").write_text(
-            "claimId: KCLM-ROUTER-DESC-001\nevidenceRefs: [KEVD-ROUTER-SRC-001]\n",
-            encoding="utf-8",
-        )
-        expected = {
-            "claimType": "component-description",
-            "subject": {"kind": "automation", "identity": "HarnessAlphaRouter"},
-        }
-        (evidence_dir / "KEVD-ROUTER-SRC-001.yaml").write_text(
-            "evidenceId: KEVD-ROUTER-SRC-001\nsourceType: metadata-repository\n",
-            encoding="utf-8",
-        )
-        with self.assertRaises(work_record.WorkRecordError) as ctx:
-            work_record._assert_not_shadowed(self.temp, "KCLM-ROUTER-DESC-001", expected)
-        self.assertIn("shadowed-by-entry", str(ctx.exception))
-        # An org-observation leg of the same claim type keeps its v1 standing.
-        (evidence_dir / "KEVD-ROUTER-SRC-001.yaml").write_text(
-            "evidenceId: KEVD-ROUTER-SRC-001\nsourceType: salesforce-org-review\n",
-            encoding="utf-8",
-        )
-        work_record._assert_not_shadowed(self.temp, "KCLM-ROUTER-DESC-001", expected)
-
     # --- remaining adversarial-review evals (R-09..R-24) ---------------------------
 
     def test_r09_reparse_point_under_knowledge_fails_closed(self) -> None:

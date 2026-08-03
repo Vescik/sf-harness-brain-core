@@ -14,10 +14,16 @@
     "consumedHandoffId": "HO-EXAMPLE-KNOWLEDGE-IN",
     "createdHandoffId": "HO-EXAMPLE-KNOWLEDGE-OUT"
   },
-  "sourceRefs": ["human-review:KREV-EXAMPLE-COMPONENT"],
-  "ruleRefs": ["SAFE-HUMAN-001", "ORG-KNOW-001"],
-  "claimRefs": ["KCLM-EXAMPLE-COMPONENT-OWNERSHIP"],
-  "evidenceRefs": ["KEVD-EXAMPLE-COMPONENT-CONTRACT"],
+  "sourceRefs": [
+    "human-review:KREV-EXAMPLE-COMPONENT"
+  ],
+  "ruleRefs": [
+    "SAFE-HUMAN-001",
+    "ORG-KNOW-001"
+  ],
+  "evidenceRefs": [
+    "KEVD-EXAMPLE-COMPONENT-CONTRACT"
+  ],
   "knowledgeSnapshotAt": "2026-07-10T12:19:00Z",
   "reconciliation": {
     "status": "not-required",
@@ -31,7 +37,20 @@
   "reviewStatus": "promoted",
   "assumptions": [],
   "warnings": [],
-  "filesWritten": [".ai/knowledge/claims/KCLM-EXAMPLE-COMPONENT-OWNERSHIP.yaml"],
-  "verification": ["Validated the immutable human review and promoted claim revision."],
-  "artifactPath": ".ai/knowledge/claims/KCLM-EXAMPLE-COMPONENT-OWNERSHIP.yaml"
+  "filesWritten": [
+    ".ai/knowledge/artifacts/Flow/c/DemoRouting.md"
+  ],
+  "verification": [
+    "Validated the immutable human review and promoted claim revision."
+  ],
+  "artifactPath": ".ai/knowledge/artifacts/Flow/c/DemoRouting.md",
+  "entryRefs": [
+    {
+      "entryId": "Flow:c:DemoRouting",
+      "reviewedContentDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "factsDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "sourceTreeDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "profile": "salesforce.flow@1"
+    }
+  ]
 }

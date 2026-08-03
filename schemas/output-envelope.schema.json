@@ -13,7 +13,6 @@
     "recordRef",
     "sourceRefs",
     "ruleRefs",
-    "claimRefs",
     "evidenceRefs",
     "knowledgeSnapshotAt",
     "reconciliation",
@@ -74,14 +73,6 @@
       "items": {
         "type": "string",
         "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$"
-      }
-    },
-    "claimRefs": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "pattern": "^KCLM-[A-Z0-9][A-Z0-9-]{2,79}$"
       }
     },
     "evidenceRefs": {
@@ -312,7 +303,7 @@
           "pattern": "^salesforce\\.[a-z][a-z0-9-]{1,60}@[0-9]+$"
         }
       },
-      "description": "SAFE-CLAIM-001 v2 grounding for intended repository-source state (docs/knowledge-one-file-contract.md par 6.2/par 8). Additive: claimRef/evidenceRef grammar untouched."
+      "description": "SAFE-CLAIM-001 v2 grounding for intended repository-source state (docs/knowledge-one-file-contract.md par 6.2/par 8). Entries are the only Knowledge grounding; the claim registry is retired."
     }
   },
   "allOf": [
@@ -438,7 +429,7 @@
           "ruleRefs": {
             "minItems": 1
           },
-          "claimRefs": {
+          "entryRefs": {
             "minItems": 1
           },
           "evidenceRefs": {
@@ -477,7 +468,10 @@
           "verification": {
             "minItems": 1
           }
-        }
+        },
+        "required": [
+          "entryRefs"
+        ]
       }
     }
   ]

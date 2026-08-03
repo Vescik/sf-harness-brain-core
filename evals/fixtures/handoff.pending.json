@@ -6,34 +6,6 @@
   "createdAt": "2026-07-10T10:00:00Z",
   "designHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "groundingHash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
-  "claimRefs": [
-    {
-      "assertion": {
-        "predicate": "ownership-classification",
-        "value": "package-owned"
-      },
-      "claimId": "KCLM-DEMO-OWNERSHIP",
-      "claimType": "object-ownership",
-      "path": ".ai/knowledge/claims/KCLM-DEMO-OWNERSHIP.yaml",
-      "revision": 2,
-      "reviewBy": "2026-08-09T09:00:00Z",
-      "reviewRef": "KREV-DEMO-OWNERSHIP",
-      "scope": {
-        "environment": "development",
-        "orgKey": "ORG-DEMO",
-        "packageKey": "PKG-DEMO",
-        "packageNamespace": "pkg",
-        "packageVersion": "3.4.0",
-        "repositoryCommit": null
-      },
-      "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-      "subject": {
-        "identity": "ManagedComponentA",
-        "kind": "object"
-      },
-      "verifiedAt": "2026-07-10T09:00:00Z"
-    }
-  ],
   "evidenceRefs": [
     {
       "completeness": "complete",
@@ -76,10 +48,6 @@
     "components": [
       {
         "name": "ManagedComponentA",
-        "ownership": "package-owned",
-        "ownershipClaimRef": "KCLM-DEMO-OWNERSHIP",
-        "packageNamespace": "pkg",
-        "packageVersion": "3.4.0",
         "type": "CustomObject"
       }
     ],
@@ -97,5 +65,14 @@
   "summary": "Implement only the approved subscriber-owned extension around the sourced package boundary.",
   "toRole": "development-assistant",
   "unresolvedQuestions": [],
-  "updatedAt": "2026-07-10T10:00:00Z"
+  "updatedAt": "2026-07-10T10:00:00Z",
+  "entryRefs": [
+    {
+      "entryId": "Flow:c:DemoRouting",
+      "reviewedContentDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "factsDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "sourceTreeDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "profile": "salesforce.flow@1"
+    }
+  ]
 }
