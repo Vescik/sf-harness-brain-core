@@ -44,7 +44,7 @@ on what it is for.
 
 <!--
 Reference .github/instructions/managed-package-constraints.instructions.md and
-.ai/knowledge/object-relations.md where applicable. If no impact: say so explicitly.
+approved Knowledge Entries (relation edges) where applicable. If no impact: say so explicitly.
 -->
 
 ## 6. Verification approach
@@ -61,7 +61,7 @@ If the answer is "none", this section keeps an explicit "None" — it never disa
 
 ## 8. Known limitations / open questions
 
-<!-- Include anything relevant from .ai/knowledge/known-limitations.md. -->
+<!-- Include any relevant limitations recorded on the approved Knowledge Entries. -->
 
 ## 9. Suggested Test Cases
 

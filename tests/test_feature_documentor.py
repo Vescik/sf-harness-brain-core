@@ -76,7 +76,7 @@ class FeatureCrawlTests(unittest.TestCase):
             shutil.copy2(ROOT / "schemas" / name, self.root / "schemas" / name)
         (self.root / "config").mkdir()
         shutil.copy2(ROOT / "config/knowledge-policy.json", self.root / "config/knowledge-policy.json")
-        (self.root / ".ai/knowledge/claims").mkdir(parents=True)
+        (self.root / ".ai/knowledge").mkdir(parents=True)
         for command in (
             ["git", "init", "-q"],
             ["git", "config", "user.email", "fixture@example.invalid"],

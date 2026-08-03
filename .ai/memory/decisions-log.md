@@ -513,3 +513,26 @@ are not durable.
   schema, approval fail-closed on uncovered components and unprofiled types.
 - Approved by: workspace owner (chat, 2026-08-03, AskUserQuestion with recommendations).
 - Related: the P0 entry above; output/discovery-2026-08-03-v1-claim-registry-removal.md.
+
+## 2026-08-04 - v1 retirement executed end to end (P2-P4); docs archival deferred
+
+- Context: continuation of the phased v1 claim-registry removal (P0/P1 entries above).
+- Finding / decision: P2a/P2b/P3/P4 executed. The engine is gone
+  (scripts/knowledge_registry.py, the collector's claim-drafting half, guard/hook surfaces,
+  CI steps, six v1 schemas, the claim keys of knowledge-policy.json); the text layer speaks
+  entries only (six prompts + seven skills + knowledge-lifecycle.md deleted; investigate-*
+  rewritten read-only per D-A; SAFE-CLAIM-001 v3 + SAFE-HUMAN-001 + ORG-KNOW-001..003
+  rewritten; counts prompts 25->19, skills 26->19, contracts 5->4); the empty v1 data files
+  (.ai/knowledge claims/evidence/reviews dirs, claims-index.json, 11 rendered domain stubs)
+  are deleted with their write-guard arms, and .ai/knowledge/README.md now documents the
+  entry store. The normative org-sampling spec lives in investigate-object/SKILL.md.
+  Historical docs that describe the v1 system (docs/spec-p5-attested-claim-lane-2026-07-27.md,
+  docs/force-app-knowledge-architecture.md, the knowledge plans/threads) stay in docs/ as
+  decision records; moving them out of the repo belongs to the separately owner-gated
+  workspace-cleanup plan, not to this retirement.
+- Impact: the P5 attested-claim lane design is permanently superseded (no registry to attach
+  it to). check-feature-coverage must name unprofiled-type dependents as an uncovered class
+  (owner D-C). Live verification of the surviving flows against real Copilot (retirement P5)
+  is still outstanding.
+- Approved by: workspace owner (chat, 2026-08-03, direction + D-A..D-G).
+- Related: the two v1-retirement entries above; output/discovery-2026-08-03-v1-claim-registry-removal.md.

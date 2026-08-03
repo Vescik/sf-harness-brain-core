@@ -527,7 +527,7 @@
     ".github/agents/knowledge-curator.agent.md": "sha256:53fcc359ab43ab7d31f94bd36b60ac4f05475069d37b7714f13048d415a4d380",
     ".github/agents/solution-designer.agent.md": "sha256:b20c041be42c0b28bfa676728bd5ec90d23f451393d9e9ef0b7c8537c09a5558",
     ".github/agents/test-strategist.agent.md": "sha256:3ccd3ca579a1fb00c0284b774039505f47ffbdc341dc62d46a1f52a74f63df5c",
-    ".github/instructions/managed-package-constraints.instructions.md": "sha256:cccd7e181cc44c99514a1be64f9d57194c5e66fb464a1cd3da138411da1ed5c9",
+    ".github/instructions/managed-package-constraints.instructions.md": "sha256:637d2e77a8ecddbbe480330caa36ce77629dfb2d384050de0d8d54710597be61",
     ".github/instructions/organization-principles.instructions.md": "sha256:d8a94ece21b0a2ec4b12b5665054e0817f8f93345a0becf7e36a735be5c82cb5",
     ".github/instructions/salesforce-best-practices.instructions.md": "sha256:8d286666f9736a2c84a4681d9c1c65c029e47473524494e54dad64ba5993a6ee",
     ".github/prompts/adhoc-fix.prompt.md": "sha256:21988585420911878b457cfa9879fd22a3433daee929c72cbe2d787bbeffe043",

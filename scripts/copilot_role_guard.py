@@ -816,8 +816,6 @@ def is_governed_record_path(relative_path: str) -> bool:
         re.fullmatch(r"\.ai/change-records/[^/]+/record\.json", relative_path)
         or re.fullmatch(r"\.ai/change-records/[^/]+/handoffs/[^/]+\.json", relative_path)
         or re.fullmatch(r"\.ai/change-records/[^/]+/evidence/[^/]+\.json", relative_path)
-        or re.fullmatch(r"\.ai/knowledge/(claims|evidence|reviews)/[^/]+\.(yaml|yml|json)", relative_path)
-        or re.fullmatch(r"\.ai/knowledge/(automation-map|business-processes|current-implementation|field-descriptions|glossary|integration-map|known-limitations|object-descriptions|object-relations)\.md", relative_path)
         or re.fullmatch(r"\.ai/knowledge/artifacts/.+\.md", lowered)
         or lowered == ".ai/knowledge/artifacts-ledger.jsonl"
         # Feature Entries and their ledger. The FILE needs its own arm, not just the ledger:

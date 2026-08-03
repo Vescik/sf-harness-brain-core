@@ -383,7 +383,7 @@ class RoleGuardTests(unittest.TestCase):
                 "cwd": str(ROOT),
                 "tool_name": "edit/editFiles",
                 "tool_input": {
-                    "path": ".ai/knowledge/claims/CLM-FAKE.yaml"
+                    "path": ".ai/knowledge/artifacts/Flow/c/Fake.md"
                 },
             },
             "--role",

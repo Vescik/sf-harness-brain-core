@@ -3416,7 +3416,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         (self.root / "config/harness.local.json").write_text(
             json.dumps({"knowledge": {"chatReviewer": "Reviewer Person"}}), encoding="utf-8"
         )
-        (self.root / ".ai/knowledge/claims").mkdir(parents=True)
+        (self.root / ".ai/knowledge").mkdir(parents=True)
         self.purpose = self.root / "purpose.md"
         self.purpose.write_text("Links an engagement to its invoice.", encoding="utf-8")
         self.commit("fixture")

@@ -9,7 +9,7 @@ These rules override Organization Principles and general Salesforce practice.
 ## Global rules
 
 - **MP-GEN-001 — inspect before change.** Check
-  [Known Limitations](../../.ai/knowledge/known-limitations.md) for every affected package object,
+  the limitations recorded on approved Knowledge Entries for every affected package object,
   page, function, and automation surface.
 - **MP-GEN-002 — closed means closed.** Do not propose edits to vendor-owned metadata or runtime
   behavior that the organization cannot deploy. Design only through verified extension points.
