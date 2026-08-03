@@ -192,6 +192,15 @@ scenarios:
       - SAFE-TOOL-001
       - no Knowledge approval
 
+  - id: build-resume-uses-entry-coverage
+    entrypoint: curate-knowledge
+    given: A build pass over one metadata type was interrupted after some entries were approved, and a new chat asks to continue documenting that type.
+    expectedOutcome: Rerun inventory and entry-coverage, skip approved-current entries, and continue from the first missing or draft entry — never reconstruct progress from chat history or a hand-maintained checklist.
+    requiredEvidence:
+      - entry-coverage gaps recomputed in this session
+      - approved-current entries skipped
+      - no chat-history progress reconstruction
+
   - id: candidate-keywords-never-grow-taxonomy
     entrypoint: pin-knowledge
     given: While describing a component, the model identifies a business-process term (e.g. "revenue adjustment") that is not in the keyword taxonomy.
