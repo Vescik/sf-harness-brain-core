@@ -1623,7 +1623,8 @@ def assert_containment(policy: dict[str, Any]) -> None:
     if not allowlist:
         raise StoreError(
             "containment: orgUsage.allowedOriginRemotes is empty — org attach is refused in "
-            "this workspace (gate 1; org-bearing entries live only in the private company clone)"
+            "this workspace (gate 1; org-bearing entries live only in the company's private "
+            "enterprise repository)"
         )
     off_list = [url for url in _origin_remote_urls() if url not in allowlist]
     if off_list:

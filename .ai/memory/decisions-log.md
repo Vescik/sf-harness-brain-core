@@ -356,10 +356,24 @@ are not durable.
   unless origin matches `orgUsage.allowedOriginRemotes` (allowlist-shaped; shipped EMPTY on the
   public product repo = attach refuses everywhere; a failing `git remote` is a refusal).
   Merge-back of org-bearing entries to the public origin is permanently forbidden.
+  **Refined same day (owner, chat): SINGLE-REPO model.** The owner clones this repo into a new
+  repository in the company's GitHub Enterprise org; that one repo IS the whole workspace, and
+  query results (orgUsage sections + the org ledger) are committed there. No mechanism change
+  was needed — the containment check is origin-allowlist-shaped and does not care whether the
+  private location is a fork, a clone, or a standalone repo. Operating rules recorded in
+  contract §6.6: the enterprise repo's `allowedOriginRemotes` carries the enterprise URL(s)
+  (both ssh and https forms, exact strings from `git remote -v`); the public origin URL is
+  NEVER allowlisted; while a temporary public remote exists for a product-update sync, attach
+  refuses by design — remove it after the sync (or sync via git bundle).
 - **D-2 (gate 4, expiry):** `maxOrgUsageAgeDays = 90` — PROVISIONAL: the sandbox refresh
   cadence and per-alias full-copy-vs-partial facts are still owed before Phase 4; if cadence
   proves < 90d the value must be trimmed. `compute_org_lane` applies
   `min(stored expiresAt, observedAt + current policy)` so tightening expires retroactively.
+  **Half-delivered same day (owner, chat): EVERY company sandbox is a full copy** (the managed
+  package requires it) → set `fullCopy: true` on every alias in the enterprise repo's
+  harness config. `fullCopy` is a descriptive label, never a gate — nothing in the layer
+  refuses or requires it; it only labels representativeness in orgUsage blocks and
+  disclosures. Still owed: the refresh cadence (the only remaining D-2 fact).
 - **D-3 (governance):** schema-as-instrument, click-free attach. The human approves the
   INSTRUMENT once (closed kind enum + per-kind result shapes + executor derivers + sanitization
   + expiry + allowlist), not each number; attach/detach stay in the authoring bucket of the

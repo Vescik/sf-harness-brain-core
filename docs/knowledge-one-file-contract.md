@@ -489,13 +489,17 @@ re-adding an ask row for them would re-litigate D-3, not harden it.
   indistinguishable from tampering BY DESIGN. Recovery is explicit and only ever forward:
   re-run `entry-org-attach` (fresh observation) or `entry-org-detach`; never hand-align the
   ledger or the section.
-- **Containment (gate 1; owner D-1 2026-08-03):** org-bearing entries live only in the private
-  company clone. Attach refuses unless the workspace's `git remote` output matches the
-  `orgUsage.allowedOriginRemotes` allowlist — empty allowlist (the shipped default) refuses
-  everywhere and is the standing kill switch; a failing or absent `git remote` subprocess is a
-  REFUSAL, never a pass; validate fails when any entry carries a non-empty `orgUsage.orgs` and
-  the origin check does not pass. Merging org-bearing entries back to the public origin is
-  permanently forbidden.
+- **Containment (gate 1; owner D-1 2026-08-03, refined same day):** org-bearing entries live
+  only in the company's private enterprise repository — the single-repo model: the whole
+  workspace is cloned into one GitHub Enterprise repo, org observations are committed there,
+  and the public origin is **never a remote of that repo**. Attach refuses unless the
+  workspace's `git remote` output matches the `orgUsage.allowedOriginRemotes` allowlist —
+  empty allowlist (the shipped default on the public origin) refuses everywhere and is the
+  standing kill switch; a failing or absent `git remote` subprocess is a REFUSAL, never a
+  pass; validate fails when any entry carries a non-empty `orgUsage.orgs` and the origin check
+  does not pass. The public origin URL must never be allowlisted; while a temporary public
+  remote exists for a product-update sync, attach refuses by design — remove the remote after
+  the sync. Pushing org-bearing entries to the public origin is permanently forbidden.
 - **Identity gate:** every probe envelope must prove the SAME configured org
   (`nonProduction: true`; `orgIdDigest` match against the configured
   `expectedOrganizationId`). ANY identity or environment mismatch mid-run aborts the WHOLE
