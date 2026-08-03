@@ -629,39 +629,82 @@ class CrossPlatformDeterminismTests(KnowledgeStoreTests):
 
 
 class EntryCitationVerificationTests(KnowledgeStoreTests):
-    """verify-citations must cover both citation kinds, or an envelope is half-checked."""
-
-    def registry(self):
-        from scripts.knowledge_registry import KnowledgeRegistry
-
-        return KnowledgeRegistry(self.temp)
+    """Entry citation verdicts live in the store (v1 retirement P0), not the registry."""
 
     def test_verdicts_track_the_entry_lifecycle(self) -> None:
         drafted = self.draft()
         ref = {"entryId": drafted["identity"], "reviewedContentDigest": drafted["reviewedContentDigest"]}
-        self.assertEqual("not-approved", self.registry().verify_entry_citations([ref])[0]["verdict"])
+        self.assertEqual("not-approved", store.verify_entry_citations(self.temp, [ref])[0]["verdict"])
 
         self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
-        self.assertEqual("current", self.registry().verify_entry_citations([ref])[0]["verdict"])
+        self.assertEqual("current", store.verify_entry_citations(self.temp, [ref])[0]["verdict"])
 
         flow = self.temp / "force-app/main/default/flows/HarnessAlphaRouter.flow-meta.xml"
         flow.write_text(FLOW_XML.replace("<status>Active</status>", "<status>Draft</status>"), encoding="utf-8")
-        drifted = self.registry().verify_entry_citations([ref])[0]
+        drifted = store.verify_entry_citations(self.temp, [ref])[0]
         self.assertEqual("drifted", drifted["verdict"])
         self.assertEqual("warning", drifted["severity"])
 
         store.command_entry_revoke(argparse.Namespace(identity=drafted["identity"], rationale="x"))
-        self.assertEqual("revoked", self.registry().verify_entry_citations([ref])[0]["verdict"])
+        self.assertEqual("revoked", store.verify_entry_citations(self.temp, [ref])[0]["verdict"])
 
     def test_missing_and_mismatched_citations_are_invalid(self) -> None:
-        registry = self.registry()
-        self.assertEqual("missing", registry.verify_entry_citations([{"entryId": "Flow:c:Nope"}])[0]["verdict"])
+        self.assertEqual(
+            "missing", store.verify_entry_citations(self.temp, [{"entryId": "Flow:c:Nope"}])[0]["verdict"]
+        )
         drafted = self.draft()
         self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
         stale = {"entryId": drafted["identity"], "reviewedContentDigest": "sha256:" + "0" * 64}
-        verdict = self.registry().verify_entry_citations([stale])[0]
+        verdict = store.verify_entry_citations(self.temp, [stale])[0]
         self.assertEqual("digest-mismatch", verdict["verdict"])
         self.assertEqual("invalid", verdict["severity"])
+
+    def test_cli_requires_exactly_one_source_and_reads_envelopes(self) -> None:
+        drafted = self.draft()
+        self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+        for bad in (
+            argparse.Namespace(envelope=None, entry_ref=[]),
+            argparse.Namespace(envelope="x.json", entry_ref=["Flow:c:Nope"]),
+        ):
+            with self.assertRaises(store.StoreError):
+                store.command_entry_verify_citations(bad)
+        envelope = self.temp / "output" / "envelope.json"
+        envelope.parent.mkdir(parents=True, exist_ok=True)
+        envelope.write_text(
+            json.dumps(
+                {
+                    "entryRefs": [
+                        {"entryId": drafted["identity"], "reviewedContentDigest": drafted["reviewedContentDigest"]},
+                        "Flow:c:Nope",
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        report = store.command_entry_verify_citations(
+            argparse.Namespace(envelope=str(envelope), entry_ref=[])
+        )
+        self.assertEqual(2, report["citationCount"])
+        self.assertEqual({"ok": 1, "warning": 0, "invalid": 1}, report["counts"])
+        bare = store.command_entry_verify_citations(
+            argparse.Namespace(envelope=None, entry_ref=[drafted["identity"]])
+        )
+        self.assertEqual("current", bare["citations"][0]["verdict"])
+        with self.assertRaises(store.StoreError):
+            store.command_entry_verify_citations(
+                argparse.Namespace(envelope="/etc/hosts", entry_ref=[])
+            )
+
+    def test_registry_envelope_path_delegates_to_the_store(self) -> None:
+        # Dies with the registry in P2; until then the envelope check must not fork logic.
+        from scripts.knowledge_registry import KnowledgeRegistry
+
+        drafted = self.draft()
+        ref = [{"entryId": drafted["identity"]}]
+        self.assertEqual(
+            store.verify_entry_citations(self.temp, ref),
+            KnowledgeRegistry(self.temp).verify_entry_citations(ref),
+        )
 
     def test_entry_coverage_separates_gaps_from_unprofiled_types(self) -> None:
         drafted = self.draft()

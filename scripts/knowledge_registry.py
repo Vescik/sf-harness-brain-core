@@ -29,6 +29,13 @@ try:
 except ModuleNotFoundError:  # imported as scripts.knowledge_registry by unit tests
     from scripts.schema_format import FORMAT_CHECKER
 
+# Digest primitives moved to the leaf module (v1 retirement P0); re-imported here so the
+# registry keeps working — and re-exporting the names — until it is deleted.
+try:
+    from scripts.knowledge_digest import canonical, canonical_digest
+except ModuleNotFoundError:  # invoked as `python scripts/knowledge_registry.py`
+    from knowledge_digest import canonical, canonical_digest  # type: ignore
+
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -288,15 +295,6 @@ def parse_time(value: str, label: str) -> datetime:
     if parsed.tzinfo is None:
         raise ContractError(f"{label} must include a timezone")
     return parsed
-
-
-def canonical(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-
-
-def canonical_digest(value: Any) -> str:
-    payload = canonical(value).encode("utf-8")
-    return f"sha256:{hashlib.sha256(payload).hexdigest()}"
 
 
 def file_sha256(path: Path) -> str:
@@ -2047,46 +2045,15 @@ class KnowledgeRegistry:
     def verify_entry_citations(self, entry_refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Advisory verdicts for cited Knowledge Entries (SAFE-CLAIM-001 v2 entryRefs).
 
-        Mirrors verify_citations for the entry layer so an envelope carrying both citation
-        kinds is checked end to end instead of half-checked."""
+        The logic moved to knowledge_store.verify_entry_citations (v1 retirement P0);
+        this delegation keeps `verify-citations --envelope` checking both citation kinds
+        until the registry is deleted."""
 
         try:
             from scripts import knowledge_store
         except ModuleNotFoundError:  # invoked as a script
             import knowledge_store  # type: ignore
-        results: list[dict[str, Any]] = []
-        for reference in entry_refs:
-            entry_id = str(reference.get("entryId", ""))
-            record: dict[str, Any] = {"entryId": entry_id}
-            lane = knowledge_store.lane_for_identity(self.root, entry_id) if entry_id else None
-            if lane is None:
-                record.update(verdict="missing", severity="invalid", reason="no entry with this identity")
-            elif lane["lane"] == "revoked":
-                record.update(verdict="revoked", severity="invalid", reason="approval was revoked")
-            elif lane["lane"] == "draft":
-                record.update(verdict="not-approved", severity="invalid", reason="entry is still a draft")
-            elif lane["lane"] == "not-effective":
-                record.update(
-                    verdict="not-effective",
-                    severity="invalid",
-                    reason="; ".join(lane.get("problems", [])) or "entry failed its integrity checks",
-                )
-            elif reference.get("reviewedContentDigest") and lane.get("reviewedContentDigest") != reference["reviewedContentDigest"]:
-                record.update(
-                    verdict="digest-mismatch",
-                    severity="invalid",
-                    reason="cited content digest is not the entry's current approved digest",
-                )
-            elif lane["lane"] == "approved-drifted":
-                record.update(
-                    verdict="drifted",
-                    severity="warning",
-                    reason="source moved on since approval; re-approve before citing as current",
-                )
-            else:
-                record.update(verdict="current", severity="ok", reason="approved-current")
-            results.append(record)
-        return results
+        return knowledge_store.verify_entry_citations(self.root, entry_refs)
 
     def verify_citations(
         self,

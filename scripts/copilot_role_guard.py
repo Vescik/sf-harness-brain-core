@@ -282,6 +282,9 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-status": frozenset({"--identity"}),
     "entry-coverage": frozenset(),
     "entry-check": frozenset({"--changed-since"}),
+    # Read-only citation verdicts (entryRefs); the entry-side successor of the registry's
+    # verify-citations, relocated in v1-retirement P0. Reads stay universal.
+    "entry-verify-citations": frozenset({"--envelope", "--entry-ref"}),
     "entry-org-attach": frozenset({"--identity", "--org", "--probes-file"}),
     "entry-org-detach": frozenset({"--identity", "--org", "--rationale"}),
     # Feature Entries (contract §13). The boundary rule is human-authored, so propose/describe

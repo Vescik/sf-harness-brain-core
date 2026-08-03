@@ -63,7 +63,9 @@ configuration returns `DEPENDENCY UNAVAILABLE`; never construct replacement WIQL
    the missing-documentation fallback; record the step-8 render-check outcome in
    `verification`; name both saved files in `filesWritten` and the draft in `artifactPath`.
    Confirm the envelope with `python scripts/knowledge_registry.py verify-citations
-   --envelope output/handover/<period>.json`.
+   --envelope output/handover/<period>.json`, and its entry citations with
+   `python scripts/knowledge_store.py entry-verify-citations --envelope
+   output/handover/<period>.json`.
 
 ## Return
 

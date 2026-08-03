@@ -1214,7 +1214,7 @@ def check_org_usage(audit: Audit, root: Path = ROOT) -> None:
     artifacts = root / ".ai/knowledge/artifacts"
     org_bearing = 0
     if artifacts.is_dir():
-        from scripts.knowledge_registry import canonical_digest
+        from scripts.knowledge_digest import canonical_digest
 
         for path in sorted(artifacts.rglob("*.md")):
             text = path.read_text(encoding="utf-8")

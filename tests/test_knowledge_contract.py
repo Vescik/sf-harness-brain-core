@@ -14,10 +14,10 @@ from pathlib import Path
 import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
+from scripts.knowledge_digest import canonical_digest
 from scripts.knowledge_registry import (
     ContractError,
     KnowledgeRegistry,
-    canonical_digest,
     file_sha256,
 )
 from scripts.validate_harness import reserved_fixture_leaks

@@ -457,3 +457,32 @@ are not durable.
 - Approved by: workspace owner (chat, 2026-08-03).
 - Related: entries "2026-08-03 - Documenting existing state is record-free",
   "2026-07-27 - Knowledge v2 one-file entries".
+
+## 2026-08-03 - v1 claim registry retirement approved; P0 decoupling executed
+
+- Context: the workspace operates on one-file Knowledge Entries (2026-07-27 decision), but
+  the v1 claim registry (claims/evidence/reviews, worklists, batch promotion) still owns
+  large parts of the code and text surface. Its status surfaces (worklist, coverage,
+  dashboard, stale-report) compute from a claim corpus that is empty (zero claims were
+  ever committed) and frozen by `enforce_entry_home_freeze`, so they read "nothing
+  documented" forever regardless of entry approvals. Full inventory:
+  `output/discovery-2026-08-03-v1-claim-registry-removal.md`.
+- Finding / decision: the owner approved removing the v1 claim registry entirely, in
+  phases (P0 relocations -> P1 work-record surgery -> P2 engine deletion -> P3 text ->
+  P4 data/docs -> P5 live verification). Owner decisions D-A..D-G (org/vendor/SME
+  observation home, work-record ownership gate replacement, unprofiled-type dependency
+  lookups, envelope verification, relation lane, keyword curation, envelope claimRefs
+  fields) remain open and gate the later phases.
+- Impact (P0, this entry): the entry store no longer depends on the retiring module.
+  `canonical` / `canonical_digest` moved verbatim to the new leaf `scripts/knowledge_digest.py`
+  (digest bytes pinned by `tests/test_knowledge_digest.py`; a serialization change would
+  silently revoke every approved entry); entry citation verdicts moved to
+  `knowledge_store.verify_entry_citations` with a new read-only `entry-verify-citations`
+  CLI (guard-listed, named in generate-release-handover; the registry method now
+  delegates); `force_app_knowledge.entry_home_types` reads `knowledge_store.PROFILES`
+  instead of the registry mirror constant. A dependency-direction test pins that
+  `knowledge_store.py` never re-imports `knowledge_registry`. No v1 behavior changed;
+  registry CLI surface, guard tables for it, and all v1 tests are untouched until P2.
+- Approved by: workspace owner (chat, 2026-08-03).
+- Related: entry "2026-07-27 - Knowledge v2 one-file entries";
+  `output/discovery-2026-08-03-v1-claim-registry-removal.md`.

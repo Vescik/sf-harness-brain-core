@@ -5894,10 +5894,10 @@ class ForceAppKnowledge:
         if not artifacts_root.is_dir() or not any(artifacts_root.rglob("*.md")):
             return frozenset()
         try:
-            from scripts.knowledge_registry import ENTRY_PROFILED_METADATA_TYPES
+            from scripts.knowledge_store import PROFILES
         except ModuleNotFoundError:  # invoked as a script
-            from knowledge_registry import ENTRY_PROFILED_METADATA_TYPES  # type: ignore
-        return frozenset(ENTRY_PROFILED_METADATA_TYPES)
+            from knowledge_store import PROFILES  # type: ignore
+        return frozenset(PROFILES)
 
     def draft(
         self,
