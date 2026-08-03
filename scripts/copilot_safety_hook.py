@@ -114,6 +114,19 @@ DEVTOOL_BATCH_APPROVE_SCRIPT = re.compile(
     r"approve_dev_tool_batch\.py(?=$|[\s\"';&|()])",
     re.IGNORECASE,
 )
+# `knowledge_registry.py review|promote` is the file-based claim-approval power. The per-agent
+# role guard grants it to NO role (it is human-terminal-only), but that guard is absent in a
+# session with no custom agent selected — plain Copilot chat in the workspace — where only this
+# hook stands between a typed request and promotion. Denying here costs nothing, because there
+# is no role for which the command is legitimate; `approve-claim` remains the governed request
+# path and is handled by the `ask` branch below.
+# The verb must follow the script directly, so `query --status review` is not caught.
+KNOWLEDGE_HUMAN_TERMINAL_COMMAND = re.compile(
+    r"(?:(?:^|[\s\"';&|()])(?:[A-Za-z]:)?/?(?:[^\s\"';&|()]+/)*knowledge_registry\.py"
+    r"|(?:^|[\s\"';&|()])-m\s*(?:scripts\.)?knowledge_registry)"
+    r"\s+(?:review|promote)(?=$|[\s\"';&|()])",
+    re.IGNORECASE,
+)
 
 
 def safety_toggle(config: dict[str, Any] | None, name: str) -> bool:
@@ -800,6 +813,22 @@ def main() -> int:
                     "deny",
                     "SAFE-HUMAN-001: Copilot cannot invoke work-record approval; "
                     "a named human must run it directly outside Copilot.",
+                )
+            )
+        )
+        return 0
+
+    if is_terminal_tool(tool_name) and KNOWLEDGE_HUMAN_TERMINAL_COMMAND.search(
+        dequote(re.sub(r"\\\r?\n", " ", command).replace("\\", "/"))
+    ):
+        print(
+            json.dumps(
+                hook_response(
+                    "deny",
+                    "SAFE-HUMAN-001: Copilot cannot invoke file-based Knowledge review or "
+                    "promotion; a named human must run it directly outside Copilot. To request "
+                    "promotion from a governed session use approve-claim, which asks for "
+                    "confirmation and records the reviewer identity.",
                 )
             )
         )

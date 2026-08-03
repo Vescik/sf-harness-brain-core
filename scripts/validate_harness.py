@@ -986,7 +986,11 @@ def check_grounding_contracts(audit: Audit) -> None:
     agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     markdown_link = re.compile(r"(?<!!)\[[^\]]+\]\([^)]+\)")
     audit.require(not markdown_link.search(root_instructions), "always-on safety kernel must not pull role resources through Markdown links")
-    audit.require(len(agents_md.split()) <= 120, "AGENTS.md must remain a bounded compatibility shim")
+    # 120 → 150 (2026-08-03): the cap keeps this file from growing into a second instruction
+    # set, and 150 words preserves that intent. The extra room buys the host statement — which
+    # host actually enforces the per-agent role guard — and that is exactly the compatibility
+    # question this shim exists to answer.
+    audit.require(len(agents_md.split()) <= 150, "AGENTS.md must remain a bounded compatibility shim")
     for marker in ("SAFE-CLAIM-001", "SAFE-TOOL-001", "SAFE-CHAT-001", "SAFE-DRIFT-001"):
         audit.require(marker in root_instructions, f"always-on grounding rule is missing: {marker}")
 

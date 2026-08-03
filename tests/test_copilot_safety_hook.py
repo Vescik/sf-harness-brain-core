@@ -71,6 +71,45 @@ class HumanApprovalBoundaryTests(unittest.TestCase):
                 self.assertEqual(actual, "deny")
                 self.assertIn("SAFE-HUMAN-001", reason)
 
+    def test_file_based_knowledge_review_and_promote_are_denied(self) -> None:
+        """The claim-approval power itself, in a session with no role guard.
+
+        The per-agent role guard grants review/promote to NO role, but it is absent when no
+        custom agent is selected — plain Copilot chat in the workspace — and only this hook
+        stands between a typed request and promotion. Denying costs nothing because the
+        command is legitimate for no role.
+        """
+        for command in (
+            "python3 scripts/knowledge_registry.py review --claim-id C1 --decision approve",
+            "python3 scripts/knowledge_registry.py promote --claim-id C1",
+            ".venv/bin/python scripts/knowledge_registry.py promote --claim-id C1",
+            "python3 -m scripts.knowledge_registry review --claim-id C1",
+        ):
+            with self.subTest(command=command):
+                actual, reason = self.run_hook("run_in_terminal", command)
+                self.assertEqual(actual, "deny")
+                self.assertIn("SAFE-HUMAN-001", reason)
+
+    def test_governed_knowledge_commands_keep_their_own_decisions(self) -> None:
+        """The deny must not swallow the request path or the read commands.
+
+        `query --status review` is the trap: matching the verb anywhere would refuse a plain
+        read because a flag value happens to be the word "review".
+        """
+        ask_actual, _ = self.run_hook(
+            "run_in_terminal", "python3 scripts/knowledge_registry.py approve-claim --claim-id C1"
+        )
+        self.assertEqual(ask_actual, "ask")
+        for command in (
+            "python3 scripts/knowledge_registry.py explain --claim-id C1",
+            "python3 scripts/knowledge_registry.py query --status review",
+            "python3 scripts/knowledge_registry.py propose --file draft.yaml",
+            "python3 scripts/knowledge_registry.py validate",
+        ):
+            with self.subTest(command=command):
+                actual, _ = self.run_hook("run_in_terminal", command)
+                self.assertEqual(actual, "continue")
+
     def test_shell_binary_names_are_matched_exactly_not_by_substring(self) -> None:
         """The short shell names must never become substring tokens.
 

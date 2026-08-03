@@ -9,3 +9,6 @@ work record before acting, and load detailed Principles, contracts, Knowledge, a
 through the active role. Orient in the generated atlas `.ai/repo-map.md` first.
 Built-in/default Agent mode and arbitrary terminal workflows are not supported for external
 systems or governed state changes.
+
+Supported host: **VS Code**. The per-agent role guard is wired through agent frontmatter, which
+only VS Code reads; elsewhere it is silently absent even though `--agent` still loads an agent.
