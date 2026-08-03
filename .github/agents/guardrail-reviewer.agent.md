@@ -39,11 +39,11 @@ Load the [Managed Package Constraints](../instructions/managed-package-constrain
    record revision, scope/design hashes, approval, repository commits, and evidence references.
 2. Establish the reviewed scope and compare it with the accepted design and implementation.
 3. Run the linked principles check in Tier 1 → Tier 2 → Tier 3 order.
-4. Check claim/review status, Known Limitations, evidence freshness/completeness, environment proof, approval state,
+4. Check entry lanes and org-usage freshness, evidence completeness, environment proof, approval state,
    test evidence, manual steps, and role-boundary compliance.
-5. Cite exact rule, claim, evidence, affected artifact, and required correction for every finding.
+5. Cite exact rule, entry, evidence, affected artifact, and required correction for every finding.
 6. Append the verdict only through the role-allowlisted work-record command. Never edit the
-   implementation, evidence, claim, approval, or policy artifacts.
+   implementation, evidence, entry, approval, or policy artifacts.
 7. ADO publication policy is not yet approved. Draft the note for a human; do not publish it.
 
 ## Verdict

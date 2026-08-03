@@ -1178,7 +1178,7 @@ class WorkflowReachabilityTests(unittest.TestCase):
 
     def test_the_curator_agent_loads_the_skills_its_prompts_use(self) -> None:
         agent = (self.HARNESS / ".github/agents/knowledge-curator.agent.md").read_text(encoding="utf-8")
-        for skill in ("approve-knowledge-drafts", "propose-force-app-knowledge", "batch-knowledge"):
+        for skill in ("approve-knowledge-drafts", "search-knowledge"):
             with self.subTest(skill=skill):
                 self.assertIn(skill, agent, f"knowledge-curator does not load {skill}")
 

@@ -31,15 +31,16 @@ These rules override general Salesforce practice and are overridden by Tier 1 pa
 
 ## Knowledge and handoffs
 
-- **ORG-KNOW-001 — observations are proposals.** An investigator or model may create sanitized
-  evidence and a proposed claim. Only a named human review bound to the evidence and scope may
-  promote a claim to `verified`.
-- **ORG-KNOW-002 — freshness is claim-specific.** A historically verified claim that passed its
-  review-by time or an invalidating event is not safe to rely on until revalidated. Never extend
-  freshness because the value looks plausible.
+- **ORG-KNOW-001 — observations are proposals.** An investigator or model may draft a Knowledge
+  Entry or a sanitized investigation report. Only a named human's digest-pinned chat approval
+  makes an entry `approved-current`; nothing an agent writes is verified by writing it.
+- **ORG-KNOW-002 — freshness is entry-specific.** A drifted entry (`approved-drifted`), an
+  expired org-usage block, or an observation past its recorded bounds is not safe to rely on
+  until re-approved or re-observed. Never extend freshness because the value looks plausible.
 - **ORG-KNOW-003 — conflicting evidence is retained.** Do not overwrite, delete, or hide a prior
-  claim when a new observation differs. Create immutable evidence and mark the normalized claim
-  `contested` pending human reconciliation.
+  approved entry or report when a new observation differs. Record the disagreement
+  (`CONTESTED`/`SOURCE-ORG DRIFT`) with both observations and leave reconciliation to a human;
+  revocation and re-approval flow only through the governed executor.
 - **ORG-HAND-001 — persisted state outranks conversation.** Every governed role transition requires
   a schema-valid work record and handoff addressed to the target role. Missing, stale, wrong-role,
   or hash-mismatched handoffs must be rejected.

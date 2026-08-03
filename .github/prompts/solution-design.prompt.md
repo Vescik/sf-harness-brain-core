@@ -15,7 +15,7 @@ written requirement is required; ask once with `#tool:vscode/askQuestions` if bo
 
 Announce each phase as you enter it (DISCOVER → PLAN → VERIFY → EXECUTE → VERIFY) and do not skip
 or reorder phases. A failed verification returns to the phase that caused it — say so explicitly.
-Ground every material design decision in a Principle rule ID, a verified Knowledge claim, or a
+Ground every material design decision in a Principle rule ID, an approved Knowledge Entry, or a
 fresh Salesforce receipt; a decision that cannot cite its grounding is a blocking question, not a
 default. End with the skill's return envelope, including the rule-verdict table and the design
 document path.

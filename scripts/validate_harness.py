@@ -27,7 +27,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 6, "prompts": 25, "skills": 26, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 19, "skills": 19, "instructions": 3}
 # Budget for each grounding subprocess below. entry-check parses and validates every entry at
 # roughly 4.5 ms per entry (measured at 9 000), so a corpus in the low tens of thousands is the
 # constraint here, not the code. Raise this deliberately from a measurement — never to silence a
@@ -182,7 +182,6 @@ def check_required_files(audit: Audit) -> None:
         "schemas/ado-wiki-cache.schema.json",
         ".ai/contracts/execution-contract.md",
         ".ai/contracts/tool-capabilities.md",
-        ".ai/contracts/knowledge-lifecycle.md",
         ".ai/contracts/source-authority.md",
         ".ai/contracts/workflow-state-machine.md",
         "schemas/force-app-knowledge-inventory.schema.json",
@@ -395,7 +394,6 @@ def check_customizations(audit: Audit) -> None:
 
     all_agent_bodies = "\n".join(path.read_text(encoding="utf-8") for path in agent_paths)
     for required_link in (
-        "knowledge-lifecycle.md",
         "source-authority.md",
         "workflow-state-machine.md",
         "managed-package-constraints.instructions.md",

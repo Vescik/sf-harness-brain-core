@@ -16,6 +16,6 @@ ask with `#tool:vscode/askQuestions` — never guess a selection.
 Resolve the selection mechanically with `python scripts/force_app_knowledge.py resolve` — never
 map a path to a component by eye — and present the resolution plus the per-component plan for
 the human's explicit go-ahead before drafting anything. Mixed metadata types are expected and
-legal here; a selection beyond 25 components is refused — run `/batch-knowledge` per metadata
+legal here; a selection beyond 25 components is refused — narrow the selection or split it
 type instead, or re-pin at most 25. `recordId` is optional and used only to attach references:
 documenting existing state is record-free.

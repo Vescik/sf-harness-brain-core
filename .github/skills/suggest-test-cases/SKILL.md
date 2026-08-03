@@ -19,12 +19,12 @@ an empty/stale/partial relevant index must be disclosed.
 1. Validate curated keywords against the controlled taxonomy. A shared generic term alone is not
    an unquestioned high-confidence match; consider specificity and negative evidence.
 2. Assign strongest evidence to an exact Test Case mapping or direct artifact/API-name coverage.
-3. Ground in Knowledge before ranking. For each touched artifact query the registry through the
-   [search-knowledge skill](../search-knowledge/SKILL.md): `python scripts/knowledge_registry.py
+3. Ground in Knowledge before ranking. For each touched artifact query the entry index through
+   the [search-knowledge skill](../search-knowledge/SKILL.md): `python scripts/knowledge_search.py
    query --subject-identity <ApiName>` for its verified `automation-inventory`,
    `component-description`, and `known-limitations` facts, and `--uses-object <Object>` /
    `--uses-field <Object.Field>` to find automations that touch the changed data so their behavior is
-   covered. Use only effective (verified, fresh, uncontested) claims; when Knowledge is empty, record
+   covered. Use only effective (approved-current) entries; when Knowledge is empty, record
    it as an explicit gap and never substitute model memory.
 4. Expand technical to business vocabulary only through verified object/process/glossary entries.
 5. Use model reasoning over the bounded candidate index to assess behavioral relevance, including

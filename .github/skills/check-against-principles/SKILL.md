@@ -1,6 +1,6 @@
 ---
 name: check-against-principles
-description: Evaluate a scoped design or implementation using the governed rule registry, fresh verified claims, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.
+description: Evaluate a scoped design or implementation using the governed rule registry, approved Knowledge Entries, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.
 user-invocable: false
 ---
 
@@ -8,13 +8,12 @@ user-invocable: false
 
 Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
 [source authority contract](../../../.ai/contracts/source-authority.md),
-[Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md), and
 [workflow state machine](../../../.ai/contracts/workflow-state-machine.md).
 
 ## Inputs
 
 Require a valid `recordId`, optional incoming `handoffId`, exact proposed/implemented scope,
-repository revisions/diff, environment proof, rule/claim/evidence references, current package
+repository revisions/diff, environment proof, rule/entry references, current package
 identity when applicable, and accepted design/approval hashes. Reject unspecified or chat-only scope.
 
 ## Procedure
@@ -32,27 +31,26 @@ identity when applicable, and accepted design/approval hashes. Reject unspecifie
      the keys rather than a flat list, and treat an absent kind as silence, not as absence. A row
      carrying `hydrated: false` failed re-reading, so it can never make a premise `verified` —
      record it as a gap;
-   - `python scripts/knowledge_registry.py query --subject-identity <ApiName>` for org/business
      facts, **and `--uses-object` / `--uses-field` for dependents of unprofiled types** —
      Workflow, ApprovalProcess, Layout, FieldSet and the rest have no entry, so dropping this
      query would make them invisible to the check while the result still looked clean.
    An empty result from either layer is a recorded gap, never proof that nothing depends on it. Then, for every material factual premise,
-   require a `verified`, fresh, scope-matched, uncontested claim backed by the claim-type evidence
-   policy. Proposals and model inference are not trusted facts. When a cited handoff carries claim
-   references, `python scripts/knowledge_registry.py verify-citations --envelope <path>` reports any
-   that no longer resolve to an effective claim.
+   require an `approved-current`, scope-matched entry (or an unexpired org-usage block for
+   usage numbers). Drafts and model inference are not trusted facts. When a cited envelope
+   carries entry references, `python scripts/knowledge_store.py entry-verify-citations
+   --envelope <path>` reports any that no longer resolve to a current approved entry.
 4. Compare intended customer-owned repository state with the latest complete org-review evidence.
    Report drift instead of selecting one source.
 5. Distinguish an observed fact that violates a Principle from evidence that contests a factual
-   claim. Principles do not rewrite facts; observations do not weaken rules.
+   entry. Principles do not rewrite facts; observations do not weaken rules.
 6. Require complete environment proof, package/component ownership, version, supported extension
    point, role compliance, verification, coverage, and manual steps where relevant.
-7. A stale/unreviewed/partial/contested claim, incomplete org review, unknown ownership, missing
+7. A drifted/revoked/partial entry, incomplete org review, ungrounded component, missing
    source/version, stale approval, or unresolved blocking question makes `SAFE` impossible.
 
 ## Output
 
-Return a table with: tier, rule ID, claim/evidence IDs, affected artifact, scope/freshness,
+Return a table with: tier, rule ID, entry identities, affected artifact, scope/freshness,
 reconciliation, finding, and required action. End with exactly one verdict:
 
 - `SAFE`
@@ -67,9 +65,9 @@ State `recordId`, evidence completeness, repository/org drift, and that nothing 
 Query both layers through [search-knowledge](../search-knowledge/SKILL.md) and keep their
 authorities apart. Approved one-file Knowledge Entries ground intended repository-source facts
 (what a component declares, what touches a field) and are cited as `entryRef` with the entry
-path and digests. The claim registry grounds org state, runtime behavior, business meaning, and
-package/vendor facts, cited as `claimRef` + `evidenceRef`. Where an approved entry exists for a
-subject it shadows a metadata-repository claim about the same fact (SAFE-CLAIM-001 v2) — cite
+path and digests. Org usage is grounded only by an unexpired entry `orgUsage` block, cited
+with its orgKey and observedAt; runtime behavior, business meaning, and vendor guarantees have
+no governed Knowledge surface — mark them `UNVERIFIED` with their source instead of citing
 the entry. Absence, deployed state, and semantics are never grounded by an entry, and a missing
 search hit is never proof of absence.
 
@@ -77,11 +75,11 @@ Cite what the executor gives you, not what the view shows: obtain the citable re
 `python scripts/knowledge_store.py entry-status --identity <Identity>`. A search result, a
 `context` pack and a generated dossier are never themselves citable.
 
-An entry can be approved, current and still refuse to ground a claim: contract §8.1 grounds only
+An entry can be approved, current and still refuse to ground a fact: contract §8.1 grounds only
 sections marked `source-exact` with full coverage, and the executor enforces that when the
 `entryRef` is bound. **Apex-layer entries generally cannot be cited as positive grounding** —
 their facts are regex-derived and honestly marked heuristic. Measured on the 189-component
 reference package: 48 of 52 ApexClass, 5 of 5 ApexTrigger, 3 of 93 CustomField and 2 of 2
 ValidationRule entries are refused. Read them for orientation, report the fact as inferred, and
-ground it on a claim with its own evidence. The refusal is the contract working, not a tooling
+report the fact as ungrounded instead. The refusal is the contract working, not a tooling
 failure — never retry it with a different ref shape.

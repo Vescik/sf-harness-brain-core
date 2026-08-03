@@ -42,9 +42,11 @@ Goal: assemble every fact the design will stand on, with sources, before proposi
      the facts table. `incoming` and `outgoing` are keyed by relation kind, so iterate the keys —
      an absent kind is silence, not an absence proof. A row with `hydrated: false` failed
      re-reading and is not a fact.
-   - **org, runtime, business, package and vendor facts** — `python scripts/knowledge_registry.py
+   - **org usage numbers** — unexpired entry `orgUsage` blocks (via `entry-status`), cited
+     with orgKey and observedAt; anything beyond them needs a fresh governed receipt or a
+     blocking question —
      query --subject-identity <ApiName>` or `--domain`. Entries cannot answer these.
-   - read [known limitations](../../../.ai/knowledge/known-limitations.md). Note claim freshness.
+   - note entry lanes and org-usage freshness; a drifted or expired premise is named, never relied on.
 6. Salesforce reality:
    - `review_org_identity` must return `VERIFIED` before any org-derived fact is used.
    - `review_installed_packages` for package context; `review_object_contract` for each candidate
@@ -78,7 +80,7 @@ Goal: a reviewable design whose every material decision cites its grounding.
 2. Generate at least two solution options for a non-trivial change (e.g. config-first vs code,
    extend package vs subscriber-owned parallel). For each: sketch, pros/cons, rule tensions.
 3. Choose the recommended option with explicit rationale referencing Principles and Knowledge
-   (cite rule IDs and claim IDs inline).
+   (cite rule IDs and entry identities inline).
 4. Write the design draft with these sections:
    - Problem & outcome; in/out of scope
    - Affected components (each with ownership and evidence ref)
@@ -99,7 +101,7 @@ Goal: the design survives adversarial checking against all three grounding sourc
    from the Phase-1 checklist gets a verdict: `honored`, `tension (mitigated how)`, or
    `violated`. A `violated` verdict returns the flow to Phase 2.
 2. Knowledge/org reconciliation: every design assertion about a component must match a verified
-   claim, a fresh org receipt, or repository metadata; contradictions are `CONTESTED` and blocking.
+   entry, a fresh org receipt, or repository metadata; contradictions are `CONTESTED` and blocking.
 3. Completeness: every acceptance criterion maps to a design element and a planned test; every
    affected component has classified ownership; no unresolved placeholder.
 4. Optionally request the Early Guardrail Review handoff for an independent pass.
@@ -129,7 +131,7 @@ Goal: the change is proven, not asserted.
 2. After implementation lands, compare the receipt against the design's test strategy; any gap
    between planned and executed verification is reported, not absorbed.
 3. Knowledge feedback loop: facts learned during design/implementation that are missing from
-   Knowledge become proposed claims (delegate to Config Investigator) so the next design starts
+   Knowledge become drafted entries or investigation reports (delegate to Config Investigator) so the next design starts
    better grounded.
 
 ## Knowledge grounding: two layers
@@ -137,9 +139,9 @@ Goal: the change is proven, not asserted.
 Query both layers through [search-knowledge](../search-knowledge/SKILL.md) and keep their
 authorities apart. Approved one-file Knowledge Entries ground intended repository-source facts
 (what a component declares, what touches a field) and are cited as `entryRef` with the entry
-path and digests. The claim registry grounds org state, runtime behavior, business meaning, and
-package/vendor facts, cited as `claimRef` + `evidenceRef`. Where an approved entry exists for a
-subject it shadows a metadata-repository claim about the same fact (SAFE-CLAIM-001 v2) — cite
+path and digests. Org usage is grounded only by an unexpired entry `orgUsage` block, cited
+with its orgKey and observedAt; runtime behavior, business meaning, and vendor guarantees have
+no governed Knowledge surface — mark them `UNVERIFIED` with their source instead of citing
 the entry. Absence, deployed state, and semantics are never grounded by an entry, and a missing
 search hit is never proof of absence.
 
@@ -147,13 +149,13 @@ Cite what the executor gives you, not what the view shows: obtain the citable re
 `python scripts/knowledge_store.py entry-status --identity <Identity>`. A search result, a
 `context` pack and a generated dossier are never themselves citable.
 
-An entry can be approved, current and still refuse to ground a claim: contract §8.1 grounds only
+An entry can be approved, current and still refuse to ground a fact: contract §8.1 grounds only
 sections marked `source-exact` with full coverage, and the executor enforces that when the
 `entryRef` is bound. **Apex-layer entries generally cannot be cited as positive grounding** —
 their facts are regex-derived and honestly marked heuristic. Measured on the 189-component
 reference package: 48 of 52 ApexClass, 5 of 5 ApexTrigger, 3 of 93 CustomField and 2 of 2
 ValidationRule entries are refused. Read them for orientation, report the fact as inferred, and
-ground it on a claim with its own evidence. The refusal is the contract working, not a tooling
+report the fact as ungrounded instead. The refusal is the contract working, not a tooling
 failure — never retry it with a different ref shape.
 
 ## Return

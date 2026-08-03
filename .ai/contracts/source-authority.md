@@ -3,11 +3,12 @@
 Status: normative
 Schema version: 2
 
-Source authority depends on the claim being made. There is no universal ranking, and multiple
-records derived from the same underlying source are not independent corroboration.
+Source authority depends on the assertion being made. There is no universal ranking, and
+multiple records derived from the same underlying source are not independent corroboration.
 
 Approved one-file Knowledge Entries (`entryRef`, SAFE-CLAIM-001 v2, owner-approved
-2026-07-24) carry `metadata-repository` authority only: they establish the intended
+2026-07-24; the sole governed Knowledge store since the claim registry retired,
+owner-approved 2026-08-03) carry `metadata-repository` authority only: they establish the intended
 repository-source state of a force-app artifact (positive presence, source-exact,
 fully-covered sections) and never deployed state, runtime behavior, business meaning,
 package limitations, vendor guarantees, or absence/completeness beyond the machine-emitted
@@ -51,16 +52,18 @@ Only `public` and `internal-sanitized` evidence receipts may be committed. Confi
 restricted raw data remains outside committed Knowledge and is referenced only by a sanitized
 digest/locator that an authorized reviewer can reproduce.
 
-## Claim-type guidance
+## Assertion-type guidance
 
-- Schema, ownership, relation, and automation claims require a complete technical source in the
-  matching org scope. Repository metadata is corroborating evidence unless deployed state is also
-  reconciled.
-- Runtime-behavior claims require a controlled test or multiple applicable observations. One SOQL
-  sample remains an observation, not a universal fact.
+These bounds govern what an investigation report may assert and with how much confidence —
+none of them makes an assertion citable Knowledge:
+
+- Schema, ownership, relation, and automation assertions require a complete technical source in
+  the matching org scope. Repository metadata is corroborating evidence unless deployed state is
+  also reconciled.
+- Runtime-behavior assertions require a controlled test or multiple applicable observations. One
+  SOQL sample remains an observation, not a universal fact.
 - Package limitations require vendor evidence tied to package version, or remain a scoped observed
   behavior rather than a vendor rule.
-- Business meaning and process claims require a named accountable SME or approved artifact;
+- Business meaning and process assertions require a named accountable SME or approved artifact;
   technical metadata cannot establish semantics by itself.
-- Negative claims require complete enumeration, permission proof, and the shorter negative-claim
-  freshness policy.
+- Absence assertions require complete enumeration and permission proof, and expire fastest.

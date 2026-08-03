@@ -1,23 +1,26 @@
 ---
 name: investigate-config-records
-description: Take a bounded, sanitized snapshot of the configuration records held in one allowlisted reference-data object (statuses, settings, config tables) and create a proposed reference-data Knowledge claim. Use when package behavior is driven by org records rather than metadata; never self-verify a claim.
+description: Take a bounded, sanitized snapshot of the configuration records held in one allowlisted reference-data object (statuses, settings, config tables) and report it read-only. Use when package behavior is driven by org records rather than metadata.
 user-invocable: false
 ---
 
 # Investigate configuration records in a reference-data object
 
-Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md),
-[source authority contract](../../../.ai/contracts/source-authority.md), and
-[Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md). Run
+Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md) and the
+[source authority contract](../../../.ai/contracts/source-authority.md). Run
 `python scripts/preflight.py --capability salesforce-review`.
 
-Authority basis: per the grounding architecture, a reference-data value claim is eligible only
+Authority basis: per the grounding architecture, a reference-data snapshot is eligible only
 through a bounded current org observation — these values live in records, not in source files, so
 the metadata repository has no authority here. This skill is the deliberate reference-data
 exception to the record-persistence prohibition in
 [investigate-object](../investigate-object/SKILL.md): it persists only the sanitized
 configuration-bearing values of one human-allowlisted object; everything that skill otherwise
 forbids (Ids, URLs, audit fields, free text, unscoped business data) stays forbidden here.
+The outcome is a snapshot REPORT under `output/` (owner decision D-A, 2026-08-03, v1
+retirement): reference-data snapshots are documentation with a recorded digest and observation
+time, not citable Knowledge; record data drifts without any repository signal, so a snapshot
+must be re-observed, never re-read from an old report.
 
 ## Input
 
@@ -31,20 +34,18 @@ snapshot that fills the row cap is treated as transactional and returned unresol
 
 ## Procedure
 
-1. Check existing Knowledge both ways: `python scripts/knowledge_registry.py query
-   --subject-identity <objectApiName>` shows effective claims only; earlier PROPOSED snapshots are
-   invisible to it and surface only through the reconcile step below. For the object's
-   source-declared shape — its fields, record types and validation rules — use
-   `python scripts/knowledge_search.py context --identity CustomObject:<ns|c>:<Object>`; the claim
-   registry no longer carries repository-source facts for entry-homed types. Read the shape from
-   `parts`, `permissions` and `incoming` — the approved-current buckets; the `*NonCurrent`
-   siblings hold opted-in lanes and must not be treated as the object's declared shape. `incoming`
-   and `outgoing` are keyed by relation kind, so iterate the keys, and never read a missing kind
-   as an absence proof. A row with `hydrated: false` failed re-reading and is not part of the
-   object's declared shape. Cite what the executor gives you, not what the view shows: obtain the
-   citable ref with `python scripts/knowledge_store.py entry-status --identity <Identity>`; the
-   `context` pack is never itself citable, and Apex-layer entries generally cannot be cited as
-   positive grounding at all (contract §8.1 grounds only `source-exact`, fully covered sections).
+1. Check existing Knowledge for the object's source-declared shape — its fields, record types
+   and validation rules — with
+   `python scripts/knowledge_search.py context --identity CustomObject:<ns|c>:<Object>`. Read
+   the shape from `parts`, `permissions` and `incoming` — the approved-current buckets; the
+   `*NonCurrent` siblings hold opted-in lanes and must not be treated as the object's declared
+   shape. `incoming` and `outgoing` are keyed by relation kind, so iterate the keys, and never
+   read a missing kind as an absence proof. A row with `hydrated: false` failed re-reading and
+   is not part of the object's declared shape. Cite what the executor gives you, not what the
+   view shows: obtain the citable ref with
+   `python scripts/knowledge_store.py entry-status --identity <Identity>`; the `context` pack
+   is never itself citable, and Apex-layer entries generally cannot be cited as positive
+   grounding at all (contract §8.1 grounds only `source-exact`, fully covered sections).
 2. Call `review_org_identity` first. Stop unless it is `VERIFIED` for the exact configured org with `nonProduction: true` (a Developer Edition legitimately reports `isSandbox: false`).
 3. Call `review_object_contract` for the object's accessible field contract. Choose the snapshot
    fields from that contract only: the natural key (`Name`, a `DeveloperName`-like field, or an
@@ -63,46 +64,20 @@ snapshot that fills the row cap is treated as transactional and returned unresol
    complete: record `enumerationComplete: false`, assert no absence, and return `UNRESOLVED` —
    the object is transactional-sized, not a config table. Never treat a missing row as proof a
    config value does not exist.
-7. Build the snapshot facts: object identity, the natural-key-ordered sanitized record list, row
+7. Build the snapshot: object identity, the natural-key-ordered sanitized record list, row
    count, and `contentDigest` = `sha256:<64 hex>` over the canonical JSON (sorted keys, compact
-   separators) of the ordered sanitized rows. Identity convention for records inside facts:
-   `<ObjectApiName>.<NaturalKey>` (mirrors the `Type__mdt.Record` CustomMetadata convention).
-8. Author one immutable evidence file under `.cache/knowledge-proposals/` (the only path this
-   role may write), valid against `schemas/knowledge-evidence.schema.json`: `sourceType:
-   "org-soql-sample"`; `sourceLocator:
-   "soql://<orgKey>?object=<objectApiName>&fields=<...>&orderby=<naturalKey>&limit=200"`;
-   `authorityFor: ["reference-data"]`; scope with the sandbox `environment` (development/qa/uat)
-   and the non-null configured `orgKey`; `observedAt` and `retrievedAt`; the `contentDigest`; the
-   completeness block; `sanitization: {rawDataCommitted: false, redactions: [...]}` naming the
-   stripped surfaces; and a sanitized `summary`. Record the collector as this skill with the
-   `salesforce_read.py` transport.
-9. Author one `proposed` claim file in the same directory; the
-   [knowledge-entry template](../../../.ai/templates/knowledge-entry.md) is the human-facing
-   companion to the claim schema. Set `claimType: "reference-data"`, `domain:
-   "current-implementation"`, subject `{kind: "object", identity: <objectApiName>}`, assertion
-   predicate `holds-reference-data-records` with the snapshot as value, a bounded `statement`,
-   `assurance: "observed"`, `sensitivity: "internal-sanitized"`, `keywords: []` with suggestions
-   in `candidateKeywords` (the taxonomy is human-gated), `observedAt`, and `reviewBy` no more
-   than 180 days after `observedAt` (the reference-data policy ceiling; prefer 90 for volatile
-   tables). Scope must carry the exact `environment`, `orgKey`, and the namespace prefix of the
-   object API name (null for subscriber objects) — matching the evidence; `repositoryCommit` is
-   null because this fact does not live in the repository. Mint IDs with the stable-id
-   convention (`PREFIX-<SLUG>-<10-hex-suffix>`): claimId slug from the object API name with
-   discriminator `reference-data|holds-reference-data-records|<orgKey>` so each org gets its own
-   parallel-scoped claim; evidenceId discriminator `soql-<contentDigest>`. State in limitations
-   that record data drifts without any repository signal, so the claim must be re-observed, not
-   re-read from git.
-10. Reconcile before submitting: `python scripts/knowledge_registry.py reconcile --claim-file
-    <claim>` schema-validates the draft and classifies it against all claims, including proposed
-    ones; declare any surfaced conflict in `contradicts` or stop. Then submit:
-    `python scripts/knowledge_registry.py propose --claim-file <claim>
-    --evidence-file <evidence> --expected-revision <n>`; for re-observation of an already
-    verified snapshot pass `--refresh-verified` with the current revision. After a successful
-    propose, run `python scripts/knowledge_registry.py render-indexes` so the generated views
-    stay clean.
-11. When the caller provided `recordId`, attach the evidence with
-    `python scripts/work_record.py append-evidence --record-id <ID> ...`; otherwise the
-    investigation is a standalone read.
+   separators) of the ordered sanitized rows. Identity convention for records inside the
+   snapshot: `<ObjectApiName>.<NaturalKey>` (mirrors the `Type__mdt.Record` CustomMetadata
+   convention).
+8. Write the snapshot report under `output/` (e.g.
+   `output/reference-data/<objectApiName>-<orgKey>.md`): scope (exact `environment`, `orgKey`,
+   namespace prefix), `observedAt`/`retrievedAt`, the sanitized rows, the completeness block,
+   the `contentDigest`, a `sanitization` note naming the stripped surfaces, and limitations —
+   above all that the values drift without any repository signal and expire with the org's
+   refresh cadence.
+9. When the caller provided `recordId`, attach the snapshot as work-record evidence with
+   `python scripts/work_record.py append-evidence --record-id <ID> ...` (the report file is the
+   artifact); otherwise the investigation is a standalone read.
 
 ## Prohibitions
 
@@ -116,12 +91,11 @@ snapshot that fills the row cap is treated as transactional and returned unresol
 - Never persist credentials, usernames, record Ids, URLs, `attributes` payloads, owner/audit
   values, or free-text business content; snapshot values are limited to the configuration-bearing
   fields the human scoped via the allowlist.
-- Never call a proposed snapshot `confirmed` or `verified`, and never promote — human chat
-  approval is a separate operation.
+- Never call a snapshot `confirmed` or `verified`, and never present the report as citable
+  Knowledge — later work cites approved entries and unexpired org-usage blocks, or re-observes.
 
 ## Return
 
-Return `EVIDENCE COLLECTED` or `UNRESOLVED`; `recordId` when provided; `claimId`; `evidenceId`
-values; exact scope; row count and `enumerationComplete`; the content digest; reconciliation
-classification and prior related claims (added / refreshed / contested); limitations; and the
-required human review step. No mutation of Salesforce is permitted.
+Return `EVIDENCE COLLECTED` or `UNRESOLVED`; `recordId` when provided; the report path; exact
+scope; row count and `enumerationComplete`; the content digest; limitations; and what a human
+should verify next. No mutation of Salesforce is permitted.

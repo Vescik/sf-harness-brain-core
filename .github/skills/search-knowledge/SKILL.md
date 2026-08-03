@@ -1,27 +1,26 @@
 ---
 name: search-knowledge
-description: Read-only search across both Knowledge layers - approved one-file Knowledge Entries for repository-source artifact facts, and the governed claim registry for org observations and semantics - reporting effective facts separately from non-effective records with their citations. Never proposes, promotes, or edits Knowledge.
+description: Read-only search over governed Knowledge - approved one-file Knowledge Entries for repository-source artifact facts and their unexpired org-usage blocks - reporting effective facts separately from non-effective records with their citations. Never proposes, promotes, or edits Knowledge.
 user-invocable: false
 ---
 
 # Search Knowledge
 
 Apply the [shared execution contract](../../../.ai/contracts/execution-contract.md) and the
-retrieval rules of the [Knowledge lifecycle](../../../.ai/contracts/knowledge-lifecycle.md) and
-[one-file Entry contract](../../../docs/knowledge-one-file-contract.md).
+retrieval rules of the [one-file Entry contract](../../../docs/knowledge-one-file-contract.md).
 
-Two layers, two authorities — never flatten them into one answer:
+One store, two kinds of fact — keep their authorities separate in the answer:
 
-| Question | Layer | Authority |
+| Question | Surface | Authority |
 |---|---|---|
 | What does this component declare in source? What touches this field? Which Flow emits this message? | **Knowledge Entries** (`approved-current`) | intended repository-source state only |
-| What is deployed/true in the org? What does it mean for the business? What does the vendor guarantee? | **Claim registry** (`verified`) | scoped observation + human review |
+| How is this object/field used in the org right now? | **Entry `orgUsage` blocks** (unexpired) | governed facade probes, machine-attested |
 
 ## Inputs
 
 At least one of: a subject identity (object/field/component API name), a keyword, a free-text
 fragment, a dependency lookup, or a pasted user-facing error message. Optional narrowing:
-metadata type, namespace, domain, claim type, environment/org scope.
+metadata type, namespace, lifecycle state.
 
 ## Procedure
 
@@ -101,26 +100,19 @@ metadata type, namespace, domain, claim type, environment/org scope.
 
    <!-- /knowledge-search-command-menu -->
 
-2. **Org, runtime, business, package or vendor questions — query the claim registry.**
-   - exact subject: `python scripts/knowledge_registry.py query --subject-identity <identity>`
-   - keyword / text / dependency / ranked search / graph / explain: as before —
-     `--keyword`, `--text`, `--uses-object`, `--uses-field`, `--invokes`, `--search "<terms>"
-     [--top N]`, `--related <KCLM-id> [--depth 1-5]`, `explain --identity <ApiName>`.
-     Every query result now carries `appliedFilters` plus `nonEffectiveCount` and a bounded
-     `nonEffectiveMatches` list with each record's `nonEffectiveReason` — report those
-     separately instead of presenting an empty result as absence.
-   - combine with `--domain`, `--claim-type`, `--environment`, `--org-key` as needed.
-3. **Prefer the entry when both layers answer the same source question.** An approved entry
-   shadows a metadata-repository-evidence claim about the same subject (SAFE-CLAIM-001 v2); cite
-   the entry and report the claim as `shadowed-by-entry` rather than presenting two facts.
-4. For vocabulary questions ("what process terms exist?"), run
-   `python scripts/knowledge_registry.py keyword-report` and read
-   `.ai/knowledge/keyword-taxonomy.md` (approved terms) — candidate terms are suggestions
-   awaiting human curation, never evidence.
-5. Report the two layers separately, each with its citation: entries by identity + entry path +
-   digests + lifecycle lane; claims by claim ID + evidence refs. Non-effective matches
-   (draft, drifted, proposed/stale/contested/superseded/rejected) go in their own section with
-   the reason. An empty result is "no governed Knowledge", never license to answer from memory.
+2. **Org usage questions — read the entry's `orgUsage` block.** `entry-status --identity
+   <Identity>` reports the org lane; only an unexpired (`org-fresh`) block grounds usage
+   numbers, always cited with its orgKey and observedAt. An expired or superseded block is
+   absent for grounding: re-attach through the investigate-object org-sampling step or run a
+   fresh governed probe. Org state beyond usage numbers needs a fresh facade receipt in the
+   same turn — never a remembered value.
+3. For vocabulary questions ("what process terms exist?"), read
+   `.ai/knowledge/keyword-taxonomy.md` (approved terms) — candidate terms on entries are
+   suggestions awaiting human curation, never evidence.
+4. Report effective facts with their citations: entries by identity + entry path + digests +
+   lifecycle lane; org usage by orgKey + observedAt. Non-effective matches (draft, drifted,
+   revoked, not-effective, org-expired) go in their own section with the reason. An empty
+   result is "no governed Knowledge", never license to answer from memory.
    Cite what the executor gives you, not what the view shows: obtain the citable ref with
    `python scripts/knowledge_store.py entry-status --identity <Identity>`. A search hit, a
    `context` pack and a rendered dossier are never themselves citable — the `citation` block they
@@ -128,32 +120,32 @@ metadata type, namespace, domain, claim type, environment/org scope.
 
 ## Boundaries
 
-Read-only: never propose, approve, edit entries/claims/evidence/reviews, or grow the keyword
+Read-only: never propose, approve, edit entries/features, or grow the keyword
 taxonomy from this skill. `build` only refreshes the ignored generated cache — that cache is
 never Knowledge authority and is never cited.
 
 Entries ground only positive, source-exact, fully-covered repository facts. Absence
-("nothing else writes this field"), deployed state, runtime behavior, business meaning, package
-limitations, and vendor guarantees require a claim with evidence — say so instead of inferring
-from a missing search hit.
+("nothing else writes this field"), runtime behavior, business meaning, package limitations,
+and vendor guarantees have no governed Knowledge surface — report the gap and what a human
+would have to verify, instead of inferring from a missing search hit.
 
-An entry can be readable, approved and current and still refuse to ground a claim: contract §8.1
+An entry can be readable, approved and current and still refuse to ground a fact: contract §8.1
 grounds only sections marked `source-exact` with `extractionCoverage: full`, and the executor
 enforces that when an `entryRef` is bound. **Apex-layer entries generally cannot be cited as
 positive grounding** — their facts are regex-derived, so they are honestly marked heuristic.
 Measured on the 189-component reference package, 58 entries are not groundable: 48 of 52
 ApexClass, 5 of 5 ApexTrigger, 3 of 93 CustomField and 2 of 2 ValidationRule. Read them for
-orientation and report them as inferred; when the fact has to be grounded, use a claim with its
-own evidence and say why the entry was not used. A refusal here is the contract working, not a
-tooling failure — do not retry it with a different ref shape.
+orientation and report them as inferred; when the fact has to be grounded and no groundable
+entry exists, say so plainly and name what would make it groundable. A refusal here is the
+contract working, not a tooling failure — do not retry it with a different ref shape.
 
 Missing knowledge is a finding: route creation to
-[propose-force-app-knowledge](../propose-force-app-knowledge/SKILL.md) or
-[investigate-object](../investigate-object/SKILL.md).
+[selected-files-knowledge](../selected-files-knowledge/SKILL.md) (`/pin-knowledge`),
+`/curate-knowledge build`, or [investigate-object](../investigate-object/SKILL.md).
 
 ## Return
 
 Return the filters used, entry hits (identity, lane, match reason, coverage/limitations,
-citation digests), effective claims (ID, statement, keywords, evidence refs), non-effective
-matches with reasons, dependency hits with relation kind and assurance, index generation when
-entry search was used, and suggested next steps for gaps.
+citation digests), unexpired org-usage findings (orgKey, observedAt), non-effective matches
+with reasons, dependency hits with relation kind and assurance, index generation when entry
+search was used, and suggested next steps for gaps.

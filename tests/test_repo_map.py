@@ -59,9 +59,9 @@ class RepoMapRenderTests(unittest.TestCase):
         self.assertEqual(committed["wordCount"], word_count(md))
         # Coverage: every agent, skill, prompt, instruction, and contract is indexed.
         self.assertEqual(6, len(first["agents"]))
-        self.assertEqual(26, len(first["skills"]))
-        self.assertEqual(25, len(first["prompts"]))
-        self.assertEqual(5, len(first["contracts"]))
+        self.assertEqual(19, len(first["skills"]))
+        self.assertEqual(19, len(first["prompts"]))
+        self.assertEqual(4, len(first["contracts"]))
 
     def test_word_budget_is_enforced(self) -> None:
         with mock.patch.object(render_repo_map, "WORD_BUDGET", 50):
