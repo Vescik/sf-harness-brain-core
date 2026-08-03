@@ -13,8 +13,11 @@ Apply the [shared execution contract](../../../.ai/contracts/execution-contract.
 
 ## Input
 
-Require `recordId`, exact claim question/type, normalized package/component subject, environment,
+Require the exact claim question/type, normalized package/component subject, environment,
 criticality, minimum evidence policy, and why current Knowledge/repository evidence is insufficient.
+`recordId` (the work record to attach evidence to) is required only when governed delivery work
+raised the investigation; without one this is a standalone read, which is a valid lane and not a
+reason to stop.
 Reject a generic “inspect the org,” unspecified target, record dump, or component outside the
 configured review allowlist. Route record data-shape questions (structure, fill, distributions)
 to the governed record reads instead of rejecting them (owner decision 2026-07-30):
@@ -23,7 +26,8 @@ to the governed record reads instead of rejecting them (owner decision 2026-07-3
 
 ## Procedure
 
-1. Validate the work record and read relevant verified Knowledge plus metadata-repository state.
+1. Validate the work record when one was provided, then read relevant verified Knowledge plus
+   metadata-repository state.
 2. Classify the source authority required. A package guarantee needs a vendor source; business
    meaning needs reviewed human evidence; live deployed configuration may use org observation.
 3. Define the smallest factual proposition. For a negative claim, require completeness, permission,
@@ -38,7 +42,8 @@ to the governed record reads instead of rejecting them (owner decision 2026-07-3
    command; the [knowledge-entry template](../../../.ai/templates/knowledge-entry.md) is the
    human-facing companion to the claim schema. Record limitations, repository drift, package
    version, and missing authority.
-8. Append evidence references to the work record. Human review is a separate operation.
+8. When the caller provided `recordId`, append evidence references to that work record. Human
+   review is a separate operation.
 
 ## Prohibitions
 
@@ -55,6 +60,6 @@ to the governed record reads instead of rejecting them (owner decision 2026-07-3
 
 ## Return
 
-Return `EVIDENCE COLLECTED`, `INFERRED`, or `UNRESOLVED`; `recordId`; `claimId`; `evidenceId`
+Return `EVIDENCE COLLECTED`, `INFERRED`, or `UNRESOLVED`; `recordId` when provided; `claimId`; `evidenceId`
 values; exact scope; source/reconciliation status; repository drift; limitations; missing authority;
 and required human review. No mutation of Salesforce is permitted.

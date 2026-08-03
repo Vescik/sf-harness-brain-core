@@ -248,6 +248,101 @@ class KnowledgeSchemaTests(unittest.TestCase):
         self.assertEqual([], errors, [error.message for error in errors])
 
 
+class RecordFreeKnowledgeLaneTests(unittest.TestCase):
+    """FIND-34: documenting existing state must never be gated on a work record.
+
+    A work record is unconstructable without a real ADO work item
+    (``change-record.schema.json`` pins ``recordId`` to ``^ADO-<project>-<n>$`` and requires
+    ``workItem.system == "azure-devops"`` with an integer ``id``), while the Knowledge layer
+    carries no record reference at all — ``knowledge_registry.py propose`` takes no record
+    argument and none of the claim/evidence/entry schemas define the field. The dependency runs
+    record -> knowledge (optional ``claimRefs``/``entryRefs``), never the other way.
+
+    So an agent-facing sentence that demands a work record unconditionally cannot be satisfied by
+    the honest caller; the only way out is to fabricate an ADO number. These surfaces may require
+    a record for governed delivery work, but the requirement must always be qualified.
+    """
+
+    SURFACES = (
+        "AGENTS.md",
+        ".github/copilot-instructions.md",
+        ".github/agents/config-investigator.agent.md",
+        ".github/skills/investigate-object/SKILL.md",
+        ".github/skills/investigate-config-records/SKILL.md",
+        ".github/skills/update-knowledge-base/SKILL.md",
+    )
+    RECORD = re.compile(r"work[- ]record|`recordid`", re.I)
+    DEMAND = re.compile(
+        r"\b(require|append|validate|establish|return|attach|bind|resume|load)\w*", re.I
+    )
+    QUALIFIER = re.compile(r"\b(when|if|optional|governed|provided|record-free)\b", re.I)
+
+    # Verbatim pre-fix wording. Kept so the guard above can never go inert: if a rewrite of the
+    # regexes stops flagging these, the guard has stopped guarding.
+    HISTORICAL_UNCONDITIONAL_DEMANDS = (
+        "Require the calling `recordId`, claim question, claim type, scope, and evidence policy.",
+        "Load the persisted work record before acting, and load detailed Principles, contracts, "
+        "Knowledge, and skills only through the active role.",
+        "Establish the custom role, requested outcome, persisted work record, environment, "
+        "and scope.",
+        "Require `recordId`, exact claim question/type, normalized package/component subject, "
+        "environment, criticality, minimum evidence policy, and why current Knowledge/repository "
+        "evidence is insufficient.",
+        "Validate the work record and read relevant verified Knowledge plus metadata-repository "
+        "state.",
+        "Append evidence references to the work record. Human review is a separate operation.",
+        "Append claim/evidence/review references to the relevant work record and retain audit "
+        "history.",
+    )
+
+    @classmethod
+    def unqualified_demands(cls, text: str) -> list[str]:
+        """Sentences that both demand something and name a work record, with no qualifier."""
+        collapsed = " ".join(text.split())
+        return [
+            sentence
+            for sentence in re.split(r"(?<=[.;])\s+", collapsed)
+            if cls.RECORD.search(sentence)
+            and cls.DEMAND.search(sentence)
+            and not cls.QUALIFIER.search(sentence)
+        ]
+
+    def test_knowledge_surfaces_never_demand_a_work_record_unconditionally(self) -> None:
+        for relative_path in self.SURFACES:
+            with self.subTest(surface=relative_path):
+                text = (ROOT / relative_path).read_text(encoding="utf-8")
+                self.assertEqual(
+                    [],
+                    self.unqualified_demands(text),
+                    f"{relative_path} demands a work record without qualifying the lane; "
+                    "documenting existing state is record-free (FIND-34)",
+                )
+
+    def test_the_guard_still_flags_the_wording_it_was_written_against(self) -> None:
+        for demand in self.HISTORICAL_UNCONDITIONAL_DEMANDS:
+            with self.subTest(demand=demand[:60]):
+                self.assertNotEqual([], self.unqualified_demands(demand))
+
+    def test_a_skill_never_requires_what_its_own_prompt_marks_optional(self) -> None:
+        """`investigate-object` shipped a prompt saying `[recordId=<ID>]` … "otherwise the
+        investigation is a standalone read" beside a skill saying "Require `recordId`". A skill
+        must not contradict the optionality its own prompt advertises."""
+        for prompt_path in sorted((ROOT / ".github/prompts").glob("*.prompt.md")):
+            prompt_text = prompt_path.read_text(encoding="utf-8")
+            hint = re.search(r"^argument-hint:\s*\"(.*)\"", prompt_text, re.M)
+            if not hint or "[recordId=" not in hint.group(1):
+                continue
+            for skill_name in re.findall(r"\.\./skills/([a-z0-9-]+)/SKILL\.md", prompt_text):
+                skill_path = ROOT / ".github/skills" / skill_name / "SKILL.md"
+                with self.subTest(prompt=prompt_path.name, skill=skill_name):
+                    self.assertEqual(
+                        [],
+                        self.unqualified_demands(skill_path.read_text(encoding="utf-8")),
+                        f"{skill_path.name} requires a work record that "
+                        f"{prompt_path.name} marks optional",
+                    )
+
+
 class V1SearchQualityTests(unittest.TestCase):
     """T08a: the v1 registry must tokenize like the entry layer and explain its results."""
 

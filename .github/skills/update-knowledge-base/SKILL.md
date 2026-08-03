@@ -36,7 +36,10 @@ model-only evidence, mutable evidence, or unknown fields.
 7. Regenerate human-readable domain indexes deterministically from canonical claims. Unreviewed,
    stale, contested, rejected, and superseded states remain visible but are never presented as
    trusted current facts.
-8. Append claim/evidence/review references to the relevant work record and retain audit history.
+8. When governed delivery work raised the operation, append claim/evidence/review references to
+   its work record and retain audit history. Knowledge that documents existing state is
+   record-free: no work record exists for it and none is required; its audit trail is the
+   canonical records themselves plus the append-only entry ledger.
 
 ## Return
 

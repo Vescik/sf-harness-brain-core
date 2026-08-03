@@ -32,7 +32,13 @@ feature and its relations, automations, and UI as a unit, load
 
 ## Required procedure
 
-1. Require the calling `recordId`, claim question, claim type, scope, and evidence policy.
+1. Require the claim question, claim type, scope, and evidence policy. Require the calling
+   `recordId` only when governed delivery work raised the investigation, and use it solely to
+   attach evidence references. Documenting existing state is record-free: the force-app Knowledge
+   and Entry lanes (`inventory-force-app`, `propose-force-app-knowledge`, `batch-knowledge`,
+   `refresh-force-app-knowledge`, `feature-documentor`, `update-relations`) have no work record,
+   and a work record cannot exist without a real ADO work item — never block them for one and
+   never invite a fabricated ID.
 2. Read relevant verified Knowledge and repository evidence before querying the org.
 3. State the exact claim to investigate and the minimum evidence needed. An absence claim requires
    explicit completeness and permission proof.
@@ -83,6 +89,7 @@ that confirmed approval lands.
 
 ## Return contract
 
-Return `EVIDENCE COLLECTED`, `INFERRED`, or `UNRESOLVED`; `recordId`; proposed `claimId`;
+Return `EVIDENCE COLLECTED`, `INFERRED`, or `UNRESOLVED`; `recordId` when one was provided;
+proposed `claimId`;
 `evidenceId` values; source/reconciliation status; limitations; and review IDs for any
 chat-approved promotions. Never call an unreviewed observation verified.

@@ -61,7 +61,10 @@ catalogs, resume pointers) before exploring the tree.
 
 Before a material recommendation, verdict, Knowledge promotion, handoff, or side effect:
 
-1. Establish the custom role, requested outcome, persisted work record, environment, and scope.
+1. Establish the custom role, requested outcome, environment, and scope, plus the persisted work
+   record for governed delivery work. Knowledge that documents existing state is record-free by
+   construction — a work record cannot exist without a real ADO work item, so never demand one for
+   it.
 2. Identify the material claims needed to proceed and the evidence policy for each claim type.
 3. Load only the applicable Tier 1, Tier 2, and Tier 3 Principles plus relevant verified Knowledge.
 4. Inspect the named Salesforce metadata repository for intended customer-owned state when relevant.

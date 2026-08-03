@@ -304,3 +304,41 @@ are not durable.
 - Approved by: workspace owner (chat, 2026-08-02).
 - Related: entry "2026-07-31 - Any non-production org is permitted for agent reads; production is
   the only deny".
+
+## 2026-08-03 - Documenting existing state is record-free; a work record is only for governed delivery
+
+- Context: the owner tried to build Knowledge for a **Flow** — existing functionality retrieved
+  from the org, not a new development — and the agent demanded a `recordId` before proceeding.
+  There was nothing valid to supply: `change-record.schema.json` pins `recordId` to
+  `^ADO-<project>-<n>$` and requires `workItem.system == "azure-devops"` with an integer `id`, so
+  a work record is **unconstructable without a real ADO work item**. The only way to satisfy the
+  demand was to fabricate an ADO number.
+- Finding: nothing mechanical required it. `knowledge_registry.py propose` takes no record
+  argument; `recordId` is not a field in `knowledge-claim`, `knowledge-evidence`, or
+  `knowledge-entry`; the dependency runs record → knowledge via the *optional* `claimRefs`/
+  `entryRefs` ("present only when entries are bound"), never the reverse. The requirement lived
+  purely in agent-facing prose, written for the org-investigation lane and applied to all lanes.
+  `investigate-config-records` already had the correct conditional wording — this was a
+  half-finished migration, not a missing design.
+- Decision: **the requirement is conditional on the lane.** Governed delivery work supplies a work
+  record and evidence attaches to it. Knowledge that documents existing state — the force-app
+  Knowledge and Entry lanes (`inventory-force-app`, `propose-force-app-knowledge`,
+  `batch-knowledge`, `refresh-force-app-knowledge`, `feature-documentor`, `update-relations`) — is
+  record-free by construction, and no agent may block it for a record or invite a fabricated ID.
+  Its audit trail is the canonical records plus the append-only entry ledger; a parallel
+  "documentation record" type was considered and rejected as ceremony.
+- Impact: six agent-facing layers, all of which would have reproduced the failure one level up if
+  only the obvious one were fixed — `AGENTS.md` (always-on shim, kept under its 150-word cap),
+  `.github/copilot-instructions.md` grounding sequence step 1 (the kernel names Knowledge
+  promotion explicitly), `config-investigator.agent.md` (required procedure + return contract),
+  `investigate-object/SKILL.md` (input, procedure steps 1 and 8, return — it contradicted its own
+  prompt, which says `[recordId=<ID>]` … "otherwise the investigation is a standalone read"), and
+  `update-knowledge-base/SKILL.md` step 8. No schema, executor, or gate changed.
+- Tests: `RecordFreeKnowledgeLaneTests` in `tests/test_knowledge_contract.py` — a sentence-level
+  guard that any demand naming a work record must carry a lane qualifier, a self-check that pins
+  the seven verbatim pre-fix sentences so the guard cannot go inert, and a generic contradiction
+  test asserting no skill requires what its own prompt marks optional (11 prompt/skill pairs).
+- Approved by: workspace owner (chat, 2026-08-03) — asked whether to fix all layers or only the
+  agent; owner chose all layers plus the test.
+- Not verified live: the symptom was observed in the Copilot host, this fix is text-only and has
+  not been re-driven against a live session.
