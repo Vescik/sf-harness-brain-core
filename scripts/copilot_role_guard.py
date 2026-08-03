@@ -219,23 +219,13 @@ KNOWLEDGE_COMMAND_FLAGS = {
 FORCE_APP_KNOWLEDGE_ROLES = frozenset({"config-investigator", "knowledge-curator"})
 FORCE_APP_COMMAND_FLAGS = {
     "inventory": frozenset(),
-    "dashboard": frozenset({"--warn-days"}),
-    "worklist": frozenset({"--metadata-type", "--write"}),
-    "coverage": frozenset({"--write"}),
     "entry-readiness": frozenset(),
-    "relations-worklist": frozenset({"--metadata-type", "--write"}),
-    "relation-health": frozenset({"--write"}),
-    "relations-draft": frozenset({"--observed-at", "--metadata-type", "--limit", "--include-heuristic"}),
-    "refresh": frozenset({"--observed-at", "--metadata-type", "--warn-days", "--limit", "--dry-run"}),
-    "draft": frozenset({"--observed-at", "--metadata-type", "--component"}),
+    "entry-edge-health": frozenset(),
     # Read-only path/name -> component mapping for the selected-files lane; --write only saves
     # the derived view under the ignored .cache/knowledge-proposals/ workspace.
     "resolve": frozenset({"--path", "--name", "--write"}),
-    # The public /feature-documentor prompt runs these two; leaving them unguarded made its
-    # core procedure impossible for the agent it is addressed to (evidence-doc F-14). Both
-    # write only under the ignored .cache/knowledge-proposals/ workspace.
+    # Writes only under the ignored .cache/knowledge-proposals/ workspace (evidence-doc F-14).
     "feature-crawl": frozenset({"--feature", "--anchors", "--depth", "--hub"}),
-    "feature-draft": frozenset({"--feature", "--observed-at"}),
 }
 
 # One-file Knowledge Entry executor (docs/knowledge-one-file-contract.md v1.1). Reads are
@@ -765,44 +755,11 @@ def knowledge_registry_command_allowed(
 def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
     if not parts or parts[0] not in FORCE_APP_COMMAND_FLAGS:
         return False
-    if parts[0] == "dashboard":
-        # Read-only aggregate health page under output/; the one force-app knowledge command
-        # every role may run — it drafts nothing and reads only derived views.
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag != "--warn-days" or not value.isdigit() or not (0 <= int(value) <= 365):
-                return False
-        return True
     if role not in FORCE_APP_KNOWLEDGE_ROLES:
         return False
     if parts == ["inventory"]:
         return True
-    if parts[0] == "worklist":
-        # Derived read-only batch status; --write only saves the derived view under the
-        # ignored .cache/knowledge-proposals/ workspace.
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if token == "--write":
-                index += 1
-                continue
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag != "--metadata-type" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
-                return False
-        return True
-    if parts[0] in {"feature-crawl", "feature-draft"}:
+    if parts[0] == "feature-crawl":
         index = 1
         seen_feature = False
         while index < len(parts):
@@ -830,9 +787,6 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
                     return False
             elif flag == "--depth":
                 if not value.isdigit() or not 1 <= int(value) <= 3:
-                    return False
-            elif flag == "--observed-at":
-                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", value):
                     return False
         return seen_feature
     if parts[0] == "resolve":
@@ -869,126 +823,7 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
             else:
                 return False
         return seen_input
-    if parts[0] == "coverage":
-        # Read-only documentation-coverage summary; --write only saves the derived view under the
-        # ignored .cache/knowledge-proposals/ workspace.
-        return parts[1:] in ([], ["--write"])
-    if parts[0] == "relations-worklist":
-        # Derived read-only edge-granular relation-claim status; --write only saves the derived
-        # view under the ignored .cache/knowledge-proposals/ workspace. Same shape as worklist.
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if token == "--write":
-                index += 1
-                continue
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag != "--metadata-type" or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
-                return False
-        return True
-    if parts[0] == "relation-health":
-        # Read-only orphaned relation-claim report; --write only saves the derived view under the
-        # ignored .cache/knowledge-proposals/ workspace. Never mutates Knowledge.
-        return parts[1:] in ([], ["--write"])
-    if parts[0] == "relations-draft":
-        # Drafts only proposed-candidate files under the ignored .cache/knowledge-proposals/
-        # workspace, same authority as draft. --limit is bounded to guard against an unbounded
-        # repo-wide sweep dumping thousands of drafts in one call.
-        text_validators = {
-            "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
-            "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
-        }
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if token == "--include-heuristic":
-                index += 1
-                continue
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag == "--limit":
-                if not value.isdigit() or not (1 <= int(value) <= 2000):
-                    return False
-                continue
-            pattern = text_validators.get(flag)
-            if pattern is None or not re.fullmatch(pattern, value):
-                return False
-        return True
-    if parts[0] == "refresh":
-        # Selects only drifted/expired/expiring verified claims and delegates to draft with the
-        # same authority; outputs stay under the ignored .cache/knowledge-proposals/ workspace.
-        # --warn-days is bounded to a year so a typo cannot select the entire verified store,
-        # and --limit shares the relations-draft anti-sweep bound.
-        text_validators = {
-            "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
-            "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
-        }
-        index = 1
-        while index < len(parts):
-            token = parts[index]
-            if token == "--dry-run":
-                index += 1
-                continue
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag == "--limit":
-                if not value.isdigit() or not (1 <= int(value) <= 2000):
-                    return False
-                continue
-            if flag == "--warn-days":
-                if not value.isdigit() or not (0 <= int(value) <= 365):
-                    return False
-                continue
-            pattern = text_validators.get(flag)
-            if pattern is None or not re.fullmatch(pattern, value):
-                return False
-        return True
-    if parts[0] != "draft":
-        return False
-    validators = {
-        "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
-        "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
-        # Selected-files lane: an inventory component id (Type:Name; names carry spaces —
-        # Layouts). Capped below at the 25-spec chat-approval chunk — a larger selection
-        # belongs in /batch-knowledge. Mutually exclusive with --metadata-type: the type
-        # filter would silently drop selected components of other types (draft() raises the
-        # same refusal; the guard mirrors it so the denial is immediate and typed).
-        "--component": r"[A-Za-z][A-Za-z0-9_]{0,79}:[A-Za-z0-9_. \-]{1,200}",
-    }
-    component_count = 0
-    seen_metadata_type = False
-    index = 1
-    while index < len(parts):
-        token = parts[index]
-        if "=" in token:
-            flag, value = token.split("=", 1)
-            index += 1
-        else:
-            flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-            index += 2
-        pattern = validators.get(flag)
-        if pattern is None or not re.fullmatch(pattern, value):
-            return False
-        if flag == "--metadata-type":
-            seen_metadata_type = True
-        if flag == "--component":
-            component_count += 1
-            if component_count > 25:
-                return False
-    return not (seen_metadata_type and component_count)
+    return False
 
 
 # Read-only orientation commands available to every role. Rationale: a default-deny terminal

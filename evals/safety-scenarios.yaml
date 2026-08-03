@@ -313,16 +313,6 @@ scenarios:
     expectedDecision: deny
     reasonContains: may not edit
 
-  - id: investigator-worklist-allowed
-    guard: role
-    role: config-investigator
-    workingDirectory: repository
-    event:
-      tool_name: execute/runInTerminal
-      tool_input:
-        command: python scripts/force_app_knowledge.py worklist --metadata-type Flow --write
-    expectedDecision: continue
-
   - id: investigator-keyword-report-allowed
     guard: role
     role: config-investigator
@@ -341,16 +331,6 @@ scenarios:
       tool_name: execute/runInTerminal
       tool_input:
         command: python scripts/knowledge_registry.py keyword-report --root /tmp/other
-    expectedDecision: deny
-
-  - id: designer-worklist-denied
-    guard: role
-    role: solution-designer
-    workingDirectory: repository
-    event:
-      tool_name: execute/runInTerminal
-      tool_input:
-        command: python scripts/force_app_knowledge.py worklist --metadata-type Flow
     expectedDecision: deny
 
   - id: global-devtool-batch-approve-denied

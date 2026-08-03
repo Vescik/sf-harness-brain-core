@@ -446,12 +446,6 @@ class RoleGuardTests(unittest.TestCase):
                 ["inventory"], "config-investigator"
             )
         )
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(
-                ["draft", "--observed-at", "2026-07-10T12:00:00Z"],
-                "config-investigator",
-            )
-        )
         self.assertFalse(
             role_guard.force_app_knowledge_command_allowed(
                 ["inventory", "--root", "/tmp/other"], "config-investigator"
@@ -459,95 +453,28 @@ class RoleGuardTests(unittest.TestCase):
         )
         self.assertFalse(
             role_guard.force_app_knowledge_command_allowed(
-                ["draft"], "development-assistant"
+                ["inventory"], "development-assistant"
             )
         )
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(
-                ["coverage", "--write"], "config-investigator"
+        # The v1 drafting/worklist surface is retired: its commands are unknown to the
+        # guard and must never fail open into the surviving allowlist.
+        for retired in (
+            ["draft", "--observed-at", "2026-07-10T12:00:00Z"],
+            ["worklist", "--metadata-type", "Flow", "--write"],
+            ["coverage", "--write"],
+            ["relations-worklist", "--metadata-type", "Flow"],
+            ["relation-health", "--write"],
+            ["relations-draft", "--limit", "50"],
+            ["refresh", "--dry-run"],
+            ["dashboard"],
+            ["feature-draft", "--feature", "Alpha"],
+        ):
+            self.assertFalse(
+                role_guard.force_app_knowledge_command_allowed(
+                    retired, "config-investigator"
+                ),
+                retired,
             )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["coverage", "--unknown"], "config-investigator"
-            )
-        )
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(
-                ["relations-worklist", "--metadata-type", "Flow", "--write"],
-                "config-investigator",
-            )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["relations-worklist", "--unknown"], "config-investigator"
-            )
-        )
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(
-                ["relation-health", "--write"], "config-investigator"
-            )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["relation-health", "--unknown"], "config-investigator"
-            )
-        )
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(
-                [
-                    "relations-draft",
-                    "--observed-at",
-                    "2026-07-10T12:00:00Z",
-                    "--limit",
-                    "50",
-                    "--include-heuristic",
-                ],
-                "config-investigator",
-            )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["relations-draft", "--limit", "5000"], "config-investigator"
-            )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["relations-draft"], "development-assistant"
-            )
-        )
-        self.assertTrue(
-            role_guard.force_app_knowledge_command_allowed(
-                [
-                    "refresh",
-                    "--observed-at",
-                    "2026-07-10T12:00:00Z",
-                    "--metadata-type",
-                    "Flow",
-                    "--warn-days",
-                    "30",
-                    "--limit",
-                    "50",
-                    "--dry-run",
-                ],
-                "config-investigator",
-            )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["refresh", "--warn-days", "9999"], "config-investigator"
-            )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["refresh", "--unknown"], "config-investigator"
-            )
-        )
-        self.assertFalse(
-            role_guard.force_app_knowledge_command_allowed(
-                ["refresh"], "development-assistant"
-            )
-        )
 
     def test_designer_cannot_edit_decision_log_directly(self) -> None:
         output = run_hook(
@@ -616,10 +543,6 @@ class RoleGuardTests(unittest.TestCase):
                 ("config-investigator",),
             ),
             ("python scripts/force_app_knowledge.py inventory", ("config-investigator",)),
-            (
-                "python scripts/force_app_knowledge.py draft --metadata-type Flow",
-                ("config-investigator",),
-            ),
             ("python --version", all_roles),
             ("node --version", all_roles),
             (
