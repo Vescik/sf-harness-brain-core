@@ -414,3 +414,36 @@ are not durable.
   clone) blocked on the owed D-2 facts + D-1 allowlist fill.
 - Approved by: workspace owner (chat, 2026-08-03).
 - Related: entries "2026-07-30 - model-composed SOQL", "2026-07-14 - MCP is read-only".
+
+## 2026-08-03 - Selected-files Knowledge lane ("pin lane"): owner decisions D-1..D-4, build authorized
+
+- Context: neither existing lane fits "document exactly these files" — `/batch-knowledge` is
+  one-metadata-type-only and `/propose-force-app-knowledge` drafts the whole inventory. The
+  developer gesture is pinning files to Copilot chat or naming them in the prompt; a selection
+  is usually mixed-type. Discovery + plan:
+  `output/discovery-2026-08-03-selected-files-knowledge.md`.
+- **D-1:** a NEW prompt `pin-knowledge` + skill `selected-files-knowledge` (not a `files=`
+  argument on propose — that would overload an already dense skill with a second selection
+  model). Prompt/skill count pins move 24→25 / 25→26.
+- **D-2:** ALWAYS present the resolution table + per-component plan and require an explicit
+  go-ahead before executing — no fast path for small selections; consistent with batch Phase 3.
+- **D-3:** a pinned directory EXPANDS to its contained components with a hard cap of 25 (the
+  chat-approval chunk); larger expansions are refused with a pointer to `/batch-knowledge`,
+  never silently truncated.
+- **D-4:** the new read-only `resolve` command is guarded to `FORCE_APP_KNOWLEDGE_ROLES`
+  (config-investigator + knowledge-curator), matching `worklist` — not the dashboard-style
+  every-role carve-out.
+- Phase 1 implemented same day: `force_app_knowledge.py resolve` (lexical path/name→component
+  mapping — casefolded paths, companion `-meta.xml` siblings both ways, LWC/Aura bundle-member
+  and directory resolution, multi-component files expand to ALL components, ambiguity reported
+  never guessed, expansion cap 25, input cap 50), `draft --component <Type:Name>` exposing the
+  pre-existing `component_ids` filter (CLI-boundary cap 25 in `cli_component_ids`; `draft()`
+  itself deliberately uncapped for relations-draft/feature-draft; unknown ids raise;
+  `--component` + `--metadata-type` mutually exclusive at both draft() and guard), the
+  `force-app-knowledge-resolve` schema, guard mirrors (path hygiene = force-app segment + no
+  traversal; spaces/colons legal for Layout names and component ids), and tests incl. the
+  adversarial-review round (multi-component files, companions, case-insensitivity, guard
+  accept/deny matrix, cap boundaries).
+- Approved by: workspace owner (chat, 2026-08-03).
+- Related: entries "2026-08-03 - Documenting existing state is record-free",
+  "2026-07-27 - Knowledge v2 one-file entries".

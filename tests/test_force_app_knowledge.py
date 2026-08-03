@@ -116,6 +116,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             "force-app-knowledge-inventory.schema.json",
             "force-app-knowledge-draft-manifest.schema.json",
             "force-app-knowledge-worklist.schema.json",
+            "force-app-knowledge-resolve.schema.json",
             "force-app-relations-worklist.schema.json",
         ):
             shutil.copy2(ROOT / "schemas" / name, self.root / "schemas" / name)
@@ -893,6 +894,325 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertNotIn("path", saved)
         with self.assertRaisesRegex(KnowledgeBuildError, "available types"):
             self.builder.worklist(metadata_type="NoSuchType")
+
+    def test_resolve_maps_paths_and_names_onto_components(self) -> None:
+        self.builder.inventory()
+        result = self.builder.resolve(
+            paths=[
+                "force-app/main/default/objects/HarnessEngagement__c/fields/Account__c.field-meta.xml",
+                "force-app\\main\\default\\triggers\\HarnessEngagementTrigger.trigger",
+                str(self.root / "force-app/main/default/lwc/harnessEngagementCard/harnessEngagementCard.js"),
+                "force-app/main/default/objects/HarnessEngagement__c",
+                "not-force-app/readme.md",
+            ],
+            names=["HarnessBilling", "Account__c.field-meta.xml", "NoSuchComponent"],
+        )
+        by_input = {selection["input"]: selection for selection in result["selections"]}
+
+        field = by_input["force-app/main/default/objects/HarnessEngagement__c/fields/Account__c.field-meta.xml"]
+        self.assertEqual("resolved", field["resolution"])
+        self.assertEqual(["CustomField:HarnessEngagement__c.Account__c"], field["componentIds"])
+
+        # Windows separators normalize; the pinned path still resolves exactly.
+        trigger = by_input["force-app\\main\\default\\triggers\\HarnessEngagementTrigger.trigger"]
+        self.assertEqual("resolved", trigger["resolution"])
+        self.assertEqual(["ApexTrigger:HarnessEngagementTrigger"], trigger["componentIds"])
+
+        # A file inside an LWC bundle resolves to the bundle component, and an absolute path
+        # resolves through its force-app segment.
+        member = by_input[str(self.root / "force-app/main/default/lwc/harnessEngagementCard/harnessEngagementCard.js")]
+        self.assertEqual("resolved", member["resolution"])
+        self.assertEqual(["LightningComponentBundle:harnessEngagementCard"], member["componentIds"])
+
+        directory = by_input["force-app/main/default/objects/HarnessEngagement__c"]
+        self.assertEqual("expanded", directory["resolution"])
+        self.assertEqual(
+            ["CustomField:HarnessEngagement__c.Account__c", "CustomObject:HarnessEngagement__c"],
+            directory["componentIds"],
+        )
+
+        outside = by_input["not-force-app/readme.md"]
+        self.assertEqual("unsupported", outside["resolution"])
+
+        credential = by_input["HarnessBilling"]
+        self.assertEqual("resolved", credential["resolution"])
+        self.assertEqual(["NamedCredential:HarnessBilling"], credential["componentIds"])
+
+        basename = by_input["Account__c.field-meta.xml"]
+        self.assertEqual("resolved", basename["resolution"])
+
+        unmatched = by_input["NoSuchComponent"]
+        self.assertEqual("unmatched", unmatched["resolution"])
+        self.assertIn("suggestions", unmatched)
+
+        items = {item["componentId"]: item for item in result["components"]}
+        self.assertFalse(result["entryHomeActive"])
+        # Entry-profiled types route to the entry lane even before the first entry exists.
+        self.assertEqual("entry", items["CustomField:HarnessEngagement__c.Account__c"]["lane"])
+        self.assertEqual("no-entry", items["CustomField:HarnessEngagement__c.Account__c"]["status"])
+        self.assertEqual("claim", items["NamedCredential:HarnessBilling"]["lane"])
+        self.assertEqual("pending", items["NamedCredential:HarnessBilling"]["status"])
+
+    def test_resolve_reports_ambiguity_and_never_guesses(self) -> None:
+        write(
+            self.root / "force-app/main/default/classes/HarnessBilling.cls",
+            "public with sharing class HarnessBilling {}\n",
+        )
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "ambiguity fixture"], cwd=self.root, check=True)
+        self.builder.inventory()
+        result = self.builder.resolve(
+            paths=[
+                "force-app/main/default/classes/HarnessBilling.cls-meta.xml",
+                "force-app//main/default/Triggers/HarnessEngagementTrigger.trigger",
+            ],
+            names=["HarnessBilling", "HarnessEngagementTrigger"],
+        )
+        by_input = {selection["input"]: selection for selection in result["selections"]}
+        ambiguous = by_input["HarnessBilling"]
+        self.assertEqual("ambiguous", ambiguous["resolution"])
+        self.assertEqual(
+            ["ApexClass:HarnessBilling", "NamedCredential:HarnessBilling"],
+            ambiguous["candidates"],
+        )
+        # A component matching through two of its own aliases is not an ambiguity.
+        self.assertEqual("resolved", by_input["HarnessEngagementTrigger"]["resolution"])
+        # A pinned companion meta file resolves to its content-file component.
+        companion = by_input["force-app/main/default/classes/HarnessBilling.cls-meta.xml"]
+        self.assertEqual("resolved", companion["resolution"])
+        self.assertEqual(["ApexClass:HarnessBilling"], companion["componentIds"])
+        # Doubled separators and a wrong-case segment still match: the team's filesystems are
+        # case-insensitive, so the path the developer pinned genuinely names this file.
+        sloppy = by_input["force-app//main/default/Triggers/HarnessEngagementTrigger.trigger"]
+        self.assertEqual("resolved", sloppy["resolution"])
+        self.assertEqual(["ApexTrigger:HarnessEngagementTrigger"], sloppy["componentIds"])
+
+    def test_resolve_expands_multi_component_files_and_companion_content(self) -> None:
+        labels = "".join(
+            f"<labels><fullName>Harness_{name}</fullName><value>{name}</value></labels>"
+            for name in ("Alpha", "Beta")
+        )
+        write(
+            self.root / "force-app/main/default/labels/HarnessLabels.labels-meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">{labels}</CustomLabels>\n',
+        )
+        write(self.root / "force-app/main/default/staticresources/HarnessLogo.resource", "PNGBYTES")
+        write(
+            self.root / "force-app/main/default/staticresources/HarnessLogo.resource-meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<StaticResource xmlns="http://soap.sforce.com/2006/04/metadata">'
+            "<contentType>image/png</contentType><cacheControl>Public</cacheControl></StaticResource>\n",
+        )
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "multi-component fixture"], cwd=self.root, check=True)
+        self.builder.inventory()
+        result = self.builder.resolve(
+            paths=[
+                "force-app/main/default/labels/HarnessLabels.labels-meta.xml",
+                "force-app/main/default/staticresources/HarnessLogo.resource",
+            ],
+            names=["HarnessLabels.labels-meta.xml"],
+        )
+        by_input = {selection["input"]: selection for selection in result["selections"]}
+        # A file defining several components expands to ALL of them — nothing silently drops.
+        expanded = by_input["force-app/main/default/labels/HarnessLabels.labels-meta.xml"]
+        self.assertEqual("expanded", expanded["resolution"])
+        self.assertEqual(
+            ["CustomLabel:Harness_Alpha", "CustomLabel:Harness_Beta", "CustomLabels:HarnessLabels"],
+            expanded["componentIds"],
+        )
+        # The same file mentioned by basename expands identically instead of ambiguating.
+        by_name = by_input["HarnessLabels.labels-meta.xml"]
+        self.assertEqual("expanded", by_name["resolution"])
+        self.assertEqual(expanded["componentIds"], by_name["componentIds"])
+        # A pinned content file resolves through its companion meta component.
+        content = by_input["force-app/main/default/staticresources/HarnessLogo.resource"]
+        self.assertEqual("resolved", content["resolution"])
+        self.assertEqual(["StaticResource:HarnessLogo"], content["componentIds"])
+
+    def test_resolve_refuses_expansions_beyond_one_approval_chunk(self) -> None:
+        labels = "".join(
+            f"<labels><fullName>Harness_L{i:02d}</fullName><value>v{i}</value></labels>"
+            for i in range(30)
+        )
+        write(
+            self.root / "force-app/main/default/labels/HarnessBig.labels-meta.xml",
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<CustomLabels xmlns="http://soap.sforce.com/2006/04/metadata">{labels}</CustomLabels>\n',
+        )
+        subprocess.run(["git", "add", "."], cwd=self.root, check=True)
+        subprocess.run(["git", "commit", "-qm", "big labels fixture"], cwd=self.root, check=True)
+        self.builder.inventory()
+        result = self.builder.resolve(
+            paths=["force-app/main/default/labels/HarnessBig.labels-meta.xml"], names=[]
+        )
+        refused = result["selections"][0]
+        self.assertEqual("unsupported", refused["resolution"])
+        self.assertIn("expands to 31 components", refused["reason"])
+        self.assertIn("/batch-knowledge", refused["reason"])
+        # The refused expansion computes no statuses and reports no components.
+        self.assertEqual([], result["components"])
+        # `draft()` itself stays uncapped for internal callers: the same 31 components draft
+        # fine when passed programmatically (relations-draft passes far larger sets).
+        inventory = self.builder.load_inventory()
+        big_ids = {
+            component["id"]
+            for component in inventory["components"]
+            if component["path"].endswith("HarnessBig.labels-meta.xml")
+        }
+        self.assertEqual(31, len(big_ids))
+        manifest = self.builder.draft(
+            datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc), component_ids=big_ids
+        )
+        self.assertGreaterEqual(manifest["claimCount"], 31)
+
+    def test_resolve_requires_inputs_and_bounds_them(self) -> None:
+        self.builder.inventory()
+        with self.assertRaisesRegex(KnowledgeBuildError, "at least one"):
+            self.builder.resolve(paths=[], names=[])
+        with self.assertRaisesRegex(KnowledgeBuildError, "at most 50"):
+            self.builder.resolve(paths=[], names=[f"Name{i}" for i in range(51)])
+        with self.assertRaisesRegex(KnowledgeBuildError, "rerun inventory"):
+            write(self.root / "force-app/main/default/classes/Drift.cls", "public class Drift {}\n")
+            self.builder.resolve(paths=[], names=["HarnessBilling"])
+
+    def test_resolve_write_persists_schema_valid_derived_view(self) -> None:
+        self.builder.inventory()
+        result = self.builder.resolve(paths=[], names=["HarnessBilling"], write=True)
+        path = self.root / result["path"]
+        self.assertTrue(path.is_file())
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual("force-app-knowledge-resolve", saved["kind"])
+        self.assertNotIn("path", saved)
+
+    def test_draft_component_filter_drafts_only_selected_components(self) -> None:
+        self.builder.inventory()
+        manifest = self.builder.draft(
+            datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc),
+            component_ids={"ApprovalProcess:HarnessEngagement__c.HarnessEngagement_Approval_v2"},
+        )
+        self.assertEqual(2, manifest["claimCount"])
+        claims = [
+            yaml.safe_load((self.root / bundle["claimFile"]).read_text(encoding="utf-8"))
+            for bundle in manifest["bundles"]
+            if "claimFile" in bundle
+        ]
+        self.assertTrue(
+            all("HarnessEngagement_Approval_v2" in claim["subject"]["identity"] for claim in claims)
+        )
+        # A mistyped id fails loudly instead of silently drafting nothing.
+        with self.assertRaisesRegex(KnowledgeBuildError, "unknown component ids"):
+            self.builder.draft(
+                datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc),
+                component_ids={"Flow:No_Such_Flow"},
+            )
+        # A type filter would run before the id filter and silently drop other-type selections,
+        # so combining them is refused outright.
+        with self.assertRaisesRegex(KnowledgeBuildError, "mutually exclusive"):
+            self.builder.draft(
+                datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc),
+                "ApexTrigger",
+                component_ids={"NamedCredential:HarnessBilling"},
+            )
+
+    def test_cli_component_cap_is_a_cli_boundary_not_a_draft_limit(self) -> None:
+        from scripts.force_app_knowledge import cli_component_ids
+
+        self.assertIsNone(cli_component_ids([]))
+        self.assertEqual({"Flow:A"}, cli_component_ids(["Flow:A"]))
+        exactly = [f"Flow:F{i}" for i in range(25)]
+        self.assertEqual(set(exactly), cli_component_ids(exactly))
+        with self.assertRaisesRegex(KnowledgeBuildError, "at most 25"):
+            cli_component_ids(exactly + ["Flow:F25"])
+
+    def test_selected_files_guard_bounds_resolve_and_draft_component(self) -> None:
+        from scripts import copilot_role_guard as role_guard
+
+        for role in ("config-investigator", "knowledge-curator"):
+            with self.subTest(role=role):
+                self.assertTrue(
+                    role_guard.force_app_knowledge_command_allowed(
+                        ["resolve", "--path", "force-app/main/default/classes/Foo.cls",
+                         "--name", "Foo", "--write"],
+                        role,
+                    )
+                )
+        # Read-only, but never for roles without extraction authority.
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["resolve", "--path", "force-app/x"], "development-assistant"
+            )
+        )
+        investigator = "config-investigator"
+        # An input is required; a bare --write carries none.
+        self.assertFalse(role_guard.force_app_knowledge_command_allowed(["resolve"], investigator))
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(["resolve", "--write"], investigator)
+        )
+        # No force-app segment, or traversal — rejected regardless of shape.
+        for bad_path in ("/etc/passwd", "force-app/../secrets"):
+            with self.subTest(path=bad_path):
+                self.assertFalse(
+                    role_guard.force_app_knowledge_command_allowed(
+                        ["resolve", "--path", bad_path], investigator
+                    )
+                )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["resolve", "--unknown", "x"], investigator
+            )
+        )
+        # The inputs a real developer pastes must pass: absolute Windows paths (the resolver
+        # keeps everything from the force-app segment down), layout paths and fullNames with
+        # spaces, component ids with colons, and the = flag form.
+        for good in (
+            ["resolve", "--path", "C:\\repo\\force-app\\main\\default\\triggers\\X.trigger"],
+            ["resolve", "--path",
+             "force-app/main/default/layouts/Account-Account Layout.layout-meta.xml"],
+            ["resolve", "--name", "Account-Account Layout"],
+            ["resolve", "--name", "Layout:Account-Account Layout"],
+            ["resolve", "--path=force-app/main/default/classes/Foo.cls", "--name=Foo"],
+        ):
+            with self.subTest(command=good):
+                self.assertTrue(
+                    role_guard.force_app_knowledge_command_allowed(good, investigator)
+                )
+
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                ["draft", "--component", "Flow:Feature_Flag_Check",
+                 "--component=CustomField:Obj.Field__c"],
+                investigator,
+            )
+        )
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(
+                ["draft", "--component", "Layout:Account-Account Layout"], investigator
+            )
+        )
+        # The type filter would silently drop other-type selections; the combination is denied.
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["draft", "--metadata-type", "Flow", "--component", "Flow:A"], investigator
+            )
+        )
+        for bad_component in ("NoColonHere", "bad-type:Name", "Flow:"):
+            with self.subTest(component=bad_component):
+                self.assertFalse(
+                    role_guard.force_app_knowledge_command_allowed(
+                        ["draft", "--component", bad_component], investigator
+                    )
+                )
+        chunk = [token for i in range(25) for token in ("--component", f"Flow:F{i}")]
+        self.assertTrue(
+            role_guard.force_app_knowledge_command_allowed(["draft", *chunk], investigator)
+        )
+        self.assertFalse(
+            role_guard.force_app_knowledge_command_allowed(
+                ["draft", *chunk, "--component", "Flow:F25"], investigator
+            )
+        )
 
     def test_dashboard_renders_with_graceful_panels_and_escaping(self) -> None:
         # Without an inventory the coverage/relation panels degrade to "unavailable" and the

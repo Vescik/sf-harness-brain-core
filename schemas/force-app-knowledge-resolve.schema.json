@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:force-app-knowledge-resolve.schema.json",
+  "title": "force-app Knowledge selected-files resolution",
+  "description": "Derived read-only mapping of pinned file paths / mentioned component names onto inventory components, with the lane (entry vs claim) and current documentation status per match. Recomputed from the inventory on every invocation; ambiguity is reported, never resolved by the tool.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "kind", "generatedAt", "repositoryCommit", "sourceTreeDigest",
+    "entryHomeActive", "counts", "selections", "components"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "force-app-knowledge-resolve" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "repositoryCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sourceTreeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "entryHomeActive": { "type": "boolean" },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resolved": { "type": "integer", "minimum": 0 },
+        "expanded": { "type": "integer", "minimum": 0 },
+        "ambiguous": { "type": "integer", "minimum": 0 },
+        "unmatched": { "type": "integer", "minimum": 0 },
+        "unsupported": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "selections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["input", "kind", "resolution"],
+        "properties": {
+          "input": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["path", "name"] },
+          "resolution": { "enum": ["resolved", "expanded", "ambiguous", "unmatched", "unsupported"] },
+          "componentIds": {
+            "type": "array", "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "candidates": {
+            "type": "array", "minItems": 2,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "suggestions": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "resolution": { "enum": ["resolved", "expanded"] } } },
+            "then": { "required": ["componentIds"] }
+          },
+          {
+            "if": { "properties": { "resolution": { "const": "ambiguous" } } },
+            "then": { "required": ["candidates"] }
+          },
+          {
+            "if": { "properties": { "resolution": { "const": "unmatched" } } },
+            "then": { "required": ["suggestions"] }
+          },
+          {
+            "if": { "properties": { "resolution": { "const": "unsupported" } } },
+            "then": { "required": ["reason"] }
+          }
+        ]
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["componentId", "metadataType", "name", "path", "lane", "status"],
+        "properties": {
+          "componentId": { "type": "string", "minLength": 1 },
+          "metadataType": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "pattern": "^force-app/" },
+          "lane": { "enum": ["entry", "claim"] },
+          "status": {
+            "enum": [
+              "no-entry", "draft", "not-effective", "revoked",
+              "approved-current", "approved-drifted",
+              "pending", "drafted", "proposed", "verified-current",
+              "stale-refresh", "blocked"
+            ]
+          },
+          "described": { "type": "boolean" },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

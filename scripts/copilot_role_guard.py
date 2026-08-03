@@ -228,7 +228,10 @@ FORCE_APP_COMMAND_FLAGS = {
     "relation-health": frozenset({"--write"}),
     "relations-draft": frozenset({"--observed-at", "--metadata-type", "--limit", "--include-heuristic"}),
     "refresh": frozenset({"--observed-at", "--metadata-type", "--warn-days", "--limit", "--dry-run"}),
-    "draft": frozenset({"--observed-at", "--metadata-type"}),
+    "draft": frozenset({"--observed-at", "--metadata-type", "--component"}),
+    # Read-only path/name -> component mapping for the selected-files lane; --write only saves
+    # the derived view under the ignored .cache/knowledge-proposals/ workspace.
+    "resolve": frozenset({"--path", "--name", "--write"}),
     # The public /feature-documentor prompt runs these two; leaving them unguarded made its
     # core procedure impossible for the agent it is addressed to (evidence-doc F-14). Both
     # write only under the ignored .cache/knowledge-proposals/ workspace.
@@ -831,6 +834,40 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
                 if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", value):
                     return False
         return seen_feature
+    if parts[0] == "resolve":
+        # Read-only lexical mapping of paths/names onto inventory components; it never opens
+        # the input paths, so validation is argument hygiene, not filesystem authority. The
+        # resolver deliberately accepts absolute macOS/Windows paths and keeps everything from
+        # the force-app segment down (pinned files arrive as absolute paths on the Windows
+        # team's machines), so the guard requires that segment rather than repo-relativity.
+        # Names carry spaces and colons legitimately (Layout fullNames, component ids).
+        index = 1
+        seen_input = False
+        while index < len(parts):
+            token = parts[index]
+            if token == "--write":
+                index += 1
+                continue
+            if "=" in token:
+                flag, value = token.split("=", 1)
+                index += 1
+            else:
+                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
+                index += 2
+            if flag == "--path":
+                if not re.fullmatch(r"[A-Za-z0-9_.:\\/ \-]{1,300}", value):
+                    return False
+                normalized = value.replace("\\", "/")
+                if "force-app" not in normalized.casefold() or ".." in normalized.split("/"):
+                    return False
+                seen_input = True
+            elif flag == "--name":
+                if not re.fullmatch(r"[A-Za-z0-9_.: \-]{1,120}", value):
+                    return False
+                seen_input = True
+            else:
+                return False
+        return seen_input
     if parts[0] == "coverage":
         # Read-only documentation-coverage summary; --write only saves the derived view under the
         # ignored .cache/knowledge-proposals/ workspace.
@@ -923,7 +960,15 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
     validators = {
         "--observed-at": r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})",
         "--metadata-type": r"[A-Za-z][A-Za-z0-9_]{0,79}",
+        # Selected-files lane: an inventory component id (Type:Name; names carry spaces —
+        # Layouts). Capped below at the 25-spec chat-approval chunk — a larger selection
+        # belongs in /batch-knowledge. Mutually exclusive with --metadata-type: the type
+        # filter would silently drop selected components of other types (draft() raises the
+        # same refusal; the guard mirrors it so the denial is immediate and typed).
+        "--component": r"[A-Za-z][A-Za-z0-9_]{0,79}:[A-Za-z0-9_. \-]{1,200}",
     }
+    component_count = 0
+    seen_metadata_type = False
     index = 1
     while index < len(parts):
         token = parts[index]
@@ -936,7 +981,13 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
         pattern = validators.get(flag)
         if pattern is None or not re.fullmatch(pattern, value):
             return False
-    return True
+        if flag == "--metadata-type":
+            seen_metadata_type = True
+        if flag == "--component":
+            component_count += 1
+            if component_count > 25:
+                return False
+    return not (seen_metadata_type and component_count)
 
 
 # Read-only orientation commands available to every role. Rationale: a default-deny terminal

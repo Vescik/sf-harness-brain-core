@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import hashlib
 import json
 import re
@@ -4972,6 +4973,80 @@ class ForceAppKnowledge:
             f"{candidate['claimType']}|{candidate['assertion']['predicate']}",
         )
 
+    def _drafts_current(self, inventory: dict[str, Any]) -> bool:
+        manifest_path = self.draft_root / "manifest.json"
+        if not manifest_path.is_file():
+            return False
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        return manifest.get("sourceTreeDigest") == inventory["sourceTreeDigest"]
+
+    def _component_claim_status(
+        self, component: dict[str, Any], claims_root: Path, drafts_current: bool
+    ) -> dict[str, Any]:
+        """One component's claim-lane status, derived from canonical claims and current drafts.
+
+        The single source of the per-component status vocabulary (`pending` / `drafted` /
+        `proposed` / `verified-current` / `stale-refresh` / `blocked`) shared by `worklist`
+        and `resolve` — the two must never disagree about the same component.
+        """
+
+        component_digest = digest_bytes(canonical(component).encode("utf-8"))
+        current_evidence_id = stable_id(
+            "KEVD", component["id"], f"repo-{component_digest}"
+        )
+        claim_states: list[dict[str, Any]] = []
+        for candidate in self.candidate_claims(component):
+            claim_id = self.expected_claim_id(candidate)
+            state: dict[str, Any] = {
+                "claimId": claim_id,
+                "claimType": candidate["claimType"],
+            }
+            canonical_path = claims_root / f"{claim_id}.yaml"
+            if canonical_path.is_file():
+                record = yaml.safe_load(canonical_path.read_text(encoding="utf-8"))
+                state["revision"] = int(record["revision"])
+                status = record.get("status")
+                if status == "verified":
+                    state["state"] = (
+                        "verified-current"
+                        if current_evidence_id in record.get("evidenceRefs", [])
+                        else "verified-stale"
+                    )
+                    if record.get("reviewBy"):
+                        state["reviewBy"] = record["reviewBy"]
+                elif status == "proposed":
+                    state["state"] = "proposed"
+                else:
+                    state["state"] = "attention"
+                    state["reason"] = f"canonical status is {status}"
+            elif drafts_current and (self.draft_root / f"{claim_id}.yaml").is_file():
+                state["state"] = "drafted"
+            else:
+                state["state"] = "missing"
+            claim_states.append(state)
+
+        states = {state["state"] for state in claim_states}
+        if "attention" in states:
+            status = "blocked"
+        elif "verified-stale" in states:
+            status = "stale-refresh"
+        elif "missing" in states:
+            status = "pending"
+        elif "drafted" in states:
+            status = "drafted"
+        elif "proposed" in states:
+            status = "proposed"
+        else:
+            status = "verified-current"
+        result: dict[str, Any] = {"status": status, "claims": claim_states}
+        if status == "blocked":
+            result["reason"] = "; ".join(
+                f"{state['claimId']}: {state['reason']}"
+                for state in claim_states
+                if state["state"] == "attention"
+            )
+        return result
+
     def worklist(
         self, metadata_type: str | None = None, write: bool = False
     ) -> dict[str, Any]:
@@ -4994,82 +5069,27 @@ class ForceAppKnowledge:
             raise KnowledgeBuildError("force-app changed after inventory; rerun inventory")
 
         claims_root = self.root / ".ai/knowledge/claims"
-        manifest_path = self.draft_root / "manifest.json"
-        drafts_current = False
-        if manifest_path.is_file():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            drafts_current = manifest.get("sourceTreeDigest") == inventory["sourceTreeDigest"]
+        drafts_current = self._drafts_current(inventory)
 
         items: list[dict[str, Any]] = []
         counts: Counter[str] = Counter()
         for component in inventory["components"]:
             if metadata_type is not None and component["metadataType"] != metadata_type:
                 continue
-            component_digest = digest_bytes(canonical(component).encode("utf-8"))
-            current_evidence_id = stable_id(
-                "KEVD", component["id"], f"repo-{component_digest}"
-            )
-            claim_states: list[dict[str, Any]] = []
-            for candidate in self.candidate_claims(component):
-                claim_id = self.expected_claim_id(candidate)
-                state: dict[str, Any] = {
-                    "claimId": claim_id,
-                    "claimType": candidate["claimType"],
-                }
-                canonical_path = claims_root / f"{claim_id}.yaml"
-                if canonical_path.is_file():
-                    record = yaml.safe_load(canonical_path.read_text(encoding="utf-8"))
-                    state["revision"] = int(record["revision"])
-                    status = record.get("status")
-                    if status == "verified":
-                        state["state"] = (
-                            "verified-current"
-                            if current_evidence_id in record.get("evidenceRefs", [])
-                            else "verified-stale"
-                        )
-                        if record.get("reviewBy"):
-                            state["reviewBy"] = record["reviewBy"]
-                    elif status == "proposed":
-                        state["state"] = "proposed"
-                    else:
-                        state["state"] = "attention"
-                        state["reason"] = f"canonical status is {status}"
-                elif drafts_current and (self.draft_root / f"{claim_id}.yaml").is_file():
-                    state["state"] = "drafted"
-                else:
-                    state["state"] = "missing"
-                claim_states.append(state)
-
-            states = {state["state"] for state in claim_states}
-            if "attention" in states:
-                status = "blocked"
-            elif "verified-stale" in states:
-                status = "stale-refresh"
-            elif "missing" in states:
-                status = "pending"
-            elif "drafted" in states:
-                status = "drafted"
-            elif "proposed" in states:
-                status = "proposed"
-            else:
-                status = "verified-current"
+            derived = self._component_claim_status(component, claims_root, drafts_current)
             item = {
                 "componentId": component["id"],
                 "metadataType": component["metadataType"],
                 "name": component["name"],
                 "path": component["path"],
                 "sha256": component["sha256"],
-                "status": status,
-                "claims": claim_states,
+                "status": derived["status"],
+                "claims": derived["claims"],
             }
-            if status == "blocked":
-                item["reason"] = "; ".join(
-                    f"{state['claimId']}: {state['reason']}"
-                    for state in claim_states
-                    if state["state"] == "attention"
-                )
+            if "reason" in derived:
+                item["reason"] = derived["reason"]
             items.append(item)
-            counts[status] += 1
+            counts[derived["status"]] += 1
 
         result = {
             "schemaVersion": SCHEMA_VERSION,
@@ -5092,6 +5112,234 @@ class ForceAppKnowledge:
                 json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
             )
             result["path"] = self.relative(worklist_path)
+        return result
+
+    # Bounded so one resolve call cannot become a repo-wide sweep; the selected-files lane
+    # hands sets larger than one approval chunk to /batch-knowledge instead.
+    RESOLVE_INPUT_CAP = 50
+    # One expansion (a directory, or a source file defining many components) larger than the
+    # 25-spec chat-approval chunk is refused with a pointer, never silently truncated: the lane
+    # cannot promote it in one pass, and a truncated match would misreport coverage.
+    RESOLVE_EXPANSION_CAP = 25
+    # Bundle components record one file inside their directory as `path` (the .js-meta.xml for
+    # LWC), so a pinned sibling file resolves through the bundle directory, not an exact path.
+    BUNDLE_METADATA_TYPES = frozenset({"LightningComponentBundle", "AuraDefinitionBundle"})
+
+    def resolve(
+        self, paths: list[str], names: list[str], write: bool = False
+    ) -> dict[str, Any]:
+        """Map pinned file paths and mentioned component names onto inventory components.
+
+        Read-only ground for the selected-files lane: an agent handed pinned files or free-text
+        names must never map them to components by eye. Matching is purely lexical against the
+        current inventory — input paths are never opened — and every match carries its lane
+        (`entry` for entry-profiled types, `claim` otherwise) plus the current documentation
+        status on that lane, so the caller can plan without further lookups. Paths match
+        case-insensitively (the team's filesystems are case-insensitive) and through companion
+        siblings (`X.cls-meta.xml` ↔ `X.cls`). A file defining several components (labels,
+        matching rules) expands to all of them — pinning the file means all of it. Ambiguity is
+        reported, never guessed: a name matching components in different files returns them as
+        `ambiguous`.
+        """
+
+        inputs = [("path", raw) for raw in paths] + [("name", raw) for raw in names]
+        if not inputs:
+            raise KnowledgeBuildError("resolve needs at least one --path or --name")
+        if len(inputs) > self.RESOLVE_INPUT_CAP:
+            raise KnowledgeBuildError(
+                f"resolve accepts at most {self.RESOLVE_INPUT_CAP} inputs per call"
+            )
+        inventory = self.load_inventory()
+        if inventory["sourceTreeDigest"] != self.current_tree_digest():
+            raise KnowledgeBuildError("force-app changed after inventory; rerun inventory")
+
+        components = inventory["components"]
+        by_path: dict[str, list[dict[str, Any]]] = {}
+        for component in components:
+            by_path.setdefault(component["path"].casefold(), []).append(component)
+        generic_paths = {item["path"].casefold() for item in inventory.get("genericFiles", [])}
+        profiled = self.entry_draftable_types()
+        entries = self.entry_descriptions()
+        claims_root = self.root / ".ai/knowledge/claims"
+        drafts_current = self._drafts_current(inventory)
+
+        matched_items: dict[str, dict[str, Any]] = {}
+
+        def item_for(component: dict[str, Any]) -> dict[str, Any]:
+            cached = matched_items.get(component["id"])
+            if cached is not None:
+                return cached
+            item: dict[str, Any] = {
+                "componentId": component["id"],
+                "metadataType": component["metadataType"],
+                "name": component["name"],
+                "path": component["path"],
+                "lane": "entry" if component["metadataType"] in profiled else "claim",
+            }
+            if item["lane"] == "entry":
+                entry = entries.get(component["id"])
+                if entry is None:
+                    item["status"] = "no-entry"
+                else:
+                    item["status"] = str(entry["lane"])
+                    item["described"] = bool(entry["purpose"])
+            else:
+                derived = self._component_claim_status(component, claims_root, drafts_current)
+                item["status"] = derived["status"]
+                if "reason" in derived:
+                    item["reason"] = derived["reason"]
+            matched_items[component["id"]] = item
+            return item
+
+        def normalize(raw: str) -> str | None:
+            text = re.sub(r"/+", "/", raw.strip().replace("\\", "/")).rstrip("/")
+            while text.startswith("./"):
+                text = text[2:]
+            if not text or ".." in text.split("/"):
+                return None
+            lowered = text.casefold()
+            if lowered == "force-app" or lowered.startswith("force-app/"):
+                return text
+            # Absolute paths (macOS or Windows) and workspace-prefixed paths: keep everything
+            # from the force-app segment down.
+            marker = lowered.find("/force-app/")
+            if marker >= 0:
+                return text[marker + 1 :]
+            if lowered.endswith("/force-app"):
+                return "force-app"
+            return None
+
+        def aliases(component: dict[str, Any]) -> set[str]:
+            basename = component["path"].rsplit("/", 1)[-1]
+            trimmed = re.sub(r"\.[A-Za-z0-9]+-meta\.xml$", "", basename)
+            bare = re.sub(r"\.[A-Za-z0-9]+$", "", basename)
+            return {component["name"], component["id"], basename, trimmed, bare}
+
+        alias_index: dict[str, list[dict[str, Any]]] = {}
+        suggestion_pool: set[str] = set()
+        for component in components:
+            for alias in aliases(component):
+                suggestion_pool.add(alias)
+                bucket = alias_index.setdefault(alias.casefold(), [])
+                # Case-variant aliases of one component casefold to the same key; a component
+                # matching its own name twice must not read as an ambiguity.
+                if all(hit is not component for hit in bucket):
+                    bucket.append(component)
+
+        selections: list[dict[str, Any]] = []
+        counts: Counter[str] = Counter()
+
+        def record(kind: str, raw: str, resolution: str, **extra: Any) -> None:
+            selections.append({"input": raw, "kind": kind, "resolution": resolution, **extra})
+            counts[resolution] += 1
+
+        def record_matches(kind: str, raw: str, hits: list[dict[str, Any]]) -> None:
+            if len(hits) == 1:
+                record(kind, raw, "resolved", componentIds=[item_for(hits[0])["componentId"]])
+            elif len(hits) > self.RESOLVE_EXPANSION_CAP:
+                record(
+                    kind, raw, "unsupported",
+                    reason=f"expands to {len(hits)} components — more than the "
+                    f"{self.RESOLVE_EXPANSION_CAP}-spec chat-approval chunk this lane can promote; "
+                    "use /batch-knowledge or the worklist instead",
+                )
+            else:
+                record(
+                    kind, raw, "expanded",
+                    componentIds=sorted(item_for(hit)["componentId"] for hit in hits),
+                )
+
+        for raw in paths:
+            if not raw.strip():
+                record("path", "(empty)", "unsupported", reason="empty input")
+                continue
+            normalized = normalize(raw)
+            if normalized is None:
+                record("path", raw, "unsupported", reason="not a force-app path")
+                continue
+            key = normalized.casefold()
+            hits = by_path.get(key, [])
+            if not hits and key.endswith("-meta.xml"):
+                # Companion sibling: the pinned meta file of a content-file component
+                # (X.cls-meta.xml -> X.cls).
+                hits = by_path.get(key[: -len("-meta.xml")], [])
+            if not hits:
+                # Companion sibling the other way: the pinned content file of a meta-file
+                # component (X.resource -> X.resource-meta.xml).
+                hits = by_path.get(key + "-meta.xml", [])
+            if hits:
+                record_matches("path", raw, hits)
+                continue
+            if key in generic_paths:
+                record(
+                    "path", raw, "unsupported",
+                    reason="generic file — the inventory recognizes no component in it and no Knowledge is drafted for it",
+                )
+                continue
+            bundle_hits = [
+                candidate
+                for candidate in components
+                if candidate["metadataType"] in self.BUNDLE_METADATA_TYPES
+                and key.startswith(candidate["path"].casefold().rsplit("/", 1)[0] + "/")
+            ]
+            if bundle_hits:
+                record_matches("path", raw, bundle_hits)
+                continue
+            directory_hits = [
+                candidate for candidate in components
+                if candidate["path"].casefold().startswith(key + "/")
+            ]
+            if directory_hits:
+                record_matches("path", raw, directory_hits)
+                continue
+            basename = normalized.rsplit("/", 1)[-1]
+            record(
+                "path", raw, "unmatched",
+                suggestions=difflib.get_close_matches(basename, sorted(suggestion_pool), n=3, cutoff=0.6),
+            )
+
+        for raw in names:
+            token = raw.strip()
+            if not token:
+                record("name", "(empty)", "unsupported", reason="empty input")
+                continue
+            hits = alias_index.get(token.casefold(), [])
+            if not hits:
+                record(
+                    "name", raw, "unmatched",
+                    suggestions=difflib.get_close_matches(token, sorted(suggestion_pool), n=3, cutoff=0.6),
+                )
+            elif len(hits) == 1 or len({hit["path"] for hit in hits}) == 1:
+                # All candidates in one source file: the name denotes that file's contents,
+                # exactly like pinning the file itself — expand, don't ambiguate.
+                record_matches("name", raw, hits)
+            else:
+                record(
+                    "name", raw, "ambiguous",
+                    candidates=sorted(item_for(hit)["componentId"] for hit in hits),
+                )
+
+        result = {
+            "schemaVersion": SCHEMA_VERSION,
+            "kind": "force-app-knowledge-resolve",
+            "generatedAt": iso(utc_now()),
+            "repositoryCommit": inventory["repositoryCommit"],
+            "sourceTreeDigest": inventory["sourceTreeDigest"],
+            "entryHomeActive": bool(self.entry_home_types()),
+            "counts": dict(sorted(counts.items())),
+            "selections": selections,
+            "components": sorted(matched_items.values(), key=lambda item: item["componentId"]),
+        }
+        self.validate_record(
+            result, "force-app-knowledge-resolve.schema.json", "force-app resolve"
+        )
+        if write:
+            self.cache_root.mkdir(parents=True, exist_ok=True)
+            resolve_path = self.cache_root / "force-app-resolve.json"
+            resolve_path.write_text(
+                json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            result["path"] = self.relative(resolve_path)
         return result
 
     def relations_worklist(
@@ -5668,6 +5916,26 @@ class ForceAppKnowledge:
                 raise KnowledgeBuildError(
                     f"inventory has no components of metadata type {metadata_type!r}; "
                     f"available types: {', '.join(available)}"
+                )
+        if component_ids is not None and metadata_type is not None:
+            # The type filter runs before the id filter and would silently drop every selected
+            # component of another type — the exact silent-nothing failure the unknown-id check
+            # below exists to prevent. No internal caller combines them.
+            raise KnowledgeBuildError(
+                "--component and --metadata-type are mutually exclusive; "
+                "a component id already names its type"
+            )
+        if component_ids is not None:
+            known = {component["id"] for component in inventory["components"]}
+            unknown = sorted(component_ids - known)
+            if unknown:
+                # Silently drafting nothing for a mistyped id would read as "this component
+                # produces no claims" — fail with the ids so the caller re-runs `resolve`.
+                raise KnowledgeBuildError(
+                    "unknown component ids (not in the inventory): "
+                    + ", ".join(unknown[:10])
+                    + ("; …" if len(unknown) > 10 else "")
+                    + " — resolve them first with `force_app_knowledge.py resolve`"
                 )
         if inventory["completeness"]["status"] != "complete":
             raise KnowledgeBuildError("inventory is partial; resolve diagnostics before drafting")
@@ -6666,6 +6934,35 @@ def build_parser() -> argparse.ArgumentParser:
         "--metadata-type",
         help="draft candidates only for this inventory metadata type (batch mode)",
     )
+    draft.add_argument(
+        "--component",
+        action="append",
+        default=[],
+        help="draft candidates only for this inventory component (Type:Name); repeatable, "
+        "max 25 per call — the selected-files lane; resolve inputs first with `resolve`",
+    )
+    resolve = commands.add_parser(
+        "resolve",
+        help="map file paths / component names onto inventory components with lane and "
+        "documentation status (read-only)",
+    )
+    resolve.add_argument(
+        "--path",
+        action="append",
+        default=[],
+        help="a force-app file or directory path to resolve; repeatable",
+    )
+    resolve.add_argument(
+        "--name",
+        action="append",
+        default=[],
+        help="a component name, id, or source-file basename to resolve; repeatable",
+    )
+    resolve.add_argument(
+        "--write",
+        action="store_true",
+        help="also save the resolution under .cache/knowledge-proposals/",
+    )
     worklist = commands.add_parser("worklist")
     worklist.add_argument(
         "--metadata-type",
@@ -6787,6 +7084,23 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def cli_component_ids(values: list[str]) -> set[str] | None:
+    """CLI-boundary cap for `draft --component`, deliberately NOT inside `draft()`.
+
+    25 is the chat-approval chunk cap: a hand-picked selection larger than one approval chunk
+    belongs in /batch-knowledge. Internal callers (relations-draft, feature-draft) legitimately
+    pass `draft()` component sets far larger than 25, so the method itself must stay uncapped.
+    """
+
+    if not values:
+        return None
+    if len(values) > 25:
+        raise KnowledgeBuildError(
+            f"draft accepts at most 25 --component values, got {len(values)}"
+        )
+    return set(values)
+
+
 def main(argv: Iterable[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     builder = ForceAppKnowledge()
@@ -6808,6 +7122,18 @@ def main(argv: Iterable[str] | None = None) -> int:
             }
             if args.metadata_type:
                 summary["metadataTypeFilter"] = args.metadata_type
+            if "path" in result:
+                summary["path"] = result["path"]
+        elif args.command == "resolve":
+            result = builder.resolve(args.path, args.name, args.write)
+            # The selections ARE the output: a caller resolving three pinned files must not
+            # need --write plus a file read to learn what they mapped to.
+            summary = {
+                "counts": result["counts"],
+                "entryHomeActive": result["entryHomeActive"],
+                "selections": result["selections"],
+                "components": result["components"],
+            }
             if "path" in result:
                 summary["path"] = result["path"]
         elif args.command == "coverage":
@@ -6914,7 +7240,8 @@ def main(argv: Iterable[str] | None = None) -> int:
             }
         else:
             observed_at = parse_time(args.observed_at) if args.observed_at else utc_now()
-            result = builder.draft(observed_at, args.metadata_type)
+            component_ids = cli_component_ids(args.component)
+            result = builder.draft(observed_at, args.metadata_type, component_ids=component_ids)
             summary = {
                 "path": builder.relative(builder.draft_root / "manifest.json"),
                 "claims": result["claimCount"],
@@ -6922,6 +7249,10 @@ def main(argv: Iterable[str] | None = None) -> int:
             }
             if args.metadata_type:
                 summary["metadataTypeFilter"] = args.metadata_type
+            if component_ids:
+                summary["componentFilter"] = sorted(component_ids)
+            if result.get("skippedEntryHome"):
+                summary["skippedEntryHome"] = result["skippedEntryHome"]
     except (KnowledgeBuildError, json.JSONDecodeError, yaml.YAMLError) as exc:
         print(f"ERROR: {exc}")
         return 2

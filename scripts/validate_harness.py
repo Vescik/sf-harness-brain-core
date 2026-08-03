@@ -192,6 +192,7 @@ def check_required_files(audit: Audit) -> None:
         "schemas/force-app-knowledge-inventory.schema.json",
         "schemas/force-app-knowledge-draft-manifest.schema.json",
         "schemas/force-app-knowledge-worklist.schema.json",
+        "schemas/force-app-knowledge-resolve.schema.json",
         "schemas/knowledge-claims-index.schema.json",
         "schemas/knowledge-entry.schema.json",
         "schemas/knowledge-feature-entry.schema.json",
