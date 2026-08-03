@@ -196,9 +196,19 @@ class GuardParserContractTests(unittest.TestCase):
             frozenset({
                 "entry-draft", "entry-describe", "entry-approve", "entry-revoke",
                 "feature-propose", "feature-describe", "feature-approve", "feature-revoke",
+                "entry-org-attach", "entry-org-detach",
             }),
             guard.KNOWLEDGE_STORE_MUTATION_COMMANDS,
         )
+        # Org attach is narrower still: config-investigator only — the org-facing role. These
+        # two commands deliberately spend no chat click (owner D-3 2026-08-03: the human
+        # approved the instrument, not each number); the verb-partition test in
+        # test_safety_hooks asserts the click-free half, this pins the role half.
+        self.assertEqual(frozenset({"config-investigator"}), guard.ORG_ATTACH_ROLES)
+        self.assertEqual(
+            frozenset({"entry-org-attach", "entry-org-detach"}), guard.ORG_ATTACH_COMMANDS
+        )
+        self.assertLessEqual(guard.ORG_ATTACH_COMMANDS, guard.KNOWLEDGE_STORE_MUTATION_COMMANDS)
         # Reads stay universal, matching the entry-review precedent.
         for read_only in ("entry-review", "feature-review", "feature-status", "feature-check"):
             self.assertNotIn(read_only, guard.KNOWLEDGE_STORE_MUTATION_COMMANDS)
@@ -289,9 +299,11 @@ class GuardParserContractTests(unittest.TestCase):
             frozenset({"config-investigator", "knowledge-curator"}),
             guard.FORCE_APP_KNOWLEDGE_ROLES,
         )
-        # The curator never gains org-facing or work-record authority.
+        # The curator never gains org-facing or work-record authority — including the
+        # org-usage attach lane (contract §6.6).
         self.assertNotIn("knowledge-curator", guard.SALESFORCE_READ_ROLES)
         self.assertNotIn("knowledge-curator", getattr(guard, "WORK_RECORD_COMMANDS", {}))
+        self.assertNotIn("knowledge-curator", guard.ORG_ATTACH_ROLES)
 
 
 if __name__ == "__main__":

@@ -18,11 +18,35 @@ verification returns to the phase that produced the defect.
 ## Routing: entries vs claims
 
 Batch conversion covers metadata types whose repository facts still live in the claim registry.
-Profiled types (Flow, CustomField) are drafted as one-file Knowledge Entries instead —
-`python scripts/knowledge_store.py entry-draft` per artifact, then one
+Entry-profiled types (Flow, CustomField, ApexClass, ApexTrigger, ValidationRule, PermissionSet,
+CustomObject, RecordType, CustomMetadata, LightningComponentBundle) are drafted as one-file
+Knowledge Entries instead — `python scripts/knowledge_store.py entry-draft` per artifact, then one
 `/approve-drafts-knowledge` session per chunk (chunks carrying prose changes stay within the
 25-entry cap). Do not batch-propose profiled repository claims: once this workspace holds
 entries the registry refuses them and names the entry route.
+
+### Entry-lane org sampling (default step — CustomObject and CustomField chunks)
+
+After a chunk's `/approve-drafts-knowledge` click, when an org alias with
+allowAgentRead+allowAgentReview is configured and `python scripts/preflight.py --capability
+salesforce-review` passes, org sampling is the default, not an option. For each entry in the
+chunk whose org lane is not already `org-fresh` (recompute it with
+`python scripts/knowledge_store.py entry-status --identity <id>` — never from chat history):
+compose read-only SOQL probes for the entry's object — aggregates (COUNT, GROUP BY, COUNT(field)
+fill counts) plus one bounded row sample (explicit `LIMIT 25`, `ORDER BY CreatedDate DESC`,
+at most 20 contract-derived columns; never select Id, Email-type, or long-text values — measure
+their fill with aggregate probes instead). Several probes of one kind under different WHERE
+criteria are legal and encouraged when data diversity depends on status or record type
+(owner decision D-5', 2026-08-03). Write the probes-file under `.cache/org-usage/pending/`
+(`{"probes": [{"label", "kind", "query"}]}`) and run
+`python scripts/knowledge_store.py entry-org-attach --identity <id> --org <alias>
+--probes-file <path>` — the executor re-runs every probe through the governed facade, derives
+the closed count/shape vocabulary (row values never persist), and attaches click-free with the
+machine attestation the owner approved as the instrument. When no org is configured or
+containment refuses, skip silently and report `orgUsage: skipped (<reason>)` in the Phase 5
+summary. An expired or superseded org block is absent for grounding: re-attach or run a live
+probe, never cite it. `entry-org-detach --identity <id> --org <alias> --rationale <text>` is
+the rollback.
 
 ## Phase 1 — DISCOVER
 
@@ -97,7 +121,9 @@ restart: rerun `inventory`, then `worklist --metadata-type <Type>`. Components a
 `verified-current` are done — skip them; `proposed` components only need their approval step;
 continue executing from the first `pending` or `drafted` component. Never reconstruct progress
 from chat history or a hand-maintained checklist — the derived worklist is recomputed from the
-registry and cannot drift.
+registry and cannot drift. Org sampling resumes the same way: an entry whose org lane is
+already `org-fresh` (per `entry-status`) is done — skip it; everything else gets its probes
+composed anew.
 
 ## Refresh mode (drift + expiry maintenance)
 

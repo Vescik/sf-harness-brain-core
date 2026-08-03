@@ -614,6 +614,7 @@ def check_settings_and_mcp(audit: Audit) -> None:
     role_guard = (ROOT / "scripts/copilot_role_guard.py").read_text(encoding="utf-8")
     audit.require(role_guard.count('".cache/ado-items/"') >= 3, "ADO cache must be writable by its three consuming roles")
     audit.require('".cache/test-cases/"' in role_guard, "Test Strategist must be able to write Test Case cache")
+    audit.require('".cache/org-usage/"' in role_guard, "Config Investigator must be able to author org-usage probes-files (contract §6.6)")
     preflight_capabilities = re.search(
         r"PREFLIGHT_CAPABILITIES = frozenset\(\s*\{(.*?)\}", role_guard, re.DOTALL
     )
@@ -1182,6 +1183,96 @@ def check_contracts_match_mcp(audit: Audit) -> None:
             )
 
 
+def check_org_usage(audit: Audit, root: Path = ROOT) -> None:
+    """Org-usage hard integrity gate (contract §6.6): the entry-check disclosure is advisory,
+    THIS is where tamper fails the build. Three rules: the org ledger is append-only and
+    monotonic; every org-bearing entry's sectionDigest recomputes AND is the latest org-ledger
+    record for its identity; and org-bearing entries may exist only where origin containment
+    passes (gate 1, owner D-1 2026-08-03) — a failing `git remote` is a refusal, never a pass.
+    All checks are lazy: an org-free workspace (this public origin) pays one exists() call."""
+    ledger_path = root / ".ai/knowledge/artifacts-org-ledger.jsonl"
+    records: list[dict] = []
+    if ledger_path.exists():
+        for index, line in enumerate(ledger_path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                audit.require(False, f"org ledger line {index} is not JSON")
+                continue
+            audit.require(
+                record.get("sequence") == index,
+                f"org ledger sequence break at line {index} (append-only violated)",
+            )
+            records.append(record)
+    latest: dict[str, dict] = {}
+    for record in records:
+        if isinstance(record.get("identity"), str):
+            latest[record["identity"]] = record
+    artifacts = root / ".ai/knowledge/artifacts"
+    org_bearing = 0
+    if artifacts.is_dir():
+        from scripts.knowledge_registry import canonical_digest
+
+        for path in sorted(artifacts.rglob("*.md")):
+            text = path.read_text(encoding="utf-8")
+            if "orgUsage" not in text:
+                continue
+            try:
+                frontmatter_block = yaml.safe_load(text.split("---", 2)[1])
+            except (IndexError, yaml.YAMLError):
+                continue  # unparseable entries are compute_lane/entry-check territory
+            section = (frontmatter_block or {}).get("orgUsage")
+            if not isinstance(section, dict):
+                continue
+            org_bearing += 1
+            subject = frontmatter_block.get("subject") or {}
+            identity = (
+                f"{subject.get('metadataType')}:{subject.get('namespace') or 'c'}:{subject.get('fullName')}"
+            )
+            recomputed = canonical_digest(section.get("orgs") or {})
+            audit.require(
+                section.get("sectionDigest") == recomputed,
+                f"{relative(path)}: orgUsage.sectionDigest does not recompute (tamper or crash; "
+                "recover forward with entry-org-attach or entry-org-detach)",
+            )
+            record = latest.get(identity)
+            audit.require(
+                record is not None and record.get("orgUsageDigest") == recomputed,
+                f"{relative(path)}: orgUsage is not the latest org-ledger record for {identity}",
+            )
+    if org_bearing:
+        policy = load_json(root / "config/knowledge-policy.json", audit)
+        allowlist = (policy.get("orgUsage") or {}).get("allowedOriginRemotes") or []
+        contained = bool(allowlist)
+        if contained:
+            import subprocess
+
+            try:
+                completed = subprocess.run(
+                    ["git", "-C", str(root), "remote", "-v"],
+                    text=True, capture_output=True, timeout=30, check=False,
+                )
+            except (OSError, subprocess.SubprocessError):
+                contained = False
+            else:
+                if completed.returncode != 0:
+                    contained = False
+                else:
+                    urls = {
+                        parts[1]
+                        for parts in (line.split() for line in completed.stdout.splitlines())
+                        if len(parts) >= 2
+                    }
+                    contained = all(url in allowlist for url in urls)
+        audit.require(
+            contained,
+            f"{org_bearing} org-bearing entr{'y' if org_bearing == 1 else 'ies'} present but origin "
+            "containment fails (gate 1: allowlist empty, off-list remote, or git unavailable)",
+        )
+
+
 def main() -> int:
     audit = Audit()
     check_required_files(audit)
@@ -1200,6 +1291,7 @@ def main() -> int:
     check_skill_commands(audit)
     check_release_handover_contract(audit)
     check_knowledge_consumer_sets(audit)
+    check_org_usage(audit)
     if audit.errors:
         print(f"FAIL: harness validation ({len(audit.errors)} errors, {audit.checks} checks)")
         for message in audit.errors:

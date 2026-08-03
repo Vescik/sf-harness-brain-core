@@ -59,7 +59,11 @@ Goal: assemble every fact the design will stand on, with sources, before proposi
      --object <ApiName> --fields <list>` command — bounded fields/rows, live sandbox proof.
      Any org-observed number carried into the persisted design cites the org alias and
      observation time — live query results are timestamped sandbox observations, never durable
-     facts or production truth.
+     facts or production truth. When the number should outlive this design and the subject is a
+     wave-1 entry (CustomObject, CustomField), request an org attach from a Config Investigator
+     session (the only role that may run `entry-org-attach`) so the design can cite the entry's
+     persisted, expiring `orgUsage` block instead of a transcript literal; an expired or
+     superseded block is absent — re-observe, never cite it.
    - Delegate deep or contested investigation to Config Investigator; never guess.
 7. Produce the **Grounding Summary**: facts table (fact, source type, evidence ref, freshness),
    component ownership classification (package-owned / subscriber-owned / platform / unknown),

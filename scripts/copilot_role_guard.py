@@ -22,6 +22,10 @@ ALLOWED_PREFIXES = {
     ),
     "config-investigator": (
         ".cache/knowledge-proposals/",
+        # Agent-authored org-usage probes-files only (contract §6.6). Receipts in the same
+        # tree are written exclusively by the entry-org-attach executor; nothing here is
+        # Knowledge authority — canonical orgUsage flows only through the governed command.
+        ".cache/org-usage/",
     ),
     # Repo-source Knowledge maintenance only: fills draft sentinels and runs the governed
     # knowledge commands. Deliberately NO Salesforce org surface and no work-record authority.
@@ -246,8 +250,16 @@ FORCE_APP_COMMAND_FLAGS = {
 KNOWLEDGE_STORE_MUTATION_COMMANDS = frozenset(
     {"entry-draft", "entry-describe", "entry-approve", "entry-revoke",
      # feature-review / feature-status / feature-check are reads, matching entry-review.
-     "feature-propose", "feature-describe", "feature-approve", "feature-revoke"}
+     "feature-propose", "feature-describe", "feature-approve", "feature-revoke",
+     # Org-usage attach/detach (contract §6.6): mutations that deliberately spend NO chat
+     # click (owner D-3 2026-08-03, schema-as-instrument) — the verb-partition test asserts
+     # they sit in the authoring bucket. Role-narrowed further by ORG_ATTACH_ROLES below.
+     "entry-org-attach", "entry-org-detach"}
 )
+# Narrower than KNOWLEDGE_MUTATION_ROLES: only the org-facing investigator may attach org
+# observations; the curator never gains org authority (contract §6.6).
+ORG_ATTACH_COMMANDS = frozenset({"entry-org-attach", "entry-org-detach"})
+ORG_ATTACH_ROLES = frozenset({"config-investigator"})
 KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-draft": frozenset(
         {
@@ -267,6 +279,8 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-status": frozenset({"--identity"}),
     "entry-coverage": frozenset(),
     "entry-check": frozenset({"--changed-since"}),
+    "entry-org-attach": frozenset({"--identity", "--org", "--probes-file"}),
+    "entry-org-detach": frozenset({"--identity", "--org", "--rationale"}),
     # Feature Entries (contract §13). The boundary rule is human-authored, so propose/describe
     # are mutations; review/status/check are reads, mirroring the entry-review precedent.
     "feature-propose": frozenset(
@@ -355,6 +369,8 @@ def knowledge_store_command_allowed(parts: list[str], role: str) -> bool:
     if not parts or parts[0] not in KNOWLEDGE_STORE_COMMAND_FLAGS:
         return False
     command = parts[0]
+    if command in ORG_ATTACH_COMMANDS and role not in ORG_ATTACH_ROLES:
+        return False
     if command in KNOWLEDGE_STORE_MUTATION_COMMANDS and role not in KNOWLEDGE_MUTATION_ROLES:
         return False
     allowed_flags = KNOWLEDGE_STORE_COMMAND_FLAGS[command]

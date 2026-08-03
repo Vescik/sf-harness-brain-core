@@ -3,7 +3,7 @@ name: batch-knowledge
 description: Convert one whole metadata type (e.g. all Flows) into governed Knowledge in a five-phase batch — discover, plan, verify the plan, execute in chunks, verify the result.
 argument-hint: "type=<MetadataType> [chunk=<N, default 10>] [recordId=<ID>]"
 agent: config-investigator
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'vscode/askQuestions']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'vscode/askQuestions', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query']
 ---
 
 Use the [batch-knowledge skill](../skills/batch-knowledge/SKILL.md).

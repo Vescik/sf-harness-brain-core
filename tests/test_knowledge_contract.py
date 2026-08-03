@@ -270,6 +270,11 @@ class RecordFreeKnowledgeLaneTests(unittest.TestCase):
         ".github/skills/investigate-object/SKILL.md",
         ".github/skills/investigate-config-records/SKILL.md",
         ".github/skills/update-knowledge-base/SKILL.md",
+        # Named directly (not only via the prompt-hint scan below, which silently drops a
+        # skill if its prompt's [recordId= hint is removed): the two record-free entry lanes
+        # that gained the org-sampling step (org-usage layer, 2026-08-03).
+        ".github/skills/batch-knowledge/SKILL.md",
+        ".github/skills/propose-force-app-knowledge/SKILL.md",
     )
     RECORD = re.compile(r"work[- ]record|`recordid`", re.I)
     DEMAND = re.compile(

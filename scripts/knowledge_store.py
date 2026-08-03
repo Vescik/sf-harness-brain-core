@@ -53,6 +53,11 @@ REVIEW_ARTIFACT_ROOT = ROOT / "output/knowledge-approvals"
 SCHEMA_DIR = ROOT / "schemas"
 LOCAL_CONFIG = ROOT / "config/harness.local.json"
 TAXONOMY_PATH = ROOT / ".ai/knowledge/keyword-taxonomy.md"
+# Org-usage layer (contract v1.2 §6.6): a SEPARATE append-only ledger — the approval ledger is
+# never written by attach/detach, which is half of the approval-preservation argument.
+ORG_LEDGER_PATH = ROOT / ".ai/knowledge/artifacts-org-ledger.jsonl"
+ORG_USAGE_CACHE = ROOT / ".cache/org-usage"
+KNOWLEDGE_POLICY_PATH = ROOT / "config/knowledge-policy.json"
 
 SENTINEL_PATTERN = re.compile(r"<AGENT_[A-Z0-9_]*>?")
 PROSE_CHUNK_LIMIT = 25
@@ -116,9 +121,9 @@ import contextlib
 def rooted(root: Path):
     """Bind module paths to a different repo root (work_record gates, unit tests)."""
     global ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH
-    global FEATURES_ROOT, FEATURE_LEDGER_PATH
+    global FEATURES_ROOT, FEATURE_LEDGER_PATH, ORG_LEDGER_PATH, ORG_USAGE_CACHE, KNOWLEDGE_POLICY_PATH
     saved = (ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH,
-             FEATURES_ROOT, FEATURE_LEDGER_PATH)
+             FEATURES_ROOT, FEATURE_LEDGER_PATH, ORG_LEDGER_PATH, ORG_USAGE_CACHE, KNOWLEDGE_POLICY_PATH)
     ROOT = Path(root).resolve()
     ARTIFACTS_ROOT = ROOT / ".ai/knowledge/artifacts"
     LEDGER_PATH = ROOT / ".ai/knowledge/artifacts-ledger.jsonl"
@@ -127,11 +132,14 @@ def rooted(root: Path):
     REVIEW_ARTIFACT_ROOT = ROOT / "output/knowledge-approvals"
     LOCAL_CONFIG = ROOT / "config/harness.local.json"
     TAXONOMY_PATH = ROOT / ".ai/knowledge/keyword-taxonomy.md"
+    ORG_LEDGER_PATH = ROOT / ".ai/knowledge/artifacts-org-ledger.jsonl"
+    ORG_USAGE_CACHE = ROOT / ".cache/org-usage"
+    KNOWLEDGE_POLICY_PATH = ROOT / "config/knowledge-policy.json"
     try:
         yield
     finally:
         (ROOT, ARTIFACTS_ROOT, LEDGER_PATH, REVIEW_ARTIFACT_ROOT, LOCAL_CONFIG, TAXONOMY_PATH,
-         FEATURES_ROOT, FEATURE_LEDGER_PATH) = saved
+         FEATURES_ROOT, FEATURE_LEDGER_PATH, ORG_LEDGER_PATH, ORG_USAGE_CACHE, KNOWLEDGE_POLICY_PATH) = saved
 
 
 # --- strict canonical parser (contract §5.6) -------------------------------------------
@@ -793,7 +801,10 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
     adapter = ADAPTERS.get(metadata_type)
     profile = PROFILES.get(metadata_type)
     if adapter is None or profile is None:
-        raise StoreError(f"unsupported metadata type {metadata_type!r} in pilot (Flow, CustomField)")
+        raise StoreError(
+            f"unsupported metadata type {metadata_type!r}; profiled types: "
+            + ", ".join(sorted(PROFILES))
+        )
     component = collector_component(metadata_type, args.full_name)
     type_facts, intentional, assurance = adapter(component)
     # Without an authored description the entry carries a sentinel: the facts are extracted,
@@ -844,6 +855,9 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
     }
     if intentional:
         frontmatter["intentionalErrors"] = intentional
+    # M-R4 carry-forward (contract §2.3): a redraft rebuilds this frontmatter wholesale and must
+    # not silently drop the digest-excluded org observation an earlier attach persisted.
+    carry_forward_org_usage(frontmatter, entry_path(metadata_type, args.namespace, args.full_name))
     frontmatter["lifecycle"]["contentDigest"] = reviewed_content_digest(frontmatter, body)
     problems = [
         problem
@@ -1172,6 +1186,35 @@ def command_entry_review(args: argparse.Namespace) -> dict[str, Any]:
                     f"({error.get('presentation', {}).get('mode')})"
                 )
             lines.append("")
+        if frontmatter.get("orgUsage"):
+            # Contract §14.3 / §5.7: org data is disclosed beside — never inside — what the
+            # click approves; expired/superseded values are withheld (expired means absent).
+            org = compute_org_lane(frontmatter, identity, org_ledger_latest())
+            lines += [
+                "### Observed org data — machine-attested, expiring, NOT covered by this approval",
+                "",
+            ]
+            for key, value in sorted(org["orgs"].items()):
+                if value.get("status") == "org-fresh":
+                    block = (frontmatter["orgUsage"].get("orgs") or {}).get(key, {})
+                    probe_labels = ", ".join(sorted(block.get("probes") or {}))
+                    record_count = None
+                    for probe in (block.get("probes") or {}).values():
+                        if probe.get("kind") == "object-shape":
+                            record_count = (probe.get("results") or {}).get("recordCount")
+                    summary = f"org-fresh; probes: {probe_labels or '(none)'}"
+                    if record_count is not None:
+                        summary += f"; recordCount {record_count}"
+                    lines.append(
+                        f"- `{key}` ({value.get('environment')}): {summary}; "
+                        f"observed {value['observedAt']}, expires {value['expiresAt']}"
+                    )
+                else:
+                    lines.append(
+                        f"- `{key}`: {value.get('status')} — values withheld "
+                        f"(observed {value.get('observedAt', 'unknown')})"
+                    )
+            lines.append("")
     REVIEW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
     artifact = REVIEW_ARTIFACT_ROOT / f"{chunk_id}-review.md"
     with artifact.open("w", encoding="utf-8", newline="\n") as handle:
@@ -1274,9 +1317,25 @@ def command_entry_revoke(args: argparse.Namespace) -> dict[str, Any]:
 
 def command_entry_status(args: argparse.Namespace) -> dict[str, Any]:
     latest = ledger_latest(read_ledger())
-    lanes = [compute_lane(path, latest) for path in all_entry_paths()]
-    if args.identity:
-        lanes = [lane for lane in lanes if lane["identity"] == args.identity]
+    org_latest = org_ledger_latest()
+    lanes = []
+    for path in all_entry_paths():
+        lane = compute_lane(path, latest)
+        if args.identity and lane["identity"] != args.identity:
+            continue
+        frontmatter, _body = split_entry(path.read_text(encoding="utf-8"))
+        if frontmatter.get("orgUsage") or org_latest.get(lane["identity"]):
+            org = compute_org_lane(frontmatter, lane["identity"], org_latest)
+            disclosed: dict[str, Any] = {
+                "section": org["section"],
+                "orgs": [
+                    {"orgKey": key, **value} for key, value in sorted(org["orgs"].items())
+                ],
+            }
+            if org.get("problems"):
+                disclosed["problems"] = org["problems"]
+            lane["orgUsage"] = disclosed
+        lanes.append(lane)
     return {"outcome": "STATUS", "entries": lanes}
 
 
@@ -1398,12 +1457,787 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
         "entries": len(seen_identities),
         "ledgerRecords": len(read_ledger()),
     }
+    # Advisory org-lane disclosure (contract §14.3): counts + non-fresh attention list. CI
+    # never fails on expiry; the HARD tamper check (digest vs org ledger, containment) is
+    # validate_harness's. Gated on the org ledger existing so an org-free workspace pays
+    # nothing extra here.
+    if ORG_LEDGER_PATH.exists():
+        org_latest = org_ledger_latest()
+        org_counts: dict[str, int] = {}
+        org_attention: list[str] = []
+        for path in all_entry_paths():
+            frontmatter, _body = split_entry(path.read_text(encoding="utf-8"))
+            subject = frontmatter["subject"]
+            identity = identity_of(subject["metadataType"], subject.get("namespace"), subject["fullName"])
+            if not (frontmatter.get("orgUsage") or org_latest.get(identity)):
+                continue
+            org = compute_org_lane(frontmatter, identity, org_latest)
+            if org["section"] in ("org-not-effective",) and not org["orgs"]:
+                org_counts["org-not-effective"] = org_counts.get("org-not-effective", 0) + 1
+                org_attention.append(f"{identity}: org-not-effective ({'; '.join(org.get('problems', []))})")
+            for key, value in org["orgs"].items():
+                org_counts[value["status"]] = org_counts.get(value["status"], 0) + 1
+                if value["status"] != "org-fresh":
+                    org_attention.append(f"{identity} [{key}]: {value['status']}")
+        if org_counts:
+            result["orgUsage"] = {"counts": dict(sorted(org_counts.items())), "attention": sorted(org_attention)}
     if ref:
         result["changedSince"] = ref
         result["entriesSkipped"] = skipped
         if changed is None:
             result["gap"] = f"git could not report changes since {ref}; every entry was checked in full"
     return result
+
+
+# --- org-usage layer (contract v1.2 — §2.3 storage, §4 org lanes, §6.6 attach) ----------
+#
+# Everything here is digest-EXCLUDED: _canonical_facts and reviewed_content_digest enumerate
+# closed key sets that never mention orgUsage, so attach/detach provably cannot move an
+# approval (contract §5.7); both commands verify that invariant at runtime and refuse to
+# write when it would not hold. Authority is machine attestation — the parallel org ledger,
+# the sectionDigest, and the sealed receipt — never a human click (owner D-3, 2026-08-03).
+
+
+class ProbeDropped(Exception):
+    """One probe failed derivation; it is dropped and reported, never partially persisted."""
+
+
+ORG_ATTACH_METADATA_TYPES = frozenset({"CustomObject", "CustomField"})
+ORG_PROBE_KINDS = frozenset(
+    {
+        "object-shape",
+        "record-type-distribution",
+        "field-fill",
+        "field-cardinality",
+        "picklist-distribution",
+        "recency-window",
+        "lookup-shape",
+        "record-sample",
+    }
+)
+# Which probe kinds make sense per wave-1 entry type; the entry schema's kind enum is the
+# backstop (schemas/knowledge-entry.schema.json $defs.orgUsageProbe).
+PROBE_APPLICABILITY = {
+    "CustomObject": ORG_PROBE_KINDS,
+    "CustomField": frozenset(
+        {"field-fill", "field-cardinality", "picklist-distribution", "lookup-shape"}
+    ),
+}
+PROBE_LABEL_RE = re.compile(r"^[a-z][a-z0-9-]{2,40}$")
+ORG_API_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.]{0,120}$")
+EXPLICIT_LIMIT_RE = re.compile(r"\bLIMIT\s+(\d+)\s*$", re.IGNORECASE)
+LAST_N_DAYS_RE = re.compile(r"LAST_N_DAYS\s*:\s*(\d+)", re.IGNORECASE)
+FROM_OBJECT_RE = re.compile(r"\bFROM\s+([A-Za-z][A-Za-z0-9_]*)", re.IGNORECASE)
+
+# Embedded probes-file schema (owner D-3: executor rigor without a registered schema file).
+# Labels are free slugs — owner D-5' 2026-08-03: several probes of one kind under different
+# WHERE criteria are legal and encouraged; the closed instrument is the kind enum plus the
+# per-kind results shapes in the entry schema.
+PROBES_FILE_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["probes"],
+    "properties": {
+        "probes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 40,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["label", "kind", "query"],
+                "properties": {
+                    "label": {"type": "string", "pattern": PROBE_LABEL_RE.pattern},
+                    "kind": {"enum": sorted(ORG_PROBE_KINDS)},
+                    "query": {"type": "string", "minLength": 15, "maxLength": 4000},
+                    "field": {"type": "string", "pattern": ORG_API_NAME_RE.pattern},
+                    "windowDays": {"type": "integer", "minimum": 1, "maximum": 3650},
+                    "targetObjects": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string",
+                            "pattern": ORG_API_NAME_RE.pattern,
+                        },
+                    },
+                },
+            },
+        }
+    },
+}
+
+
+def org_usage_policy() -> dict[str, Any]:
+    """The orgUsage policy block; attach fails closed without it (contract §6.6)."""
+    if not KNOWLEDGE_POLICY_PATH.exists():
+        raise StoreError("config/knowledge-policy.json is missing; the orgUsage policy block is required")
+    block = json.loads(KNOWLEDGE_POLICY_PATH.read_text(encoding="utf-8")).get("orgUsage")
+    if not isinstance(block, dict):
+        raise StoreError("config/knowledge-policy.json has no orgUsage block (contract §6.6)")
+    return block
+
+
+def org_id_digest(expected_organization_id: str) -> str:
+    """sha256 of the CONFIGURED expectedOrganizationId — the raw 00D id is never stored."""
+    import hashlib
+
+    return "sha256:" + hashlib.sha256(expected_organization_id.encode("utf-8")).hexdigest()
+
+
+def configured_org(alias: str) -> dict[str, Any]:
+    if not LOCAL_CONFIG.exists():
+        raise StoreError("config/harness.local.json is required for org attach")
+    config = json.loads(LOCAL_CONFIG.read_text(encoding="utf-8"))
+    for org in config.get("salesforce", {}).get("orgs", []):
+        if org.get("alias") == alias:
+            return org
+    raise StoreError(f"org alias {alias!r} is not configured")
+
+
+def _origin_remote_urls() -> list[str]:
+    """Every git remote URL; ANY subprocess failure is a refusal, never a pass (§6.6)."""
+    import subprocess
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(ROOT), "remote", "-v"],
+            text=True, capture_output=True, timeout=30, check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise StoreError("containment: git remote enumeration failed — refusing, never passing (gate 1)") from exc
+    if completed.returncode != 0:
+        raise StoreError("containment: git remote enumeration failed — refusing, never passing (gate 1)")
+    urls = set()
+    for line in completed.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 2:
+            urls.add(parts[1])
+    return sorted(urls)
+
+
+def assert_containment(policy: dict[str, Any]) -> None:
+    """Gate 1 (owner D-1 2026-08-03): org-bearing entries live only in the private company
+    clone. Empty allowlist — the shipped default on the public origin — refuses everywhere
+    and is the standing kill switch. Zero remotes with a SUCCESSFUL enumeration is local-only
+    and passes; a failed enumeration never does."""
+    allowlist = policy.get("allowedOriginRemotes") or []
+    if not allowlist:
+        raise StoreError(
+            "containment: orgUsage.allowedOriginRemotes is empty — org attach is refused in "
+            "this workspace (gate 1; org-bearing entries live only in the private company clone)"
+        )
+    off_list = [url for url in _origin_remote_urls() if url not in allowlist]
+    if off_list:
+        raise StoreError("containment: git remote(s) outside the allowlist: " + ", ".join(off_list))
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _parse_iso(value: str) -> datetime:
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    text = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", text)
+    moment = datetime.fromisoformat(text)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(timezone.utc)
+
+
+def _iso_or_none(value: Any, context: str) -> Any:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ProbeDropped(f"{context}: expected an ISO datetime, got {type(value).__name__}")
+    try:
+        return _parse_iso(value).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        raise ProbeDropped(f"{context}: unparseable datetime {value!r}")
+
+
+def carry_forward_org_usage(frontmatter: dict[str, Any], path: Path) -> None:
+    """Preserve a digest-excluded orgUsage section across a wholesale frontmatter rebuild."""
+    if not path.is_file():
+        return
+    previous, _previous_body = split_entry(path.read_text(encoding="utf-8"))
+    if "orgUsage" in previous:
+        frontmatter["orgUsage"] = previous["orgUsage"]
+
+
+def load_probes_file(
+    path_text: str, metadata_type: str, object_api_name: str, policy: dict[str, Any]
+) -> list[dict[str, Any]]:
+    from jsonschema import Draft202012Validator
+
+    path = Path(path_text)
+    if not path.is_file():
+        raise StoreError(f"probes file not found: {path_text}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise StoreError(f"probes file is not valid JSON: {exc}") from exc
+    errors = sorted(e.message for e in Draft202012Validator(PROBES_FILE_SCHEMA).iter_errors(payload))
+    if errors:
+        raise StoreError("probes file failed validation: " + "; ".join(errors[:5]))
+    probes = payload["probes"]
+    labels = [probe["label"] for probe in probes]
+    if len(labels) != len(set(labels)):
+        raise StoreError("probes file has duplicate labels")
+    applicable = PROBE_APPLICABILITY.get(metadata_type, frozenset())
+    sample_rows_max = int(policy.get("sampleRowsMax", 50))
+    max_columns = int(policy.get("maxSampleColumns", 20))
+    for probe in probes:
+        label, kind = probe["label"], probe["kind"]
+        query = probe["query"].strip()
+        probe["query"] = query
+        if kind not in applicable:
+            raise StoreError(f"probe {label!r}: kind {kind!r} is not applicable to {metadata_type}")
+        limit_match = EXPLICIT_LIMIT_RE.search(query)
+        if not limit_match:
+            raise StoreError(
+                f"probe {label!r}: an explicit trailing LIMIT is required — the executed-query "
+                "digest must be recomputable from the submitted text (contract §6.6)"
+            )
+        limit = int(limit_match.group(1))
+        from_objects = FROM_OBJECT_RE.findall(query)
+        if len(from_objects) != 1 or from_objects[0] != object_api_name:
+            raise StoreError(
+                f"probe {label!r}: exactly one FROM naming the entry's object "
+                f"{object_api_name!r} is required"
+            )
+        upper = query.upper()
+        select_clause = query[: upper.find(" FROM ")] if " FROM " in upper else query
+        if any(item.count(".") > 2 for item in select_clause.split(",")):
+            raise StoreError(f"probe {label!r}: dotted parent paths deeper than 2 hops (D-NEST)")
+        if kind == "record-sample":
+            if limit > sample_rows_max:
+                raise StoreError(
+                    f"probe {label!r}: record-sample LIMIT {limit} exceeds sampleRowsMax {sample_rows_max}"
+                )
+            if select_clause.count(",") + 1 > max_columns:
+                raise StoreError(f"probe {label!r}: more than {max_columns} sample columns")
+        if kind == "recency-window" and not (probe.get("windowDays") or LAST_N_DAYS_RE.search(query)):
+            raise StoreError(f"probe {label!r}: recency-window needs LAST_N_DAYS in the query or windowDays")
+        if kind == "lookup-shape" and not probe.get("targetObjects"):
+            raise StoreError(f"probe {label!r}: lookup-shape needs a targetObjects mapping")
+    return probes
+
+
+def _scalar_row(facts: dict[str, Any], label: str) -> dict[str, Any]:
+    records = facts.get("records") or []
+    if len(records) != 1 or not isinstance(records[0], dict):
+        raise ProbeDropped(f"{label}: expected exactly one aggregate row")
+    return {key: value for key, value in records[0].items() if key != "attributes"}
+
+
+def _int_items(row: dict[str, Any]) -> list[tuple]:
+    return [
+        (key, value)
+        for key, value in row.items()
+        if isinstance(value, int) and not isinstance(value, bool)
+    ]
+
+
+def _derive_object_shape(facts, probe, policy):
+    row = _scalar_row(facts, probe["label"])
+    if not isinstance(row.get("recordCount"), int):
+        raise ProbeDropped(f"{probe['label']}: alias the count as recordCount (SELECT COUNT(Id) recordCount ...)")
+    results: dict[str, Any] = {"recordCount": row["recordCount"]}
+    for key in ("createdFirst", "createdLast", "lastModifiedMax"):
+        if key in row:
+            results[key] = _iso_or_none(row[key], f"{probe['label']}.{key}")
+    return results, []
+
+
+def _derive_distribution(facts, probe, policy):
+    floor = int(policy.get("usageGroupSuppressionFloor", 5))
+    groups: list[dict[str, Any]] = []
+    folded_groups = 0
+    folded_count = 0
+    for record in facts.get("records") or []:
+        if not isinstance(record, dict):
+            raise ProbeDropped(f"{probe['label']}: malformed GROUP BY row")
+        row = {key: value for key, value in record.items() if key != "attributes"}
+        ints = _int_items(row)
+        rest = [(key, value) for key, value in row.items() if (key, value) not in ints]
+        if len(ints) != 1 or len(rest) != 1:
+            raise ProbeDropped(f"{probe['label']}: each GROUP BY row must carry one group key and one count")
+        count = ints[0][1]
+        key_value = rest[0][1]
+        key = "(null)" if key_value is None else str(key_value)[:80]
+        if count < floor:
+            folded_groups += 1
+            folded_count += count
+        else:
+            groups.append({"key": key, "recordCount": count})
+    groups.sort(key=lambda item: (-item["recordCount"], item["key"]))
+    results: dict[str, Any] = {"groups": groups[:200], "suppressionFloor": floor}
+    if folded_groups:
+        results["otherBucket"] = {"suppressedGroups": folded_groups, "recordCount": folded_count}
+    if probe.get("field"):
+        results["field"] = probe["field"]
+    return results, []
+
+
+def _derive_fill_like(facts, probe, policy, value_key, target_objects=None):
+    row = _scalar_row(facts, probe["label"])
+    total = row.get("totalCount")
+    if not isinstance(total, int):
+        raise ProbeDropped(f"{probe['label']}: alias COUNT(Id) as totalCount")
+    fields = []
+    for key, value in sorted(row.items()):
+        if key == "totalCount" or not (isinstance(value, int) and not isinstance(value, bool)):
+            continue
+        entry: dict[str, Any] = {"field": key, value_key: value, "totalCount": total}
+        if target_objects is not None:
+            target = target_objects.get(key)
+            if not target:
+                raise ProbeDropped(f"{probe['label']}: no targetObjects mapping for field {key!r}")
+            entry["targetObject"] = target
+        fields.append(entry)
+    if not fields:
+        raise ProbeDropped(f"{probe['label']}: no per-field counts found (alias each COUNT(field) as the field name)")
+    return {"fields": fields[:200]}, []
+
+
+def _derive_field_fill(facts, probe, policy):
+    return _derive_fill_like(facts, probe, policy, "filledCount")
+
+
+def _derive_field_cardinality(facts, probe, policy):
+    return _derive_fill_like(facts, probe, policy, "distinctCount")
+
+
+def _derive_lookup_shape(facts, probe, policy):
+    return _derive_fill_like(facts, probe, policy, "filledCount", probe.get("targetObjects") or {})
+
+
+def _derive_recency_window(facts, probe, policy):
+    row = _scalar_row(facts, probe["label"])
+    count = row.get("recordCount")
+    if not isinstance(count, int):
+        raise ProbeDropped(f"{probe['label']}: alias COUNT(Id) as recordCount")
+    declared = probe.get("windowDays")
+    match = LAST_N_DAYS_RE.search(probe["query"])
+    parsed = int(match.group(1)) if match else None
+    if declared and parsed and declared != parsed:
+        raise ProbeDropped(f"{probe['label']}: windowDays {declared} disagrees with LAST_N_DAYS:{parsed}")
+    window = declared or parsed
+    return {"windows": [{"windowDays": window, "recordCount": count}]}, []
+
+
+def _flatten_record(record: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in record.items():
+        if key == "attributes":
+            continue
+        path_key = f"{prefix}{key}"
+        if isinstance(value, dict):
+            out.update(_flatten_record(value, path_key + "."))
+        else:
+            out[path_key] = value
+    return out
+
+
+def _collect_structure(record: dict[str, Any], prefix: str, out: dict[str, dict[str, Any]]) -> None:
+    for key, value in record.items():
+        if key == "attributes":
+            continue
+        path_key = f"{prefix}{key}"
+        if isinstance(value, dict):
+            info = out.setdefault(path_key, {"types": set(), "populated": 0})
+            info["populated"] += 1
+            attributes = value.get("attributes")
+            if isinstance(attributes, dict) and isinstance(attributes.get("type"), str):
+                info["types"].add(attributes["type"])
+            _collect_structure(value, path_key + ".", out)
+
+
+def _derive_record_sample(facts, probe, policy):
+    records = [record for record in (facts.get("records") or []) if isinstance(record, dict)]
+    if not records:
+        raise ProbeDropped(f"{probe['label']}: zero rows sampled")
+    sample_size = len(records)
+    if sample_size > int(policy.get("sampleRowsMax", 50)):
+        raise ProbeDropped(f"{probe['label']}: sample of {sample_size} rows exceeds sampleRowsMax")
+    fill: dict[str, int] = {}
+    relationship: dict[str, dict[str, Any]] = {}
+    for record in records:
+        for path_key, value in _flatten_record(record).items():
+            populated = value is not None and value != ""
+            fill[path_key] = fill.get(path_key, 0) + (1 if populated else 0)
+        _collect_structure(record, "", relationship)
+    field_fill = [
+        {"field": key, "populatedCount": count, "sampleSize": sample_size}
+        for key, count in sorted(fill.items())
+        if ORG_API_NAME_RE.fullmatch(key)  # closed vocabulary: residual keys are dropped
+    ][:40]
+    if not field_fill:
+        raise ProbeDropped(f"{probe['label']}: no conforming sampled columns")
+    structure_rows = []
+    for prefix, info in sorted(relationship.items()):
+        types = sorted(info["types"])
+        if not types or not ORG_API_NAME_RE.fullmatch(types[0]) or not ORG_API_NAME_RE.fullmatch(prefix):
+            continue
+        structure_rows.append(
+            {
+                "path": prefix,
+                "targetObject": types[0],
+                "populated": f"{info['populated']}/{sample_size}",
+                "sampleSize": sample_size,
+                "polymorphicObservedType": types[1] if len(types) > 1 else None,
+            }
+        )
+    return {"sampleSize": sample_size, "fieldFill": field_fill}, structure_rows[:40]
+
+
+DERIVERS = {
+    "object-shape": _derive_object_shape,
+    "record-type-distribution": _derive_distribution,
+    "picklist-distribution": _derive_distribution,
+    "field-fill": _derive_field_fill,
+    "field-cardinality": _derive_field_cardinality,
+    "lookup-shape": _derive_lookup_shape,
+    "recency-window": _derive_recency_window,
+    "record-sample": _derive_record_sample,
+}
+
+
+def _facade_call(alias: str, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    """Facade subprocess client — the executor observes; the agent never carries attested
+    bytes (fabrication defense: agents cannot mint digests). Imported lazily because
+    work_record imports this module."""
+    try:
+        from scripts.work_record import call_salesforce_review_facade
+    except ModuleNotFoundError:  # invoked as a script
+        from work_record import call_salesforce_review_facade  # type: ignore
+    return call_salesforce_review_facade(ROOT, alias, tool, arguments)
+
+
+def org_ledger_latest() -> dict[str, dict[str, Any]]:
+    return ledger_latest(read_ledger(ORG_LEDGER_PATH))
+
+
+def compute_org_lane(
+    frontmatter: dict[str, Any],
+    identity: str,
+    org_latest: "dict[str, dict[str, Any]] | None" = None,
+    now: "datetime | None" = None,
+) -> dict[str, Any]:
+    """Read-time org lanes (contract §4) — parallel to compute_lane; never touches approval.
+
+    Freshness applies min(stored expiresAt, observedAt + CURRENT policy window): the stored
+    stamp is a ceiling, not a grant, so tightening the policy expires existing blocks
+    retroactively. A missing policy block behaves as a zero-day window — fail-closed to
+    org-expired, never to fresh."""
+    from datetime import timedelta
+
+    if org_latest is None:
+        org_latest = org_ledger_latest()
+    moment = now or datetime.now(timezone.utc)
+    section = frontmatter.get("orgUsage")
+    record = org_latest.get(identity)
+    if not section:
+        if record is not None and record.get("action") == "attach":
+            return {
+                "section": "org-not-effective",
+                "orgs": {},
+                "problems": ["orgUsage section missing while the latest org-ledger record is an attach"],
+            }
+        return {"section": "org-absent", "orgs": {}}
+    orgs = section.get("orgs") or {}
+    recomputed = canonical_digest(orgs)
+    problems: list[str] = []
+    if section.get("sectionDigest") != recomputed:
+        problems.append("orgUsage.sectionDigest does not recompute (hand-edit or corruption)")
+    if record is None:
+        problems.append("orgUsage present without any org-ledger record")
+    elif record.get("orgUsageDigest") != recomputed:
+        problems.append(
+            "orgUsage digest is not the latest org-ledger record (replay or crash — "
+            "recover forward with entry-org-attach or entry-org-detach, contract §6.6)"
+        )
+    if problems:
+        return {
+            "section": "org-not-effective",
+            "orgs": {key: {"status": "org-not-effective"} for key in orgs},
+            "problems": problems,
+        }
+    try:
+        max_age_days = int(org_usage_policy().get("maxOrgUsageAgeDays", 0))
+    except StoreError:
+        max_age_days = 0
+    config_orgs: dict[str, dict[str, Any]] = {}
+    if LOCAL_CONFIG.exists():
+        raw = json.loads(LOCAL_CONFIG.read_text(encoding="utf-8"))
+        config_orgs = {org.get("alias"): org for org in raw.get("salesforce", {}).get("orgs", [])}
+    lanes: dict[str, dict[str, Any]] = {}
+    for key, block in orgs.items():
+        observed = _parse_iso(block["observedAt"])
+        effective_expiry = min(_parse_iso(block["expiresAt"]), observed + timedelta(days=max_age_days))
+        configured = config_orgs.get(key)
+        status, reason = "org-fresh", None
+        if configured is None:
+            status, reason = "org-superseded", "alias is no longer configured"
+        elif (
+            not configured.get("expectedOrganizationId")
+            or org_id_digest(configured["expectedOrganizationId"]) != block.get("orgIdDigest")
+        ):
+            status, reason = "org-superseded", "configured org identity changed (sandbox refresh)"
+        elif configured.get("refreshedAt") and observed < _parse_iso(configured["refreshedAt"]):
+            status, reason = "org-superseded", "observed before the owner-declared sandbox refresh"
+        elif moment >= effective_expiry:
+            status = "org-expired"
+        lane: dict[str, Any] = {
+            "status": status,
+            "observedAt": block["observedAt"],
+            "expiresAt": effective_expiry.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "environment": block.get("environment"),
+        }
+        if "fullCopy" in block:
+            lane["fullCopy"] = block["fullCopy"]
+        if reason:
+            lane["reason"] = reason
+        lanes[key] = lane
+    return {"section": "org-effective", "orgs": lanes}
+
+
+def command_entry_org_attach(args: argparse.Namespace) -> dict[str, Any]:
+    """Machine-attested org attach (contract §6.6; click-free by owner D-3: the human
+    approved the INSTRUMENT — closed shapes, executor derivers, sanitization, expiry, the
+    containment allowlist — not each number). Fail-closed preconditions run in contract
+    order; ANY identity or environment mismatch mid-run aborts the WHOLE attach."""
+    import hashlib
+    from datetime import timedelta
+
+    assert_no_reparse_points()
+    policy = org_usage_policy()
+    assert_containment(policy)
+    metadata_type, namespace_segment, full_name = args.identity.split(":", 2)
+    if metadata_type not in ORG_ATTACH_METADATA_TYPES:
+        raise StoreError(
+            "org attach is wave-1 only ("
+            + ", ".join(sorted(ORG_ATTACH_METADATA_TYPES))
+            + f"); got {metadata_type!r}"
+        )
+    namespace = None if namespace_segment == "c" else namespace_segment
+    path = entry_path(metadata_type, namespace, full_name)
+    if not path.is_file():
+        raise StoreError(f"no entry for {args.identity}")
+    frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+    if frontmatter.get("sensitivity") == "public":
+        raise StoreError("org observations cannot attach to a public-sensitivity entry")
+    org = configured_org(args.org)
+    if org.get("environment") not in {"development", "qa", "uat"}:
+        raise StoreError(f"org {args.org!r}: environment {org.get('environment')!r} is not attachable")
+    if org.get("allowAgentRead") is not True or org.get("allowAgentReview") is not True:
+        raise StoreError(f"org {args.org!r} does not allow agent read+review")
+    expected_org_id = org.get("expectedOrganizationId")
+    if not expected_org_id:
+        raise StoreError(
+            "dynamic-lane refused (owner D-4): the alias has no configured expectedOrganizationId"
+        )
+    object_api_name = full_name.split(".", 1)[0]
+    probes = load_probes_file(args.probes_file, metadata_type, object_api_name, policy)
+
+    digest_before = reviewed_content_digest(frontmatter, body)
+    executed: dict[str, dict[str, Any]] = {}
+    receipt_probes: dict[str, dict[str, Any]] = {}
+    structure_rows: list[dict[str, Any]] = []
+    dropped: list[dict[str, str]] = []
+    for probe in probes:
+        label = probe["label"]
+        envelope = _facade_call(args.org, "review_soql_query", {"query": probe["query"]})
+        target = envelope.get("target") or {}
+        if (
+            target.get("environment") == "dynamic"
+            or target.get("nonProduction") is not True
+            or target.get("expectedOrgIdMatched") is not True
+            or target.get("environment") != org.get("environment")
+        ):
+            raise StoreError(
+                f"probe {label!r}: org identity/environment mismatch — the whole attach is "
+                "aborted and nothing is persisted (one attach is one org snapshot, contract §6.6)"
+            )
+        if envelope.get("status") != "VERIFIED" or (envelope.get("completeness") or {}).get("complete") is not True:
+            dropped.append({"label": label, "reason": f"status {envelope.get('status')}"})
+            continue
+        facts = (envelope.get("facts") or {}).get("soqlQuery") or {}
+        query_digest = hashlib.sha256(probe["query"].encode("utf-8")).hexdigest()
+        if facts.get("queryDigest") != query_digest:
+            raise StoreError(
+                f"probe {label!r}: QUERY_DIGEST_MISMATCH — the facade executed different text "
+                "than was submitted; refusing the whole attach"
+            )
+        if facts.get("fromObjects") != [object_api_name]:
+            raise StoreError(
+                f"probe {label!r}: envelope fromObjects {facts.get('fromObjects')!r} is not the entry's object"
+            )
+        try:
+            results, rows = DERIVERS[probe["kind"]](facts, probe, policy)
+        except ProbeDropped as reason:
+            dropped.append({"label": label, "reason": str(reason)})
+            continue
+        executed[label] = {
+            "kind": probe["kind"],
+            "queryDigest": f"sha256:{query_digest}",
+            "completeness": "complete",
+            "results": results,
+        }
+        structure_rows.extend(rows)
+        receipt_probes[label] = {
+            "queryText": probe["query"],
+            "queryDigest": f"sha256:{query_digest}",
+            "kind": probe["kind"],
+            "envelope": envelope,
+        }
+    if not executed:
+        raise StoreError("no probe completed — nothing to persist; dropped: " + json.dumps(dropped))
+
+    observed_at = _utc_now_iso()
+    max_age_days = int(policy.get("maxOrgUsageAgeDays", 0))
+    if max_age_days < 1:
+        raise StoreError("orgUsage.maxOrgUsageAgeDays must be a positive integer")
+    expires_at = (_parse_iso(observed_at) + timedelta(days=max_age_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    block: dict[str, Any] = {
+        "environment": org["environment"],
+        "orgIdDigest": org_id_digest(expected_org_id),
+        "observedAt": observed_at,
+        "expiresAt": expires_at,
+        "shapeVersion": 1,
+        "transport": "mcp-review-facade",
+        "assurance": "org-observed",
+        "probes": executed,
+    }
+    if isinstance(org.get("fullCopy"), bool):
+        block["fullCopy"] = org["fullCopy"]
+    if structure_rows:
+        seen_paths = set()
+        unique_rows = []
+        for row in structure_rows:
+            if row["path"] not in seen_paths:
+                seen_paths.add(row["path"])
+                unique_rows.append(row)
+        block["recordStructure"] = unique_rows[:40]
+
+    run_id = observed_at.replace("-", "").replace(":", "") + "-" + canonical_digest(
+        {"identity": args.identity, "orgKey": args.org, "queries": sorted(p["query"] for p in probes)}
+    )[7:15]
+    wrapper: dict[str, Any] = {
+        "schemaVersion": 1,
+        "runId": run_id,
+        "identity": args.identity,
+        "orgKey": args.org,
+        "attachedAt": observed_at,
+        "probes": receipt_probes,
+    }
+    receipt_digest = canonical_digest(wrapper)
+    wrapper["wrapperDigest"] = receipt_digest
+    block["receiptDigest"] = receipt_digest
+
+    orgs = dict((frontmatter.get("orgUsage") or {}).get("orgs") or {})
+    orgs[args.org] = block
+    frontmatter["orgUsage"] = {"sectionDigest": canonical_digest(orgs), "orgs": orgs}
+
+    problems = [
+        problem
+        for problem in validate_entry(frontmatter, body)
+        if "sentinel" not in problem  # a draft entry awaiting its description may still attach
+    ]
+    if problems:
+        raise StoreError("attach would leave an invalid entry: " + "; ".join(problems))
+    digest_after = reviewed_content_digest(frontmatter, body)
+    if digest_after != digest_before:
+        raise StoreError("INVARIANT BREACH: attach would move the approval digest — refusing (contract §5.7)")
+
+    receipt_path = ORG_USAGE_CACHE / safe_name(args.identity, args.identity) / f"{run_id}.json"
+    if len(relative_path(receipt_path)) > PATH_BUDGET:
+        raise StoreError(f"receipt path exceeds the {PATH_BUDGET}-char budget (contract §3)")
+    # Write ordering (contract §6.6): receipt -> entry -> org ledger. A crash between the last
+    # two leaves org-not-effective and a failing validate check; recovery is forward-only.
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    receipt_path.write_text(json.dumps(wrapper, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write(path, render_entry(frontmatter, body))
+    append_ledger(
+        [
+            {
+                "action": "attach",
+                "identity": args.identity,
+                "orgKey": args.org,
+                "orgUsageDigest": frontmatter["orgUsage"]["sectionDigest"],
+                "observedAt": observed_at,
+                "expiresAt": expires_at,
+                "shapeVersion": 1,
+                "transport": "mcp-review-facade",
+                "receiptDigest": receipt_digest,
+            }
+        ],
+        ORG_LEDGER_PATH,
+    )
+    return {
+        "outcome": "ORG_ATTACHED",
+        "identity": args.identity,
+        "orgKey": args.org,
+        "probes": sorted(executed),
+        "dropped": dropped,
+        "observedAt": observed_at,
+        "expiresAt": expires_at,
+        "approvalDigestBefore": digest_before,
+        "approvalDigestAfter": digest_after,
+        "approvalPreserved": digest_after == digest_before,
+        "receipt": relative_path(receipt_path),
+    }
+
+
+def command_entry_org_detach(args: argparse.Namespace) -> dict[str, Any]:
+    """Remove one org's block; approvals are untouched by the same closed-key-set argument."""
+    assert_no_reparse_points()
+    metadata_type, namespace_segment, full_name = args.identity.split(":", 2)
+    namespace = None if namespace_segment == "c" else namespace_segment
+    path = entry_path(metadata_type, namespace, full_name)
+    if not path.is_file():
+        raise StoreError(f"no entry for {args.identity}")
+    frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+    org_usage = frontmatter.get("orgUsage") or {}
+    orgs = dict(org_usage.get("orgs") or {})
+    if args.org not in orgs:
+        raise StoreError(f"no org block for {args.org!r} on {args.identity}")
+    digest_before = reviewed_content_digest(frontmatter, body)
+    orgs.pop(args.org)
+    if orgs:
+        frontmatter["orgUsage"] = {"sectionDigest": canonical_digest(orgs), "orgs": orgs}
+        new_digest = frontmatter["orgUsage"]["sectionDigest"]
+    else:
+        frontmatter.pop("orgUsage", None)
+        new_digest = None
+    problems = [p for p in validate_entry(frontmatter, body) if "sentinel" not in p]
+    if problems:
+        raise StoreError("detach would leave an invalid entry: " + "; ".join(problems))
+    digest_after = reviewed_content_digest(frontmatter, body)
+    if digest_after != digest_before:
+        raise StoreError("INVARIANT BREACH: detach would move the approval digest — refusing (contract §5.7)")
+    atomic_write(path, render_entry(frontmatter, body))
+    append_ledger(
+        [
+            {
+                "action": "detach",
+                "identity": args.identity,
+                "orgKey": args.org,
+                "orgUsageDigest": new_digest,
+                "rationale": args.rationale,
+                "detachedAt": _utc_now_iso(),
+            }
+        ],
+        ORG_LEDGER_PATH,
+    )
+    return {
+        "outcome": "ORG_DETACHED",
+        "identity": args.identity,
+        "orgKey": args.org,
+        "remainingOrgs": sorted(orgs),
+        "approvalPreserved": digest_after == digest_before,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1458,6 +2292,23 @@ def build_parser() -> argparse.ArgumentParser:
         "entry-coverage", help="entry coverage per metadata type against force-app source"
     )
     coverage.set_defaults(func=command_entry_coverage)
+
+    org_attach = commands.add_parser(
+        "entry-org-attach",
+        help="run governed SOQL probes and attach the derived orgUsage block (click-free; contract §6.6)",
+    )
+    org_attach.add_argument("--identity", required=True)
+    org_attach.add_argument("--org", required=True)
+    org_attach.add_argument("--probes-file", required=True)
+    org_attach.set_defaults(func=command_entry_org_attach)
+
+    org_detach = commands.add_parser(
+        "entry-org-detach", help="remove one org's usage block and append the detach to the org ledger"
+    )
+    org_detach.add_argument("--identity", required=True)
+    org_detach.add_argument("--org", required=True)
+    org_detach.add_argument("--rationale", required=True)
+    org_detach.set_defaults(func=command_entry_org_detach)
 
     check = commands.add_parser("entry-check", help="CI validation of all entries and the ledger")
     check.add_argument(

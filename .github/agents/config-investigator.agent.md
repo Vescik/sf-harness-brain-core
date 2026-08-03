@@ -59,6 +59,13 @@ feature and its relations, automations, and UI as a unit, load
 7. For source-wide discovery, inventory only the repository-root `force-app`. Require a complete
    inventory and clean tracked source at an exact commit before drafting `metadata-repository`
    evidence; never bind dirty or untracked files to `HEAD`.
+7a. When documenting a wave-1 entry (CustomObject, CustomField) and a review org is configured,
+   org sampling is the default: compose the probes-file and run the governed
+   `python scripts/knowledge_store.py entry-org-attach` (batch-knowledge skill, entry-lane
+   org-sampling step). The executor re-runs every probe, derives closed counts/shapes — row
+   values never persist — and attaches click-free (machine-attested, expiring, outside every
+   approval digest). Skip with a reported reason when no org is configured or containment
+   refuses; this lane is record-free like the rest of documenting existing state.
 8. Escalate when a mutation, inaccessible package internal, business interpretation, vendor
    guarantee, or unallowlisted component would be required.
 

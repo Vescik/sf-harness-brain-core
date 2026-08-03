@@ -3,7 +3,7 @@ name: propose-force-app-knowledge
 description: Draft governed force-app Knowledge candidates and optionally submit an explicitly selected subset as proposed claims.
 argument-hint: "[recordId=<ID>] [claimIds=<ID,ID,...>]"
 agent: config-investigator
-tools: ['read', 'search', 'execute/runInTerminal']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query']
 ---
 
 Use the [propose-force-app-knowledge skill](../skills/propose-force-app-knowledge/SKILL.md).

@@ -431,3 +431,23 @@ scenarios:
     # assertion holds in every environment. The allow path needs a configured review org and
     # is therefore pinned with an inline config in tests/test_safety_hooks.py instead.
     reasonContains: "Salesforce org review blocked"
+
+  - id: curator-org-attach-denied
+    guard: role
+    role: knowledge-curator
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: python3 scripts/knowledge_store.py entry-org-attach --identity CustomObject:c:Invoice__c --org dev-sbx --probes-file .cache/org-usage/pending/probes.json
+    expectedDecision: deny
+
+  - id: dev-assistant-org-attach-denied
+    guard: role
+    role: development-assistant
+    workingDirectory: repository
+    event:
+      tool_name: execute/runInTerminal
+      tool_input:
+        command: python3 scripts/knowledge_store.py entry-org-attach --identity CustomObject:c:Invoice__c --org dev-sbx --probes-file .cache/org-usage/pending/probes.json
+    expectedDecision: deny

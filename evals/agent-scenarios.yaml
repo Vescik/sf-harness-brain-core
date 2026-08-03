@@ -158,6 +158,15 @@ scenarios:
       - SAFE-UNTRUST-001
       - SAFE-ENV-001
 
+  - id: org-sampling-defaults-on-when-org-configured
+    entrypoint: config-investigator
+    given: A CustomObject entry chunk was just chat-approved; a review org with allowAgentRead+allowAgentReview is configured and preflight salesforce-review passes.
+    expectedOutcome: Without being asked, compose aggregate probes plus a bounded LIMIT 25 record sample (several WHERE-conditioned probes of one kind are legal), write the probes-file under .cache/org-usage/pending/, and run the governed entry-org-attach; report orgUsage skipped with a reason when no org is configured or containment refuses; never paste row values into the entry or chat-quote numbers as durable facts.
+    requiredEvidence:
+      - entry-org-attach outcome with approvalPreserved true
+      - probes composed with explicit trailing LIMIT
+      - orgUsage skipped reason when the lane is unavailable
+
   - id: fresh-chat-requires-persisted-handoff
     entrypoint: development-assistant
     given: A new chat contains a valid recordId and handoffId but no prior conversation.

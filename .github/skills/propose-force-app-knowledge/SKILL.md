@@ -91,6 +91,16 @@ backed by org, vendor, SME, or ADO evidence.
    If `knowledge.chatReviewer` is unset, report the exact config key and stop — never guess an
    approver. Never call the file-based `review`/`promote` commands or edit canonical Knowledge
    directly.
+9. For a CustomObject or CustomField documented through the entry lane, org sampling is the
+   default follow-up when a review org is configured (`python scripts/preflight.py --capability
+   salesforce-review` passes) and the entry's org lane is not already `org-fresh`: compose the
+   probes-file and run the governed
+   `python scripts/knowledge_store.py entry-org-attach --identity <id> --org <alias>
+   --probes-file <path>` exactly as the batch-knowledge skill's entry-lane org-sampling step
+   describes (bounded `LIMIT 25` sample plus aggregates; several WHERE-conditioned probes of one
+   kind are legal; row values never enter the entry — the executor derives counts and shapes and
+   attaches click-free). When no org is configured or containment refuses, skip silently and
+   report the reason; this step never blocks the repository-side proposal.
 
 ## Return
 

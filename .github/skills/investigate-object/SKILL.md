@@ -22,7 +22,12 @@ Reject a generic “inspect the org,” unspecified target, record dump, or comp
 configured review allowlist. Route record data-shape questions (structure, fill, distributions)
 to the governed record reads instead of rejecting them (owner decision 2026-07-30):
 `review_soql_query` on the facade, `salesforce_read.py records`, or
-`investigate-config-records`.
+`investigate-config-records`. When the finding should outlive the chat and the subject is a
+wave-1 entry (CustomObject, CustomField), persist it instead of quoting transcript numbers:
+compose the probes and run the governed `python scripts/knowledge_store.py entry-org-attach`
+per the batch-knowledge skill's entry-lane org-sampling step — an expired or superseded org
+block is absent for grounding, and a persisted design may cite only unexpired org numbers with
+their orgKey and observedAt.
 
 ## Procedure
 

@@ -45,7 +45,10 @@ except ModuleNotFoundError:  # invoked as `python scripts/knowledge_search.py`
     import relation_kinds  # type: ignore
     from text_analysis import ANALYZER_VERSION, analyze, fold_diacritics  # type: ignore
 
-INDEX_SCHEMA_VERSION = 1
+# 1 -> 2 (2026-08-03): projections gained the orgUsage metadata block (orgKey/environment/
+# observedAt/expiresAt only — probe values NEVER enter fields or facets). The manifest check
+# self-invalidates version-1 caches; no test pins the value.
+INDEX_SCHEMA_VERSION = 2
 POLICY_VERSION = "1.0.0"
 
 # BM25F field weights (docs/evidence-to-analyse.md §25.8.3). Values are a starting point to
@@ -433,10 +436,28 @@ def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:
             + analyze(error.get("elementApiName") or "")
         ],
     }
+    # Org-usage metadata ONLY (contract §14.3): the freshness verdict is recomputed at query
+    # time by every consumer, and probe values are structurally excluded from BM25 text and
+    # facets — an org number must never be findable, only disclosed beside a verified entry.
+    org_usage_meta = []
+    org_section = front.get("orgUsage")
+    if isinstance(org_section, dict):
+        for org_key, block in sorted((org_section.get("orgs") or {}).items()):
+            row = {
+                "orgKey": org_key,
+                "environment": block.get("environment"),
+                "observedAt": block.get("observedAt"),
+                "expiresAt": block.get("expiresAt"),
+            }
+            if "fullCopy" in block:
+                row["fullCopy"] = block["fullCopy"]
+            org_usage_meta.append(row)
+
     return {
         "identity": identity,
         "path": lane["path"],
         "lane": lane["lane"],
+        "orgUsage": org_usage_meta,
         "assurance": front.get("assurance", {}),
         "coverage": front.get("extractionCoverage", {}),
         "limitations": front.get("limitations", []),
@@ -2284,6 +2305,42 @@ PERMISSION_KINDS = {
 CONTEXT_TOP_DEFAULT = 25
 
 
+def org_usage_bucket(document: dict[str, Any]) -> list[dict[str, Any]]:
+    """Org observation disclosure (contract §14.3), separate from every lane bucket.
+
+    The projection carries only orgKey/environment/observedAt/expiresAt; expiry is recomputed
+    against the wall clock ON EVERY READ — an index built yesterday must not serve
+    yesterday's freshness. This bucket never carries probe numbers: values live in the entry
+    and are summarized only by entry-status/entry-review, and the full org lane (superseded
+    detection needs config + org ledger) is entry-status's verdict, not this one."""
+    from datetime import datetime, timezone
+
+    rows: list[dict[str, Any]] = []
+    for block in document.get("orgUsage") or []:
+        expired = True
+        try:
+            expired = datetime.now(timezone.utc) >= store._parse_iso(block["expiresAt"])
+        except (KeyError, ValueError, TypeError):
+            pass
+        rows.append(
+            {
+                "orgKey": block.get("orgKey"),
+                "status": (
+                    "org-expired — treat as absent: run a live probe or re-attach, never cite"
+                    if expired
+                    else "current-by-clock — the full org lane needs entry-status before citing"
+                ),
+                "attribution": (
+                    f"sandbox {block.get('orgKey')} ({block.get('environment')}), observed "
+                    f"{block.get('observedAt')}, expires {block.get('expiresAt')} — "
+                    "machine-attested, NOT covered by entry approval; shape/presence, "
+                    "not production volume"
+                ),
+            }
+        )
+    return rows
+
+
 def run_context(args: argparse.Namespace) -> dict[str, Any]:
     """Everything about one artifact, in one call.
 
@@ -2477,6 +2534,7 @@ def run_context(args: argparse.Namespace) -> dict[str, Any]:
         "artifactId": document["identity"],
         "lifecycle": document["lane"],
         "lifecycleBasis": {"anchor": "store-fresh", "rows": LIFECYCLE_BASIS},
+        "orgUsage": org_usage_bucket(document),
         "subject": {
             "facets": document["facets"],
             "purpose": document.get("purpose"),

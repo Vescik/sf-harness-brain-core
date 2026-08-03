@@ -376,7 +376,22 @@ are not durable.
   as a default-on step (dedicated investigate-usage prompt only if the pilot shows the need).
 - Phase 1 implemented same day on branch `feat/org-usage-layer` (contract v1.2 §2.3/§3/§4/§5.5/
   §5.7/§6.6/§14.3; `orgUsage` $defs family + wave-1 pin in knowledge-entry schema; policy block
-  90d; harness-config `fullCopy`/`refreshedAt`; `.cache/org-usage/.gitkeep`). No executor, guard,
-  or consumer behavior changed yet — Phases 2-3 next, Phase 4 blocked on the owed D-2 facts.
+  90d; harness-config `fullCopy`/`refreshedAt`; `.cache/org-usage/.gitkeep`).
+- Phases 2+3 implemented same day, one commit (the entry-command reachability pin couples the
+  executor to its workflow surface): `entry-org-attach`/`entry-org-detach` executors (facade
+  subprocess client; containment fail-closed on `git remote` failure; whole-run abort on any
+  identity/environment mismatch; per-kind derivers — row values never persist; receipt wrapper
+  under `.cache/org-usage/`; separate append-only `artifacts-org-ledger.jsonl`),
+  `compute_org_lane` with the min(expiresAt, observedAt+policy) retroactivity rule and the
+  `refreshedAt` fallback detector, entry-draft carry-forward, guard mirrors + ORG_ATTACH_ROLES
+  (config-investigator only) + `.cache/org-usage/` write prefix, `validate_harness`
+  `check_org_usage` hard gate (ledger monotonic, digest==ledger-latest, containment),
+  INDEX_SCHEMA_VERSION 1→2 with metadata-only projection (probe values structurally excluded
+  from BM25/facets) and the context `orgUsage` bucket, entry-status/entry-check/entry-review
+  disclosure (expired ⇒ values withheld), default-on sampling steps in batch-knowledge and
+  propose-force-app-knowledge, router/handoff sentences in investigate-object, solution-design,
+  solution-designer and config-investigator, RecordFree SURFACES extended, 2 deny eval
+  scenarios, and `tests/test_org_usage.py`. Phase 4 (live enablement in the private pilot
+  clone) blocked on the owed D-2 facts + D-1 allowlist fill.
 - Approved by: workspace owner (chat, 2026-08-03).
 - Related: entries "2026-07-30 - model-composed SOQL", "2026-07-14 - MCP is read-only".

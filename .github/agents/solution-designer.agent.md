@@ -50,7 +50,11 @@ five phases (discover -> plan -> verify -> execute -> verify) structure the proc
    fields/rows, cached metadata). When the design depends on how data actually sits in records
    (structure, fill, real shapes), a bounded sandbox read is preferred over a guess or a blocking
    question (owner decision 2026-07-30); compose the query through the governed
-   `review_soql_query` facade tool (aggregates and GROUP BY allowed; results sanitized). Use
+   `review_soql_query` facade tool (aggregates and GROUP BY allowed; results sanitized). A
+   live result cited in a persisted design carries its org alias and observation time; when the
+   number should outlive the design and the subject is a wave-1 entry (CustomObject,
+   CustomField), request an org attach from Config Investigator — the only role with
+   `entry-org-attach` — and cite the entry's expiring orgUsage block instead. Use
    Config Investigator for deep or contested
    investigation; never guess, and never query outside the governed read surfaces.
 6. Reconcile Principles, Knowledge, repository state, and org evidence. Record disagreements as
