@@ -9,12 +9,12 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 |---|---|
 | `.ai` | Governed agent state: contracts, knowledge, work records, memory, QA |
 | `.ai/contracts` | Normative execution/knowledge/workflow/tooling contracts, loaded per role |
-| `.ai/knowledge` | Canonical claims/evidence/reviews, one-file artifact entries + approval ledger, generated indexes |
+| `.ai/knowledge` | One-file Knowledge Entries + approval ledgers, feature entries, keyword taxonomy |
 | `.ai/change-records` | Durable work records; record.json is authoritative state |
 | `.ai/memory` | Human-curated decisions-log.md |
 | `.ai/qa` | QA keyword map and cached test cases |
 | `.ai/templates` | Document templates |
-| `.cache` | Ignored transient caches, drafts, worklists, receipts |
+| `.cache` | Ignored transient caches, drafts, receipts |
 | `.github` | Copilot surface: kernel, agents, prompts, skills, hooks, CI |
 | `.github/agents` | Six role agents with tools, handoffs, role-guard hooks |
 | `.github/instructions` | Tiered principles + rule-registry.yaml |
@@ -115,7 +115,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 ## Resume here
 
 - Resume work from the persisted record: `python scripts/work_record.py` with explicit recordId/handoffId — chat is never workflow truth.
-- Batch knowledge progress: `python scripts/force_app_knowledge.py inventory` then `worklist --metadata-type <Type>` (derived, cannot drift).
+- Knowledge coverage: `python scripts/force_app_knowledge.py inventory` then `entry-readiness` (derived, cannot drift).
 - Decisions: `.ai/memory/decisions-log.md`; QA keywords: `.ai/qa/`.
-- Search Knowledge first: `python scripts/knowledge_registry.py query` or `.ai/knowledge/claims-index.json`.
+- Search Knowledge first: `python scripts/knowledge_search.py search --text <query>` over the entry index.
 - Deep tree: `docs/workspace-topology.md`; setup: `docs/setup-zero-to-first-prompt.md`.

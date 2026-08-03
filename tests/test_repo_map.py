@@ -126,9 +126,11 @@ class KnowledgeConsumerSetTests(unittest.TestCase):
     PLAN_TEXT = (ROOT / validate_harness.KNOWLEDGE_MASTER_PLAN).read_text(encoding="utf-8")
 
     def sets(self) -> tuple[tuple[int | None, list[str]], tuple[int | None, list[str]]]:
+        # Set B retired with the claim registry (v1 retirement P2b); the plan may still
+        # describe it historically, but the gate measures Set A only.
         return (
             validate_harness.plan_consumer_set(self.PLAN_TEXT, "Set A"),
-            validate_harness.plan_consumer_set(self.PLAN_TEXT, "Set B"),
+            (None, []),
         )
 
     def audit_root(self, root: Path) -> list[str]:
@@ -143,24 +145,18 @@ class KnowledgeConsumerSetTests(unittest.TestCase):
         shutil.copytree(ROOT / ".github", root / ".github")
         return root
 
-    def test_plan_still_names_both_sets_in_the_parsed_shape(self) -> None:
-        (declared_a, set_a), (_declared_b, set_b) = self.sets()
+    def test_plan_still_names_set_a_in_the_parsed_shape(self) -> None:
+        (declared_a, set_a), _retired = self.sets()
         self.assertEqual(8, declared_a, "§7 declares Set A as 8 surfaces")
         self.assertEqual(declared_a, len(set_a))
-        self.assertEqual(3, len(set_b), f"§7 names three Set B surfaces, parsed {set_b}")
-        self.assertNotIn("search-knowledge", set_a, "the menu owner is Set B, never Set A")
-        self.assertIn("search-knowledge", set_b)
-        self.assertEqual(set(), set(set_a) & set(set_b))
+        self.assertNotIn("search-knowledge", set_a, "the menu owner is never a Set A consumer")
 
-    def test_live_tree_meets_both_counts(self) -> None:
-        (_declared_a, set_a), (_declared_b, set_b) = self.sets()
+    def test_live_tree_meets_the_set_a_count(self) -> None:
+        (_declared_a, set_a), _retired = self.sets()
         self.assertEqual([], self.audit_root(ROOT))
         for name in set_a:
             path = validate_harness.consumer_surface_path(ROOT, name)
             self.assertIn(validate_harness.SET_A_CALL, path.read_text(encoding="utf-8"), name)
-        for name in set_b:
-            path = validate_harness.consumer_surface_path(ROOT, name)
-            self.assertIn(validate_harness.SET_B_CALL, path.read_text(encoding="utf-8"), name)
 
     def test_set_a_surface_dropping_the_entry_lookup_fails_by_name(self) -> None:
         (_declared_a, set_a), _b = self.sets()
@@ -170,7 +166,7 @@ class KnowledgeConsumerSetTests(unittest.TestCase):
                 path = validate_harness.consumer_surface_path(root, name)
                 path.write_text(
                     path.read_text(encoding="utf-8").replace(
-                        validate_harness.SET_A_CALL, "knowledge_registry.py query --subject-identity"
+                        validate_harness.SET_A_CALL, "RETIRED-LOOKUP"
                     ),
                     encoding="utf-8",
                 )
@@ -214,39 +210,6 @@ class KnowledgeConsumerSetTests(unittest.TestCase):
                         for message in errors
                     ),
                     errors,
-                )
-
-    def test_set_b_surface_dropping_its_layer_two_call_fails_by_name(self) -> None:
-        _a, (_declared_b, set_b) = self.sets()
-        for name in set_b:
-            with self.subTest(surface=name), tempfile.TemporaryDirectory() as tmp:
-                root = self.harness_copy(tmp)
-                path = validate_harness.consumer_surface_path(root, name)
-                path.write_text(
-                    path.read_text(encoding="utf-8").replace(validate_harness.SET_B_CALL, "REMOVED"),
-                    encoding="utf-8",
-                )
-                errors = self.audit_root(root)
-                self.assertTrue(
-                    any("Set B" in message and name in message for message in errors), errors
-                )
-
-    def test_dropping_the_unprofiled_type_calls_fails_with_the_type_named(self) -> None:
-        """The clause that has no surface of its own: the retained --uses-object/--uses-field."""
-
-        with tempfile.TemporaryDirectory() as tmp:
-            root = self.harness_copy(tmp)
-            for path in sorted((root / ".github").rglob("*.md")):
-                text = path.read_text(encoding="utf-8")
-                if any(flag in text for flag in validate_harness.UNPROFILED_TYPE_CALLS):
-                    for flag in validate_harness.UNPROFILED_TYPE_CALLS:
-                        text = text.replace(flag, "--subject-identity")
-                    path.write_text(text, encoding="utf-8")
-            errors = self.audit_root(root)
-            for metadata_type in ("Workflow", "ApprovalProcess", "Layout", "FieldSet"):
-                self.assertTrue(
-                    any(metadata_type in message for message in errors),
-                    f"{metadata_type} became invisible with no gap line: {errors}",
                 )
 
     def test_a_plan_edit_that_erases_a_set_fails_the_gate(self) -> None:

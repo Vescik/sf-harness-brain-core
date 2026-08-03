@@ -44,17 +44,20 @@ class DigestStabilityTests(unittest.TestCase):
 
 
 class DependencyDirectionTests(unittest.TestCase):
-    """P0 of the v1 retirement exists so the entry store no longer depends on the claim
-    registry. A reintroduced import would make the registry undeletable again."""
+    """The claim registry is retired (v1 retirement P2b). Nothing in scripts/ may import
+    it again — a reintroduced module would resurrect the dependency this pin ended."""
 
     IMPORT_RE = re.compile(r"^\s*(from|import)\s+(scripts\.)?knowledge_registry\b", re.MULTILINE)
 
-    def test_knowledge_store_does_not_import_the_registry(self) -> None:
-        source = (ROOT / "scripts/knowledge_store.py").read_text(encoding="utf-8")
-        self.assertIsNone(self.IMPORT_RE.search(source))
+    def test_no_script_imports_the_retired_registry(self) -> None:
+        for path in sorted((ROOT / "scripts").glob("*.py")):
+            with self.subTest(script=path.name):
+                self.assertIsNone(self.IMPORT_RE.search(path.read_text(encoding="utf-8")))
 
-    def test_registry_and_store_share_the_one_digest_implementation(self) -> None:
-        from scripts import knowledge_registry, knowledge_store
+    def test_the_registry_module_stays_deleted(self) -> None:
+        self.assertFalse((ROOT / "scripts/knowledge_registry.py").exists())
 
-        self.assertIs(canonical_digest, knowledge_registry.canonical_digest)
+    def test_store_uses_the_one_digest_implementation(self) -> None:
+        from scripts import knowledge_store
+
         self.assertIs(canonical_digest, knowledge_store.canonical_digest)

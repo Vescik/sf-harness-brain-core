@@ -392,52 +392,6 @@ class RoleGuardTests(unittest.TestCase):
         self.assertEqual(hook_decision(allowed), "continue")
         self.assertEqual(hook_decision(denied), "deny")
 
-    def test_investigator_propose_command_is_bound_to_draft_directory(self) -> None:
-        command = (
-            "python3 scripts/knowledge_registry.py propose "
-            "--claim-file .cache/knowledge-proposals/claim.yaml "
-            "--evidence-file .cache/knowledge-proposals/evidence.yaml "
-            "--expected-revision 0"
-        )
-        allowed = run_hook(
-            "copilot_role_guard.py",
-            {
-                "cwd": str(ROOT),
-                "tool_name": "execute/runInTerminal",
-                "tool_input": {"command": command},
-            },
-            "--role",
-            "config-investigator",
-        )
-        denied = run_hook(
-            "copilot_role_guard.py",
-            {
-                "cwd": str(ROOT),
-                "tool_name": "execute/runInTerminal",
-                "tool_input": {
-                    "command": command.replace(
-                        ".cache/knowledge-proposals/claim.yaml",
-                        "output/claim.yaml",
-                    )
-                },
-            },
-            "--role",
-            "config-investigator",
-        )
-        self.assertEqual(hook_decision(allowed), "continue")
-        self.assertEqual(hook_decision(denied), "deny")
-        refreshed = run_hook(
-            "copilot_role_guard.py",
-            {
-                "cwd": str(ROOT),
-                "tool_name": "execute/runInTerminal",
-                "tool_input": {"command": command + " --refresh-verified"},
-            },
-            "--role",
-            "config-investigator",
-        )
-        self.assertEqual(hook_decision(refreshed), "continue")
-
     def test_investigator_force_app_knowledge_commands_are_narrowly_allowlisted(self) -> None:
         from scripts import copilot_role_guard as role_guard
 
@@ -532,16 +486,6 @@ class RoleGuardTests(unittest.TestCase):
             ("python scripts/preflight.py --capability salesforce-review", all_roles),
             ("python scripts/validate_harness.py", all_roles),
             ("python scripts/run_evals.py", all_roles),
-            ("python scripts/knowledge_registry.py validate", all_roles),
-            ("python scripts/knowledge_registry.py render-indexes --check", all_roles),
-            (
-                "python scripts/knowledge_registry.py query --claim-type component-description",
-                all_roles,
-            ),
-            (
-                "python scripts/knowledge_registry.py reconcile --claim-file .cache/knowledge-proposals/drafts/KCLM-X.yaml",
-                ("config-investigator",),
-            ),
             ("python scripts/force_app_knowledge.py inventory", ("config-investigator",)),
             ("python --version", all_roles),
             ("node --version", all_roles),
@@ -647,20 +591,6 @@ class RoleGuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertFalse(role_guard.allowed_role_command(command, ROOT, "development-assistant"))
 
-    def test_knowledge_chat_approval_asks_for_human_confirmation(self) -> None:
-        # 2026-07-14 decision: agents may REQUEST knowledge promotion; the hook always stops for
-        # the human's chat confirmation, which the registry records as the review mechanism.
-        output = run_hook(
-            "copilot_safety_hook.py",
-            {
-                "tool_name": "execute/runInTerminal",
-                "tool_input": {
-                    "command": "python scripts/knowledge_registry.py approve-claim --claim-id KCLM-X-1 --expected-revision 1"
-                },
-            },
-        )
-        self.assertEqual(hook_decision(output), "ask")
-
     def test_every_approval_command_is_chat_confirmed_and_authoring_is_not(self) -> None:
         """Master plan §8's "no agent self-approval", pinned where it is actually enforced.
 
@@ -735,70 +665,6 @@ class RoleGuardTests(unittest.TestCase):
                         role,
                     )
                     self.assertEqual(hook_decision(output), "deny")
-
-    def test_investigator_may_request_approve_claim_others_may_not(self) -> None:
-        from scripts import copilot_role_guard as role_guard
-
-        command = (
-            "python scripts/knowledge_registry.py approve-claim "
-            "--claim-id KCLM-EXAMPLE-1 --expected-revision 1 --decision verify"
-        )
-        self.assertTrue(role_guard.allowed_role_command(command, ROOT, "config-investigator"))
-        for role in ("solution-designer", "development-assistant", "test-strategist", "guardrail-reviewer"):
-            with self.subTest(role=role):
-                self.assertFalse(role_guard.allowed_role_command(command, ROOT, role))
-        for bad in (
-            "python scripts/knowledge_registry.py approve-claim --claim-id not-a-claim --expected-revision 1",
-            "python scripts/knowledge_registry.py approve-claim --claim-id KCLM-EXAMPLE-1",
-            "python scripts/knowledge_registry.py approve-claim --claim-id KCLM-EXAMPLE-1 --expected-revision x",
-            "python scripts/knowledge_registry.py promote --claim-id KCLM-EXAMPLE-1 --review-id KREV-X --expected-revision 1",
-        ):
-            with self.subTest(command=bad):
-                self.assertFalse(role_guard.allowed_role_command(bad, ROOT, "config-investigator"))
-
-    def test_investigator_batch_approve_claim_specs_are_validated(self) -> None:
-        from scripts import copilot_role_guard as role_guard
-
-        good = (
-            "python scripts/knowledge_registry.py approve-claim "
-            "--claim-spec KCLM-A-1:1 --claim-spec KCLM-B-2:3"
-        )
-        self.assertTrue(role_guard.allowed_role_command(good, ROOT, "config-investigator"))
-        many = " ".join(
-            ["python scripts/knowledge_registry.py approve-claim"]
-            + [f"--claim-spec KCLM-A-{i}:1" for i in range(26)]
-        )
-        for bad in (
-            many,  # over the 25-claim cap
-            "python scripts/knowledge_registry.py approve-claim --claim-spec KCLM-A-1",  # no revision
-            "python scripts/knowledge_registry.py approve-claim --claim-spec KCLM-A-1:1 --claim-id KCLM-B-2 --expected-revision 1",  # mixed forms
-        ):
-            with self.subTest(command=bad[:60]):
-                self.assertFalse(role_guard.allowed_role_command(bad, ROOT, "config-investigator"))
-
-    def test_investigator_manifest_approval_is_contained_and_verify_only(self) -> None:
-        from scripts import copilot_role_guard as role_guard
-
-        good = (
-            "python scripts/knowledge_registry.py approve-claim "
-            "--manifest .cache/knowledge-proposals/force-app-drafts/manifest.json"
-        )
-        self.assertTrue(role_guard.allowed_role_command(good, ROOT, "config-investigator"))
-        self.assertFalse(role_guard.allowed_role_command(good, ROOT, "solution-designer"))
-        for bad in (
-            # Outside the ignored proposal workspace.
-            "python scripts/knowledge_registry.py approve-claim --manifest /etc/manifest.json",
-            "python scripts/knowledge_registry.py approve-claim --manifest output/manifest.json",
-            # Not the manifest JSON.
-            "python scripts/knowledge_registry.py approve-claim --manifest .cache/knowledge-proposals/force-app-drafts/claim.yaml",
-            # Mixed with the other approval forms.
-            good + " --claim-spec KCLM-A-1:1",
-            good + " --claim-id KCLM-A-1 --expected-revision 1",
-            # Reject is per-claim only.
-            good + " --decision reject",
-        ):
-            with self.subTest(command=bad[:70]):
-                self.assertFalse(role_guard.allowed_role_command(bad, ROOT, "config-investigator"))
 
     def test_designer_and_developer_may_use_guarded_salesforce_read(self) -> None:
         from scripts import copilot_role_guard as role_guard
@@ -1371,63 +1237,6 @@ class SafetyClassificationTests(unittest.TestCase):
             role_guard.allowed(
                 ".ai/change-records/WR-1/record.json",
                 (".ai/change-records/",),
-            )
-        )
-
-    def test_knowledge_registry_agent_surface_cannot_promote(self) -> None:
-        from scripts import copilot_role_guard as role_guard
-
-        self.assertTrue(
-            role_guard.knowledge_registry_command_allowed(
-                [
-                    "propose",
-                    "--claim-file",
-                    ".cache/knowledge-proposals/claim.yaml",
-                    "--evidence-file",
-                    ".cache/knowledge-proposals/evidence.yaml",
-                    "--expected-revision",
-                    "0",
-                ],
-                "config-investigator",
-            )
-        )
-        self.assertFalse(
-            role_guard.knowledge_registry_command_allowed(
-                [
-                    "propose",
-                    "--claim-file",
-                    "output/claim.yaml",
-                    "--evidence-file",
-                    ".cache/knowledge-proposals/evidence.yaml",
-                    "--expected-revision",
-                    "0",
-                ],
-                "config-investigator",
-            )
-        )
-        for command in ("review", "promote"):
-            with self.subTest(command=command):
-                self.assertFalse(
-                    role_guard.knowledge_registry_command_allowed(
-                        [command], "config-investigator"
-                    )
-                )
-        # Read-only self-verification is allowed (2026-07-14 usability fix); reconcile inputs
-        # stay confined to the ignored proposal workspace.
-        self.assertTrue(
-            role_guard.knowledge_registry_command_allowed(
-                ["render-indexes", "--check"], "config-investigator"
-            )
-        )
-        self.assertTrue(
-            role_guard.knowledge_registry_command_allowed(
-                ["reconcile", "--claim-file", ".cache/knowledge-proposals/drafts/KCLM-X.yaml"],
-                "config-investigator",
-            )
-        )
-        self.assertFalse(
-            role_guard.knowledge_registry_command_allowed(
-                ["reconcile", "--claim-file", "output/claim.yaml"], "config-investigator"
             )
         )
 

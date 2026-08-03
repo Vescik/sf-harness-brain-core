@@ -185,7 +185,7 @@
     },
     {
       "path": ".ai/knowledge",
-      "purpose": "Canonical claims/evidence/reviews, one-file artifact entries + approval ledger, generated indexes"
+      "purpose": "One-file Knowledge Entries + approval ledgers, feature entries, keyword taxonomy"
     },
     {
       "path": ".ai/change-records",
@@ -205,7 +205,7 @@
     },
     {
       "path": ".cache",
-      "purpose": "Ignored transient caches, drafts, worklists, receipts"
+      "purpose": "Ignored transient caches, drafts, receipts"
     },
     {
       "path": ".github",
@@ -469,9 +469,9 @@
   ],
   "resumeHere": [
     "Resume work from the persisted record: `python scripts/work_record.py` with explicit recordId/handoffId — chat is never workflow truth.",
-    "Batch knowledge progress: `python scripts/force_app_knowledge.py inventory` then `worklist --metadata-type <Type>` (derived, cannot drift).",
+    "Knowledge coverage: `python scripts/force_app_knowledge.py inventory` then `entry-readiness` (derived, cannot drift).",
     "Decisions: `.ai/memory/decisions-log.md`; QA keywords: `.ai/qa/`.",
-    "Search Knowledge first: `python scripts/knowledge_registry.py query` or `.ai/knowledge/claims-index.json`.",
+    "Search Knowledge first: `python scripts/knowledge_search.py search --text <query>` over the entry index.",
     "Deep tree: `docs/workspace-topology.md`; setup: `docs/setup-zero-to-first-prompt.md`."
   ],
   "schemaVersion": 1,
@@ -673,7 +673,7 @@
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
     ".github/skills/update-knowledge-base/SKILL.md": "sha256:03bea7b5e293621de21f469b2f19808c49973d0cc2ba2cb4c469d82d81e32d16",
     ".github/skills/update-relations/SKILL.md": "sha256:5c6e3f55a32f965edf5456033e89912598b8e2cf2c5a9152d4841420c2b3e121",
-    "config/repo-map-seed.json": "sha256:16c1d6dc23374ef4b610ec06f711c8403c3c3e8eddd1c13361520b6d7220a48a"
+    "config/repo-map-seed.json": "sha256:4fcca2b0d310265ac175e7f369443f1e7e678c88cdda5878ff44ced80bd8ef88"
   },
   "wordCount": 886
 }

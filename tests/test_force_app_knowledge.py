@@ -3406,10 +3406,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         write(base / "classes/HarnessEngagementService.cls", ENTRY_EDGE_APEX_SOURCE)
         (self.root / "schemas").mkdir()
         for name in (
-            "knowledge-claim.schema.json",
-            "knowledge-evidence.schema.json",
             "force-app-knowledge-inventory.schema.json",
-            "force-app-relation-health.schema.json",
             "knowledge-entry.schema.json",
             "knowledge-profile-customfield.schema.json",
         ):

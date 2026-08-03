@@ -50,26 +50,6 @@ scenarios:
     expectedDecision: deny
     reasonContains: SAFE-ROLE-001
 
-  - id: global-knowledge-chat-approval-asks
-    guard: global
-    workingDirectory: repository
-    event:
-      tool_name: execute/runInTerminal
-      tool_input:
-        command: python scripts/knowledge_registry.py approve-claim --claim-id KCLM-EXAMPLE-1 --expected-revision 1
-    expectedDecision: ask
-    reasonContains: copilot-chat-confirmation
-
-  - id: global-knowledge-manifest-approval-asks
-    guard: global
-    workingDirectory: repository
-    event:
-      tool_name: execute/runInTerminal
-      tool_input:
-        command: python scripts/knowledge_registry.py approve-claim --manifest .cache/knowledge-proposals/force-app-drafts/manifest.json
-    expectedDecision: ask
-    reasonContains: copilot-chat-manifest-confirmation
-
   - id: global-work-record-approval-denied
     guard: global
     workingDirectory: repository
@@ -312,26 +292,6 @@ scenarios:
         path: .github/copilot-instructions.md
     expectedDecision: deny
     reasonContains: may not edit
-
-  - id: investigator-keyword-report-allowed
-    guard: role
-    role: config-investigator
-    workingDirectory: repository
-    event:
-      tool_name: execute/runInTerminal
-      tool_input:
-        command: python scripts/knowledge_registry.py keyword-report
-    expectedDecision: continue
-
-  - id: investigator-keyword-report-with-root-denied
-    guard: role
-    role: config-investigator
-    workingDirectory: repository
-    event:
-      tool_name: execute/runInTerminal
-      tool_input:
-        command: python scripts/knowledge_registry.py keyword-report --root /tmp/other
-    expectedDecision: deny
 
   - id: global-devtool-batch-approve-denied
     guard: global

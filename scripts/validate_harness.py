@@ -171,7 +171,6 @@ def check_required_files(audit: Audit) -> None:
         "scripts/verify_salesforce_org.py",
         "scripts/salesforce_review_server.mjs",
         "scripts/work_record.py",
-        "scripts/knowledge_registry.py",
         "scripts/force_app_knowledge.py",
         "scripts/salesforce_read.py",
         "scripts/render_repo_map.py",
@@ -186,14 +185,8 @@ def check_required_files(audit: Audit) -> None:
         ".ai/contracts/knowledge-lifecycle.md",
         ".ai/contracts/source-authority.md",
         ".ai/contracts/workflow-state-machine.md",
-        "schemas/knowledge-claim.schema.json",
-        "schemas/knowledge-evidence.schema.json",
-        "schemas/knowledge-review.schema.json",
         "schemas/force-app-knowledge-inventory.schema.json",
-        "schemas/force-app-knowledge-draft-manifest.schema.json",
-        "schemas/force-app-knowledge-worklist.schema.json",
         "schemas/force-app-knowledge-resolve.schema.json",
-        "schemas/knowledge-claims-index.schema.json",
         "schemas/knowledge-entry.schema.json",
         "schemas/knowledge-feature-entry.schema.json",
         "schemas/knowledge-profile-flow.schema.json",
@@ -717,8 +710,6 @@ SET_A_CALL = "knowledge_search.py context --identity"
 # retrieval defect P0–P4 made visible, re-introduced at the last hop. Wave 2 claimed the rule was
 # present in all eight Set A surfaces when it was present in two, so §7 asserts both tokens.
 SET_A_HYDRATION_RULE = "hydrated"
-SET_B_CALL = "knowledge_registry.py query"
-UNPROFILED_TYPE_CALLS = ("--uses-object", "--uses-field")
 
 
 def plan_consumer_set(plan_text: str, label: str) -> tuple[int | None, list[str]]:
@@ -753,12 +744,11 @@ def consumer_surface_path(root: Path, name: str) -> Path:
 
 
 def check_knowledge_consumer_sets(audit: Audit, root: Path = ROOT) -> None:
-    """§7: "Both counts are asserted. Neither is allowed to move silently."
+    """§7 Set A: the step-1 *source* lookup that must run through the entry index.
 
-    Set A is the step-1 *source* lookup that must run through the entry index; Set B is the
-    layer-2 registry call the same section protects, because dropping it would make every
-    unprofiled type invisible to a coverage gate with no gap line. Both were verified by hand
-    for three audits running, which is the mode of verification this assertion exists to end.
+    Set B (the preserved layer-2 registry call) retired with the claim registry
+    (v1 retirement P2b, owner D-C 2026-08-03): the unprofiled-type gap is now NAMED in
+    check-feature-coverage's report instead of queried, so the gate here covers Set A only.
     """
 
     plan_path = root / KNOWLEDGE_MASTER_PLAN
@@ -768,24 +758,17 @@ def check_knowledge_consumer_sets(audit: Audit, root: Path = ROOT) -> None:
     plan_text = plan_path.read_text(encoding="utf-8")
 
     declared_a, set_a = plan_consumer_set(plan_text, "Set A")
-    declared_b, set_b = plan_consumer_set(plan_text, "Set B")
     audit.require(
-        bool(set_a) and bool(set_b),
-        f"{KNOWLEDGE_MASTER_PLAN} §7 no longer names Set A / Set B in the parsed shape "
+        bool(set_a),
+        f"{KNOWLEDGE_MASTER_PLAN} §7 no longer names Set A in the parsed shape "
         f"(`- **Set A — …**: `surface`, …`); the consumer gate cannot measure anything",
     )
-    if not set_a or not set_b:
+    if not set_a:
         return
     audit.require(
         declared_a == len(set_a),
         f"{KNOWLEDGE_MASTER_PLAN} §7 declares {declared_a} Set A surfaces but names "
         f"{len(set_a)}: {', '.join(set_a)}",
-    )
-    overlap = sorted(set(set_a) & set(set_b))
-    audit.require(
-        not overlap,
-        f"§7 Set A and Set B must stay disjoint — a surface cannot be both the step-1 entry "
-        f"lookup and a preserved layer-2 call: {', '.join(overlap)}",
     )
 
     for name in set_a:
@@ -804,41 +787,6 @@ def check_knowledge_consumer_sets(audit: Audit, root: Path = ROOT) -> None:
             f"contract §14.2 rules uncitable, which is the half of the lookup wave 2 claimed "
             f"without counting",
         )
-    for name in set_b:
-        path = consumer_surface_path(root, name)
-        text = path.read_text(encoding="utf-8") if path.is_file() else ""
-        audit.require(
-            SET_B_CALL in text,
-            f"§7 Set B ({len(set_b)} surfaces, each with its stated reason): {relative(path)} "
-            f"dropped its `{SET_B_CALL}` call — §7 preserves the two-layer rule, so converting "
-            f"this one is a completeness regression, not progress",
-        )
-
-    # The fourth Set B clause is not a surface but a retention: "every --uses-object /
-    # --uses-field call retained for unprofiled types". Assert it through the types §7 names,
-    # so a surface that quietly drops the flags takes its stated reason down with it.
-    retaining = {
-        relative(path): path.read_text(encoding="utf-8")
-        for path in sorted((root / ".github").rglob("*.md"))
-        if any(flag in path.read_text(encoding="utf-8") for flag in UNPROFILED_TYPE_CALLS)
-    }
-    named_types = re.search(
-        r"Dropping them would make (.+?) and every other unprofiled type invisible",
-        " ".join(plan_text.split()),
-    )
-    audit.require(
-        named_types is not None,
-        f"{KNOWLEDGE_MASTER_PLAN} §7 no longer names the unprofiled types Set B protects",
-    )
-    if named_types is None:
-        return
-    for metadata_type in [part.strip() for part in named_types.group(1).split(",")]:
-        audit.require(
-            any(metadata_type in text for text in retaining.values()),
-            f"§7 Set B: no surface retaining `--uses-object`/`--uses-field` still names "
-            f"{metadata_type} — dropping it makes that type invisible to a coverage gate "
-            f"with no gap line",
-        )
 
 
 def check_skill_commands(audit: Audit) -> None:
@@ -850,7 +798,7 @@ def check_skill_commands(audit: Audit) -> None:
     first command. Fail closed here so the skill text and the guard can never drift apart again.
     """
 
-    guarded = "preflight|work_record|knowledge_registry|force_app_knowledge|salesforce_read|validate_handover_output|playwright_guard"
+    guarded = "preflight|work_record|force_app_knowledge|salesforce_read|validate_handover_output|playwright_guard"
     bare = re.compile(r"`\s*scripts/(?:" + guarded + r")\.py(?:\s|`)")
     backslash = re.compile(r"`[^`]*(?:scripts\\|\.venv\\)")
     for skill in sorted((ROOT / ".github/skills").glob("*/SKILL.md")):
@@ -1030,16 +978,10 @@ def check_grounding_contracts(audit: Audit) -> None:
         audit.require(not errors, f"{data_name}: schema failure: {errors[0].message if errors else ''}")
 
     for schema_name in (
-        "knowledge-claim.schema.json",
-        "knowledge-evidence.schema.json",
-        "knowledge-review.schema.json",
         "change-record.schema.json",
         "handoff-envelope.schema.json",
         "salesforce-org-review-evidence.schema.json",
         "force-app-knowledge-inventory.schema.json",
-        "force-app-knowledge-draft-manifest.schema.json",
-        "force-app-knowledge-worklist.schema.json",
-        "knowledge-claims-index.schema.json",
         "knowledge-extraction.schema.json",
         "dev-tool-batch.schema.json",
         "ado-wiki-cache.schema.json",
@@ -1061,8 +1003,6 @@ def check_grounding_contracts(audit: Audit) -> None:
             audit.require(False, f"schemas/{schema_name}: invalid JSON Schema: {exc}")
 
     for command in (
-        [sys.executable, "scripts/knowledge_registry.py", "validate"],
-        [sys.executable, "scripts/knowledge_registry.py", "render-indexes", "--check"],
         [sys.executable, "scripts/knowledge_store.py", "entry-check"],
         # feature-check belongs to CI rather than to a person (§6), and a CI-only gate that no
         # CI step runs is not a gate: the live tree failed feature-check while the validator
@@ -1115,9 +1055,8 @@ def check_grounding_contracts(audit: Audit) -> None:
     workflow = (ROOT / ".github/workflows/harness-ci.yml").read_text(encoding="utf-8")
     audit.require("npm ci --ignore-scripts" in workflow, "CI must install the pinned Salesforce review runtime without lifecycle scripts")
     audit.require(
-        "python scripts/knowledge_registry.py validate" in workflow
-        and "python scripts/knowledge_registry.py render-indexes --check" in workflow,
-        "CI must keep the explicit knowledge registry validate/render-indexes gates",
+        "python scripts/knowledge_store.py entry-check" in workflow,
+        "CI must keep the explicit knowledge entry-check gate",
     )
 
 

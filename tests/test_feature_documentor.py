@@ -70,11 +70,7 @@ class FeatureCrawlTests(unittest.TestCase):
 
         (self.root / "schemas").mkdir()
         for name in (
-            "knowledge-claim.schema.json",
-            "knowledge-evidence.schema.json",
             "force-app-knowledge-inventory.schema.json",
-            "force-app-knowledge-draft-manifest.schema.json",
-            "force-app-knowledge-worklist.schema.json",
             "feature-crawl.schema.json",
         ):
             shutil.copy2(ROOT / "schemas" / name, self.root / "schemas" / name)

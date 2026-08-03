@@ -664,16 +664,6 @@ class EntryCitationVerificationTests(KnowledgeStoreTests):
                 argparse.Namespace(envelope="/etc/hosts", entry_ref=[])
             )
 
-    def test_registry_envelope_path_delegates_to_the_store(self) -> None:
-        # Dies with the registry in P2; until then the envelope check must not fork logic.
-        from scripts.knowledge_registry import KnowledgeRegistry
-
-        drafted = self.draft()
-        ref = [{"entryId": drafted["identity"]}]
-        self.assertEqual(
-            store.verify_entry_citations(self.temp, ref),
-            KnowledgeRegistry(self.temp).verify_entry_citations(ref),
-        )
 
     def test_entry_coverage_separates_gaps_from_unprofiled_types(self) -> None:
         drafted = self.draft()
