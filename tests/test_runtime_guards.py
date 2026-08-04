@@ -128,6 +128,25 @@ class SalesforceProofTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(reason, f"non-production identity proven for host '{SANDBOX_HOST}'")
 
+    def test_both_sf_calls_get_the_full_sixty_second_budget(self) -> None:
+        # Regression pin (owner-reported live failure, 2026-08-04): a cold `sf` start
+        # regularly exceeds 10s, and the old `min(timeout, 10)` cap on `org display` failed
+        # the non-production proof on latency alone. Both calls must receive the full
+        # 60s default; re-introducing a shorter hidden cap must fail here by name.
+        runner = Mock(
+            side_effect=self._display_and_query(SANDBOX_HOST, ORG_ID, True)
+        )
+        with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
+            ok, _ = verifier.verify_is_sandbox(
+                "dev-sbx",
+                expected_host=SANDBOX_HOST,
+                expected_org_id=ORG_ID,
+                runner=runner,
+            )
+        self.assertTrue(ok)
+        timeouts = [call.kwargs["timeout"] for call in runner.call_args_list]
+        self.assertEqual([60, 60], timeouts)
+
     def _display_and_query(self, host: str, org_id: str, is_sandbox: bool) -> list[SimpleNamespace]:
         return [
             SimpleNamespace(
