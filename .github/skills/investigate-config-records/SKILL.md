@@ -83,7 +83,8 @@ snapshot that fills the row cap is treated as transactional and returned unresol
 
 - Never invoke or suggest direct `sf`/`sfdx`, SOSL, a Tooling flag, or an unguarded Salesforce
   MCP tool; snapshot records flow only through `salesforce_read.py records`. Composed read-only
-  SOQL (owner decision 2026-07-30) runs through the governed `review_soql_query` facade tool —
+  SOQL (owner decisions 2026-07-30, 2026-08-04) runs verbatim through the governed
+  `review_soql_query` facade tool —
   useful for scoping (counts, distributions) before a snapshot; the snapshot rows themselves stay
   on the `salesforce_read.py records` lane.
 - Never exceed the 200-row or configured field caps, chain calls to paginate past them, or

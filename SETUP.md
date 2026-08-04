@@ -202,16 +202,17 @@ owner decision of 2026-07-14.)
   authenticates with your own Azure CLI login — run `az login` once; agents never handle the
   credentials.
 - `salesforce-readonly` starts through `scripts/salesforce_review_server.mjs`. It binds one exact
-  review-enabled sandbox and exposes only identity, configured-package, allowlisted-object review,
-  validated composed read-only SOQL (`review_soql_query`), and (when
+  review-enabled non-production org and exposes only identity, configured-package,
+  allowlisted-object review, composed read-only SOQL (`review_soql_query`), and (when
   `safety.allowScopedEnumeration` is enabled) a configured-orgs listing built purely
   from local configuration. Internally it reconciles fixed Salesforce MCP and private CLI receipts, redacts raw
-  identity/record payloads, and returns `VERIFIED`, `MISMATCH`, `INCOMPLETE`, or `BLOCKED`.
+  identity payloads, and returns `VERIFIED`, `MISMATCH`, `INCOMPLETE`, or `BLOCKED`.
 - The model never receives direct `sf`/`sfdx`, an alias, directory, Tooling flag,
-  `list_all_orgs`, or raw vendor output. Composed read-only SOQL (owner decision 2026-07-30)
-  executes only through the facade's `review_soql_query` tool — statement-validated, bounded,
-  and sanitized. MCP/CLI agreement is transport corroboration from the same org, not independent
-  package/business authority.
+  `list_all_orgs`, or raw vendor output. Composed read-only SOQL (owner decisions 2026-07-30
+  and 2026-08-04) executes only through the facade's `review_soql_query` tool — verbatim, over
+  the Salesforce MCP transport, never the CLI; rows return unredacted from the identity-proven
+  non-production org. MCP/CLI agreement is transport corroboration from the same org, not
+  independent package/business authority.
 - `knowledge` starts through `scripts/knowledge_mcp_server.mjs` and is the primary read
   surface over governed Knowledge (context/search/impact/resolve/entry-status plus the
   curator deep-dive set) — read-only by construction, binds no org, takes no secrets. VS Code

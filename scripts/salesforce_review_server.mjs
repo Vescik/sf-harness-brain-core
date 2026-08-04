@@ -8,12 +8,14 @@
  * org, or an owner-admitted Developer Edition; the receipt's nonProduction fact is the
  * verdict, isSandbox is only Salesforce's attribute), collects
  * bounded facts through a private Salesforce CLI process and a pinned Salesforce MCP child, and
- * returns only normalized reconciliation evidence. Composed read-only SOQL (owner decision
- * 2026-07-30) is accepted through review_soql_query only: the statement is validated (single
- * SELECT, allowlisted objects minus a secret-adjacent deny-set, bounded LIMIT), executed against
- * the identity-proven sandbox, and returned as a sanitized, digest-bound envelope. The statement
- * validator is defense-in-depth, not the wall — the hard boundaries remain sandbox-only binding,
- * the read-only vendor toolset, payload caps, and the sensitive-output gate.
+ * returns normalized reconciliation evidence. Composed read-only SOQL (owner decisions
+ * 2026-07-30 and 2026-08-04) runs through review_soql_query as a governed pass-through: the
+ * statement executes verbatim against the identity-proven non-production org via the pinned
+ * Salesforce MCP child — never the CLI — and rows return unredacted. The 2026-08-04 decision
+ * removed the statement blockade (grammar validation, secret-adjacent deny-set, LIMIT
+ * policing, value redaction); the walls are one-alias binding, the session-frozen
+ * non-production identity proof, the read-only vendor toolset, payload caps, and — when an
+ * owner explicitly configures one — the review object allowlist.
  */
 
 import { spawn } from "node:child_process";
@@ -35,31 +37,6 @@ const SALESFORCE_MCP_BIN = resolve(REPO_ROOT, "node_modules", "@salesforce", "mc
 const OBJECT_API_NAME = /^[A-Za-z][A-Za-z0-9_]{0,79}$/;
 const ALIAS = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const ORG_ID = /^00D[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?$/;
-// Secret-adjacent objects stay unqueryable even in all-objects mode (case-insensitive match —
-// SOQL object names are case-insensitive on the platform). Covers credential/auth surfaces
-// plus high-sensitivity org-management and runtime-log entities on both the data and Tooling
-// APIs. The exact set is test-pinned; widening or shrinking it is a reviewed change.
-const NEVER_QUERY_OBJECTS = Object.freeze(new Set([
-  "namedcredential",
-  "externalcredential",
-  "connectedapplication",
-  "authprovider",
-  "authsession",
-  "loginhistory",
-  "loginip",
-  "oauthtoken",
-  "setupaudittrail",
-  "twofactorinfo",
-  "twofactormethodsinfo",
-  "sandboxinfo",
-  "sandboxprocess",
-  "apexlog",
-  "eventlogfile",
-  "certificate",
-  "samlssoconfig",
-]));
-const EMAIL_VALUE_PATTERN = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,}$/;
-const RECORD_ID_VALUE_PATTERN = /^[a-zA-Z0-9]{15}(?:[a-zA-Z0-9]{3})?$/;
 const NON_PRODUCTION_HOST = /^(?:[a-z0-9][a-z0-9-]*--[a-z0-9][a-z0-9-]*\.sandbox\.my\.salesforce\.com|[a-z0-9][a-z0-9-]*\.scratch\.my\.salesforce\.com|[a-z0-9][a-z0-9-]*\.develop\.my\.salesforce\.com)$/i;
 const DEV_EDITION_HOST = /^[a-z0-9][a-z0-9-]*\.develop\.my\.salesforce\.com$/i;
 const MAX_OUTER_MESSAGE_BYTES = 1_048_576;
@@ -114,7 +91,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   {
     name: "review_soql_query",
     title: "Run one composed read-only SOQL query against the configured non-production org",
-    description: "Execute one model-composed read-only SOQL SELECT (validated, bounded LIMIT, sanitized values) against the configured, identity-proven sandbox. Aggregates and GROUP BY are allowed; secret-adjacent objects are always denied.",
+    description: "Execute one model-composed read-only SOQL statement verbatim against the configured, identity-proven non-production org through the pinned Salesforce MCP (never the CLI). Rows return unredacted, bounded only by payload size and timeout. Add a LIMIT yourself: an overflowing result set returns INCOMPLETE/RESULT_TRUNCATED.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
@@ -124,7 +101,7 @@ const TOOL_DEFINITIONS = Object.freeze([
           type: "string",
           minLength: 8,
           maxLength: 4000,
-          description: "One read-only SOQL SELECT statement. No ';', comments, FOR UPDATE, or '${'. A LIMIT above the policy cap is rejected; a missing outer LIMIT is appended server-side.",
+          description: "One read-only SOQL statement, executed verbatim ('${' is reserved by the profile engine and rejected).",
         },
         useToolingApi: {
           type: "boolean",
@@ -240,10 +217,7 @@ function loadRuntime(alias) {
     policy.maxVendorPayloadBytes > 1_048_576 ||
     !Number.isInteger(policy.soqlQueryTimeoutSeconds) ||
     policy.soqlQueryTimeoutSeconds < 5 ||
-    policy.soqlQueryTimeoutSeconds > 120 ||
-    !Number.isInteger(policy.soqlMaxRows) ||
-    policy.soqlMaxRows < 1 ||
-    policy.soqlMaxRows > 200
+    policy.soqlQueryTimeoutSeconds > 120
   ) {
     throw new ReviewError("CONFIG_INVALID");
   }
@@ -326,7 +300,7 @@ function unavailableSource(kind, version = "unavailable") {
   return { kind, version, complete: false, retrievedAt: now() };
 }
 
-function makeEnvelope({ runtime, reviewType, status, target, sources, facts, reconciliation, completeness, warnings }) {
+function makeEnvelope({ runtime, reviewType, status, target, sources, facts, reconciliation, completeness, warnings, sensitiveGateExempt }) {
   const withoutHash = {
     schemaVersion: 1,
     runId: randomUUID(),
@@ -343,7 +317,9 @@ function makeEnvelope({ runtime, reviewType, status, target, sources, facts, rec
     completeness: completeness ?? { complete: false, dualSource: false, truncated: false },
     warnings: [...new Set(warnings ?? [])].sort(),
   };
-  if (containsSensitiveMaterial(withoutHash)) {
+  // Composed-SOQL results are exempt (owner decision 2026-08-04): record values — including
+  // emails and record Ids — return unredacted, so the leak scan would blank every real result.
+  if (!sensitiveGateExempt && containsSensitiveMaterial(withoutHash)) {
     const minimal = {
       ...withoutHash,
       status: "BLOCKED",
@@ -904,8 +880,16 @@ function failedEnvelope(runtime, reviewType, cliCapture, mcpCapture, target) {
 }
 
 async function cliIdentityGate(runtime, reviewType) {
+  // Identity is frozen per alias for the server session (the dynamic lane already worked that
+  // way). Re-proving it on every call added three CLI subprocesses per read without producing
+  // a new fact; every MCP leg still re-checks org id and sandbox flag per query. Only success
+  // is cached — failures stay retryable.
+  if (runtime.identityProof) return { identity: runtime.identityProof };
   const capture = await captureSource("salesforce-cli", "unavailable", () => collectCliIdentity(runtime));
-  if (capture.ok) return { identity: capture.value };
+  if (capture.ok) {
+    runtime.identityProof = capture.value;
+    return { identity: capture.value };
+  }
   return {
     envelope: makeEnvelope({
       runtime,
@@ -1114,15 +1098,16 @@ async function reviewObject(runtime, input) {
 }
 
 function stripSoqlLiterals(query) {
-  // Replace single-quoted literals (with escapes) by empty literals so keyword/object scanning
-  // cannot be confused by quoted content. The raw query is what executes; this is scan-only.
+  // Replace single-quoted literals (with escapes) by empty literals so FROM scanning cannot
+  // be confused by quoted content. The raw query is what executes; this is scan-only.
   return query.replace(/'(?:\\.|[^'\\])*'/g, "''");
 }
 
-// Best-effort statement validation for composed read-only SOQL. Defense-in-depth, not the wall:
-// the hard boundaries remain the sandbox-only binding, the read-only vendor toolset, payload
-// caps, and the sensitive-output gate.
-function validateComposedSoql(rawQuery, useToolingApi, runtime) {
+// Descriptive pass over a composed statement — NOT a validator (owner decision 2026-08-04:
+// the statement blockade is removed). FROM extraction feeds the envelope's fromObjects fact,
+// which the org-sampling executor keys on, and the optional configured object allowlist. The
+// statement itself executes verbatim.
+function describeComposedSoql(rawQuery, useToolingApi, runtime) {
   if (typeof rawQuery !== "string" || rawQuery.length < 8 || rawQuery.length > 4000) {
     return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
   }
@@ -1130,101 +1115,60 @@ function validateComposedSoql(rawQuery, useToolingApi, runtime) {
     return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
   }
   if (rawQuery.includes("${")) {
-    // Would collide with the profile-substitution residual check and offers nothing legitimate.
+    // '${' is the profile-substitution token; a residual would be rejected downstream anyway.
     return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
   }
-  const stripped = stripSoqlLiterals(rawQuery);
-  if (/;|--|\/\*/.test(stripped)) return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
-  if (/\bFOR\s+UPDATE\b/i.test(stripped)) return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
-  if (!/^\s*SELECT\s/i.test(stripped)) return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
-  const fromOccurrences = stripped.match(/\bFROM\b/gi) ?? [];
-  const fromTargets = [...stripped.matchAll(/\bFROM\s+([A-Za-z][A-Za-z0-9_]*)\b/gi)].map((match) => match[1]);
-  if (fromTargets.length === 0 || fromTargets.length !== fromOccurrences.length) {
-    return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
-  }
-  for (const target of fromTargets) {
-    if (!OBJECT_API_NAME.test(target)) return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
-    if (NEVER_QUERY_OBJECTS.has(target.toLowerCase())) {
-      return { ok: false, warning: "OBJECT_NOT_ALLOWLISTED" };
-    }
-    if (!runtime.allowedObjects.has("*") && !runtime.allowedObjects.has(target)) {
-      return { ok: false, warning: "OBJECT_NOT_ALLOWLISTED" };
+  const fromTargets = [
+    ...stripSoqlLiterals(rawQuery).matchAll(/\bFROM\s+([A-Za-z][A-Za-z0-9_]*)\b/gi),
+  ].map((match) => match[1]);
+  if (!runtime.allowedObjects.has("*")) {
+    // An explicitly configured allowlist is the owner's data-scoping choice for an org holding
+    // sensitive data and stays honored; the default (absent key = "*") restricts nothing.
+    for (const target of fromTargets) {
+      if (!runtime.allowedObjects.has(target)) {
+        return { ok: false, warning: "OBJECT_NOT_ALLOWLISTED" };
+      }
     }
   }
-  // Parenthesis depth per character (literals already stripped) distinguishes the outer LIMIT
-  // from subquery LIMITs; every LIMIT must respect the cap, and a missing outer LIMIT is added.
-  const depths = new Array(stripped.length);
-  for (let index = 0, depth = 0; index < stripped.length; index += 1) {
-    const character = stripped[index];
-    if (character === "(") depth += 1;
-    else if (character === ")") depth = Math.max(0, depth - 1);
-    depths[index] = depth;
-  }
-  const maxRows = runtime.policy.soqlMaxRows;
-  let outerLimit = null;
-  for (const match of stripped.matchAll(/\bLIMIT\s+(\d{1,9})\b/gi)) {
-    const value = Number(match[1]);
-    if (!Number.isInteger(value) || value < 1 || value > maxRows) {
-      return { ok: false, warning: "QUERY_VALIDATION_DENIED" };
-    }
-    if (depths[match.index] === 0) outerLimit = value;
-  }
-  const executedQuery = outerLimit === null ? `${rawQuery.trimEnd()} LIMIT ${maxRows}` : rawQuery;
   return {
     ok: true,
-    executedQuery,
     fromObjects: [...new Set(fromTargets)].sort(),
-    hasWhere: /\bWHERE\b/i.test(stripped),
-    limit: outerLimit ?? maxRows,
     useToolingApi: useToolingApi === true,
   };
 }
 
-function sanitizeSoqlValue(value, path, redactions) {
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeSoqlValue(item, `${path}[]`, redactions));
-  }
+function stripAttributes(value) {
+  // Vendor `attributes` blocks carry record URLs (instance host noise), never queried data.
+  if (Array.isArray(value)) return value.map(stripAttributes);
   if (value && typeof value === "object") {
-    const result = {};
-    for (const [key, entry] of Object.entries(value)) {
-      if (key === "attributes") continue;
-      result[key] = sanitizeSoqlValue(entry, `${path}.${key}`, redactions);
-    }
-    return result;
-  }
-  if (typeof value !== "string") return value;
-  if (EMAIL_VALUE_PATTERN.test(value)) {
-    redactions.add(`email:${path}`.slice(0, 200));
-    return "redacted-email";
-  }
-  if (RECORD_ID_VALUE_PATTERN.test(value)) {
-    redactions.add(`id:${path}`.slice(0, 200));
-    return "redacted-id";
-  }
-  if (value.length > 120) {
-    redactions.add(`truncated:${path}`.slice(0, 200));
-    return value.slice(0, 120);
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key !== "attributes")
+        .map(([key, entry]) => [key, stripAttributes(entry)]),
+    );
   }
   return value;
 }
 
 async function reviewSoqlQuery(runtime, input) {
-  const validation = validateComposedSoql(input?.query, input?.useToolingApi, runtime);
-  if (!validation.ok) {
+  const description = describeComposedSoql(input?.query, input?.useToolingApi, runtime);
+  if (!description.ok) {
     return makeEnvelope({
       runtime,
       reviewType: "soql-query",
       status: "BLOCKED",
       facts: {},
-      warnings: [validation.warning],
+      warnings: [description.warning],
     });
   }
   const gate = await cliIdentityGate(runtime, "soql-query");
   if (gate.envelope) return gate.envelope;
   const identity = gate.identity;
   const target = baseTarget(runtime, identity.proof);
-  // The CLI leg contributes the identity proof only; result values are single-source by design
-  // (IDENTITY_MATCH_ONLY) — the two transports would race a volatile dataset, not corroborate it.
+  // The CLI contributes the session identity proof only; the statement and its rows travel
+  // exclusively through the pinned Salesforce MCP child. Result values are single-source by
+  // design (IDENTITY_MATCH_ONLY) — two transports would race a volatile dataset, not
+  // corroborate it.
   const cliCapture = {
     ok: true,
     value: { source: { ...identity.source, retrievedAt: now(), complete: true } },
@@ -1234,7 +1178,7 @@ async function reviewSoqlQuery(runtime, input) {
     const payload = await withMcp(runtime, async (client) => {
       validateMcpIdentity(runtime, await client.query(runtime.policy.profiles.orgIdentity));
       return client.query(
-        { query: validation.executedQuery, useToolingApi: validation.useToolingApi },
+        { query: input.query, useToolingApi: description.useToolingApi },
         {},
         runtime.policy.soqlQueryTimeoutSeconds,
       );
@@ -1244,10 +1188,7 @@ async function reviewSoqlQuery(runtime, input) {
   if (!mcpCapture.ok) {
     return failedEnvelope(runtime, "soql-query", cliCapture, mcpCapture, target);
   }
-  const redactions = new Set();
-  const records = mcpCapture.value.payload.records
-    .slice(0, runtime.policy.soqlMaxRows)
-    .map((record) => sanitizeSoqlValue(record, "records[]", redactions));
+  const records = stripAttributes(mcpCapture.value.payload.records);
   return makeEnvelope({
     runtime,
     reviewType: "soql-query",
@@ -1256,14 +1197,13 @@ async function reviewSoqlQuery(runtime, input) {
     sources: { cli: cliCapture.value.source, mcp: mcpCapture.value.source },
     facts: {
       soqlQuery: {
-        queryDigest: createHash("sha256").update(validation.executedQuery, "utf8").digest("hex"),
-        fromObjects: validation.fromObjects,
-        hasWhere: validation.hasWhere,
-        limit: validation.limit,
-        useToolingApi: validation.useToolingApi,
+        // The digest binds the envelope to EXACTLY the submitted statement — the org-sampling
+        // executor refuses an attach when the facade executed different text.
+        queryDigest: createHash("sha256").update(input.query, "utf8").digest("hex"),
+        fromObjects: description.fromObjects,
+        useToolingApi: description.useToolingApi,
         matched: records.length,
         records,
-        sanitization: { redactions: [...redactions].sort() },
       },
     },
     reconciliation: {
@@ -1272,6 +1212,7 @@ async function reviewSoqlQuery(runtime, input) {
     },
     completeness: { complete: true, dualSource: false, truncated: false },
     warnings: [],
+    sensitiveGateExempt: true,
   });
 }
 

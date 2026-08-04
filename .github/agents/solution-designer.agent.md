@@ -55,9 +55,10 @@ five phases (discover -> plan -> verify -> execute -> verify) structure the proc
    (`review_org_identity` → `review_object_contract`) and the guarded
    `python scripts/salesforce_read.py records|retrieve` command (allowlisted object, bounded
    fields/rows, cached metadata). When the design depends on how data actually sits in records
-   (structure, fill, real shapes), a bounded sandbox read is preferred over a guess or a blocking
-   question (owner decision 2026-07-30); compose the query through the governed
-   `review_soql_query` facade tool (aggregates and GROUP BY allowed; results sanitized). A
+   (structure, fill, real shapes), a sandbox read is preferred over a guess or a blocking
+   question (owner decisions 2026-07-30, 2026-08-04); compose any read-only SOQL through the
+   governed `review_soql_query` facade tool — it runs verbatim over the Salesforce MCP
+   transport (never the CLI) and returns unredacted rows. A
    live result cited in a persisted design carries its org alias and observation time; when the
    number should outlive the design and the subject is a wave-1 entry (CustomObject,
    CustomField), request an org attach from Config Investigator — the only role with

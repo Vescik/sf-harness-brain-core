@@ -596,3 +596,31 @@ are not durable.
 - Approved by: workspace owner (chat, 2026-08-04 — "chcę żeby knowledge search był default",
   full-MCP + środkowa twardość wybrane w AskUserQuestion).
 - Related: output/discovery-2026-08-03-knowledge-mcp-server.md (plan + execution update).
+
+## 2026-08-04 — Composed-SOQL blockade removed; SOQL recommended for designer/curator/developer, MCP-transport only
+
+- Owner directive (chat, 2026-08-04, over-engineering review): "blokada powinna być w ogóle
+  zdjęta jeśli chodzi o odpalanie SOQL"; SOQL usage is to be RECOMMENDED for the Solution
+  Designer, the Knowledge agent, and the Development Assistant — "ale tylko przez Salesforce
+  MCP, a nie CLI".
+- `review_soql_query` is now a governed pass-through: the statement executes VERBATIM over
+  the pinned Salesforce MCP child against the identity-proven non-production org. Removed:
+  statement grammar validation, the 17-object secret-adjacent deny-set (NamedCredential …
+  SamlSsoConfig), LIMIT parsing/rewriting and the `soqlMaxRows` policy key, email/record-Id
+  redaction + 120-char truncation, and the sensitive-output blanking for SOQL envelopes.
+  Accepted consequence, stated to the owner: sandbox record values (emails, record Ids,
+  secret-adjacent objects) are now agent-visible and appear in transcripts.
+- Kept: one-alias binding; non-production identity proof (now cached per server session —
+  the CLI leg no longer re-runs three subprocesses per query; every MCP leg still re-checks
+  org id + sandbox flag); an EXPLICITLY configured `review.allowedObjectApiNames` list;
+  payload byte caps + SOQL timeout; `queryDigest` now over the verbatim submitted statement;
+  `fromObjects` extraction (org-sampling executor contract). `entry-org-attach` unchanged.
+- The "MCP not CLI" rule is enforcement-unchanged: the safety hook still denies every raw
+  `sf`/`sfdx` data command and raw vendor tools; the facade's SOQL data path never touched
+  the CLI. Knowledge Curator gains `salesforce-readonly/review_soql_query` as its only org
+  surface (role-guard terminal denials unchanged).
+- Envelope schema: `facts.soqlQuery` slimmed to queryDigest/fromObjects/useToolingApi/
+  matched/records; missing-LIMIT overflow now surfaces as INCOMPLETE/RESULT_TRUNCATED
+  instead of a server-side LIMIT rewrite.
+- Related: output/discovery-2026-08-04-soql-unblock.md (decision record, layer map, accepted
+  risks, out-of-scope follow-ups: salesforce_read.py retirement, org-sampling ceremony).

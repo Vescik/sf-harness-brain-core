@@ -27,8 +27,10 @@ ALLOWED_PREFIXES = {
         # Knowledge authority — canonical orgUsage flows only through the governed command.
         ".cache/org-usage/",
     ),
-    # Repo-source Knowledge maintenance only: fills draft sentinels and runs the governed
-    # knowledge commands. Deliberately NO Salesforce org surface and no work-record authority.
+    # Repo-source Knowledge maintenance: fills draft sentinels and runs the governed knowledge
+    # commands. Org surface is the read-only review_soql_query facade MCP tool only (owner
+    # decision 2026-08-04); org terminal commands stay denied and there is no work-record
+    # authority.
     "knowledge-curator": (
         ".cache/knowledge-proposals/",
     ),

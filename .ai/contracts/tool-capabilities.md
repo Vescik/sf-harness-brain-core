@@ -10,7 +10,7 @@ upgrade.
 | Reconciled installed package inventory | `salesforce-readonly/review_installed_packages` | investigator, design, review |
 | Reconciled allowlisted object contract | `salesforce-readonly/review_object_contract` | investigator, design, review, QA |
 | Scoped enumeration of configured org aliases (requires `safety.allowScopedEnumeration`) | `salesforce-readonly/review_configured_orgs` or `scripts/salesforce_read.py orgs` | investigator |
-| Composed read-only SOQL (statement-validated, bounded LIMIT, sanitized single-source values) | `salesforce-readonly/review_soql_query` | investigator, design, development |
+| Composed read-only SOQL (verbatim, Salesforce MCP transport only, unredacted single-source rows) | `salesforce-readonly/review_soql_query` | investigator, design, development, knowledge curation |
 | Guarded structured record read (allowlisted objects, bounded rows, no free-form SOQL) | `scripts/salesforce_read.py records` guarded terminal command | investigator, review |
 | Guarded metadata retrieve (allowlisted types → ignored cache dir) | `scripts/salesforce_read.py retrieve` guarded terminal command | investigator, review |
 | Salesforce non-production source retrieve into the project (per-invocation human confirmation; the only direct `sf` command not denied) | `sf project retrieve start` guarded terminal command | development only |
@@ -52,20 +52,17 @@ Raw `list_all_orgs`, raw `run_soql_query`, aliases, directories, Tooling flags, 
 and vendor payloads are not exposed to an agent. MCP/CLI agreement is transport corroboration from
 the same org, not independent truth.
 
-Policy (owner decision 2026-07-30): composed read-only SOQL is permitted — and recommended when a
-task depends on record data structure — through the governed facade's `review_soql_query` tool
-only. The facade validates the statement (single read-only SELECT, FROM objects checked against
-the configured allowlist minus a hard secret-adjacent deny-set, bounded LIMIT appended or
-enforced), executes it against the identity-proven non-production org, and returns sanitized single-source
-values (emails and record-Id-shaped strings redacted, `attributes` stripped, text capped). The
-test-pinned deny-set covers credential/auth surfaces and high-sensitivity org-management/log
-entities on both APIs: NamedCredential, ExternalCredential, ConnectedApplication, AuthProvider,
-AuthSession, LoginHistory, LoginIp, OauthToken, SetupAuditTrail, TwoFactorInfo,
-TwoFactorMethodsInfo, SandboxInfo, SandboxProcess, ApexLog, EventLogFile, Certificate,
-SamlSsoConfig. An
+Policy (owner decision 2026-07-30, widened 2026-08-04): composed read-only SOQL is permitted —
+and recommended whenever a task depends on record data structure — through the governed facade's
+`review_soql_query` tool only, for the Solution Designer, Knowledge Curator, Development
+Assistant, and Config Investigator roles. The 2026-08-04 decision removed the statement
+blockade entirely: no grammar validation, no secret-adjacent object deny-set, no LIMIT
+policing, no value redaction. The statement executes verbatim over the pinned Salesforce MCP
+child — never the CLI — against the identity-proven non-production org, and rows return
+unredacted (`attributes` noise stripped), bounded only by payload size and timeout. An
 absent `review.allowedObjectApiNames` key means all objects (equivalent to `["*"]`) — an explicit
-list remains supported for orgs holding sensitive data. The raw paths above stay denied
-regardless.
+list remains supported and honored for orgs holding sensitive data. The raw paths above stay
+denied regardless: SOQL never runs through raw CLI or raw vendor tools.
 
 Policy (owner decision 2026-07-31): any proven non-production org may be read. With
 `salesforce.review.allowAnyNonProduction` enabled, an alias absent from local configuration is

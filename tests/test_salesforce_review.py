@@ -4,7 +4,6 @@ import copy
 import hashlib
 import json
 import os
-import re
 import subprocess
 import tempfile
 import textwrap
@@ -22,7 +21,9 @@ SCRATCH_HOST = "mpsadev.scratch.my.salesforce.com"
 
 
 FAKE_CLI = r"""
+import { appendFileSync } from "node:fs";
 const args = process.argv.slice(2);
+if (process.env.SF_FAKE_CLI_LOG) appendFileSync(process.env.SF_FAKE_CLI_LOG, args.join(" ") + "\n");
 const out = (value) => process.stdout.write(JSON.stringify(value));
 if (args[0] === "version") {
   out({architecture: "test", cliVersion: "@salesforce/cli/2.141.6", nodeVersion: process.version});
@@ -211,6 +212,7 @@ class ReviewFacade:
         cli_path.write_text(textwrap.dedent(FAKE_CLI), encoding="utf-8")
         mcp_path.write_text(textwrap.dedent(FAKE_MCP), encoding="utf-8")
         self.marker_path = marker_path
+        self.cli_log_path = directory / "cli-invocations.log"
         env = {
             **os.environ,
             "SF_HARNESS_TEST_MODE": "1",
@@ -221,6 +223,7 @@ class ReviewFacade:
             "SF_HARNESS_MCP_COMMAND": "node",
             "SF_HARNESS_MCP_ARGS_JSON": json.dumps([str(mcp_path)]),
             "SF_FAKE_MCP_MARKER": str(marker_path),
+            "SF_FAKE_CLI_LOG": str(self.cli_log_path),
             "SF_FAKE_MISMATCH": "1" if mismatch else "0",
             "SF_FAKE_INSTANCE_HOST": cli_host,
             "SF_FAKE_MCP_ERROR": "1" if mcp_error else "0",
@@ -582,39 +585,35 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
             finally:
                 facade.close()
 
-    def test_composed_query_rows_are_sanitized_and_verified(self) -> None:
+    def test_composed_query_rows_pass_through_unredacted(self) -> None:
+        # Owner decision 2026-08-04: the statement blockade and value redaction are removed.
+        # Emails and record Ids are legitimate query results now; only vendor `attributes`
+        # noise (record URLs) stays stripped.
         with tempfile.TemporaryDirectory() as name:
             facade = ReviewFacade(Path(name), allowed_objects=None)
             try:
-                evidence = facade.call(
-                    "review_soql_query",
-                    {"query": "SELECT Name, Email, AccountId, Status__c FROM Contact"},
-                )
+                query = "SELECT Name, Email, AccountId, Status__c FROM Contact"
+                evidence = facade.call("review_soql_query", {"query": query})
                 self.assertEqual(evidence["status"], "VERIFIED")
                 self.assert_valid_evidence(evidence)
                 facts = evidence["facts"]["soqlQuery"]
                 self.assertEqual(facts["fromObjects"], ["Contact"])
-                self.assertEqual(facts["limit"], 200)
-                self.assertFalse(facts["hasWhere"])
                 self.assertFalse(facts["useToolingApi"])
                 self.assertEqual(facts["matched"], 2)
-                self.assertEqual(facts["records"][0]["Email"], "redacted-email")
-                self.assertEqual(facts["records"][0]["AccountId"], "redacted-id")
+                self.assertEqual(facts["records"][0]["Email"], "ada@example.com")
+                self.assertEqual(facts["records"][0]["AccountId"], "001000000000001AAA")
                 self.assertEqual(facts["records"][0]["Name"], "Ada Example")
-                self.assertIn("email:records[].Email", facts["sanitization"]["redactions"])
-                self.assertIn("id:records[].AccountId", facts["sanitization"]["redactions"])
+                self.assertNotIn("sanitization", facts)
+                self.assertEqual(
+                    facts["queryDigest"],
+                    hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                )
                 self.assertEqual(
                     evidence["reconciliation"]["status"], "IDENTITY_MATCH_ONLY"
                 )
                 self.assertFalse(evidence["completeness"]["dualSource"])
                 serialized = json.dumps(evidence)
-                for forbidden in (
-                    "ada@example.com",
-                    "bob@example.com",
-                    "001000000000001AAA",
-                    "attributes",
-                    "/private",
-                ):
+                for forbidden in ("attributes", "/private"):
                     self.assertNotIn(forbidden, serialized)
             finally:
                 facade.close()
@@ -652,35 +651,74 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
             finally:
                 facade.close()
 
-    def test_composed_query_validator_blocks_before_any_process(self) -> None:
-        denied = (
-            ("SELECT Id FROM Account; DELETE FROM Account", "QUERY_VALIDATION_DENIED"),
-            ("SELECT Id FROM Account -- comment", "QUERY_VALIDATION_DENIED"),
-            ("SELECT Id /* c */ FROM Account", "QUERY_VALIDATION_DENIED"),
-            ("SELECT Id FROM Account FOR UPDATE", "QUERY_VALIDATION_DENIED"),
-            ("UPDATE Account SET Name = 'x'", "QUERY_VALIDATION_DENIED"),
-            ("SELECT Id FROM Account WHERE Name = '${X}'", "QUERY_VALIDATION_DENIED"),
-            ("SELECT Id FROM Account LIMIT 500", "QUERY_VALIDATION_DENIED"),
-            ("SELECT Id FROM NamedCredential", "OBJECT_NOT_ALLOWLISTED"),
-            ("SELECT Id FROM namedcredential", "OBJECT_NOT_ALLOWLISTED"),
-            ("SELECT Body FROM ApexLog", "OBJECT_NOT_ALLOWLISTED"),
-            ("SELECT SandboxName FROM SandboxInfo", "OBJECT_NOT_ALLOWLISTED"),
-            # Server-side length floor mirrors the hook's 8-char bound and the tool schema's
-            # minLength (tests/test_safety_hooks.py pins the hook side of this mirror).
-            ("SELECT ", "QUERY_VALIDATION_DENIED"),
+    def test_statement_blockade_is_removed(self) -> None:
+        # Owner decision 2026-08-04: statements the old validator refused — a LIMIT above the
+        # retired soqlMaxRows cap, an inline comment, a formerly deny-set object — now execute
+        # verbatim. What remains rejected is input-shape hygiene only (non-string, out-of-bounds
+        # length, the reserved '${' profile token), pinned in the next test.
+        formerly_denied = (
+            "SELECT Id FROM Contact LIMIT 500",
+            "SELECT Name FROM Contact -- comment",
+            "SELECT COUNT(Id) recordCount FROM LoginHistory",
         )
         with tempfile.TemporaryDirectory() as name:
             facade = ReviewFacade(Path(name), allowed_objects=None)
             try:
-                for query, warning in denied:
+                for query in formerly_denied:
                     with self.subTest(query=query):
                         evidence = facade.call("review_soql_query", {"query": query})
-                        self.assertEqual(evidence["status"], "BLOCKED")
-                        self.assertEqual(evidence["warnings"], [warning])
+                        self.assertEqual(evidence["status"], "VERIFIED")
                         self.assert_valid_evidence(evidence)
-                self.assertFalse(facade.marker_path.exists())
+                        self.assertEqual(
+                            evidence["facts"]["soqlQuery"]["queryDigest"],
+                            hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                        )
             finally:
                 facade.close()
+
+    def test_input_shape_hygiene_still_rejects_before_any_process(self) -> None:
+        # Not a statement blockade: bounds mirror the tool schema and the '${' token is
+        # reserved by the profile-substitution engine.
+        denied = (
+            "SELECT ",
+            "SELECT Id FROM Account WHERE Name = '${X}'",
+            "SELECT Id FROM Contact " + "x" * 4000,
+        )
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name), allowed_objects=None)
+            try:
+                for query in denied:
+                    with self.subTest(query=query[:40]):
+                        evidence = facade.call("review_soql_query", {"query": query})
+                        self.assertEqual(evidence["status"], "BLOCKED")
+                        self.assertEqual(evidence["warnings"], ["QUERY_VALIDATION_DENIED"])
+                        self.assert_valid_evidence(evidence)
+                self.assertFalse(facade.marker_path.exists())
+                self.assertFalse(facade.cli_log_path.exists())
+            finally:
+                facade.close()
+
+    def test_composed_statement_never_reaches_the_cli_and_identity_is_session_cached(self) -> None:
+        # The transport pin for the 2026-08-04 decision ("SOQL through the Salesforce MCP,
+        # never the CLI"): the composed statement text must never appear in a CLI invocation,
+        # and the CLI identity proof runs once per server session, not once per query.
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name), allowed_objects=None)
+            try:
+                for query in (
+                    "SELECT Name, Email, AccountId, Status__c FROM Contact",
+                    "SELECT COUNT(Id) recordCount FROM Opportunity",
+                ):
+                    evidence = facade.call("review_soql_query", {"query": query})
+                    self.assertEqual(evidence["status"], "VERIFIED")
+                cli_invocations = facade.cli_log_path.read_text(encoding="utf-8").splitlines()
+            finally:
+                facade.close()
+        for line in cli_invocations:
+            self.assertNotIn("Contact", line)
+            self.assertNotIn("Opportunity", line)
+        identity_proofs = [line for line in cli_invocations if "org display" in line]
+        self.assertEqual(len(identity_proofs), 1)
 
     def test_composed_query_respects_explicit_object_allowlist(self) -> None:
         with tempfile.TemporaryDirectory() as name:
@@ -696,37 +734,13 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
             finally:
                 facade.close()
 
-    def test_never_query_deny_set_is_pinned(self) -> None:
-        # Widening or shrinking the secret-adjacent deny-set must be a deliberate, reviewed
-        # change — same discipline as the role-grant pins in test_guard_parser_contract.
+    def test_no_deny_set_remains_in_the_facade(self) -> None:
+        # Owner decision 2026-08-04: the secret-adjacent deny-set is gone WITH the rest of the
+        # statement blockade. This negative pin keeps the next maintainer from quietly
+        # reintroducing a hidden object filter — widening agent-invisible denial is a reviewed,
+        # owner-approved change, exactly like removing it was.
         source = (ROOT / "scripts" / "salesforce_review_server.mjs").read_text(encoding="utf-8")
-        match = re.search(
-            r"NEVER_QUERY_OBJECTS = Object\.freeze\(new Set\(\[(.*?)\]\)\)", source, re.S
-        )
-        self.assertIsNotNone(match)
-        names = set(re.findall(r'"([a-z0-9]+)"', match.group(1)))
-        self.assertEqual(
-            names,
-            {
-                "namedcredential",
-                "externalcredential",
-                "connectedapplication",
-                "authprovider",
-                "authsession",
-                "loginhistory",
-                "loginip",
-                "oauthtoken",
-                "setupaudittrail",
-                "twofactorinfo",
-                "twofactormethodsinfo",
-                "sandboxinfo",
-                "sandboxprocess",
-                "apexlog",
-                "eventlogfile",
-                "certificate",
-                "samlssoconfig",
-            },
-        )
+        self.assertNotIn("NEVER_QUERY_OBJECTS", source)
 
     def test_configured_orgs_envelopes_are_schema_valid(self) -> None:
         with tempfile.TemporaryDirectory() as name:
