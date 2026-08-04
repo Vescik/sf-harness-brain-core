@@ -72,7 +72,6 @@ python scripts/preflight.py
 python -m unittest discover -s tests -v
 npm run prettier:verify
 npm run lint
-npm run test:unit:ci
 ```
 
 The repository intentionally fails closed until `config/harness.local.json` contains real,

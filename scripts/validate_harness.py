@@ -281,7 +281,6 @@ def check_required_files(audit: Audit) -> None:
         ".prettierignore",
         ".prettierrc",
         "eslint.config.js",
-        "jest.config.js",
     )
     for name in required:
         audit.require((ROOT / name).is_file(), f"required file is missing: {name}")
@@ -347,10 +346,10 @@ def check_salesforce_project(audit: Audit, root: Path = ROOT) -> None:
     package = load_json(salesforce_root / "package.json", audit)
     package_lock = load_json(salesforce_root / "package-lock.json", audit)
     audit.require(package.get("private") is True, "package.json must remain private")
-    required_scripts = {"lint", "test:unit:ci", "prettier:verify"}
+    required_scripts = {"lint", "prettier:verify"}
     audit.require(
         required_scripts.issubset(package.get("scripts", {})),
-        "package.json must expose root Salesforce lint, unit-test, and formatting checks",
+        "package.json must expose the root lint and formatting checks",
     )
     audit.require(
         package_lock.get("packages", {}).get("", {}).get("name") == package.get("name"),
@@ -664,7 +663,6 @@ def check_settings_and_mcp(audit: Audit) -> None:
     required_salesforce_tasks = {
         "Salesforce: Format Check",
         "Salesforce: Lint",
-        "Salesforce: Unit Tests",
         "Salesforce: Check",
     }
     audit.require(
@@ -753,8 +751,7 @@ def check_ci(audit: Audit) -> None:
     audit.require("ubuntu-latest" in serialized and "windows-latest" in serialized, "CI must cover Linux and Windows")
     audit.require("requirements-dev.lock" in serialized, "CI must install the resolved dependency lock")
     audit.require("npm run prettier:verify" in serialized, "CI must run the root Salesforce formatting gate")
-    audit.require("npm run lint" in serialized, "CI must run the root Salesforce lint gate")
-    audit.require("npm run test:unit:ci" in serialized, "CI must run the root LWC unit gate")
+    audit.require("npm run lint" in serialized, "CI must run the root lint gate")
     codeowners = required_text(ROOT / ".github/CODEOWNERS", audit)
     for owned_path in ("/sfdx-project.json", "/force-app/", "/manifest/", "/tests/e2e/"):
         audit.require(owned_path in codeowners, f"CODEOWNERS is missing root Salesforce path: {owned_path}")

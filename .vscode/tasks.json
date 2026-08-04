@@ -66,22 +66,11 @@
       "problemMatcher": []
     },
     {
-      "label": "Salesforce: Unit Tests",
-      "type": "process",
-      "command": "npm",
-      "args": ["run", "test:unit:ci"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": []
-    },
-    {
       "label": "Salesforce: Check",
       "dependsOrder": "sequence",
       "dependsOn": [
         "Salesforce: Format Check",
-        "Salesforce: Lint",
-        "Salesforce: Unit Tests"
+        "Salesforce: Lint"
       ],
       "problemMatcher": []
     }

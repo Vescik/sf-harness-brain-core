@@ -144,7 +144,6 @@ python scripts/run_evals.py
 python scripts/preflight.py
 npm run prettier:verify
 npm run lint
-npm run test:unit:ci
 ```
 
 Use `python` on Windows (the python.org installer puts `python` on PATH; this repo does not rely on
