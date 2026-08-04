@@ -114,7 +114,11 @@ def verify_is_sandbox(
     *,
     expected_host: str | None = None,
     expected_org_id: str | None = None,
-    timeout: int = 25,
+    # 60s per sf CLI call: a cold `sf` start (Node JIT, plugin scan) regularly exceeded the
+    # old 25s/10s budgets on team machines, so the non-production proof failed on latency
+    # alone (owner-reported live failure, 2026-08-04). Raise deliberately, never to silence
+    # a hang — the two calls bound the worst case at 2x this value.
+    timeout: int = 60,
     runner: Callable[..., Any] = subprocess.run,
 ) -> tuple[bool, str]:
     if not ALIAS.fullmatch(alias) or re.search(
@@ -144,7 +148,7 @@ def verify_is_sandbox(
             ],
             text=True,
             capture_output=True,
-            timeout=min(timeout, 10),
+            timeout=timeout,
             check=False,
         )
         identity = parse_org_display(local.stdout) if len(local.stdout) <= 1_000_000 else None
