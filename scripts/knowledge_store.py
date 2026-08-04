@@ -107,6 +107,248 @@ PROFILES = {
         "version": "1.0.0",
         "schema": "knowledge-profile-lwc.schema.json",
     },
+    "FieldSet": {
+        "id": "salesforce.field-set",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-field-set.schema.json",
+    },
+    "CompactLayout": {
+        "id": "salesforce.compact-layout",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-compact-layout.schema.json",
+    },
+    "BusinessProcess": {
+        "id": "salesforce.business-process",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-business-process.schema.json",
+    },
+    "WebLink": {
+        "id": "salesforce.web-link",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-web-link.schema.json",
+    },
+    "DuplicateRule": {
+        "id": "salesforce.duplicate-rule",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-duplicate-rule.schema.json",
+    },
+    "MatchingRule": {
+        "id": "salesforce.matching-rule",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-matching-rule.schema.json",
+    },
+    "Queue": {"id": "salesforce.queue", "version": "1.0.0", "schema": "knowledge-profile-queue.schema.json"},
+    "Role": {"id": "salesforce.role", "version": "1.0.0", "schema": "knowledge-profile-role.schema.json"},
+    "DelegateGroup": {
+        "id": "salesforce.delegate-group",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-delegate-group.schema.json",
+    },
+    "PermissionSetGroup": {
+        "id": "salesforce.permission-set-group",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-permission-set-group.schema.json",
+    },
+    "StaticResource": {
+        "id": "salesforce.static-resource",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-static-resource.schema.json",
+    },
+    "PlatformEventChannel": {
+        "id": "salesforce.platform-event-channel",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-platform-event-channel.schema.json",
+    },
+    "PlatformEventChannelMember": {
+        "id": "salesforce.platform-event-channel-member",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-platform-event-channel-member.schema.json",
+    },
+    # GlobalValueSet and StandardValueSet share one profile/schema, the salesforce.apex
+    # precedent: same fact shape, two source metadata types.
+    "GlobalValueSet": {
+        "id": "salesforce.value-set",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-value-set.schema.json",
+    },
+    "StandardValueSet": {
+        "id": "salesforce.value-set",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-value-set.schema.json",
+    },
+    # The per-label CustomLabel components are profiled; the CustomLabels container
+    # (labelCount only) deliberately is not — an entry with no reviewable content.
+    "CustomLabel": {
+        "id": "salesforce.custom-label",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-custom-label.schema.json",
+    },
+    "CustomTab": {
+        "id": "salesforce.custom-tab",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-custom-tab.schema.json",
+    },
+    "CustomApplication": {
+        "id": "salesforce.custom-application",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-custom-application.schema.json",
+    },
+    "FlowDefinition": {
+        "id": "salesforce.flow-definition",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-flow-definition.schema.json",
+    },
+    "PathAssistant": {
+        "id": "salesforce.path-assistant",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-path-assistant.schema.json",
+    },
+    "ListView": {
+        "id": "salesforce.list-view",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-list-view.schema.json",
+    },
+    "ReportType": {
+        "id": "salesforce.report-type",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-report-type.schema.json",
+    },
+    "SharingRules": {
+        "id": "salesforce.sharing-rules",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-sharing-rules.schema.json",
+    },
+    "QuickAction": {
+        "id": "salesforce.quick-action",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-quick-action.schema.json",
+    },
+    "MutingPermissionSet": {
+        "id": "salesforce.muting-permission-set",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-muting-permission-set.schema.json",
+    },
+    "Dashboard": {
+        "id": "salesforce.dashboard",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-dashboard.schema.json",
+    },
+    "EmailTemplate": {
+        "id": "salesforce.email-template",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-email-template.schema.json",
+    },
+    "AuraDefinitionBundle": {
+        "id": "salesforce.aura",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-aura.schema.json",
+    },
+    # The nine integration surfaces share one profile/schema, the salesforce.apex
+    # precedent: a union fact shape, nine source metadata types.
+    "NamedCredential": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "ExternalCredential": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "RemoteSiteSetting": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "ExternalDataSource": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "ExternalServiceRegistration": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "ConnectedApp": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "AuthProvider": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "CspTrustedSite": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "CorsWhitelistOrigin": {
+        "id": "salesforce.integration",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-integration.schema.json",
+    },
+    "Profile": {
+        "id": "salesforce.profile",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-profile.schema.json",
+    },
+    "Layout": {
+        "id": "salesforce.layout",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-layout.schema.json",
+    },
+    "FlexiPage": {
+        "id": "salesforce.flexipage",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-flexipage.schema.json",
+    },
+    "Workflow": {
+        "id": "salesforce.workflow",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-workflow.schema.json",
+    },
+    # The three routing-rule containers share one profile/schema, the
+    # salesforce.integration precedent: one fact shape, three source metadata types.
+    "AssignmentRules": {
+        "id": "salesforce.routing-rules",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-routing-rules.schema.json",
+    },
+    "AutoResponseRules": {
+        "id": "salesforce.routing-rules",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-routing-rules.schema.json",
+    },
+    "EscalationRules": {
+        "id": "salesforce.routing-rules",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-routing-rules.schema.json",
+    },
+    "ApprovalProcess": {
+        "id": "salesforce.approval-process",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-approval-process.schema.json",
+    },
+    "Report": {
+        "id": "salesforce.report",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-report.schema.json",
+    },
+    # ApexPage and ApexComponent share one profile/schema, the salesforce.apex
+    # precedent: same regex-parsed markup extraction, two source metadata types.
+    "ApexPage": {
+        "id": "salesforce.visualforce",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-visualforce.schema.json",
+    },
+    "ApexComponent": {
+        "id": "salesforce.visualforce",
+        "version": "1.0.0",
+        "schema": "knowledge-profile-visualforce.schema.json",
+    },
 }
 
 
@@ -805,6 +1047,54 @@ ADAPTERS = {
             "RecordType",
             "CustomMetadata",
             "LightningComponentBundle",
+            "FieldSet",
+            "CompactLayout",
+            "BusinessProcess",
+            "WebLink",
+            "DuplicateRule",
+            "MatchingRule",
+            "Queue",
+            "Role",
+            "DelegateGroup",
+            "PermissionSetGroup",
+            "StaticResource",
+            "PlatformEventChannel",
+            "PlatformEventChannelMember",
+            "GlobalValueSet",
+            "StandardValueSet",
+            "CustomLabel",
+            "CustomTab",
+            "CustomApplication",
+            "FlowDefinition",
+            "PathAssistant",
+            "ListView",
+            "ReportType",
+            "SharingRules",
+            "QuickAction",
+            "MutingPermissionSet",
+            "Dashboard",
+            "EmailTemplate",
+            "AuraDefinitionBundle",
+            "NamedCredential",
+            "ExternalCredential",
+            "RemoteSiteSetting",
+            "ExternalDataSource",
+            "ExternalServiceRegistration",
+            "ConnectedApp",
+            "AuthProvider",
+            "CspTrustedSite",
+            "CorsWhitelistOrigin",
+            "Profile",
+            "Layout",
+            "FlexiPage",
+            "Workflow",
+            "AssignmentRules",
+            "AutoResponseRules",
+            "EscalationRules",
+            "ApprovalProcess",
+            "Report",
+            "ApexPage",
+            "ApexComponent",
         )
     },
 }
@@ -862,7 +1152,11 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
     fragment_path = ROOT / component["path"]
     fragments = [{"path": component["path"], "sourceDigest": f"sha256:{file_digest(fragment_path)}"}]
     coverage = {
-        "typeFacts": "partial" if type_facts.get("referencesTruncated") else "full"
+        # Either truncation aggregate marks the section partial: referencesTruncated for
+        # capped edges, factsTruncated for capped fact arrays (contract §5, 2026-08-04).
+        "typeFacts": "partial"
+        if type_facts.get("referencesTruncated") or type_facts.get("factsTruncated")
+        else "full"
     }
     if intentional:
         coverage["intentionalErrors"] = "full"
@@ -1326,8 +1620,9 @@ def command_entry_coverage(args: argparse.Namespace) -> dict[str, Any]:
         "missingEntryCounts": {key: len(value) for key, value in sorted(gaps.items())},
         "unprofiledTypes": sorted(set(source_counts) - set(PROFILES)),
         "note": (
-            "Unprofiled types have no entry home yet and keep their v1 repository claims; "
-            "that is not a coverage gap (docs/knowledge-one-file-contract.md §1)."
+            "Unprofiled types are the deliberate generic-bucket remainder (label-only "
+            "extraction) and stay inventory-only; that is disclosed scope, not a coverage "
+            "gap (docs/knowledge-one-file-contract.md §1)."
         ),
     }
 

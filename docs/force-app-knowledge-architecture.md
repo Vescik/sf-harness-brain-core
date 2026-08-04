@@ -249,7 +249,7 @@ human re-approves it, and the model still cannot create any status other than `p
 
 ## Collector versioning and reference kinds
 
-The collector version (`COLLECTOR_VERSION`, currently 1.6.0) is recorded in every evidence
+The collector version (`COLLECTOR_VERSION`, currently 1.8.0) is recorded in every evidence
 record. 1.1.0 adds two Apex source-token heuristics, tunable via optional
 `config/knowledge-extraction.json`: `soql-field` (SELECT/WHERE field identifiers from inline
 SOQL, standard fields included) and `var-field-ref` (member accesses through locally declared
@@ -317,6 +317,20 @@ automation and data model):
 bullet). One new kind: `reports-to` (invocation — Role hierarchy). MutingPermissionSet is
 deliberately facts-only (no negative-grant edges), and AppMenu/HomePageLayout/
 HomePageComponent/SharingReason/Index remain intentionally generic.
+
+1.8.0 (2026-08-04) is the assurance/bounds wave preparing the all-type entry-profile
+expansion. Assurance-laundering fixes — regex-derived edges now carry their `heuristic`
+marker: routing-rule formula `filters-field` (the flag was dropped on re-emission),
+Visualforce and Aura markup edges (`operates-on`, `apex-controller`, `uses-label`,
+`embeds-component`), and EmailTemplate body edges. Identity fixes: Report and Dashboard
+become folder-qualified (`Folder/Name`, the EmailTemplate precedent) — bare stems collided
+across folders. Uniform truncation: a shared `cap_references` helper (prioritized cut at
+`maxUsageRefs` + `referencesTruncated` + `truncatedFamilies`) now bounds Layout, Profile
+(layout assignments were previously dropped silently), FlexiPage, Report,
+CustomApplication, SharingRules, ApprovalProcess, Workflow and the three routing-rule
+types; capped fact arrays keep true totals in `*Count` facts and disclose via per-array
+`*Truncated` flags plus the aggregate `factsTruncated`, which the store now also maps to
+`extractionCoverage: partial`. Layout additionally gains its missing `operates-on` edge.
 
 Richer references change component facts and therefore component digests — after upgrading the
 collector, downstream repos with populated stores will see previously current claims flip to

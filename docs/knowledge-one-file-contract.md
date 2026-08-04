@@ -27,10 +27,12 @@ Implementation:         SHIPPED. P0-P6 are merged on knowledge-relations-p0-p6; 
 Companion documents:    docs/knowledge-one-file-impact-map.md (dependency wiring)
                         docs/knowledge-one-file-review-package.md (review record + evals)
 Schemas:                schemas/knowledge-entry.schema.json, knowledge-feature-entry
-                        .schema.json and 9 profile schemas covering the 10 profiled
+                        .schema.json and 45 profile schemas covering the 58 profiled
                         types - WIRED: knowledge_store.PROFILES validates every draft
-                        against its profile schema (ApexClass and ApexTrigger share one)
-                        [was "(+ 2 profile schemas) - unwired"; corrected wave 3]
+                        against its profile schema (shared schemas: ApexClass/ApexTrigger,
+                        GlobalValueSet/StandardValueSet, the three routing-rule types, the
+                        nine integration types, ApexPage/ApexComponent)
+                        [was "9 schemas / 10 types"; all-type expansion 2026-08-04]
 Prior architecture docs: docs/knowledge-facts-overlay-architecture.md = SHELVED fallback;
                         docs/force-app-knowledge-architecture.md = v1 pilot description,
                         updated at cutover.
@@ -57,7 +59,8 @@ grounding (§8.1 unchanged).
 **Freeze scoping** (implemented T07 P2): the registry refuses a repository-only proposal for
 an entry-home claim type when — and only when — the metadata type has an implemented entry
 profile AND this workspace already holds entries. Freezing unconditionally would strand the
-repository facts of every metadata type whose profile has not shipped (2 of ~59 today), which is
+repository facts of every metadata type whose profile has not shipped (only the label-only
+generic-bucket remainder since the 2026-08-04 all-type expansion), which is
 a capability regression rather than a migration. The freeze therefore widens automatically as
 profiles ship, and activates per workspace on adoption.
 
@@ -567,6 +570,8 @@ against has to qualify. The refusal names the section and both markers and point
 as the alternative, because "refused" without a next step is how a fail-closed gate gets disabled.
 
 **Measured blast radius — 58 of 189 entries in the reference package become ungroundable.**
+(Population stats measured before the 2026-08-04 all-type profile expansion; the rule is
+unchanged, the denominators will differ in an expanded store.)
 
 | Type | Ungroundable | In package | Why |
 |---|---|---|---|

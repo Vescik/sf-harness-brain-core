@@ -30,16 +30,17 @@ large or heterogeneous. Do not infer which manifest members belong to the work i
    [search-knowledge skill](../search-knowledge/SKILL.md), both layers:
    - `python scripts/knowledge_search.py context --identity <Identity>` — what the source
      declares, what the artifact is made of, what depends on it, and who grants access, in one
-     call. This is the step-1 lookup for the ten entry-homed types. Document from `parts`,
+     call. This is the step-1 lookup for the entry-homed types. Document from `parts`,
      `permissions` and `incoming`, the approved-current buckets; rows from lanes opened with
      `--state` arrive in the `partsNonCurrent` / `permissionsNonCurrent` / `incomingNonCurrent`
      siblings and are documented as gaps, not as facts. `incoming` and `outgoing` are keyed by
      relation kind, so iterate the keys — a missing kind is silence, never an absence proof. A row
      carrying `hydrated: false` failed re-reading; document it as a gap, never as a fact.
-     business and vendor facts, plus `--uses-object <Object>` / `--uses-field <Object.Field>` to
-     surface dependent automations of unprofiled types for the impact section — Workflow,
-     ApprovalProcess, Layout and the rest have no entry, so this query stays the only way to see
-     them.
+   - `python scripts/knowledge_search.py search --relation-anchor <Identity> --direction
+     incoming` for dependents beyond the context pack's depth-1 view, for the impact section.
+     Only generic-bucket types (Settings, Letterhead, Group and similar label-only extraction)
+     still have no entry and no governed dependency lookup — list any that appear as an
+     uncovered class, never silently.
    Cite what the executor gives you, not what the view shows: obtain a citable ref with
    `python scripts/knowledge_store.py entry-status --identity <Identity>` for entries and the
    orgKey + observedAt for org-usage numbers (with any expired premise named). A search result and

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-layout.schema.json",
+  "title": "Knowledge Entry profile — salesforce.layout v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. Component identity is the hyphenated Object-Layout Name filename stem (the SFDX layout naming contract), and the operates-on edge is derived from that split. requiredOnLayout answers the classic \"why is this field required in this UI when the field itself is not\": behavior=Required on a layout makes the field mandatory in that UI only, and readonlyOnLayout is its mirror. Related-list columns are child-object field names not resolvable from the relationship name alone, so they stay facts. The shared edge cap discloses cuts via referencesTruncated/truncatedFamilies.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "fieldCount": {
+          "type": "integer"
+        },
+        "requiredOnLayout": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "readonlyOnLayout": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "relatedLists": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "actionCount": {
+          "type": "integer"
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

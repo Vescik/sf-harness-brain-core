@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-duplicate-rule.schema.json",
+  "title": "Knowledge Entry profile — salesforce.duplicate-rule v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "sortOrder": {
+          "type": "integer",
+          "description": "Evaluation order among the object's duplicate rules; digit-only XML text is normalized to integer by the store."
+        },
+        "actionOnInsert": {
+          "type": "string"
+        },
+        "actionOnUpdate": {
+          "type": "string"
+        },
+        "securityOption": {
+          "type": "string"
+        },
+        "operationsOnInsert": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "operationsOnUpdate": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matchRules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "matchingRule": {
+                "type": "string"
+              },
+              "matchingRuleObjectType": {
+                "type": "string"
+              },
+              "mappedFields": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "input": {
+                      "type": "string"
+                    },
+                    "output": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "description": "Which matching rule each block delegates to, including cross-object field mappings (e.g. Lead email matched against Contact email)."
+        },
+        "errorCatalog": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "component": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "errorMessage": {
+                "type": "string"
+              },
+              "resolvedErrorMessage": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "The user-facing duplicate alert text (kind duplicate-alert), resolved like validation-rule messages so the BM25 error-trace pipeline finds it verbatim."
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

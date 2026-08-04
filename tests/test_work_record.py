@@ -1065,7 +1065,9 @@ class WorkRecordTests(unittest.TestCase):
     def test_approval_is_fail_closed_on_uncovered_and_unprofiled_components(self) -> None:
         # Owner D-B: every scope component must be covered by a bound approved entry, and a
         # metadata type without an entry profile blocks approval outright — the remedy is a
-        # new profile, never a pass-through.
+        # new profile, never a pass-through. The unprofiled probe is a generic-bucket type
+        # (Letterhead) that stays unprofiled by design, not by backlog — wave 3 profiled
+        # Layout, the previous probe.
         arguments = [
             "init",
             "--record-id",
@@ -1095,7 +1097,7 @@ class WorkRecordTests(unittest.TestCase):
             "--component",
             json.dumps({"name": "Uncovered__c", "type": "CustomObject"}),
             "--component",
-            json.dumps({"name": "Account-Account Layout", "type": "Layout"}),
+            json.dumps({"name": "HarnessBrand", "type": "Letterhead"}),
             "--environment-alias",
             "SBX-DEV",
         ]

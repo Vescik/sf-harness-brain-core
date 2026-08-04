@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-workflow.schema.json",
+  "title": "Knowledge Entry profile — salesforce.workflow v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. One Workflow component per object file: rules, field updates, alerts, outbound messages, and tasks are live legacy business logic. Each inlined array is capped at 100 with its per-array *Truncated flag plus the aggregate factsTruncated; true totals stay in ruleCount/activeRuleCount/fieldUpdateCount/alertCount. Recipient e-mail addresses and integration usernames are never captured; outbound endpoints collapse to hostname. referencesTruncated/truncatedFamilies disclose the edge cap.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object"
+      ],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "fieldUpdates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "alerts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "outboundMessages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "rulesTruncated": {
+          "type": "boolean"
+        },
+        "fieldUpdatesTruncated": {
+          "type": "boolean"
+        },
+        "alertsTruncated": {
+          "type": "boolean"
+        },
+        "outboundMessagesTruncated": {
+          "type": "boolean"
+        },
+        "tasksTruncated": {
+          "type": "boolean"
+        },
+        "ruleCount": {
+          "type": "integer"
+        },
+        "activeRuleCount": {
+          "type": "integer"
+        },
+        "fieldUpdateCount": {
+          "type": "integer"
+        },
+        "alertCount": {
+          "type": "integer"
+        },
+        "factsTruncated": {
+          "type": "boolean"
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

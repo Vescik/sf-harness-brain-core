@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-routing-rules.schema.json",
+  "title": "Knowledge Entry profile — salesforce.routing-rules v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. One shared profile for the three routing-rule containers (AssignmentRules, AutoResponseRules, EscalationRules — the salesforce.integration many-to-one precedent); component identity is the bare object name. Queue targets join the graph via assigns-to; user/role targets are type-only and sender/notify e-mail addresses are never captured. rules is capped at 50 and each rule's entries at 100: rulesTruncated/entriesTruncated/factsTruncated disclose the cuts while ruleCount/entryCount keep true totals, and referencesTruncated/truncatedFamilies disclose the edge cap.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object"
+      ],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "entries": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "entryCount": {
+                "type": "integer"
+              },
+              "entriesTruncated": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "ruleCount": {
+          "type": "integer"
+        },
+        "rulesTruncated": {
+          "type": "boolean"
+        },
+        "factsTruncated": {
+          "type": "boolean"
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

@@ -31,16 +31,17 @@ For BRD attachments:
 4. Check Tier 1 constraints and Known Limitations for affected package surfaces. Query both
    layers for each affected object rather than only reading the static view:
    - `python scripts/knowledge_search.py context --identity <Identity>` — parts, dependents and
-     permission grants for the ten entry-homed types, with their coverage denominator. Count
+     permission grants for the entry-homed types, with their coverage denominator. Count
      coverage from `parts`, `permissions` and `incoming` only — those are the approved-current
      buckets; the `*NonCurrent` siblings are opted-in lanes and belong in the gap list. `incoming`
      and `outgoing` are keyed by relation kind, so iterate the keys; a kind with no key has no
      rows, which is not proof that nothing depends on the component. A row with `hydrated: false`
      failed re-reading and stays out of the coverage denominator on either side of the matrix;
    - **Unprofiled-type dependents are an UNCOVERED class, and the matrix must say so** (owner
-     D-C, 2026-08-03): metadata types without an entry profile (Workflow, ApprovalProcess,
-     Layout, AuraDefinitionBundle, …) have no governed dependency lookup since the claim
-     registry retired. The coverage matrix MUST carry an explicit `not covered: <type list>`
+     D-C, 2026-08-03): metadata types without an entry profile (the generic-bucket remainder —
+     Settings, Letterhead, Group, Network, Certificate, Document, Territory2 and similar
+     label-only types) have no governed dependency lookup. The coverage matrix MUST carry an
+     explicit `not covered: <type list>`
      line naming every such type present in the inventory — a result without that line reads
      as a clean bill of health it did not earn.
    Treat only approved-current entries as facts. An empty result is a recorded gap and

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-flexipage.schema.json",
+  "title": "Knowledge Entry profile — salesforce.flexipage v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. Documented source limit, not an extractor failure: object (sobjectType) is absent on App, Home, and Community pages, and the places-field/references-field targets are then unqualified bare field names that resolve to nothing. launches-flow comes from component-instance property name patterns (flowName/flowApiName) and stays kind-level heuristic. The shared edge cap discloses cuts via referencesTruncated/truncatedFamilies.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "pageType": {
+          "type": "string"
+        },
+        "object": {
+          "type": "string"
+        },
+        "template": {
+          "type": "string"
+        },
+        "regionCount": {
+          "type": "integer"
+        },
+        "componentCount": {
+          "type": "integer"
+        },
+        "fieldInstanceCount": {
+          "type": "integer"
+        },
+        "visibilityRuleFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

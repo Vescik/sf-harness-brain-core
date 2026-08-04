@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-profile.schema.json",
+  "title": "Knowledge Entry profile — salesforce.profile v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. Profile carries the same fourteen access-bundle fact keys as PermissionSet (grant families from the shared extractor) plus UI shape and login posture. assigns-layout edges are merged through a re-cap over the combined edge list, so referencesTruncated/truncatedFamilies disclose every dropped family — including assigns-layout itself. Login IP ranges and login hours are captured as presence + count only, never the values.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "custom": {
+          "type": "boolean"
+        },
+        "userLicense": {
+          "type": "string"
+        },
+        "objectAccess": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "systemPermissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "objectPermissionCount": {
+          "type": "integer"
+        },
+        "fieldPermissionCount": {
+          "type": "integer"
+        },
+        "classAccessCount": {
+          "type": "integer"
+        },
+        "customPermissionCount": {
+          "type": "integer"
+        },
+        "recordTypeCount": {
+          "type": "integer"
+        },
+        "flowAccessCount": {
+          "type": "integer"
+        },
+        "userPermissionCount": {
+          "type": "integer"
+        },
+        "tabCount": {
+          "type": "integer"
+        },
+        "pageAccessCount": {
+          "type": "integer"
+        },
+        "applicationVisibilityCount": {
+          "type": "integer"
+        },
+        "layoutAssignmentCount": {
+          "type": "integer"
+        },
+        "defaultRecordTypes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per-object default record type: object API name → Object.RecordType."
+        },
+        "defaultApplication": {
+          "type": "string"
+        },
+        "loginIpRangesPresent": {
+          "type": "boolean"
+        },
+        "loginIpRangeCount": {
+          "type": "integer"
+        },
+        "loginHoursPresent": {
+          "type": "boolean"
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

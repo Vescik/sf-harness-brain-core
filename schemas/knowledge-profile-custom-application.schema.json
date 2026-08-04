@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-custom-application.schema.json",
+  "title": "Knowledge Entry profile — salesforce.custom-application v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. profileActionOverrides is where app+profile+recordType→FlexiPage assignment lives in source format — the only source answer to \"which record page does profile X actually get\".",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "navType": {
+          "type": "string"
+        },
+        "uiType": {
+          "type": "string"
+        },
+        "formFactors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tabs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Navigation tabs in document order; standard-prefixed tabs become operates-on edges, custom tabs displays-component edges."
+        },
+        "hasUtilityBar": {
+          "type": "boolean"
+        },
+        "overrides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "description": "Action/profile action overrides (action, content, type, object, recordType, profile, formFactor), capped at 50; overrideCount keeps the true total."
+        },
+        "overrideCount": {
+          "type": "integer"
+        },
+        "overridesTruncated": {
+          "type": "boolean"
+        },
+        "factsTruncated": {
+          "type": "boolean"
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

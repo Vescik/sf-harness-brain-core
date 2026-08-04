@@ -31,9 +31,11 @@ identity when applicable, and accepted design/approval hashes. Reject unspecifie
      the keys rather than a flat list, and treat an absent kind as silence, not as absence. A row
      carrying `hydrated: false` failed re-reading, so it can never make a premise `verified` —
      record it as a gap;
-     facts, **and `--uses-object` / `--uses-field` for dependents of unprofiled types** —
-     Workflow, ApprovalProcess, Layout, FieldSet and the rest have no entry, so dropping this
-     query would make them invisible to the check while the result still looked clean.
+   - `python scripts/knowledge_search.py search --relation-anchor <Identity> --direction
+     incoming` for dependents beyond the context pack's depth-1 view. Only generic-bucket
+     types (Settings, Letterhead, Group and similar label-only extraction) have no entry and
+     no governed dependency lookup — name them explicitly when present, or the result looks
+     clean while a whole class went unchecked.
    An empty result from either layer is a recorded gap, never proof that nothing depends on it. Then, for every material factual premise,
    require an `approved-current`, scope-matched entry (or an unexpired org-usage block for
    usage numbers). Drafts and model inference are not trusted facts. When a cited envelope
