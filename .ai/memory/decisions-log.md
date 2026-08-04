@@ -679,3 +679,10 @@ directly. Each lands as its own commit with the full gate.
   human — validate_harness now pins "nothing auto-approves" instead of "an explicit deny
   exists"), and the guard's `command == "approve"` special-case (set membership already
   excludes it; outcome pin test_work_record_approve_stays_unreachable_for_every_role stays).
+
+### C — knowledge benchmark removed from CI (stays a local tool)
+- The harness-ci.yml budget step (3000-entry fixture, 21 cold processes per budgeted command,
+  both matrix legs, the dominant cost of the 16-18 min Windows leg) is gone; the owner chose
+  full removal over a smoke bound. knowledge_benchmark.py keeps its budget constants as the
+  local reference; its docstring says local-only. Pin inverted:
+  test_the_benchmark_gate_stays_out_of_ci.

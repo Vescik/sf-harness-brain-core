@@ -2253,28 +2253,21 @@ class KnowledgeBenchmarkSmokeTests(unittest.TestCase):
             "below every command that pays it -- otherwise it is the command ceiling in disguise",
         )
 
-    def test_the_gate_ci_runs_asserts_both_halves_at_the_budgeted_fixture_size(self) -> None:
-        """A table nothing runs is not a budget, and neither is half a flag set.
+    def test_the_benchmark_gate_stays_out_of_ci(self) -> None:
+        """Owner decision 2026-08-04 (over-engineering review): CI does NOT run the benchmark.
 
-        The ceilings live in `knowledge_benchmark`; the only thing that makes them a GATE is the
-        workflow line that passes both assert flags at BUDGET_ENTRIES. Pinning it here means
-        dropping `--assert-command-budgets` from CI is a red test, not a quiet loss of the whole
-        R4 matrix.
+        The µs/entry gate measured shared-runner noise against a near-empty real corpus, at the
+        cost of a 3000-entry fixture and 21 cold processes per budgeted command on both matrix
+        legs. The ceilings in `knowledge_benchmark` remain the reference numbers for LOCAL runs;
+        reintroducing the CI step is a reviewed, owner-approved change, exactly like removing it
+        was.
         """
-        from scripts import knowledge_benchmark
-
         workflow = (
             Path(__file__).resolve().parents[1] / ".github/workflows/harness-ci.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn(
-            f"knowledge_benchmark.py --entries {knowledge_benchmark.BUDGET_ENTRIES}", workflow,
-            "the budgeted fixture size and the size CI runs must be the same number",
-        )
-        self.assertIn("--assert-floor-us", workflow, "the floor's latency half is unenforced")
-        self.assertIn(
-            "--assert-command-budgets", workflow,
-            "the floor's memory half and every per-command ceiling are unenforced",
-        )
+        self.assertNotIn("--assert-floor-us", workflow)
+        self.assertNotIn("--assert-command-budgets", workflow)
+        self.assertNotIn("knowledge_benchmark.py --entries", workflow)
 
     def test_the_freshness_floor_states_a_memory_ceiling_that_can_actually_fail(self) -> None:
         """§4.2: "peakRssMb BUDGETED, not merely measured" -- merely measured is what it was.
