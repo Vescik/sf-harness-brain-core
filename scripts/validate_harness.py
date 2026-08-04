@@ -687,15 +687,21 @@ def check_settings_and_mcp(audit: Audit) -> None:
         audit.require(pre[0].get("timeout", 0) >= 10, "global hook timeout must accommodate guarded command parsing")
 
     launcher = required_text(ROOT / "scripts/start_salesforce_mcp.mjs", audit)
+    # Owner decision 2026-08-04: the launcher's per-alias grants, development/write lane,
+    # and startup identity subprocess were retired — identity is proven per call in the
+    # review facade. These markers pin what must survive that slimming.
     for marker in (
-        "verify_salesforce_org.py",
-        'environment !== "development"',
-        "METADATA_ROOT",
-        "development mode is disabled on Windows",
-        "Organization.IsSandbox",
+        "production-like",
+        'environment === "production"',
+        "org changes are human-only",
+        "salesforce_review_server.mjs",
     ):
         audit.require(marker in launcher, f"Salesforce MCP launcher is missing runtime gate: {marker}")
+    audit.require("spawnSync" not in launcher, "the launcher's startup identity subprocess was retired; identity is proven per call in the facade")
     audit.require('"data,metadata,testing,code-analysis"' not in launcher, "broad Salesforce data-write toolset is forbidden")
+    facade = required_text(ROOT / "scripts/salesforce_review_server.mjs", audit)
+    for marker in ("deniedOrganizationIds", "assertOrgIdPermitted", "validateMcpIdentity"):
+        audit.require(marker in facade, f"Salesforce review facade is missing runtime gate: {marker}")
 
     development_frontmatter, _ = frontmatter(ROOT / ".github/agents/development-assistant.agent.md", audit)
     audit.require("execute/runInTerminal" in (development_frontmatter.get("tools") or []), "Development Assistant needs guarded preflight execution")

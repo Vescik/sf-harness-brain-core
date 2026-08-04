@@ -692,11 +692,10 @@ def configured_org(root: Path, alias: str) -> tuple[dict[str, Any], dict[str, An
     )
     if not isinstance(entry, dict):
         raise WorkRecordError("record environment alias is not present in local policy")
-    if (
-        entry.get("environment") not in {"development", "qa", "uat"}
-        or entry.get("allowAgentRead") is not True
-        or entry.get("allowAgentReview") is not True
-    ):
+    # Owner decision 2026-08-04: entry presence + non-production environment IS the
+    # authorization — the per-alias allowAgent* grants were retired. Evidence lanes still
+    # require a configured entry so receipts bind to a declared environment.
+    if entry.get("environment") not in {"development", "qa", "uat"}:
         raise WorkRecordError("record environment alias is not authorized for org review")
     review = config.get("salesforce", {}).get("review", {})
     if review.get("enabled") is not True or review.get("requireDualSource") is not True:
@@ -1923,7 +1922,7 @@ def command_capture_org_review(args: argparse.Namespace) -> dict[str, Any]:
     if envelope.get("target", {}).get("environment") == "dynamic":
         raise WorkRecordError(
             "a work record requires a receipt for a configured org; the dynamic "
-            "allowAnyNonProduction lane cannot supply one"
+            "unlisted-alias lane cannot supply one"
         )
     if envelope.get("target", {}).get("environment") != org_entry.get("environment"):
         raise WorkRecordError("Salesforce review receipt targets the wrong configured environment")

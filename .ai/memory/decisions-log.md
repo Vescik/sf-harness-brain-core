@@ -752,3 +752,38 @@ directly. Each lands as its own commit with the full gate.
 - Approved by: owner (chat, 2026-08-04; depth question answered "full set").
 - Related: output/deep-test-2026-08-04-validate-harness.md (untracked research doc),
   tests/test_validate_harness.py, docs/grounding-architecture.md (unchanged semantics).
+
+## 2026-08-04 — Org gates slimmed to read-anywhere + deniedOrganizationIds
+
+- Context: live failure — MCP startup blocked on a Developer Edition alias by the
+  launcher's startup identity subprocess (which also silently killed the verifier at 30 s
+  against its legitimate 2×60 s budget, misreporting cold-start latency as identity
+  failure). A mechanics map showed `allowAgentWrite` dead (write lane unreachable four
+  ways), `allowAgentRead`/`allowAgentReview` only ever checked as a pair and bypassed
+  under `allowAnyNonProduction`, and the facade already re-proving live non-production
+  identity on every tool call.
+- Finding / decision (owner, chat): which org a developer connects is the developer's
+  responsibility. Retired: the three per-org `allowAgent*` flags, the
+  `allowAnyNonProduction` toggle (dynamic lane is the unconditional default), the
+  launcher's development/write mode and its startup `verify_salesforce_org.py` spawn,
+  `preflight --capability salesforce-write`, and the manifest-wildcard gate. Added, as
+  the owner's one required dependency: `salesforce.review.deniedOrganizationIds` — org
+  IDs refused at live proof time in both facade legs (`ORG_ID_DENIED`) and in
+  verify/preflight, matched on the 15-character prefix. Identity pins became optional
+  (both-or-neither; lone pin is CONFIG_INVALID). Supersedes the 2026-07-31
+  allowAnyNonProduction decision and the 2026-08-04 "Kept: … identity proof" line as far
+  as the STARTUP proof goes — the per-call facade proof it praised is exactly what
+  remains. D-4 unchanged: Knowledge org-attach still requires the configured
+  `expectedOrganizationId`; work records still require a configured entry (dynamic
+  receipts refused).
+- Impact: minimal org entry is `{alias, environment}`; unlisted aliases readable on live
+  proof; production refusal unchanged (alias pattern, environment marker, per-call
+  host/IsSandbox signature, `nonProduction` receipt fact; SAFE-ENV-001 reworded off
+  "exact allowlisted"). retrieve-start allowance re-keyed to configured non-production
+  entry. Schema tolerates retired keys in old configs. Gate: 977 unit tests OK, 37/37
+  evals, validator green (modulo the unrelated local IMPLEMENTATION_HANDOFF.md
+  deletion); live devmp end-to-end VERIFIED through launcher → facade →
+  review_org_identity. Full write-up: output/discovery-2026-08-04-org-gate-slimming.md.
+- Approved by: owner (chat, 2026-08-04; option "full cut + org-id denylist").
+- Related: entries 2026-07-31 (any non-production reads), 2026-08-04 (composed-SOQL
+  blockade removed), .ai/contracts/tool-capabilities.md, SETUP.md §3.

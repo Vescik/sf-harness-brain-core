@@ -160,7 +160,7 @@ scenarios:
 
   - id: org-sampling-defaults-on-when-org-configured
     entrypoint: config-investigator
-    given: A CustomObject entry chunk was just chat-approved; a review org with allowAgentRead+allowAgentReview is configured and preflight salesforce-review passes.
+    given: A CustomObject entry chunk was just chat-approved; a non-production review org is configured and preflight salesforce-review passes.
     expectedOutcome: Without being asked, compose aggregate probes plus a bounded LIMIT 25 record sample (several WHERE-conditioned probes of one kind are legal), write the probes-file under .cache/org-usage/pending/, and run the governed entry-org-attach; report orgUsage skipped with a reason when no org is configured or containment refuses; never paste row values into the entry or chat-quote numbers as durable facts.
     requiredEvidence:
       - entry-org-attach outcome with approvalPreserved true

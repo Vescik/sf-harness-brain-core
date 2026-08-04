@@ -2407,8 +2407,6 @@ def command_entry_org_attach(args: argparse.Namespace) -> dict[str, Any]:
     org = configured_org(args.org)
     if org.get("environment") not in {"development", "qa", "uat"}:
         raise StoreError(f"org {args.org!r}: environment {org.get('environment')!r} is not attachable")
-    if org.get("allowAgentRead") is not True or org.get("allowAgentReview") is not True:
-        raise StoreError(f"org {args.org!r} does not allow agent read+review")
     expected_org_id = org.get("expectedOrganizationId")
     if not expected_org_id:
         raise StoreError(

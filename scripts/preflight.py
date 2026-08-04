@@ -13,7 +13,6 @@ import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from xml.etree import ElementTree
 from urllib.parse import urlparse
 
 from jsonschema import Draft202012Validator
@@ -21,11 +20,21 @@ from jsonschema import Draft202012Validator
 try:
     from copilot_safety_hook import is_salesforce_sandbox_origin
     from schema_format import FORMAT_CHECKER
-    from verify_salesforce_org import is_allowed_non_production_host, verify_is_sandbox
+    from verify_salesforce_org import (
+        ORG_ID,
+        denied_organization_ids,
+        is_allowed_non_production_host,
+        verify_is_sandbox,
+    )
 except ModuleNotFoundError:  # imported as scripts.preflight by unit tests
     from scripts.copilot_safety_hook import is_salesforce_sandbox_origin
     from scripts.schema_format import FORMAT_CHECKER
-    from scripts.verify_salesforce_org import is_allowed_non_production_host, verify_is_sandbox
+    from scripts.verify_salesforce_org import (
+        ORG_ID,
+        denied_organization_ids,
+        is_allowed_non_production_host,
+        verify_is_sandbox,
+    )
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,26 +105,15 @@ def validate_origins(values: list[str], label: str) -> list[str]:
 def validate_config(config: dict) -> list[str]:
     failures: list[str] = []
     aliases: set[str] = set()
-    # Owner decision 2026-07-31: `allowAnyNonProduction` admits any org that proves it is
-    # not production. It was honoured by the safety hook, the read facade and
-    # verify_salesforce_org, but never here — so preflight, the gate every skill runs
-    # first, still rejected a Developer Edition host and blocked the whole workspace on an
-    # org the other three validators accept. Production stays refused either way: by alias
-    # pattern, by `environment`, and by the host shapes below (a bare `*.my.salesforce.com`
+    # Owner decision 2026-08-04 (supersedes the 2026-07-31 allowAnyNonProduction toggle):
+    # which org a developer connects is the developer's responsibility. Any non-production
+    # host shape is acceptable, identity pins are optional (both-or-neither), and the only
+    # config-level org brakes are `environment: production` and
+    # `salesforce.review.deniedOrganizationIds`. Production stays refused either way: by
+    # alias pattern, by `environment`, and by the host shapes (a bare `*.my.salesforce.com`
     # production host matches none of them).
-    allow_any_non_production = (
-        config.get("salesforce", {}).get("review", {}).get("allowAnyNonProduction") is True
-    )
-    host_allowed = (
-        is_allowed_non_production_host if allow_any_non_production
-        else (lambda host: is_salesforce_sandbox_origin(f"https://{host}"))
-    )
-    host_requirement = (
-        "a sandbox, scratch org, or Developer Edition" if allow_any_non_production
-        else "an explicit sandbox or scratch org"
-    )
-    review_hosts: set[str] = set()
-    review_org_ids: set[str] = set()
+    pinned_hosts: set[str] = set()
+    pinned_org_ids: set[str] = set()
     for org in config.get("salesforce", {}).get("orgs", []):
         alias = str(org.get("alias", ""))
         environment = str(org.get("environment", "")).lower()
@@ -126,31 +124,32 @@ def validate_config(config: dict) -> list[str]:
             failures.append(f"Salesforce environment is not non-production: {environment!r}")
         if re.search(r"(^|[^a-z])(prod|production)([^a-z]|$)", alias, re.IGNORECASE):
             failures.append(f"Production-like Salesforce alias is forbidden: {alias}")
-        if org.get("allowAgentWrite") and environment != "development":
-            failures.append(f"Only development aliases may allow agent writes: {alias}")
-        if org.get("allowAgentReview") is True and org.get("allowAgentRead") is not True:
-            failures.append(f"Salesforce review requires read permission: {alias}")
+        has_host = org.get("expectedInstanceHost") is not None
+        has_org_id = org.get("expectedOrganizationId") is not None
+        if has_host != has_org_id:
+            failures.append(f"Salesforce identity pins must be set together or not at all: {alias}")
+            continue
+        if not has_host:
+            continue
         expected_host = str(org.get("expectedInstanceHost", "")).lower()
         expected_org_id = str(org.get("expectedOrganizationId", ""))
-        if not host_allowed(expected_host):
+        if not is_allowed_non_production_host(expected_host):
             failures.append(
-                f"Configured Salesforce identity host is not {host_requirement}: {alias}"
+                f"Configured Salesforce identity host is not a sandbox, scratch org, "
+                f"or Developer Edition: {alias}"
             )
-        if org.get("allowAgentReview") is True:
-            if expected_host in review_hosts:
-                failures.append("Salesforce review identity hosts must be unique")
-            if expected_org_id in review_org_ids:
-                failures.append("Salesforce review organization IDs must be unique")
-            review_hosts.add(expected_host)
-            review_org_ids.add(expected_org_id)
-    write_aliases = [
-        str(org.get("alias", ""))
-        for org in config.get("salesforce", {}).get("orgs", [])
-        if org.get("allowAgentWrite") is True
-    ]
+        if expected_host in pinned_hosts:
+            failures.append("Salesforce pinned identity hosts must be unique")
+        if expected_org_id in pinned_org_ids:
+            failures.append("Salesforce pinned organization IDs must be unique")
+        pinned_hosts.add(expected_host)
+        pinned_org_ids.add(expected_org_id)
+    denied = config.get("salesforce", {}).get("review", {}).get("deniedOrganizationIds", [])
+    if not isinstance(denied, list) or any(
+        not isinstance(org_id, str) or not ORG_ID.fullmatch(org_id) for org_id in denied
+    ):
+        failures.append("salesforce.review.deniedOrganizationIds must be a list of organization IDs")
     safety = config.get("safety", {})
-    if write_aliases and safety.get("sharedSandboxWritesApproved") is not True:
-        failures.append("Salesforce writes require approved shared-sandbox coordination")
     if safety.get("sharedSandboxWritesApproved") is True and not str(
         safety.get("sharedSandboxApprovalRef", "")
     ).strip():
@@ -171,13 +170,6 @@ def validate_config(config: dict) -> list[str]:
     if config.get("workspace", {}).get("salesforceRootName") != "brain-core":
         failures.append("workspace.salesforceRootName must be 'brain-core'")
     review = config.get("salesforce", {}).get("review", {})
-    review_aliases = [
-        org
-        for org in config.get("salesforce", {}).get("orgs", [])
-        if org.get("allowAgentReview") is True
-    ]
-    if review.get("enabled") is True and not review_aliases:
-        failures.append("Salesforce org review is enabled but no alias grants allowAgentReview")
     namespaces = review.get("allowedPackageNamespaces", [])
     if len(namespaces) != len(set(namespaces)):
         failures.append("Salesforce review package namespaces must be unique")
@@ -257,51 +249,10 @@ def validate_metadata(config: dict) -> list[str]:
     return failures
 
 
-def manifest_wildcard_failures(config: dict) -> list[str]:
-    """Reject an org-facing manifest that still contains wildcard members.
-
-    A wildcard is never deployment authorization (README): before any org-facing
-    retrieve/validate/deploy the manifest must be narrowed to the exact components bound by an
-    accepted work record.
-    """
-    root = metadata_root()
-    try:
-        manifest = contained_workspace_path(
-            root, config["workspace"]["manifestPath"], "workspace.manifestPath"
-        )
-    except (KeyError, ValueError):
-        return []  # validate_metadata already reports the shape problem
-    if not manifest.is_file():
-        return []
-    try:
-        tree = ElementTree.parse(manifest)
-    except ElementTree.ParseError as exc:
-        return [f"configured manifest is not valid XML: {exc}"]
-    namespace = {"sf": "http://soap.sforce.com/2006/04/metadata"}
-    wildcard_types = sorted(
-        {
-            (types.findtext("sf:name", default="?", namespaces=namespace) or "?")
-            for types in tree.getroot().findall("sf:types", namespace)
-            for member in types.findall("sf:members", namespace)
-            if (member.text or "").strip() == "*"
-        }
-    )
-    if wildcard_types:
-        return [
-            "manifest still contains wildcard <members>*</members> for: "
-            + ", ".join(wildcard_types)
-            + " — narrow it to the exact components of the accepted work record before any"
-            " org-facing operation (a wildcard is never authorization)"
-        ]
-    return []
-
-
 def validate_capability(config: dict, capability: str) -> list[str]:
     failures: list[str] = []
-    if capability in {"metadata", "salesforce-write", "playwright"}:
+    if capability in {"metadata", "playwright"}:
         failures.extend(validate_metadata(config))
-    if capability == "salesforce-write":
-        failures.extend(manifest_wildcard_failures(config))
     if capability in {"ado", "release"}:
         configured_org = str(config.get("ado", {}).get("organization", ""))
         runtime_org = os.environ.get("ADO_ORGANIZATION", "")
@@ -309,46 +260,34 @@ def validate_capability(config: dict, capability: str) -> list[str]:
             failures.append(
                 "ADO_ORGANIZATION must exactly match ado.organization in local configuration"
             )
-    if capability in {"salesforce-write", "salesforce-review"}:
-        required_commands = (
-            ("node", "sf")
-            if capability == "salesforce-review"
-            else ("node", "npx", "sf")
-        )
-        for command in required_commands:
+    if capability == "salesforce-review":
+        for command in ("node", "sf"):
             if shutil.which(command) is None:
                 failures.append(f"required command is not installed: {command}")
-        key = (
-            "allowAgentWrite"
-            if capability == "salesforce-write"
-            else "allowAgentReview"
-        )
         if shutil.which("sf") is not None:
+            denied = denied_organization_ids()
             for org in config.get("salesforce", {}).get("orgs", []):
-                if org.get(key) is True:
-                    ok, reason = verify_is_sandbox(
-                        str(org.get("alias", "")),
-                        expected_host=str(org.get("expectedInstanceHost", "")),
-                        expected_org_id=str(org.get("expectedOrganizationId", "")),
+                # Every configured org is readable (owner 2026-08-04); pins, when present,
+                # keep the strict lane — otherwise the live proof runs pinless.
+                pins = {}
+                if org.get("expectedInstanceHost") is not None:
+                    pins = {
+                        "expected_host": str(org.get("expectedInstanceHost", "")),
+                        "expected_org_id": str(org.get("expectedOrganizationId", "")),
+                    }
+                ok, reason = verify_is_sandbox(
+                    str(org.get("alias", "")),
+                    denied_org_ids=denied,
+                    **pins,
+                )
+                if not ok:
+                    failures.append(
+                        f"Salesforce alias {org.get('alias')!r} failed live sandbox proof: {reason}"
                     )
-                    if not ok:
-                        failures.append(
-                            f"Salesforce alias {org.get('alias')!r} failed live sandbox proof: {reason}"
-                        )
-    if capability == "salesforce-write" and not any(
-        org.get("allowAgentWrite") is True for org in config["salesforce"]["orgs"]
-    ):
-        failures.append("no non-production Salesforce alias allows agent writes")
-    if capability == "salesforce-review":
         failures.extend(validate_review_policy())
         review = config.get("salesforce", {}).get("review", {})
         if review.get("enabled") is not True:
             failures.append("Salesforce org review is disabled")
-        if not any(
-            org.get("allowAgentReview") is True
-            for org in config.get("salesforce", {}).get("orgs", [])
-        ):
-            failures.append("no non-production Salesforce alias allows agent review")
         if not SALESFORCE_MCP_BIN.is_file():
             failures.append("pinned @salesforce/mcp runtime is missing; run npm ci")
         executable = shutil.which("sf")
@@ -469,7 +408,6 @@ def main() -> int:
             "base",
             "ado",
             "metadata",
-            "salesforce-write",
             "salesforce-review",
             "playwright",
             "release",

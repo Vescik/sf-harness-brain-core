@@ -185,7 +185,7 @@ class ReviewFacade:
         scoped_enumeration: bool = False,
         alias: str = "dev-sbx",
         drop_org_entry: bool = False,
-        allow_any_non_production: bool = False,
+        denied_org_ids: list[str] | None = None,
         is_sandbox: bool = True,
     ):
         config_path = directory / "harness.local.json"
@@ -202,8 +202,8 @@ class ReviewFacade:
             config["safety"] = {"allowScopedEnumeration": True}
         if drop_org_entry:
             config["salesforce"]["orgs"] = []
-        if allow_any_non_production:
-            config["salesforce"]["review"]["allowAnyNonProduction"] = True
+        if denied_org_ids is not None:
+            config["salesforce"]["review"]["deniedOrganizationIds"] = denied_org_ids
         config_path.write_text(json.dumps(config), encoding="utf-8")
         policy_path.write_text(
             (ROOT / "config" / "salesforce-review-policy.json").read_text(encoding="utf-8"),
@@ -323,14 +323,14 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
         self.assertNotEqual(errors, [])
 
     def test_dynamic_lane_admits_unlisted_alias_on_live_proof(self) -> None:
-        # Owner decision 2026-07-31: with allowAnyNonProduction, an alias with no config entry
-        # is admitted purely on live identity proof and reported as environment=dynamic.
+        # Owner decision 2026-08-04 (supersedes the 2026-07-31 toggle): an alias with no
+        # config entry is admitted purely on live identity proof, unconditionally, and
+        # reported as environment=dynamic.
         with tempfile.TemporaryDirectory() as name:
             facade = ReviewFacade(
                 Path(name),
                 alias="scratch-box",
                 drop_org_entry=True,
-                allow_any_non_production=True,
                 cli_host=SCRATCH_HOST,
                 allowed_objects=None,
             )
@@ -356,13 +356,45 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
                 self.assertNotIn(ORG_ID, serialized)
             self.assertTrue(identity["target"]["isSandbox"])
 
+    def test_denied_organization_id_blocks_pinned_lane(self) -> None:
+        # review.deniedOrganizationIds is the org-level brake of the read-anywhere
+        # convention (owner 2026-08-04): refusal happens at live identity proof time,
+        # before the MCP child ever starts.
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(Path(name), denied_org_ids=[ORG_ID])
+            try:
+                evidence = facade.call("review_org_identity")
+            finally:
+                facade.close()
+            self.assertEqual(evidence["status"], "BLOCKED")
+            self.assertIn("ORG_ID_DENIED", evidence["warnings"])
+            self.assertFalse(facade.marker_path.exists())
+            self.assert_valid_evidence(evidence)
+
+    def test_denied_organization_id_blocks_dynamic_lane(self) -> None:
+        with tempfile.TemporaryDirectory() as name:
+            facade = ReviewFacade(
+                Path(name),
+                alias="scratch-box",
+                drop_org_entry=True,
+                denied_org_ids=[ORG_ID],
+                cli_host=SCRATCH_HOST,
+                allowed_objects=None,
+            )
+            try:
+                evidence = facade.call("review_org_identity")
+            finally:
+                facade.close()
+            self.assertEqual(evidence["status"], "BLOCKED")
+            self.assertIn("ORG_ID_DENIED", evidence["warnings"])
+            self.assert_valid_evidence(evidence)
+
     def test_dynamic_lane_verifies_developer_edition_with_is_sandbox_false(self) -> None:
         with tempfile.TemporaryDirectory() as name:
             facade = ReviewFacade(
                 Path(name),
                 alias="devmp",
                 drop_org_entry=True,
-                allow_any_non_production=True,
                 cli_host="orgfarm-x-dev-ed.develop.my.salesforce.com",
                 is_sandbox=False,
                 allowed_objects=None,
@@ -429,7 +461,6 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
                 Path(name),
                 alias="devmp",
                 drop_org_entry=True,
-                allow_any_non_production=True,
                 cli_host="orgfarm-x-dev-ed.develop.my.salesforce.com",
                 is_sandbox=True,
                 allowed_objects=None,
@@ -1049,12 +1080,21 @@ class SalesforceReviewConfigContractTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2)
         self.assertIn("ALIAS_MARKED_PRODUCTION", completed.stderr)
 
-    def test_server_refuses_unlisted_alias_without_allow_any_non_production(self) -> None:
+    def test_server_refuses_malformed_denied_organization_ids(self) -> None:
         config = local_config()
-        config["salesforce"]["orgs"] = []
+        config["salesforce"]["review"]["deniedOrganizationIds"] = ["not-an-org-id"]
         completed = self._startup_refusal(config)
         self.assertEqual(completed.returncode, 2)
-        self.assertIn("ALIAS_NOT_ALLOWLISTED", completed.stderr)
+        self.assertIn("CONFIG_INVALID", completed.stderr)
+
+    def test_server_refuses_lone_identity_pin(self) -> None:
+        # Pins travel together (owner 2026-08-04): exactly one is a config error, never a
+        # silent fall-through to the discovery lane.
+        config = local_config()
+        del config["salesforce"]["orgs"][0]["expectedOrganizationId"]
+        completed = self._startup_refusal(config)
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("CONFIG_INVALID", completed.stderr)
 
 
 

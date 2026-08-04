@@ -14,34 +14,25 @@
       {
         "alias": "<DEV_ALIAS>",
         "environment": "development",
-        "allowAgentRead": true,
-        "allowAgentWrite": false,
-        "allowAgentReview": false,
         "expectedInstanceHost": "<MY_DOMAIN>--<DEV_SANDBOX>.sandbox.my.salesforce.com",
         "expectedOrganizationId": "<DEV_ORGANIZATION_ID>"
       },
       {
         "alias": "<QA_ALIAS>",
         "environment": "qa",
-        "allowAgentRead": true,
-        "allowAgentWrite": false,
-        "allowAgentReview": false,
         "expectedInstanceHost": "<MY_DOMAIN>--<QA_SANDBOX>.sandbox.my.salesforce.com",
         "expectedOrganizationId": "<QA_ORGANIZATION_ID>"
       },
       {
         "alias": "<UAT_ALIAS>",
         "environment": "uat",
-        "allowAgentRead": true,
-        "allowAgentWrite": false,
-        "allowAgentReview": false,
         "expectedInstanceHost": "<MY_DOMAIN>--<UAT_SANDBOX>.sandbox.my.salesforce.com",
         "expectedOrganizationId": "<UAT_ORGANIZATION_ID>"
       }
     ],
     "review": {
       "enabled": false,
-      "allowAnyNonProduction": false,
+      "deniedOrganizationIds": [],
       "apiVersion": "67.0",
       "requireDualSource": true,
       "allowedPackageNamespaces": [],

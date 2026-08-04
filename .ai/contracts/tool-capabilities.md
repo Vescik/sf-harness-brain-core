@@ -62,13 +62,16 @@ absent `review.allowedObjectApiNames` key means all objects (equivalent to `["*"
 list remains supported and honored for orgs holding sensitive data. The raw paths above stay
 denied regardless: SOQL never runs through raw CLI or raw vendor tools.
 
-Policy (owner decision 2026-07-31): any proven non-production org may be read. With
-`salesforce.review.allowAnyNonProduction` enabled, an alias absent from local configuration is
-admitted on live identity proof alone — a canonical sandbox, scratch, or Developer Edition host
-whose `Organization.IsSandbox` value matches that signature — and the proven identity is frozen
-for the rest of the session. Configured entries keep their pinned host/organization-ID lane, and
-an entry marked `environment: "production"` is a hard deny the toggle never overrides. Production
-signatures stay refused in every lane.
+Policy (owner decision 2026-08-04, superseding the 2026-07-31 toggle): any proven
+non-production org may be read, unconditionally — which org a developer connects is the
+developer's responsibility. An alias absent from local configuration is admitted on live
+identity proof alone — a canonical sandbox, scratch, or Developer Edition host whose
+`Organization.IsSandbox` value matches that signature — and the proven identity is frozen for
+the rest of the session. Entries carrying both identity pins keep the exact-org lane; pinless
+entries use the same discovery proof. Two hard brakes remain: an entry marked
+`environment: "production"` denies its alias, and any organization ID listed in
+`salesforce.review.deniedOrganizationIds` is refused at proof time whatever alias resolves to
+it. Production signatures stay refused in every lane.
 
 Record-level reads run through `review_soql_query` alone: the guarded
 `scripts/salesforce_read.py` CLI wrapper (structured record reads, cached metadata retrieve,
@@ -80,15 +83,12 @@ opts into every object. On a full-copy sandbox that means record reads can reach
 production data across all objects — prefer an explicit list when the org holds sensitive
 data.
 
-Development mode exists only as a launcher lane (`start_salesforce_mcp.mjs --mode development`),
-not as a configured MCP server: `.vscode/mcp.json` registers no `salesforce-development` entry and
-`validate_harness.py` fails if one reappears (owner decision 2026-07-14), so no agent-facing
-`salesforce-development` tool surface exists; the safety hook keeps its dev-tool classifier as
-defense in depth. If a human starts that lane it registers only metadata, testing, and
-code-analysis toolsets for one locally authorized alias granting `allowAgentWrite`, requires the
-shared-sandbox approval reference, is disabled on Windows, and still proves live non-production
-identity first. It does not enable broad data tools, `ALLOW_ALL_ORGS`, default orgs, users,
-DevOps Center, or non-GA tools. Ordinary development work needs none of it: reads go through the
-facade, repository edits stay in `force-app`/`manifest`/`tests/e2e`, org retrieves use
-`sf project retrieve start` behind a per-invocation human confirmation (every other direct
-`sf`/`sfdx` invocation is denied), and deploys are always performed by a human.
+There is no development/write mode at all: the launcher's development lane was retired
+2026-08-04 (it had been dead weight since the 2026-07-14 write-server removal — unreachable
+from any configured surface, disabled on Windows, and guarded four ways). The launcher spawns
+only the review facade; `.vscode/mcp.json` registers no `salesforce-development` entry and
+`validate_harness.py` fails if one reappears; the safety hook keeps its dev-tool classifier as
+defense in depth. Reads go through the facade, repository edits stay in
+`force-app`/`manifest`/`tests/e2e`, org retrieves use `sf project retrieve start` behind a
+per-invocation human confirmation (every other direct `sf`/`sfdx` invocation is denied), and
+deploys are always performed by a human.

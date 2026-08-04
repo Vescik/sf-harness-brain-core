@@ -56,7 +56,7 @@ to the governed record reads instead of rejecting them (owner decision 2026-07-3
 
 ## Entry-lane org sampling (governed persistence)
 
-When an org alias with allowAgentRead+allowAgentReview is configured and
+When a non-production org alias is configured and
 `python scripts/preflight.py --capability salesforce-review` passes, org sampling is the
 default persistence path for object/field usage numbers. For each target entry whose org lane
 is not already `org-fresh` (recompute it with
