@@ -47,10 +47,6 @@ ALLOWED_PREFIXES = {
         "output/documentation/",
         ".cache/ado-items/",
         ".cache/ado-wiki/",
-        # Agent-authored dev-tool batch PLANS only; approval stays human-terminal-only
-        # (scripts/approve_dev_tool_batch.py — the safety hook denies Copilot invocations)
-        # and receipts under .cache/receipts/ are written exclusively by governed executors.
-        ".cache/devtool-batches/",
     ),
     "guardrail-reviewer": (),
 }

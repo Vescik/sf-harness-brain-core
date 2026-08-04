@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -107,13 +106,6 @@ STATE_CHANGING_BROWSER = frozenset(
 )
 BROWSER_SESSION_TTL_MINUTES = 120
 RETRIEVE_RECEIPT_MAX_AGE_MINUTES = 60
-DEVTOOL_BATCH_TTL_MINUTES = 60
-# Batch-plan approval is human-terminal-only, exactly like work_record approve.
-DEVTOOL_BATCH_APPROVE_SCRIPT = re.compile(
-    r"(?:^|[\s\"';&|()])(?:[A-Za-z]:)?/?(?:[^\s\"';&|()]+/)*"
-    r"approve_dev_tool_batch\.py(?=$|[\s\"';&|()])",
-    re.IGNORECASE,
-)
 def safety_toggle(config: dict[str, Any] | None, name: str) -> bool:
     if not isinstance(config, dict):
         return False
@@ -195,54 +187,6 @@ def retrieve_auto_approved(config: dict[str, Any] | None) -> bool:
     receipt = load_fresh_receipt("metadata", RETRIEVE_RECEIPT_MAX_AGE_MINUTES)
     return receipt is not None and force_app_is_clean()
 
-
-def devtool_entry_digest(bare_tool: str, tool_input: Any) -> str:
-    payload = json.dumps(
-        {"tool": bare_tool, "arguments": tool_input},
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def consume_devtool_batch_entry(
-    config: dict[str, Any] | None, bare_tool: str, tool_input: Any
-) -> bool:
-    """Allow a dev-tool call only when it exactly matches an unused entry of a fresh,
-    human-approved batch receipt; the entry is single-use and burned on match."""
-
-    if not safety_toggle(config, "batchDevToolApproval"):
-        return False
-    digest = devtool_entry_digest(bare_tool, tool_input)
-    for path in sorted(RECEIPTS_DIR.glob("devtool-batch-*.json")):
-        receipt = load_json_receipt(path)
-        if receipt is None or receipt.get("kind") != "dev-tool-batch-receipt":
-            continue
-        ttl = receipt.get("ttlMinutes")
-        if not isinstance(ttl, int) or not receipt_is_fresh(
-            receipt, min(ttl, DEVTOOL_BATCH_TTL_MINUTES), "approvedAt"
-        ):
-            continue
-        entries = receipt.get("entries")
-        if not isinstance(entries, list):
-            continue
-        for entry in entries:
-            if (
-                isinstance(entry, dict)
-                and entry.get("digest") == digest
-                and entry.get("used") is False
-            ):
-                entry["used"] = True
-                try:
-                    path.write_text(
-                        json.dumps(receipt, indent=2, sort_keys=True) + "\n",
-                        encoding="utf-8",
-                    )
-                except OSError:
-                    return False
-                return True
-    return False
 
 # MCP tool classification. VS Code may hand the hook either a "server/tool" name or a BARE "tool"
 # name (observed live: `core_list_orgs`). Server-prefix matching alone therefore leaks — classify by
@@ -803,20 +747,6 @@ def main() -> int:
         )
         return 0
 
-    if is_terminal_tool(tool_name) and DEVTOOL_BATCH_APPROVE_SCRIPT.search(
-        dequote(re.sub(r"\\\r?\n", " ", command).replace("\\", "/"))
-    ):
-        print(
-            json.dumps(
-                hook_response(
-                    "deny",
-                    "SAFE-HUMAN-001: Copilot cannot approve a dev-tool batch plan; "
-                    "a named human must run approve_dev_tool_batch.py directly outside Copilot.",
-                )
-            )
-        )
-        return 0
-
     if is_terminal_tool(tool_name) and re.search(
         r"knowledge_store\.py", dequote(command).replace("\\", "/")
     ) and re.search(r"(?:^|\s)(?:entry|feature)-(?:approve|revoke)(?:\s|$)", dequote(command)):
@@ -910,9 +840,9 @@ def main() -> int:
             print(json.dumps(hook_response("deny", "Salesforce development path is outside root force-app/manifest/tests/e2e source.")))
             return 0
         if development_tool_requires_confirmation(lowered_name):
-            if consume_devtool_batch_entry(config, bare_tool, tool_input):
-                print(json.dumps(hook_response()))
-                return 0
+            # Per-invocation ask, always: the batch-receipt shortcut was retired 2026-08-04
+            # (the dev lane is human-started, macOS-only — one extra click per call is the
+            # whole cost of dropping the receipt/digest/TTL machinery).
             print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation for this approved non-production mutation.")))
             return 0
     try:

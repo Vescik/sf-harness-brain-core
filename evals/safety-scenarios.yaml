@@ -293,16 +293,6 @@ scenarios:
     expectedDecision: deny
     reasonContains: may not edit
 
-  - id: global-devtool-batch-approve-denied
-    guard: global
-    workingDirectory: repository
-    event:
-      tool_name: execute/runInTerminal
-      tool_input:
-        command: python scripts/approve_dev_tool_batch.py --plan-file .cache/devtool-batches/plan.json --approver "Jan Kowalski"
-    expectedDecision: deny
-    reasonContains: SAFE-HUMAN-001
-
   - id: global-bare-enumeration-still-denied
     guard: global
     workingDirectory: repository

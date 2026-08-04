@@ -55,8 +55,7 @@
     "sharedSandboxApprovalRef": "",
     "browserSessionApproval": false,
     "autoApproveRetrieveWithReceipt": false,
-    "allowScopedEnumeration": false,
-    "batchDevToolApproval": false
+    "allowScopedEnumeration": false
   },
   "workspace": {
     "salesforceRootName": "brain-core",

@@ -647,3 +647,25 @@ are not durable.
   snapshots run their SELECT through the facade (explicit field list, never Id, LIMIT 200,
   ORDER BY natural key) — the skill's own sanitization rules are unchanged.
 - Gate: validate_harness 2594 checks PASS, 966 unit tests OK (1 skip), run_evals 38/38.
+
+## 2026-08-04 — Over-engineering slimming wave 1 (owner AskUserQuestion decisions)
+
+Owner picked, from the 2026-08-04 over-engineering review: (A) dev-tool batch approval
+pipeline DELETED entirely; (B) SAFE-HUMAN-001 kept at two layers — global safety hook +
+in-process work_record backstop (role-guard special-case and settings.json deny regexes
+removed); (C) knowledge benchmark REMOVED from CI entirely (stays a local script);
+(D) rule-registry.yaml retired — rule IDs validate against .github/copilot-instructions.md
+directly. Each lands as its own commit with the full gate.
+
+### A — dev-tool batch pipeline deleted
+- Gone: scripts/approve_dev_tool_batch.py, schemas/dev-tool-batch.schema.json,
+  .cache/devtool-batches/, hook surfaces (DEVTOOL_BATCH_*, devtool_entry_digest,
+  consume_devtool_batch_entry, approve-script deny trap), the role-guard write prefix,
+  the eval scenario, validator pins, and both DevToolBatch test classes.
+- Kept on purpose: the dev-tool CLASSIFIER and the per-invocation SAFE-HUMAN-001 ask —
+  a mutating dev tool now always stops for its own confirmation. That is the whole cost:
+  one click per call on the human-started, macOS-only dev lane (Windows fleet never could
+  start it).
+- safety.batchDevToolApproval: schema-tolerated with a "retired, read by nothing"
+  description (existing local configs stay valid); removed from the example config.
+- Pins: mutating dev tool always asks; pipeline surfaces must not resurface.

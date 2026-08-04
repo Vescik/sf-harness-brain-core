@@ -305,7 +305,7 @@
           "type": "boolean"
         },
         "batchDevToolApproval": {
-          "description": "Allow one human approval of a schema-validated dev-tool batch plan to cover its exact hash-pinned entries (single-use, TTL) instead of per-invocation asks. Default off.",
+          "description": "Retired 2026-08-04 with the dev-tool batch pipeline; tolerated in existing configs, read by nothing — every dev-tool call asks per invocation.",
           "type": "boolean"
         }
       },

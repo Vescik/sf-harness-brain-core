@@ -8,7 +8,6 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts import approve_dev_tool_batch as approve_batch
 from scripts import copilot_role_guard as role_guard
 from scripts import copilot_safety_hook as safety
 from scripts import playwright_guard
@@ -230,136 +229,25 @@ class ScopedEnumerationTests(unittest.TestCase):
         self.assertFalse(hasattr(role_guard, "salesforce_read_command_allowed"))
 
 
-class DevToolBatchTests(unittest.TestCase):
-    # assign_permission_set is one of the mutating dev tools that trips the per-invocation ask
-    # (development_tool_requires_confirmation); pure test-runner tools never asked to begin with.
-    ENTRY_INPUT = {"usernameOrAlias": "dev-sbx", "permSetName": "Engagement_Manager"}
-
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory(prefix="devtool-")
-        self.receipts = Path(self.temporary.name)
-        self.addCleanup(self.temporary.cleanup)
-
-    def write_batch_receipt(self, used: bool = False, **overrides) -> Path:
-        digest = safety.devtool_entry_digest("assign_permission_set", self.ENTRY_INPUT)
-        receipt = {
-            "kind": "dev-tool-batch-receipt",
-            "orgAlias": "dev-sbx",
-            "approvedAt": now_iso(),
-            "ttlMinutes": 60,
-            "entries": [{"tool": "assign_permission_set", "digest": digest, "used": used}],
-            **overrides,
-        }
-        path = self.receipts / "devtool-batch-abc123.json"
-        path.write_text(json.dumps(receipt), encoding="utf-8")
-        return path
-
-    def run_devtool(self, config: dict) -> tuple[str, str]:
-        with patch.object(safety, "RECEIPTS_DIR", self.receipts):
-            return run_hook("assign_permission_set", dict(self.ENTRY_INPUT), config)
-
-    def test_devtool_asks_without_a_matching_receipt(self) -> None:
-        result, reason = self.run_devtool(base_config(batchDevToolApproval=True))
+class DevToolBatchRetirementTests(unittest.TestCase):
+    # Owner decision 2026-08-04: the batch-approval pipeline (plan file, approval script,
+    # receipt/digest/TTL machinery) is deleted. A mutating dev tool now ALWAYS stops for its
+    # per-invocation human confirmation, and none of the pipeline surfaces may resurface.
+    def test_mutating_dev_tool_always_asks(self) -> None:
+        result, reason = run_hook(
+            "assign_permission_set",
+            {"usernameOrAlias": "dev-sbx", "permSetName": "Engagement_Manager"},
+            base_config(),
+        )
         self.assertEqual("ask", result)
         self.assertIn("SAFE-HUMAN-001", reason)
 
-    def test_matching_entry_allows_once_and_is_burned(self) -> None:
-        path = self.write_batch_receipt()
-        config = base_config(batchDevToolApproval=True)
-        self.assertEqual("continue", self.run_devtool(config)[0])
-        saved = json.loads(path.read_text(encoding="utf-8"))
-        self.assertTrue(saved["entries"][0]["used"])
-        self.assertEqual("ask", self.run_devtool(config)[0])
-
-    def test_expired_receipt_or_disabled_toggle_asks(self) -> None:
-        self.write_batch_receipt(approvedAt=now_iso(-120))
-        self.assertEqual("ask", self.run_devtool(base_config(batchDevToolApproval=True))[0])
-        self.write_batch_receipt()
-        self.assertEqual("ask", self.run_devtool(base_config(batchDevToolApproval=False))[0])
-
-    def test_different_arguments_do_not_match_the_entry(self) -> None:
-        self.write_batch_receipt()
-        config = base_config(batchDevToolApproval=True)
-        with patch.object(safety, "RECEIPTS_DIR", self.receipts):
-            result, _ = run_hook(
-                "assign_permission_set",
-                {"usernameOrAlias": "dev-sbx", "permSetName": "System_Admin_Lite"},
-                config,
-            )
-        self.assertEqual("ask", result)
-
-    def test_copilot_cannot_invoke_the_batch_approval_script(self) -> None:
-        for command in (
-            "python scripts/approve_dev_tool_batch.py --plan-file .cache/devtool-batches/p.json --approver 'Jan'",
-            r"py -3 scripts\approve_dev_tool_batch.py --plan-file p.json --approver Jan",
-            "bash -c 'python scripts/approve_dev_tool_batch.py --plan-file p.json --approver Jan'",
-        ):
-            with self.subTest(command=command):
-                result, reason = run_hook(
-                    "execute/runInTerminal", {"command": command}, base_config()
-                )
-                self.assertEqual("deny", result)
-                self.assertIn("SAFE-HUMAN-001", reason)
-
-
-class ApproveDevToolBatchScriptTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory(prefix="approve-batch-")
-        root = Path(self.temporary.name)
-        self.addCleanup(self.temporary.cleanup)
-        self.plan_dir = root / "plans"
-        self.receipts = root / "receipts"
-        self.plan_dir.mkdir()
-        self.config_path = root / "harness.local.json"
-        self.config_path.write_text(
-            json.dumps(base_config(batchDevToolApproval=True)), encoding="utf-8"
-        )
-        self.plan = {
-            "schemaVersion": 1,
-            "kind": "dev-tool-batch-plan",
-            "orgAlias": "dev-sbx",
-            "purpose": "Run local Apex tests after the accepted design change.",
-            "entries": [
-                {"tool": "run_apex_tests", "arguments": {"usernameOrAlias": "dev-sbx"}}
-            ],
-        }
-
-    def run_script(self, plan: dict, approver: str = "Jan Kowalski") -> tuple[int, str]:
-        plan_path = self.plan_dir / "plan.json"
-        plan_path.write_text(json.dumps(plan), encoding="utf-8")
-        stdout = StringIO()
-        with (
-            patch.object(approve_batch, "PLAN_DIR", self.plan_dir),
-            patch.object(approve_batch, "RECEIPTS_DIR", self.receipts),
-            patch.object(approve_batch, "CONFIG_PATH", self.config_path),
-            patch("sys.stdout", stdout),
-        ):
-            code = approve_batch.main(["--plan-file", str(plan_path), "--approver", approver])
-        return code, stdout.getvalue()
-
-    def test_valid_plan_produces_a_hook_consumable_receipt(self) -> None:
-        code, output = self.run_script(self.plan)
-        self.assertEqual(0, code, output)
-        receipt_path = next(self.receipts.glob("devtool-batch-*.json"))
-        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-        self.assertEqual("dev-tool-batch-receipt", receipt["kind"])
-        self.assertEqual("Jan Kowalski", receipt["approver"])
-        expected = safety.devtool_entry_digest("run_apex_tests", {"usernameOrAlias": "dev-sbx"})
-        self.assertEqual(expected, receipt["entries"][0]["digest"])
-        self.assertFalse(receipt["entries"][0]["used"])
-
-    def test_schema_invalid_and_forbidden_plans_are_rejected(self) -> None:
-        invalid = dict(self.plan, entries=[{"tool": "deploy", "arguments": {}}])
-        self.assertEqual(2, self.run_script(invalid)[0])
-        production = dict(self.plan, orgAlias="prod-full")
-        self.assertEqual(2, self.run_script(production)[0])
-        self.assertEqual(2, self.run_script(self.plan, approver="<NAME>")[0])
-
-    def test_disabled_toggle_blocks_approval(self) -> None:
-        self.config_path.write_text(json.dumps(base_config()), encoding="utf-8")
-        code, output = self.run_script(self.plan)
-        self.assertEqual(2, code)
-        self.assertIn("batchDevToolApproval", output)
+    def test_pipeline_surfaces_are_gone(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        self.assertFalse((root / "scripts" / "approve_dev_tool_batch.py").exists())
+        self.assertFalse((root / "schemas" / "dev-tool-batch.schema.json").exists())
+        self.assertFalse(hasattr(safety, "consume_devtool_batch_entry"))
+        self.assertFalse(hasattr(safety, "devtool_entry_digest"))
 
 
 if __name__ == "__main__":

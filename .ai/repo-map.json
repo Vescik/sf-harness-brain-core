@@ -522,7 +522,7 @@
     ".ai/contracts/tool-capabilities.md": "sha256:7fc68da677e944aff53396bd956f0d01e00d1b71a3e75853ba88f01e43c950af",
     ".ai/contracts/workflow-state-machine.md": "sha256:bacba0585fb0ee0f5ed68f074b714fe58b4d73709c3077b735a7cbeabc70fd0e",
     ".github/agents/config-investigator.agent.md": "sha256:a084442fa3627e89d9d6d869298a10e01168d71003927bb9d5643ebf9f921882",
-    ".github/agents/development-assistant.agent.md": "sha256:3db9ca24bfbb985cf0a503364598042fb6240b9eb00ebfbcfe0f4826da67e511",
+    ".github/agents/development-assistant.agent.md": "sha256:22e52994d833af63a3c4566bd05ba74e1f391fb2738fa2339667ea276cbb0423",
     ".github/agents/guardrail-reviewer.agent.md": "sha256:6ab10ac906a623424fe3529bd3f9db03e65239c6921869b85750bdc06ac1cbc4",
     ".github/agents/knowledge-curator.agent.md": "sha256:f87cee5742869635e0d67f66fd994bf28c96a5b5da2356c21bfad46ceae965c2",
     ".github/agents/solution-designer.agent.md": "sha256:cd383e24190efe0fcc82e58cdff94fa3e92aa6a3f41744bffc203eccbb39e5ad",
