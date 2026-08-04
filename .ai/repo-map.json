@@ -183,7 +183,7 @@
     },
     {
       "path": ".ai/qa",
-      "purpose": "QA keyword map and cached test cases"
+      "purpose": "QA test-case index synced from Azure Test Plans"
     },
     {
       "path": ".ai/templates",
@@ -216,10 +216,6 @@
     {
       "path": ".vscode",
       "purpose": "Workspace settings and MCP server definitions"
-    },
-    {
-      "path": "audit",
-      "purpose": "Audit records"
     },
     {
       "path": "config",
@@ -414,7 +410,7 @@
   "resumeHere": [
     "Resume work from the persisted record: `python scripts/work_record.py` with explicit recordId/handoffId — chat is never workflow truth.",
     "Knowledge coverage: `python scripts/force_app_knowledge.py inventory` then `entry-readiness` (derived, cannot drift).",
-    "Decisions: `.ai/memory/decisions-log.md`; QA keywords: `.ai/qa/`.",
+    "Decisions: `.ai/memory/decisions-log.md`; QA test-case index: `.ai/qa/test-cases/`.",
     "Search Knowledge first: the `knowledge_context` / `knowledge_search` MCP tools over the entry index (`knowledge_resolve` maps names/paths to identities); terminal fallback lives in the search-knowledge skill's command menu.",
     "Deep tree: `docs/workspace-topology.md`; setup: `docs/setup-zero-to-first-prompt.md`."
   ],
@@ -568,7 +564,7 @@
     ".github/skills/suggest-test-cases/SKILL.md": "sha256:623e28b5e68a2d3eda593a41261218a9d77822fe162f707ca396bd2f0fb16af1",
     ".github/skills/sync-test-cases/SKILL.md": "sha256:86b1af1a8415d07f548e7160a565933be7dfede396e55341345fe76ffccfe529",
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
-    "config/repo-map-seed.json": "sha256:c13601c1518acb76051e1c3e7c0e5340b700396512020f7d75d3744c57e6469a"
+    "config/repo-map-seed.json": "sha256:92f7bfa65c9106c6181b6f6effd3aa92b160b726882a7ced2aa01c221b06d406"
   },
-  "wordCount": 797
+  "wordCount": 793
 }

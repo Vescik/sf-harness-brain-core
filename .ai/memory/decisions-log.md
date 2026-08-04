@@ -111,7 +111,8 @@ are not durable.
 
 ## 2026-07-16 - Templates are normative or removed; two script-shadow templates deleted
 
-- Context: the 2026-07-16 harness audit (audit/findings.md F-06) found the template layer
+- Context: the 2026-07-16 harness audit (F-06; audit records archived outside the repository)
+  found the template layer
   partially decorative: `change-record.md` and `feature-dossier.md` had zero inbound references
   and duplicated structures owned by code (`scripts/work_record.py` design-narrative scaffold,
   `scripts/force_app_knowledge.py` `render_dossier`), so they silently drift when the scripts
@@ -124,12 +125,14 @@ are not durable.
 - Impact: the remaining templates (`technical-documentation.md`, `feature-health-report.md`,
   `release-handover.md`, `knowledge-entry.md`) are all consumer-referenced; no template can
   silently lie about a structure owned elsewhere.
-- Approved by: workspace owner, 2026-07-16 audit review (findings.md F-06).
-- Related: audit/findings.md (F-06), `.ai/templates/`, the F-07 entry below.
+- Superseded in part (2026-08-05): `knowledge-entry.md` later lost its cited consumers and was
+  retired by this rule's own test — see the 2026-08-05 entry.
+- Approved by: workspace owner, 2026-07-16 audit review (F-06).
+- Related: the 2026-07-16 audit (F-06, archived), `.ai/templates/`, the F-07 entry below.
 
 ## 2026-07-16 - tool-capabilities contract wired into every agent role
 
-- Context: the 2026-07-16 harness audit (audit/findings.md F-07) found
+- Context: the 2026-07-16 harness audit (F-07; audit records archived outside the repository) found
   `.ai/contracts/tool-capabilities.md` (Status: normative) loaded by no agent or skill, while
   `.ai/repo-map.md` declares contracts "loaded per role" — unlike the other four contracts,
   which are all consumed.
@@ -139,8 +142,8 @@ are not durable.
   `salesforce-readonly/review_*` tools that the contract maps.
 - Impact: `repo-map.md`'s "loaded per role" claim is true again; namespaced-tool dispatch is
   grounded in the capability map instead of model memory.
-- Approved by: workspace owner, 2026-07-16 audit review (findings.md F-07).
-- Related: audit/findings.md (F-07), `.ai/contracts/tool-capabilities.md`, `.ai/repo-map.md`.
+- Approved by: workspace owner, 2026-07-16 audit review (F-07).
+- Related: the 2026-07-16 audit (F-07, archived), `.ai/contracts/tool-capabilities.md`, `.ai/repo-map.md`.
 
 ## 2026-07-14 - Knowledge upgrade: total metadata coverage and chat-approved promotion
 

@@ -12,7 +12,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 | `.ai/knowledge` | One-file Knowledge Entries + approval ledgers, feature entries, keyword taxonomy |
 | `.ai/change-records` | Durable work records; record.json is authoritative state |
 | `.ai/memory` | Human-curated decisions-log.md |
-| `.ai/qa` | QA keyword map and cached test cases |
+| `.ai/qa` | QA test-case index synced from Azure Test Plans |
 | `.ai/templates` | Document templates |
 | `.cache` | Ignored transient caches, drafts, receipts |
 | `.github` | Copilot surface: kernel, agents, prompts, skills, hooks, CI |
@@ -21,7 +21,6 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 | `.github/prompts` | Public slash commands, each linking its skill |
 | `.github/skills` | Internal skill procedures (SKILL.md per folder) |
 | `.vscode` | Workspace settings and MCP server definitions |
-| `audit` | Audit records |
 | `config` | Harness config (harness.local.json), policies, seed |
 | `docs` | Setup, architecture, compatibility docs |
 | `evals` | Safety scenarios, agent scenarios, schema fixtures |
@@ -102,6 +101,6 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 - Resume work from the persisted record: `python scripts/work_record.py` with explicit recordId/handoffId — chat is never workflow truth.
 - Knowledge coverage: `python scripts/force_app_knowledge.py inventory` then `entry-readiness` (derived, cannot drift).
-- Decisions: `.ai/memory/decisions-log.md`; QA keywords: `.ai/qa/`.
+- Decisions: `.ai/memory/decisions-log.md`; QA test-case index: `.ai/qa/test-cases/`.
 - Search Knowledge first: the `knowledge_context` / `knowledge_search` MCP tools over the entry index (`knowledge_resolve` maps names/paths to identities); terminal fallback lives in the search-knowledge skill's command menu.
 - Deep tree: `docs/workspace-topology.md`; setup: `docs/setup-zero-to-first-prompt.md`.
