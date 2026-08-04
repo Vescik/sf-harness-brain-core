@@ -364,6 +364,16 @@ function testExecutable(name, fallback) {
   return process.env[name] || fallback;
 }
 
+// GUI-launched VS Code on macOS inherits launchd's PATH (/usr/bin:/bin:/usr/sbin:/sbin),
+// which misses every standard `sf` install location — the bare spawn then fails as
+// CLI_UNAVAILABLE even though the CLI works in any terminal (live failure, 2026-08-04).
+// POSIX execvp resolves the executable against the CHILD environment's PATH, so appending
+// the standard prefixes here is enough; Windows terminals inherit the user PATH already.
+const SPAWN_PATH = process.platform === "win32"
+  ? process.env.PATH
+  : [process.env.PATH, "/usr/local/bin", "/opt/homebrew/bin"].filter(Boolean).join(":");
+const SPAWN_ENV = { ...process.env, PATH: SPAWN_PATH };
+
 function runJsonProcess(command, args, runtime, failureCode) {
   return new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
@@ -372,7 +382,7 @@ function runJsonProcess(command, args, runtime, failureCode) {
     const maxBytes = runtime.policy.maxVendorPayloadBytes;
     const child = spawn(command, args, {
       cwd: REPO_ROOT,
-      env: process.env,
+      env: SPAWN_ENV,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -569,7 +579,7 @@ class McpJsonLineClient {
     ];
     this.child = spawn(processConfig.command, args, {
       cwd: REPO_ROOT,
-      env: { ...process.env, SF_ORG_API_VERSION: this.runtime.review.apiVersion },
+      env: { ...SPAWN_ENV, SF_ORG_API_VERSION: this.runtime.review.apiVersion },
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
