@@ -33,9 +33,6 @@ def base_config(**safety_flags: bool) -> dict:
                 {
                     "alias": "dev-sbx",
                     "environment": "development",
-                    "allowAgentRead": True,
-                    "allowAgentReview": True,
-                    "allowAgentWrite": False,
                 }
             ],
         },

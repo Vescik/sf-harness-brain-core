@@ -29,18 +29,12 @@ def safe_config() -> dict:
                 {
                     "alias": "dev-sbx",
                     "environment": "development",
-                    "allowAgentRead": True,
-                    "allowAgentWrite": True,
-                    "allowAgentReview": True,
                     "expectedInstanceHost": "example--dev.sandbox.my.salesforce.com",
                     "expectedOrganizationId": "00D000000000001AAA",
                 },
                 {
                     "alias": "qa-sbx",
                     "environment": "qa",
-                    "allowAgentRead": True,
-                    "allowAgentWrite": False,
-                    "allowAgentReview": False,
                     "expectedInstanceHost": "example--qa.sandbox.my.salesforce.com",
                     "expectedOrganizationId": "00D000000000002AAA",
                 },
@@ -51,7 +45,6 @@ def safe_config() -> dict:
                 "requireDualSource": True,
                 "allowedPackageNamespaces": ["examplepkg"],
                 "allowedObjectApiNames": ["ExampleManagedObject__c"],
-                "maxObjectsPerCall": 10,
                 "maxFieldsPerObject": 500,
                 "evidenceMaxAgeMinutes": 30,
             },
@@ -65,8 +58,6 @@ def safe_config() -> dict:
             "manifestPath": "manifest/package.xml",
         },
         "cache": {
-            "adoItemMaxAgeMinutes": 30,
-            "testCaseMaxAgeMinutes": 1440,
             "onStaleDefault": "ask",
         },
     }
@@ -155,13 +146,20 @@ class PreflightValidationTests(unittest.TestCase):
         failures = preflight.validate_config(config)
         self.assertTrue(any("Production-like Salesforce alias" in item for item in failures))
 
-    def test_retired_allow_agent_flags_are_ignored(self) -> None:
-        """Owner 2026-08-04: allowAgent* flags are tolerated in old configs, read by nothing."""
-        config = safe_config()
-        config["salesforce"]["orgs"][0]["allowAgentRead"] = False
-        config["salesforce"]["orgs"][0]["allowAgentReview"] = False
-        config["salesforce"]["orgs"][1]["allowAgentWrite"] = True
-        self.assertEqual(preflight.validate_config(config), [])
+    def test_retired_allow_agent_flags_are_rejected_by_schema(self) -> None:
+        """Owner 2026-08-05: the fail-closed follow-up to the 2026-08-04 retirement — the
+        schema no longer tolerates the dead flags, so a stale config fails preflight loudly
+        instead of carrying keys that read as capability grants."""
+        schema = json.loads(
+            (ROOT / "schemas/harness-config.schema.json").read_text(encoding="utf-8")
+        )
+        for retired in ("allowAgentRead", "allowAgentReview", "allowAgentWrite"):
+            with self.subTest(flag=retired):
+                config = safe_config()
+                config["salesforce"]["orgs"][0][retired] = True
+                self.assertNotEqual(
+                    [], list(Draft202012Validator(schema).iter_errors(config))
+                )
 
     def test_pinless_entry_and_empty_org_list_pass(self) -> None:
         """A minimal {alias, environment} entry (or none at all) is a valid read config —

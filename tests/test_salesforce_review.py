@@ -150,9 +150,6 @@ def local_config(expected_host: str = HOST) -> dict[str, Any]:
                 {
                     "alias": "dev-sbx",
                     "environment": "development",
-                    "allowAgentRead": True,
-                    "allowAgentWrite": False,
-                    "allowAgentReview": True,
                     "expectedInstanceHost": expected_host,
                     "expectedOrganizationId": ORG_ID,
                 }
@@ -163,7 +160,6 @@ def local_config(expected_host: str = HOST) -> dict[str, Any]:
                 "requireDualSource": True,
                 "allowedPackageNamespaces": ["examplepkg"],
                 "allowedObjectApiNames": ["ExampleManagedObject__c"],
-                "maxObjectsPerCall": 10,
                 "maxFieldsPerObject": 500,
                 "evidenceMaxAgeMinutes": 30,
             },
@@ -953,7 +949,6 @@ class SalesforceReviewConfigContractTests(unittest.TestCase):
             "requireDualSource": True,
             "allowedPackageNamespaces": ["examplepkg"] if enabled else [],
             "allowedObjectApiNames": ["ExampleManagedObject__c"] if enabled else [],
-            "maxObjectsPerCall": 10,
             "maxFieldsPerObject": 500,
             "evidenceMaxAgeMinutes": 30,
         }

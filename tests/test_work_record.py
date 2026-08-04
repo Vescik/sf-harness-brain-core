@@ -178,8 +178,6 @@ class WorkRecordTests(unittest.TestCase):
                             {
                                 "alias": "SBX-DEV",
                                 "environment": "development",
-                                "allowAgentRead": True,
-                                "allowAgentReview": True,
                             }
                         ],
                     },

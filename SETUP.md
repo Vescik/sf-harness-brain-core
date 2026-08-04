@@ -78,6 +78,14 @@ scope and must not be used as a substitute for claim-backed ownership or human a
 are performed by a human, and that human review is where manifest narrowing is checked (the
 automated wildcard gate retired with the write capability, 2026-08-04).
 
+**Migration note (2026-08-05).** The config schema is fail-closed: retired keys are rejected,
+not tolerated. If your existing `config/harness.local.json` predates 2026-08-05, delete these
+keys wherever they appear, or preflight exits 2 with a schema error: per-org
+`allowAgentRead`/`allowAgentWrite`/`allowAgentReview`, `review.allowAnyNonProduction`,
+`review.maxObjectsPerCall`, `safety.browserSessionApproval`, `safety.batchDevToolApproval`,
+`cache.adoItemMaxAgeMinutes`, `cache.testCaseMaxAgeMinutes`, `workspace.promotedTestsPath`,
+and the whole `browser` section.
+
 The file holds identifiers, allowlists, and paths, not secrets. ADO uses OAuth through VS Code; Salesforce uses
 existing CLI authorization.
 Alias names and environment labels are not treated as proof: Salesforce MCP startup first checks

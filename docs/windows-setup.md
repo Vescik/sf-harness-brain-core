@@ -109,6 +109,12 @@ it here on Windows. Set at minimum:
 file directly only if you skip the script. For a fully manual, zero-assumptions walkthrough see
 [setup-zero-to-first-prompt.md](setup-zero-to-first-prompt.md).
 
+**Upgrading an existing machine?** Configs written before 2026-08-05 may carry retired keys the
+schema now rejects (preflight exits 2 until they are deleted): per-org `allowAgent*`,
+`review.allowAnyNonProduction`, `review.maxObjectsPerCall`, `safety.browserSessionApproval`,
+`safety.batchDevToolApproval`, `cache.adoItemMaxAgeMinutes`, `cache.testCaseMaxAgeMinutes`,
+`workspace.promotedTestsPath`, and the `browser` section — see the migration note in SETUP.md §3.
+
 ## Step 6 — Authorize a sandbox (review-only)
 
 Salesforce MCP is **review (read-only)** only. Authorize any non-production org — a sandbox

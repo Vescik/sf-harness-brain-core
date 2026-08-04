@@ -14,12 +14,11 @@
     "orgUsagePolicy": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["maxOrgUsageAgeDays", "usageGroupSuppressionFloor", "sampleRows", "sampleRowsMax", "maxSampleColumns", "allowedOriginRemotes"],
+      "required": ["maxOrgUsageAgeDays", "usageGroupSuppressionFloor", "sampleRowsMax", "maxSampleColumns", "allowedOriginRemotes"],
       "description": "Org-usage layer knobs (contract §2.3/§6.6). maxOrgUsageAgeDays: owner decision D-2 2026-08-03 = 90, PROVISIONAL until the sandbox refresh cadence is recorded — the value must stay <= that cadence, and compute_org_lane applies min(stored expiresAt, observedAt + current policy) so tightening the policy expires existing blocks retroactively. allowedOriginRemotes: gate-1 containment allowlist (owner decision D-1 2026-08-03, refined: single-repo model — the whole workspace lives in the company's private GitHub Enterprise repo, org observations are committed there, and the public origin is never a remote of it nor ever allowlisted) — empty means entry-org-attach refuses everywhere, and a failing git remote enumeration is a refusal, never a pass.",
       "properties": {
         "maxOrgUsageAgeDays": { "type": "integer", "minimum": 1, "maximum": 365 },
         "usageGroupSuppressionFloor": { "type": "integer", "minimum": 1, "maximum": 100 },
-        "sampleRows": { "type": "integer", "minimum": 10, "maximum": 50 },
         "sampleRowsMax": { "type": "integer", "minimum": 10, "maximum": 50 },
         "maxSampleColumns": { "type": "integer", "minimum": 1, "maximum": 40 },
         "allowedOriginRemotes": {

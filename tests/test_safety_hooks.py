@@ -44,18 +44,12 @@ def write_local_config(root: Path) -> None:
                 {
                     "alias": "dev-sbx",
                     "environment": "development",
-                    "allowAgentRead": True,
-                    "allowAgentWrite": True,
-                    "allowAgentReview": True,
                     "expectedInstanceHost": "example--dev.sandbox.my.salesforce.com",
                     "expectedOrganizationId": "00D000000000001AAA",
                 },
                 {
                     "alias": "qa-sbx",
                     "environment": "qa",
-                    "allowAgentRead": True,
-                    "allowAgentWrite": False,
-                    "allowAgentReview": False,
                     "expectedInstanceHost": "example--qa.sandbox.my.salesforce.com",
                     "expectedOrganizationId": "00D000000000002AAA",
                 },
@@ -66,7 +60,6 @@ def write_local_config(root: Path) -> None:
                 "requireDualSource": True,
                 "allowedPackageNamespaces": ["examplepkg"],
                 "allowedObjectApiNames": ["ExampleManagedObject__c"],
-                "maxObjectsPerCall": 10,
                 "maxFieldsPerObject": 500,
                 "evidenceMaxAgeMinutes": 30,
             },
@@ -994,8 +987,6 @@ class SafetyClassificationTests(unittest.TestCase):
             "salesforce": {
                 "orgs": [
                     {
-                        "allowAgentRead": True,
-                        "allowAgentReview": True,
                     }
                 ],
                 "review": {
@@ -1036,7 +1027,7 @@ class SafetyClassificationTests(unittest.TestCase):
     def test_wildcard_object_allowlist_permits_any_valid_object_but_not_malformed(self) -> None:
         config = {
             "salesforce": {
-                "orgs": [{"allowAgentRead": True, "allowAgentReview": True}],
+                "orgs": [{"alias": "dev-sbx", "environment": "development"}],
                 "review": {
                     "enabled": True,
                     "requireDualSource": True,
@@ -1070,7 +1061,7 @@ class SafetyClassificationTests(unittest.TestCase):
     def test_composed_soql_review_tool_accepts_query_shape_only(self) -> None:
         config = {
             "salesforce": {
-                "orgs": [{"allowAgentRead": True, "allowAgentReview": True}],
+                "orgs": [{"alias": "dev-sbx", "environment": "development"}],
                 "review": {
                     "enabled": True,
                     "requireDualSource": True,

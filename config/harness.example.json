@@ -52,8 +52,6 @@
     "manifestPath": "manifest/package.xml"
   },
   "cache": {
-    "adoItemMaxAgeMinutes": 30,
-    "testCaseMaxAgeMinutes": 1440,
     "wikiPageMaxAgeMinutes": 129600,
     "onStaleDefault": "ask"
   },
