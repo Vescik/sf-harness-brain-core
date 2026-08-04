@@ -1,8 +1,7 @@
 # Keyword Taxonomy
 
-Controlled vocabulary of terms — shared between object descriptions (the optional "Keywords"
-field in `.ai/templates/knowledge-entry.md`) and the QA layer (`.ai/qa/keywords-map.md`). Its
-purpose: two descriptions of the same thing (e.g. "Billing" vs "Invoicing") resolve to one
+Controlled vocabulary of terms shared between Knowledge entry descriptions and the QA layer.
+Its purpose: two descriptions of the same thing (e.g. "Billing" vs "Invoicing") resolve to one
 shared term once, instead of the model re-guessing synonymy every time
 (historical design blueprint section 3; git tag `design-history`).
 
