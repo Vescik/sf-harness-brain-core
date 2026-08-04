@@ -14,7 +14,6 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
-import yaml
 from jsonschema import Draft202012Validator, FormatChecker
 
 
@@ -122,7 +121,6 @@ class WorkRecordTests(unittest.TestCase):
 
     def _create_contract_root(self) -> None:
         schema_names = [
-            "principle-registry.schema.json",
             "salesforce-org-review-evidence.schema.json",
             "verification-policy.schema.json",
             "verification-receipt.schema.json",
@@ -153,34 +151,16 @@ class WorkRecordTests(unittest.TestCase):
                 "salesforce-platform",
             ),
         }
-        rules = []
+        # Rules resolve straight from the Principle sources (registry retired 2026-08-04):
+        # the bolded `**<ID> — …**` declaration line is the canonical form work_record scans.
         for rule_id, (tier, source, kind, scope) in source_by_rule.items():
+            del tier, kind, scope  # tier derives from the file; the rest was registry-only
             path = self.root / source
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(f"# {rule_id}\n\nTest canonical rule source.\n", encoding="utf-8")
-            rules.append(
-                {
-                    "ruleId": rule_id,
-                    "tier": tier,
-                    "status": "active",
-                    "sourceFile": source,
-                    "ownerRole": "test-policy-owner",
-                    "basis": {
-                        "kind": kind,
-                        "completeness": "complete",
-                        "sourceRefs": [source],
-                        "claimRefs": [],
-                    },
-                    "scope": scope,
-                    "review": {"lastReviewedAt": None, "reviewBy": None},
-                }
+            path.write_text(
+                f"- **{rule_id} — test canonical rule.** Test canonical rule source.\n",
+                encoding="utf-8",
             )
-        registry = self.root / ".github" / "instructions" / "rule-registry.yaml"
-        registry.parent.mkdir(parents=True, exist_ok=True)
-        registry.write_text(
-            yaml.safe_dump({"schemaVersion": 1, "rules": rules}, sort_keys=False),
-            encoding="utf-8",
-        )
 
         config_dir = self.root / "config"
         config_dir.mkdir(parents=True)

@@ -55,10 +55,6 @@
         "approve": true,
         "matchCommandLine": true
       },
-      "/scripts[\\\\/]work_record\\.py\\s+approve\\b/": {
-        "approve": false,
-        "matchCommandLine": true
-      },
       "sf": false,
       "sfdx": false,
       "rm": false,

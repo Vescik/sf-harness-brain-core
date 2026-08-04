@@ -20,8 +20,10 @@ INTENTIONALLY_UNGUARDED = {
     "knowledge_store": {},
     "knowledge_search": {},
     "work_record": {
-        "approve": "human-terminal-only: SAFE-HUMAN-001 — hard-denied for every role "
-        "in work_record_command_allowed and by the global safety hook",
+        "approve": "human-terminal-only: SAFE-HUMAN-001 — in no role's command set; the "
+        "denial layers are the global safety hook and the in-process work_record backstop "
+        "(owner decision 2026-08-04: settings.json deny entry and the guard's explicit "
+        "special-case were removed as redundant third/fourth layers)",
     },
 }
 

@@ -5,7 +5,6 @@
 /.ai/contracts/ @your-org/harness-maintainers
 /.ai/knowledge/ @your-org/harness-maintainers
 /.ai/change-records/ @your-org/harness-maintainers
-/.github/instructions/rule-registry.yaml @your-org/harness-maintainers
 /config/knowledge-policy.json @your-org/harness-maintainers
 /config/salesforce-review-policy.json @your-org/harness-maintainers
 /config/verification-policy.json @your-org/harness-maintainers

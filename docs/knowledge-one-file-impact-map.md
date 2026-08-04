@@ -111,7 +111,7 @@ Rows added after the three-reviewer adversarial pass (verdicts in
 | Review surface | executor-rendered approval artifact `output/knowledge-approvals/<chunkId>.md`; agent prose never the review surface | P1 |
 | Validator performance budget | `validate_harness.py` reserved-token sweep over `.ai/**` and the 30s subprocess timeout are over budget by construction at 10–15k entries — dedicated perf budget row: scoped/incremental sweep, revised timeouts, Windows CI wall-time gate at target scale | P1 |
 | `tests/test_knowledge_contract.py` live-leak test | extend reserved-token scan to `.ai/knowledge/artifacts/` + ledger; note `DOMAIN_FILES` marker pins break at domain-file retirement | P1 (extend), P5 (retire pins) |
-| Rule-registry SHA rebind | SAFE-CLAIM v2 text edit changes `copilot-instructions.md` bytes → `rule-registry.yaml` regeneration + in-flight work-record ruleRef re-pin/grandfather policy | P3 |
+| Rule-source SHA rebind | SAFE-CLAIM v2 text edit changes `copilot-instructions.md` bytes → in-flight work-record ruleRef re-pin/grandfather policy (`sourceSha256`; the registry itself was retired 2026-08-04) | P3 |
 | `coverage` / `stale-report` / `dashboard` commands | claim-scoped reporting misreports after entry migration — repoint or dual-report | P2–P5 |
 | `config/repo-map-seed.json` + repo-map | `.ai/knowledge` description ("canonical claims/evidence/reviews") becomes false at P1 — update seed + regenerate | P1 |
 | Chunk stamping journal | per-file stamping with ledger `chunkId` resume point; crash/`PermissionError` recovery test on Windows | P1 |

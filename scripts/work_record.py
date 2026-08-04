@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 from urllib.parse import urlsplit, urlunsplit
 
-import yaml
 from jsonschema import Draft202012Validator
 
 try:
@@ -34,9 +33,17 @@ WORK_EVIDENCE_SCHEMA = HARNESS_ROOT / "schemas" / "work-evidence.schema.json"
 SALESFORCE_REVIEW_SCHEMA = HARNESS_ROOT / "schemas" / "salesforce-org-review-evidence.schema.json"
 VERIFICATION_POLICY_SCHEMA = HARNESS_ROOT / "schemas" / "verification-policy.schema.json"
 VERIFICATION_RECEIPT_SCHEMA = HARNESS_ROOT / "schemas" / "verification-receipt.schema.json"
-PRINCIPLE_REGISTRY_SCHEMA = HARNESS_ROOT / "schemas" / "principle-registry.schema.json"
 VERIFICATION_POLICY_PATH = "config/verification-policy.json"
-RULE_REGISTRY_PATH = ".github/instructions/rule-registry.yaml"
+# Rules are declared directly in the Principle sources as bolded `**<ID> — …**` lines; the
+# tier is a property of WHICH file declares the rule. (Owner decision 2026-08-04: the
+# rule-registry.yaml re-encoding of these files was retired — validate_harness pins that
+# every ID is declared exactly once across the four sources.)
+RULE_SOURCE_TIERS: tuple[tuple[str, str], ...] = (
+    (".github/copilot-instructions.md", "kernel"),
+    (".github/instructions/managed-package-constraints.instructions.md", "1"),
+    (".github/instructions/organization-principles.instructions.md", "2"),
+    (".github/instructions/salesforce-best-practices.instructions.md", "3"),
+)
 
 AGENT_ROLES = {
     "solution-designer",
@@ -213,18 +220,6 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_yaml(path: Path) -> dict[str, Any]:
-    try:
-        value = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise WorkRecordError(f"required file is missing: {path}") from exc
-    except (OSError, yaml.YAMLError) as exc:
-        raise WorkRecordError(f"invalid YAML in {path}: {exc}") from exc
-    if not isinstance(value, dict):
-        raise WorkRecordError(f"expected a YAML object in {path}")
-    return value
-
-
 def parse_time(value: str, label: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -398,34 +393,24 @@ def contract_schema(root: Path, filename: str) -> Path:
     return local if local.is_file() else HARNESS_ROOT / "schemas" / filename
 
 
-def load_rule_registry(root: Path) -> tuple[dict[str, Any], Path]:
-    path = contained_path(root, RULE_REGISTRY_PATH)
-    registry = load_yaml(path)
-    validate_schema(
-        registry,
-        contract_schema(root, "principle-registry.schema.json"),
-        "Principle registry",
-    )
-    return registry, path
-
-
 def resolved_rule_ref(root: Path, rule_id: str) -> dict[str, Any]:
     if not RULE_ID.fullmatch(rule_id):
         raise WorkRecordError(f"invalid rule ID: {rule_id}")
-    registry, registry_path = load_rule_registry(root)
-    rule = next((item for item in registry["rules"] if item.get("ruleId") == rule_id), None)
-    if rule is None:
-        raise WorkRecordError(f"rule is absent from the canonical registry: {rule_id}")
-    if rule.get("status") != "active" or rule.get("basis", {}).get("completeness") != "complete":
-        raise WorkRecordError(f"rule is not active and complete: {rule_id}")
-    source = contained_path(root, str(rule["sourceFile"]))
-    return {
-        "ruleId": rule_id,
-        "tier": rule["tier"],
-        "sourceFile": rule["sourceFile"],
-        "registrySha256": file_hash(registry_path),
-        "sourceSha256": file_hash(source),
-    }
+    declaration = re.compile(r"\*\*" + re.escape(rule_id) + r"\s+—")
+    for source_file, tier in RULE_SOURCE_TIERS:
+        source = contained_path(root, source_file)
+        try:
+            text = source.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if declaration.search(text):
+            return {
+                "ruleId": rule_id,
+                "tier": tier,
+                "sourceFile": source_file,
+                "sourceSha256": file_hash(source),
+            }
+    raise WorkRecordError(f"rule is not declared in any Principle source: {rule_id}")
 
 
 def validate_rule_refs(root: Path, references: list[dict[str, Any]]) -> None:

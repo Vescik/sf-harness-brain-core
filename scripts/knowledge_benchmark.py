@@ -1,5 +1,9 @@
 """Target-scale benchmark for the one-file Knowledge store and its search.
 
+LOCAL TOOL ONLY (owner decision 2026-08-04): CI no longer runs this — the µs/entry budget
+gate measured runner noise on a near-empty real corpus. Run it by hand when a performance
+question actually comes up; the budget constants below remain the reference numbers.
+
 The adversarial review required performance to be measured on a named fixture rather than
 asserted (review R3-5 / R-20: the validator's `.ai/**` scan and the search build were both
 suspected of being over budget by construction at 10-15k entries).

@@ -647,3 +647,56 @@ are not durable.
   snapshots run their SELECT through the facade (explicit field list, never Id, LIMIT 200,
   ORDER BY natural key) — the skill's own sanitization rules are unchanged.
 - Gate: validate_harness 2594 checks PASS, 966 unit tests OK (1 skip), run_evals 38/38.
+
+## 2026-08-04 — Over-engineering slimming wave 1 (owner AskUserQuestion decisions)
+
+Owner picked, from the 2026-08-04 over-engineering review: (A) dev-tool batch approval
+pipeline DELETED entirely; (B) SAFE-HUMAN-001 kept at two layers — global safety hook +
+in-process work_record backstop (role-guard special-case and settings.json deny regexes
+removed); (C) knowledge benchmark REMOVED from CI entirely (stays a local script);
+(D) rule-registry.yaml retired — rule IDs validate against .github/copilot-instructions.md
+directly. Each lands as its own commit with the full gate.
+
+### A — dev-tool batch pipeline deleted
+- Gone: scripts/approve_dev_tool_batch.py, schemas/dev-tool-batch.schema.json,
+  .cache/devtool-batches/, hook surfaces (DEVTOOL_BATCH_*, devtool_entry_digest,
+  consume_devtool_batch_entry, approve-script deny trap), the role-guard write prefix,
+  the eval scenario, validator pins, and both DevToolBatch test classes.
+- Kept on purpose: the dev-tool CLASSIFIER and the per-invocation SAFE-HUMAN-001 ask —
+  a mutating dev tool now always stops for its own confirmation. That is the whole cost:
+  one click per call on the human-started, macOS-only dev lane (Windows fleet never could
+  start it).
+- safety.batchDevToolApproval: schema-tolerated with a "retired, read by nothing"
+  description (existing local configs stay valid); removed from the example config.
+- Pins: mutating dev tool always asks; pipeline surfaces must not resurface.
+
+### B — SAFE-HUMAN-001 deduplicated to two layers
+- Kept: the global safety hook (primary wall, incl. the knowledge approve trap) and the
+  in-process SF_HARNESS_AGENT_CONTEXT backstop in work_record.py (catches non-Copilot agent
+  contexts).
+- Removed: the explicit `"approve": false` regex entry in .vscode/settings.json +
+  code-workspace (the allow-patterns' `(?!approve\b)` lookahead still leaves the click to a
+  human — validate_harness now pins "nothing auto-approves" instead of "an explicit deny
+  exists"), and the guard's `command == "approve"` special-case (set membership already
+  excludes it; outcome pin test_work_record_approve_stays_unreachable_for_every_role stays).
+
+### C — knowledge benchmark removed from CI (stays a local tool)
+- The harness-ci.yml budget step (3000-entry fixture, 21 cold processes per budgeted command,
+  both matrix legs, the dominant cost of the 16-18 min Windows leg) is gone; the owner chose
+  full removal over a smoke bound. knowledge_benchmark.py keeps its budget constants as the
+  local reference; its docstring says local-only. Pin inverted:
+  test_the_benchmark_gate_stays_out_of_ci.
+
+### D — rule-registry.yaml retired; rules resolve from the Principle sources
+- The 20KB registry gave 50 rules identical boilerplate metadata (all active/complete,
+  review: null) and existed so attach-rule could bind a ruleRef. Now
+  work_record.resolved_rule_ref scans the four Principle sources for the bolded
+  `**<ID> — …**` declaration line; the tier derives from WHICH file declares the rule
+  (RULE_SOURCE_TIERS: kernel/1/2/3). ruleRef loses registrySha256 (change-record + handoff
+  schemas updated); sourceSha256 still pins the text the rule was checked against.
+- validate_harness pins the invariant that keeps resolution unambiguous: every rule ID is
+  declared exactly once across the sources. principle-registry.schema.json deleted;
+  MP-REG-001 reworded (declared, not registered); check-against-principles loads the
+  instruction files; CODEOWNERS row dropped.
+- Retirement pins: registry file and schema must not return
+  (test_rule_ids_declare_exactly_once_and_the_registry_stays_retired).

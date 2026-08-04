@@ -179,8 +179,6 @@ def check_required_files(audit: Audit) -> None:
         "config/repo-map-seed.json",
         ".ai/repo-map.md",
         ".ai/repo-map.json",
-        "scripts/approve_dev_tool_batch.py",
-        "schemas/dev-tool-batch.schema.json",
         "schemas/ado-wiki-cache.schema.json",
         ".ai/contracts/execution-contract.md",
         ".ai/contracts/tool-capabilities.md",
@@ -242,7 +240,6 @@ def check_required_files(audit: Audit) -> None:
         "schemas/change-record.schema.json",
         "schemas/handoff-envelope.schema.json",
         "schemas/salesforce-org-review-evidence.schema.json",
-        ".github/instructions/rule-registry.yaml",
         "config/knowledge-policy.json",
         "config/salesforce-review-policy.json",
         "docs/grounding-architecture.md",
@@ -514,7 +511,10 @@ def check_settings_and_mcp(audit: Audit) -> None:
                     allow_hits = True
                 if value is False or (isinstance(value, dict) and value.get("approve") is False):
                     deny_hits = True
-            audit.require(deny_hits, "terminal auto-approve must explicitly deny work_record.py approve (SAFE-HUMAN-001)")
+            # Owner decision 2026-08-04 (SAFE-HUMAN layer dedup): the explicit deny entry was
+            # removed — the invariant is that NOTHING auto-approves the command (the lookahead
+            # in the allow patterns), leaving the click to the human while the safety hook and
+            # the in-process work_record backstop do the actual denying.
             audit.require(not (allow_hits and not deny_hits), "terminal auto-approve must not auto-approve work_record.py approve (SAFE-HUMAN-001)")
     workspace_folders = workspace.get("folders", []) if isinstance(workspace, dict) else []
     folders = {
@@ -1017,18 +1017,18 @@ def check_grounding_contracts(audit: Audit) -> None:
     for path in principle_paths:
         source_ids.update(re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", path.read_text(encoding="utf-8")))
 
-    registry_path = ROOT / ".github/instructions/rule-registry.yaml"
-    registry = load_yaml(registry_path, audit)
-    registry_schema = load_json(ROOT / "schemas/principle-registry.schema.json", audit)
-    errors = sorted(
-        Draft202012Validator(registry_schema, format_checker=FORMAT_CHECKER).iter_errors(registry),
-        key=lambda item: list(item.path),
-    )
-    audit.require(not errors, f"{relative(registry_path)}: schema failure: {errors[0].message if errors else ''}")
-    rules = registry.get("rules", []) if isinstance(registry, dict) else []
-    registry_ids = [item.get("ruleId") for item in rules if isinstance(item, dict)]
-    audit.require(len(registry_ids) == len(set(registry_ids)), "rule registry IDs must be unique")
-    audit.require(set(registry_ids) == source_ids, f"rule registry/source mismatch: missing={sorted(source_ids - set(registry_ids))}, extra={sorted(set(registry_ids) - source_ids)}")
+    # Owner decision 2026-08-04: the rule-registry.yaml re-encoding of these sources was
+    # retired. The invariant that keeps `work_record attach-rule` resolution unambiguous is
+    # that every rule ID is DECLARED EXACTLY ONCE across the Principle sources — the tier is
+    # a property of which file declares it (work_record.RULE_SOURCE_TIERS).
+    declarations: list[str] = []
+    for path in principle_paths:
+        declarations.extend(
+            re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", path.read_text(encoding="utf-8"))
+        )
+    duplicate_ids = sorted({rule_id for rule_id in declarations if declarations.count(rule_id) > 1})
+    audit.require(not duplicate_ids, f"rule IDs declared more than once across Principle sources: {duplicate_ids}")
+    audit.require(bool(source_ids), "Principle sources must declare at least one rule ID")
 
     for data_name, schema_name in (
         ("config/knowledge-policy.json", "knowledge-policy.schema.json"),
@@ -1049,7 +1049,6 @@ def check_grounding_contracts(audit: Audit) -> None:
         "salesforce-org-review-evidence.schema.json",
         "force-app-knowledge-inventory.schema.json",
         "knowledge-extraction.schema.json",
-        "dev-tool-batch.schema.json",
         "ado-wiki-cache.schema.json",
         "knowledge-entry.schema.json",
         "knowledge-profile-flow.schema.json",

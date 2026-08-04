@@ -431,7 +431,7 @@
       "path": ".github/skills/approve-knowledge-drafts/SKILL.md"
     },
     {
-      "description": "Evaluate a scoped design or implementation using the governed rule registry, approved Knowledge Entries, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.",
+      "description": "Evaluate a scoped design or implementation using the governed Principle rules, approved Knowledge Entries, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.",
       "name": "check-against-principles",
       "path": ".github/skills/check-against-principles/SKILL.md"
     },
@@ -522,12 +522,12 @@
     ".ai/contracts/tool-capabilities.md": "sha256:7fc68da677e944aff53396bd956f0d01e00d1b71a3e75853ba88f01e43c950af",
     ".ai/contracts/workflow-state-machine.md": "sha256:bacba0585fb0ee0f5ed68f074b714fe58b4d73709c3077b735a7cbeabc70fd0e",
     ".github/agents/config-investigator.agent.md": "sha256:a084442fa3627e89d9d6d869298a10e01168d71003927bb9d5643ebf9f921882",
-    ".github/agents/development-assistant.agent.md": "sha256:3db9ca24bfbb985cf0a503364598042fb6240b9eb00ebfbcfe0f4826da67e511",
+    ".github/agents/development-assistant.agent.md": "sha256:22e52994d833af63a3c4566bd05ba74e1f391fb2738fa2339667ea276cbb0423",
     ".github/agents/guardrail-reviewer.agent.md": "sha256:6ab10ac906a623424fe3529bd3f9db03e65239c6921869b85750bdc06ac1cbc4",
     ".github/agents/knowledge-curator.agent.md": "sha256:f87cee5742869635e0d67f66fd994bf28c96a5b5da2356c21bfad46ceae965c2",
     ".github/agents/solution-designer.agent.md": "sha256:cd383e24190efe0fcc82e58cdff94fa3e92aa6a3f41744bffc203eccbb39e5ad",
     ".github/agents/test-strategist.agent.md": "sha256:bca2db881446111f4d0603ddd5bdd67f49a9a85bb87841a4ed681b4d436ee642",
-    ".github/instructions/managed-package-constraints.instructions.md": "sha256:637d2e77a8ecddbbe480330caa36ce77629dfb2d384050de0d8d54710597be61",
+    ".github/instructions/managed-package-constraints.instructions.md": "sha256:f64007cdad680bec3761cd8a5e391a5743201e2dfbc436f140dc0caeca1a6d5e",
     ".github/instructions/organization-principles.instructions.md": "sha256:d8a94ece21b0a2ec4b12b5665054e0817f8f93345a0becf7e36a735be5c82cb5",
     ".github/instructions/salesforce-best-practices.instructions.md": "sha256:8d286666f9736a2c84a4681d9c1c65c029e47473524494e54dad64ba5993a6ee",
     ".github/prompts/adhoc-fix.prompt.md": "sha256:21988585420911878b457cfa9879fd22a3433daee929c72cbe2d787bbeffe043",
@@ -551,7 +551,7 @@
     ".github/prompts/tune-test-case-keywords.prompt.md": "sha256:d11c3e84e713b5ff69ea4e6b9d019d1ce0a6ad04a4ddf774fbdf2e48cf4de32e",
     ".github/skills/adhoc-fix/SKILL.md": "sha256:88ca5e4cd12b6f8d0dbd0a3e0dda788bc3159666e227c3aed4cb34057c89a74e",
     ".github/skills/approve-knowledge-drafts/SKILL.md": "sha256:63d67e9c7510a84a2ad5a02732a5cc4fb8ed10b11e5caee2929d487e1963279c",
-    ".github/skills/check-against-principles/SKILL.md": "sha256:f8532a84208ba06c8880b910ad988a4e5371de8bed06d3e16661a6d18bd7fcaf",
+    ".github/skills/check-against-principles/SKILL.md": "sha256:0acdc64486e91a5884f028e67efb5f2e311d7d65465ad7b22e051a8fa1911b8b",
     ".github/skills/check-feature-coverage/SKILL.md": "sha256:e9397e6e5379fc13604cbab4b94c351c8e9169c4ba881479cd3c71c4774b1561",
     ".github/skills/fetch-ado-item/SKILL.md": "sha256:02ad5d68ff86e39c27e6acd29058b617483c0b7d07cd69b007acbae2e88104c8",
     ".github/skills/fetch-test-case/SKILL.md": "sha256:56fc8adf313c98b5588890dd03eda7489673ee497c2b69efe5ccc1e4bdf2539e",
