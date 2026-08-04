@@ -1,6 +1,6 @@
 ---
 name: check-against-principles
-description: Evaluate a scoped design or implementation using the governed rule registry, approved Knowledge Entries, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.
+description: Evaluate a scoped design or implementation using the governed Principle rules, approved Knowledge Entries, repository/org reconciliation, approval hashes, and complete evidence. Read-only; never implement fixes.
 user-invocable: false
 ---
 
@@ -19,8 +19,8 @@ identity when applicable, and accepted design/approval hashes. Reject unspecifie
 ## Procedure
 
 1. Validate work state, handoff target/revision, approval binding, and affected-artifact list.
-2. Load the governed rule registry and check Tier 1 package constraints, Tier 2 organization policy,
-   and Tier 3 Salesforce practice in order. Apply precedence only to competing prescriptions.
+2. Load the Principle instruction files and check Tier 1 package constraints, Tier 2 organization
+   policy, and Tier 3 Salesforce practice in order. Apply precedence only to competing prescriptions.
 3. Discover, then require. First establish the baseline of facts the design must address — do not
    rely only on what the author happened to cite. Query both layers:
    - the `knowledge_context` tool for each affected

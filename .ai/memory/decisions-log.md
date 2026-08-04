@@ -686,3 +686,17 @@ directly. Each lands as its own commit with the full gate.
   full removal over a smoke bound. knowledge_benchmark.py keeps its budget constants as the
   local reference; its docstring says local-only. Pin inverted:
   test_the_benchmark_gate_stays_out_of_ci.
+
+### D — rule-registry.yaml retired; rules resolve from the Principle sources
+- The 20KB registry gave 50 rules identical boilerplate metadata (all active/complete,
+  review: null) and existed so attach-rule could bind a ruleRef. Now
+  work_record.resolved_rule_ref scans the four Principle sources for the bolded
+  `**<ID> — …**` declaration line; the tier derives from WHICH file declares the rule
+  (RULE_SOURCE_TIERS: kernel/1/2/3). ruleRef loses registrySha256 (change-record + handoff
+  schemas updated); sourceSha256 still pins the text the rule was checked against.
+- validate_harness pins the invariant that keeps resolution unambiguous: every rule ID is
+  declared exactly once across the sources. principle-registry.schema.json deleted;
+  MP-REG-001 reworded (declared, not registered); check-against-principles loads the
+  instruction files; CODEOWNERS row dropped.
+- Retirement pins: registry file and schema must not return
+  (test_rule_ids_declare_exactly_once_and_the_registry_stays_retired).

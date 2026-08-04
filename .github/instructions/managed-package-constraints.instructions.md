@@ -44,10 +44,10 @@ These rules override Organization Principles and general Salesforce practice.
 - **MP-DRIFT-001 — reconcile source and org.** When versioned Knowledge, the metadata repository,
   and the reviewed org observation disagree, record `CONTESTED` or `SOURCE/ORG DRIFT`; never choose
   a convenient source or overwrite the prior claim automatically.
-- **MP-REG-001 — package rules are registered, not improvised.** Package/component-specific rules
-  must exist in the governed rule registry with an owner, source, scope, package version, and review
-  date. No package-specific rules are verified in this generic repository until that registry is
-  populated with real human-owned evidence.
+- **MP-REG-001 — package rules are declared, not improvised.** Package/component-specific rules
+  must be declared as rule lines in this instruction file, stating their source, scope, and
+  package version. No package-specific rules are verified in this generic repository until real
+  human-owned rules with evidence are added here.
 - **MP-UNKNOWN-001 — fail closed.** An unclassified package component may be investigated and a
   design may be drafted, but it cannot receive `Safe` for a mutation until its ownership, risk
   classification, supported extension point, and sources are reviewed.

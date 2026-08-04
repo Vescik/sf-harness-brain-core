@@ -37,25 +37,23 @@ class KnowledgeSchemaTests(unittest.TestCase):
         errors = list(self.validator(schema).iter_errors(load_yaml(FIXTURES / fixture)))
         self.assertTrue(errors, f"{fixture} was incorrectly accepted")
 
-    def test_rule_registry_matches_generic_runtime_rule_ids(self) -> None:
-        registry = load_yaml(ROOT / ".github/instructions/rule-registry.yaml")
-        errors = list(
-            self.validator("principle-registry.schema.json").iter_errors(registry)
-        )
-        self.assertEqual([], errors, [error.message for error in errors])
-        source_files = (
-            ROOT / ".github/copilot-instructions.md",
-            ROOT / ".github/instructions/managed-package-constraints.instructions.md",
-            ROOT / ".github/instructions/organization-principles.instructions.md",
-            ROOT / ".github/instructions/salesforce-best-practices.instructions.md",
-        )
-        source_ids: set[str] = set()
+    def test_rule_ids_declare_exactly_once_and_the_registry_stays_retired(self) -> None:
+        # Owner decision 2026-08-04: rule-registry.yaml was a metadata re-encoding of the
+        # Principle sources; rules now resolve straight from the declaration lines. The
+        # resolution stays unambiguous only while every ID is declared exactly once across
+        # the four sources — and the registry (plus its schema) must not quietly return.
+        from scripts.work_record import RULE_SOURCE_TIERS
+
+        declarations: list[str] = []
         pattern = re.compile(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—")
-        for path in source_files:
-            source_ids.update(pattern.findall(path.read_text(encoding="utf-8")))
-        actual = [rule["ruleId"] for rule in registry["rules"]]
-        self.assertEqual(source_ids, set(actual))
-        self.assertEqual(len(actual), len(set(actual)))
+        for source_file, _tier in RULE_SOURCE_TIERS:
+            declarations.extend(
+                pattern.findall((ROOT / source_file).read_text(encoding="utf-8"))
+            )
+        self.assertTrue(declarations)
+        self.assertEqual(sorted(declarations), sorted(set(declarations)))
+        self.assertFalse((ROOT / ".github/instructions/rule-registry.yaml").exists())
+        self.assertFalse((ROOT / "schemas/principle-registry.schema.json").exists())
 
     def test_live_knowledge_has_no_reserved_fixture_leak(self) -> None:
         """Reserved synthetic fixture identifiers must never reach live Knowledge

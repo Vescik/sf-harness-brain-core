@@ -363,7 +363,6 @@
         "ruleId",
         "tier",
         "sourceFile",
-        "registrySha256",
         "sourceSha256"
       ],
       "properties": {
@@ -383,9 +382,6 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 1024
-        },
-        "registrySha256": {
-          "$ref": "#/$defs/sha256"
         },
         "sourceSha256": {
           "$ref": "#/$defs/sha256"
