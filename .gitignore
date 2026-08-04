@@ -11,7 +11,7 @@
 
 # ── Generated AI artifacts ──
 # output/ holds AI-generated content for human review / manual promotion (docs to the
-# wiki, DOCX/PDF export, Playwright scripts moved to tests/ after review) — not curated
+# wiki, DOCX/PDF export) — not curated
 # brain. PROVISIONAL: blueprint §13 says output/ git policy "depends on the subfolder"
 # and does not resolve which subfolders are committed. Until that is decided, ignore the
 # generated CONTENT but keep the folder structure (same pattern as .cache/). Without this,
@@ -53,7 +53,6 @@ config/harness.local.json
 # A stray config/harness.json invites name-confusion and could leak org values if committed.
 config/harness.json
 .env
-.playwright/
 *.local.code-workspace
 .venv/
 __pycache__/

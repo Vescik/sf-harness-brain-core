@@ -71,9 +71,6 @@ def write_local_config(root: Path) -> None:
                 "evidenceMaxAgeMinutes": 30,
             },
         },
-        "browser": {
-            "allowedOrigins": ["https://example--dev.sandbox.my.salesforce.com"]
-        },
         "safety": {
             "sharedSandboxWritesApproved": True,
             "sharedSandboxApprovalRef": "DEC-EXAMPLE-1",
@@ -348,7 +345,47 @@ class GlobalSafetyHookTests(unittest.TestCase):
             )
             self.assertEqual(hook_decision(output), "deny")
 
-    def test_unallowlisted_browser_origin_is_denied(self) -> None:
+    def test_browser_lane_removed_denies_and_never_downgrades(self) -> None:
+        """Removing the guarded lane must not soften the deny: an MCP-shaped browser tool
+        must be deny (not the fail-closed "ask" backstop, whose reason says "Unrecognized
+        tool"), and terminal browser-automation shapes must be deny (not passthrough) —
+        including leftover playwright_guard.py invocations. Sandbox URLs are deliberate so
+        only the browser branch can produce the deny."""
+        cases = (
+            (
+                "playwright/browser_navigate",
+                {"url": "https://example--dev.sandbox.my.salesforce.com/lightning/page/home"},
+            ),
+            (
+                "execute/runInTerminal",
+                {"command": "playwright-cli goto https://example--dev.sandbox.my.salesforce.com"},
+            ),
+            (
+                "execute/runInTerminal",
+                {
+                    "command": "python3 scripts/playwright_guard.py --session sf-harness goto "
+                    "https://example--dev.sandbox.my.salesforce.com"
+                },
+            ),
+        )
+        with tempfile.TemporaryDirectory() as name:
+            root = Path(name)
+            write_local_config(root)
+            for tool_name, tool_input in cases:
+                with self.subTest(tool=tool_name, payload=tool_input):
+                    output = run_hook(
+                        "copilot_safety_hook.py",
+                        {"cwd": str(root), "tool_name": tool_name, "tool_input": tool_input},
+                    )
+                    self.assertEqual(hook_decision(output), "deny")
+                    self.assertIn(
+                        "Direct browser tooling is disabled",
+                        output["hookSpecificOutput"].get("permissionDecisionReason", ""),
+                    )
+
+    def test_simple_browser_preview_stays_allowed(self) -> None:
+        """Pins the open_simple_browser carve-out so a future widening of the browser
+        name tokens cannot silently deny the render-only VS Code preview."""
         with tempfile.TemporaryDirectory() as name:
             root = Path(name)
             write_local_config(root)
@@ -356,11 +393,11 @@ class GlobalSafetyHookTests(unittest.TestCase):
                 "copilot_safety_hook.py",
                 {
                     "cwd": str(root),
-                    "tool_name": "playwright/browser_navigate",
-                    "tool_input": {"url": "https://example.invalid"},
+                    "tool_name": "open_simple_browser",
+                    "tool_input": {"url": "https://example.com"},
                 },
             )
-            self.assertEqual(hook_decision(output), "deny")
+            self.assertEqual(hook_decision(output), "continue")
 
 
 class RoleGuardTests(unittest.TestCase):
@@ -768,7 +805,10 @@ class RoleGuardTests(unittest.TestCase):
         )
         self.assertEqual(hook_decision(output), "deny")
 
-    def test_strategist_guarded_browser_click_requires_confirmation(self) -> None:
+    def test_strategist_guard_script_execution_is_denied(self) -> None:
+        # The browser lane is gone (2026-08-05): the role guard no longer carries a
+        # test-strategist exception for any non-shared script, so the old guarded click
+        # is a deny, not an ask.
         output = run_hook(
             "copilot_role_guard.py",
             {
@@ -781,7 +821,7 @@ class RoleGuardTests(unittest.TestCase):
             "--role",
             "test-strategist",
         )
-        self.assertEqual(hook_decision(output), "ask")
+        self.assertEqual(hook_decision(output), "deny")
 
     def test_strategist_can_write_bounded_caches(self) -> None:
         for path in (".cache/ado-items/1201.json", ".cache/test-cases/701.json"):
@@ -1312,9 +1352,8 @@ class SafetyClassificationTests(unittest.TestCase):
     def test_non_production_origin_admits_developer_edition_but_never_production(self) -> None:
         """URL mentions are checked against the wider non-production set.
 
-        A Developer Edition is a legitimate org under allowAnyNonProduction; denying its
-        URL blocked reads the facade itself permits. The browser allowlist stays strict
-        (see the test below) — that is a different surface.
+        A Developer Edition is a legitimate org under the read-anywhere convention; denying
+        its URL blocked reads the facade itself permits.
         """
         for origin in (
             "https://acme--dev.sandbox.my.salesforce.com",
@@ -1332,20 +1371,6 @@ class SafetyClassificationTests(unittest.TestCase):
         ):
             with self.subTest(origin=origin):
                 self.assertFalse(safety.is_non_production_salesforce_origin(origin))
-
-    def test_allowed_origins_include_configured_scratch_but_not_developer_edition(self) -> None:
-        config = {
-            "browser": {
-                "allowedOrigins": [
-                    "https://mpsadev.scratch.my.salesforce.com",
-                    "https://acme.develop.my.salesforce.com",
-                ]
-            }
-        }
-        self.assertEqual(
-            safety.allowed_origins(config),
-            {"https://mpsadev.scratch.my.salesforce.com"},
-        )
 
     def test_multiple_target_orgs_are_detected(self) -> None:
         parts = [

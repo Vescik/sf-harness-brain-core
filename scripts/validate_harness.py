@@ -41,7 +41,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 6, "prompts": 19, "skills": 19, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 18, "skills": 18, "instructions": 3}
 # Budget for each grounding subprocess below. entry-check parses and validates every entry at
 # roughly 4.5 ms per entry (measured at 9 000), so a corpus in the low tens of thousands is the
 # constraint here, not the code. Raise this deliberately from a measurement — never to silence a
@@ -199,7 +199,6 @@ def check_required_files(audit: Audit) -> None:
         "config/harness.example.json",
         "schemas/harness-config.schema.json",
         "requirements-dev.lock",
-        "scripts/playwright_guard.py",
         "scripts/verify_salesforce_org.py",
         "scripts/salesforce_review_server.mjs",
         "scripts/work_record.py",
@@ -908,7 +907,7 @@ def check_skill_commands(audit: Audit) -> None:
     first command. Fail closed here so the skill text and the guard can never drift apart again.
     """
 
-    guarded = "preflight|work_record|force_app_knowledge|validate_handover_output|playwright_guard"
+    guarded = "preflight|work_record|force_app_knowledge|validate_handover_output"
     bare = re.compile(r"`\s*scripts/(?:" + guarded + r")\.py(?:\s|`)")
     backslash = re.compile(r"`[^`]*(?:scripts\\|\.venv\\)")
     for skill in sorted((ROOT / ".github/skills").glob("*/SKILL.md")):

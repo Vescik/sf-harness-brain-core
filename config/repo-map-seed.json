@@ -24,7 +24,7 @@
     { "path": "output", "purpose": "Reviewed deliverables: docs, designs, tests, handover" },
     { "path": "schemas", "purpose": "JSON Schemas for every governed artifact" },
     { "path": "scripts", "purpose": "Guarded scripts: safety hook, role guard, registries, wrappers" },
-    { "path": "tests", "purpose": "Harness unit tests + tests/e2e Playwright" }
+    { "path": "tests", "purpose": "Harness unit tests + promoted tests/e2e" }
   ],
   "resumeHere": [
     "Resume work from the persisted record: `python scripts/work_record.py` with explicit recordId/handoffId — chat is never workflow truth.",

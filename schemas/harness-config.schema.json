@@ -277,10 +277,6 @@
         "sharedSandboxApprovalRef": {
           "type": "string"
         },
-        "browserSessionApproval": {
-          "description": "One human confirmation covers further state-changing browser actions in the same guarded session on the same origin (receipt-bounded, TTL). Default off.",
-          "type": "boolean"
-        },
         "autoApproveRetrieveWithReceipt": {
           "description": "Skip the per-invocation confirmation for `sf project retrieve start` against a read-allowed sandbox while a fresh metadata preflight PASS receipt exists and force-app is clean. Default off.",
           "type": "boolean"
@@ -316,29 +312,6 @@
         }
       ]
     },
-    "browser": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "allowedOrigins",
-        "profileDirectory"
-      ],
-      "properties": {
-        "allowedOrigins": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^https://(?:[A-Za-z0-9-]+--[A-Za-z0-9-]+\\.sandbox\\.(?:my\\.salesforce\\.com|lightning\\.force\\.com|my\\.site\\.com)|[A-Za-z0-9][A-Za-z0-9-]*\\.scratch\\.my\\.salesforce\\.com)/?$"
-          }
-        },
-        "profileDirectory": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
     "workspace": {
       "type": "object",
       "additionalProperties": false,
@@ -351,10 +324,6 @@
           "const": "brain-core"
         },
         "manifestPath": {
-          "type": "string",
-          "minLength": 1
-        },
-        "promotedTestsPath": {
           "type": "string",
           "minLength": 1
         }

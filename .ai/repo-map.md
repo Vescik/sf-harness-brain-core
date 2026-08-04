@@ -29,7 +29,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 | `output` | Reviewed deliverables: docs, designs, tests, handover |
 | `schemas` | JSON Schemas for every governed artifact |
 | `scripts` | Guarded scripts: safety hook, role guard, registries, wrappers |
-| `tests` | Harness unit tests + tests/e2e Playwright |
+| `tests` | Harness unit tests + promoted tests/e2e |
 
 ## Roles (`.github/agents/`)
 
@@ -48,7 +48,6 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `check-feature-coverage` — Compare a current Azure DevOps …
 - `fetch-ado-item` — Fetch and normalize one Azure …
 - `fetch-test-case` — Fetch and normalize one Azure …
-- `generate-playwright-test` — Explore a guarded Salesforce sandbox …
 - `generate-release-handover` — Compose a current, sourced monthly …
 - `generate-technical-documentation` — Generate a sourced technical-documentation draft …
 - `inventory-force-app` — Inventory the repository-root Salesforce force-app …
@@ -71,7 +70,6 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `/document-metadata-change` → development-assistant
 - `/feature-health` → test-strategist
 - `/fetch-ado-item` → solution-designer
-- `/generate-playwright-test` → test-strategist
 - `/inventory-force-app` → config-investigator
 - `/investigate-config-records` → config-investigator
 - `/investigate-object` → config-investigator

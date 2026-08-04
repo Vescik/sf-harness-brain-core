@@ -32,7 +32,7 @@ the count; both were evaluated and rejected.
 ## Pilot threat model
 
 The controlled-pilot threat model requires a dedicated OS account, VM, or container whose agent
-process can access only approved sandbox CLI authorizations and a sandbox-only browser profile.
+process can access only approved sandbox CLI authorizations.
 Built-in/default Agent mode and arbitrary terminal workflows are not supported for external work;
 hooks cannot secure dynamically constructed shell programs. Any production credential/session or
 reachable production path in that pilot environment is a release-blocking security defect.

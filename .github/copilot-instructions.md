@@ -47,7 +47,7 @@ catalogs, resume pointers) before exploring the tree.
   pilot records a human assertion; it does not claim cryptographic or provider-API verification
   of the approver's identity.
 - **SAFE-CRED-001 — agents never handle credentials.** Authentication uses human-established
-  OAuth, Salesforce CLI authorization, or a dedicated browser profile. Never request, print,
+  OAuth or Salesforce CLI authorization. Never request, print,
   return, cache, or commit passwords, tokens, cookies, session material, or raw identity payloads.
 - **SAFE-ROLE-001 — honor role boundaries.** Agents use only their explicitly linked policies,
   tools, paths, state transitions, and handoff targets. Reviewers never implement; investigators

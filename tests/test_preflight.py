@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from jsonschema import Draft202012Validator
 
+from scripts import copilot_role_guard as role_guard
 from scripts import preflight
 
 
@@ -59,14 +60,9 @@ def safe_config() -> dict:
             "sharedSandboxWritesApproved": True,
             "sharedSandboxApprovalRef": "DEC-EXAMPLE-1",
         },
-        "browser": {
-            "allowedOrigins": ["https://example--dev.sandbox.my.salesforce.com"],
-            "profileDirectory": "/tmp/example-profile",
-        },
         "workspace": {
             "salesforceRootName": "brain-core",
             "manifestPath": "manifest/package.xml",
-            "promotedTestsPath": "tests/e2e",
         },
         "cache": {
             "adoItemMaxAgeMinutes": 30,
@@ -125,11 +121,10 @@ class PreflightValidationTests(unittest.TestCase):
     def test_safe_non_production_config_passes(self) -> None:
         self.assertEqual(preflight.validate_config(safe_config()), [])
 
-    def test_scratch_org_host_and_browser_origin_are_accepted(self) -> None:
+    def test_scratch_org_host_is_accepted(self) -> None:
         config = safe_config()
         scratch_host = "mpsadev.scratch.my.salesforce.com"
         config["salesforce"]["orgs"][0]["expectedInstanceHost"] = scratch_host
-        config["browser"]["allowedOrigins"] = [f"https://{scratch_host}"]
         self.assertEqual(preflight.validate_config(config), [])
         schema = json.loads(
             (ROOT / "schemas/harness-config.schema.json").read_text(encoding="utf-8")
@@ -153,21 +148,6 @@ class PreflightValidationTests(unittest.TestCase):
         self.assertTrue(
             any("identity host" in item for item in preflight.validate_config(config))
         )
-
-    def test_develop_browser_origin_stays_rejected(self) -> None:
-        """The browser allowlist keeps the strict sandbox/scratch shape even though the org
-        read lane accepts a Developer Edition (the browser gate is a different risk)."""
-        config = safe_config()
-        develop_host = "acme.develop.my.salesforce.com"
-        config["salesforce"]["orgs"][0]["expectedInstanceHost"] = develop_host
-        config["browser"]["allowedOrigins"] = [f"https://{develop_host}"]
-        failures = preflight.validate_config(config)
-        self.assertEqual([item for item in failures if "identity host" in item], [])
-        self.assertTrue(any("sandbox or scratch" in item for item in failures))
-        schema = json.loads(
-            (ROOT / "schemas/harness-config.schema.json").read_text(encoding="utf-8")
-        )
-        self.assertNotEqual(list(Draft202012Validator(schema).iter_errors(config)), [])
 
     def test_production_alias_is_rejected(self) -> None:
         config = safe_config()
@@ -227,42 +207,20 @@ class PreflightValidationTests(unittest.TestCase):
 
     def test_production_login_origin_is_rejected(self) -> None:
         failures = preflight.validate_origins(
-            ["https://login.salesforce.com"], "Browser"
+            ["https://login.salesforce.com"], "Origin"
         )
         self.assertTrue(any("production login" in item.lower() for item in failures))
 
-    def test_production_my_domain_browser_origin_is_rejected(self) -> None:
-        failures = preflight.validate_origins(
-            ["https://acme.my.salesforce.com"], "Browser"
-        )
-        self.assertTrue(any("explicit Salesforce sandbox or scratch host" in item for item in failures))
-
-    def test_scratch_browser_origin_is_accepted_but_develop_origin_is_rejected(self) -> None:
-        self.assertEqual(
-            preflight.validate_origins(
-                ["https://mpsadev.scratch.my.salesforce.com"], "Browser"
-            ),
-            [],
-        )
-        failures = preflight.validate_origins(
-            ["https://acme.develop.my.salesforce.com"], "Browser"
-        )
-        self.assertTrue(any("sandbox or scratch host" in item for item in failures))
-
     def test_non_https_origin_is_rejected(self) -> None:
-        failures = preflight.validate_origins(["http://example.invalid"], "Browser")
+        failures = preflight.validate_origins(["http://example.invalid"], "Origin")
         self.assertTrue(any("must be HTTPS" in item for item in failures))
 
-    def test_browser_and_promoted_tests_sections_are_optional(self) -> None:
-        # Windows-only deployments never use guarded Playwright; forcing those placeholder
-        # values was pure setup friction (owner observation, 2026-07-14).
-        config = safe_config()
-        del config["browser"]
-        del config["workspace"]["promotedTestsPath"]
-        self.assertEqual(preflight.validate_config(config), [])
-        failures = preflight.validate_capability(config, "playwright")
-        self.assertTrue(any("browser" in failure for failure in failures))
-        self.assertTrue(any("promotedTestsPath" in failure for failure in failures))
+    def test_playwright_capability_is_retired(self) -> None:
+        # The browser lane was removed 2026-08-05; the capability must not silently
+        # come back on either side of the guard/parser contract.
+        self.assertNotIn("playwright", role_guard.PREFLIGHT_CAPABILITIES)
+        source = Path(preflight.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("playwright", source)
 
     def test_release_capability_rejects_placeholder_or_blank_query_id(self) -> None:
         # The skill contract promises DEPENDENCY UNAVAILABLE for placeholder configuration;

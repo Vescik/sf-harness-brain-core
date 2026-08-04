@@ -44,7 +44,6 @@
   "safety": {
     "sharedSandboxWritesApproved": false,
     "sharedSandboxApprovalRef": "",
-    "browserSessionApproval": false,
     "autoApproveRetrieveWithReceipt": false,
     "allowScopedEnumeration": false
   },

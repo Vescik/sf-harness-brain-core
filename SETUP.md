@@ -4,17 +4,16 @@
 
 - VS Code 1.112+; certify current stable for team rollout. Windows is the primary platform. The
   configured MCP surface is read-only by construction on every platform (no write-mode Salesforce
-  MCP server exists); guarded browser workflows remain macOS/Linux-only.
+  MCP server exists).
 - Consolidated GitHub Copilot extension and the recommendations in `.vscode/extensions.json`.
-- Git, Python 3.11+, Node.js 22+ (the pinned `@salesforce/mcp` requires ≥22.19), Salesforce CLI, and `@playwright/cli@0.1.17` when
-  browser generation is used.
+- Git, Python 3.11+, Node.js 22+ (the pinned `@salesforce/mcp` requires ≥22.19), and Salesforce CLI.
 - Local Salesforce CLI authorization for approved non-production aliases. Authenticate manually;
   never give credentials or session material to an agent.
 
 Use a dedicated pilot OS account, VM, or container. Authorize only the approved sandboxes in that
 environment and use a separate browser profile containing no production session. A human must
 confirm the authorization inventory before opening VS Code. Do not use built-in/default Agent mode
-or an arbitrary terminal for ADO, Salesforce, or browser work; only the five custom agents are in
+or an arbitrary terminal for ADO, Salesforce, or browser work; only the six custom agents are in
 the certified enforcement boundary.
 
 See [docs/compatibility.md](docs/compatibility.md) for the tested contract.
@@ -79,12 +78,8 @@ scope and must not be used as a substitute for claim-backed ownership or human a
 are performed by a human, and that human review is where manifest narrowing is checked (the
 automated wildcard gate retired with the write capability, 2026-08-04).
 
-The `browser` section and `workspace.promotedTestsPath` are optional — add them only when you
-use guarded Playwright browser testing (macOS/Linux); the example omits them and the
-`playwright` preflight capability tells you exactly what to add if you ever need it.
-
 The file holds identifiers, allowlists, and paths, not secrets. ADO uses OAuth through VS Code; Salesforce uses
-existing CLI authorization; Playwright uses a human-created persistent profile outside Git.
+existing CLI authorization.
 Alias names and environment labels are not treated as proof: Salesforce MCP startup first checks
 the locally authorized instance hostname against the canonical sandbox, scratch-org, and
 Developer Edition signatures, then queries `Organization.IsSandbox` and stops unless the value
@@ -137,7 +132,6 @@ python3 -m venv .venv
 # Windows PowerShell: .venv\Scripts\Activate.ps1
 python -m pip install --require-hashes -r requirements-dev.lock
 npm ci --ignore-scripts
-npm install --global @playwright/cli@0.1.17
 python scripts/validate_harness.py
 python -m unittest discover -s tests -v
 python scripts/run_evals.py
@@ -174,12 +168,11 @@ cached; `--force` re-runs everything (use it after re-authorizing an alias).
 The workspace pre-approves its own guarded scripts so agents run them without a confirmation
 click, via `chat.tools.terminal.autoApprove` in `.vscode/settings.json`:
 
-- Auto-approved: `preflight.py`, `work_record.py` (except `approve`), `knowledge_registry.py`
-  (except `promote`/`review`), `knowledge_store.py` (except `entry-approve`/`feature-approve`/
-  `entry-revoke`/`feature-revoke` — those stay on the chat-confirmation lane), `knowledge_search.py`
-  (read-only), `force_app_knowledge.py`, and `playwright_guard.py`. The regexes are anchored and
-  reject shell metacharacters, so
-  chained or redirected commands never auto-run.
+- Auto-approved: `preflight.py`, `work_record.py` (except `approve`), `knowledge_store.py`
+  (except `entry-approve`/`feature-approve`/`entry-revoke`/`feature-revoke` — those stay on the
+  chat-confirmation lane), `knowledge_search.py` (read-only), and `force_app_knowledge.py`. The
+  regexes are anchored and reject shell metacharacters, so chained or redirected commands never
+  auto-run.
 - Never auto-approved: `work_record.py approve` (human-only, SAFE-HUMAN-001) and raw
   `sf`/`sfdx`/`rm`/`del` (explicitly denied — a deny always wins). Auto-approval only skips the
   click; the role guard and safety hook still enforce the real boundaries.
@@ -228,10 +221,9 @@ owner decision of 2026-07-14.)
   MCP server: agents never deploy, and the only raw Salesforce CLI they may request is
   `sf project retrieve start --target-org <configured-alias>`, which the safety hook stops for
   per-invocation human confirmation.
-- Browser workflows use `scripts/playwright_guard.py`, not direct CLI or an MCP server. The wrapper
-  exposes a narrow non-credential command set, uses the configured profile, checks current/all-tab
-  origins around every action, and closes the session on drift. State-changing UI actions still
-  require per-operation human confirmation.
+- Browser tooling is not available in this harness: direct browser/Playwright/automation commands
+  and browser-named MCP tools are denied by the global safety hook (the guarded browser lane was
+  removed 2026-08-05).
 
 ## 7. Team workflow
 
@@ -288,5 +280,5 @@ owner decision of 2026-07-14.)
 
 Before a real developer pilot, provide company naming/review policy, shared-sandbox coordination,
 the real package/component ownership and risk registry with version-scoped sources, ADO
-project/query, approved Salesforce aliases, allowed browser origins/profile, and promoted tests path. The harness
-will remain conservative while any relevant value is unknown.
+project/query, and approved Salesforce aliases. The harness will remain conservative while any
+relevant value is unknown.

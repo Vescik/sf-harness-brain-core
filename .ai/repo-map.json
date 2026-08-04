@@ -251,7 +251,7 @@
     },
     {
       "path": "tests",
-      "purpose": "Harness unit tests + tests/e2e Playwright"
+      "purpose": "Harness unit tests + promoted tests/e2e"
     }
   ],
   "instructions": [
@@ -321,13 +321,6 @@
       "description": "Fetch a validated Azure DevOps work item context and begin Solution Design.",
       "name": "fetch-ado-item",
       "path": ".github/prompts/fetch-ado-item.prompt.md"
-    },
-    {
-      "agent": "test-strategist",
-      "argumentHint": "recordId=<ID> (testCaseId=<ID> | steps=<quoted steps>)",
-      "description": "Generate and live-verify a Playwright draft from an ADO Test Case or tester-provided steps.",
-      "name": "generate-playwright-test",
-      "path": ".github/prompts/generate-playwright-test.prompt.md"
     },
     {
       "agent": "config-investigator",
@@ -447,11 +440,6 @@
       "path": ".github/skills/fetch-test-case/SKILL.md"
     },
     {
-      "description": "Explore a guarded Salesforce sandbox and generate a reviewable Playwright test draft from one ADO Test Case or tester-provided steps using a human-authenticated persistent profile. Never execute unreviewed generated code.",
-      "name": "generate-playwright-test",
-      "path": ".github/skills/generate-playwright-test/SKILL.md"
-    },
-    {
       "description": "Compose a current, sourced monthly release-handover draft from the configured saved ADO query, per-item work evidence, linked technical wiki documentation, and formal Test Case relations without inventing missing scope or content.",
       "name": "generate-release-handover",
       "path": ".github/skills/generate-release-handover/SKILL.md"
@@ -513,16 +501,16 @@
     }
   ],
   "sourceDigests": {
-    ".ai/contracts/execution-contract.md": "sha256:4332dd959c56512c93a1ccc92f2083160bfcf7f4d2d4904ea53ad2549fc21d30",
+    ".ai/contracts/execution-contract.md": "sha256:b35f0551d24fea7a000489e8d0dcee9797ab0ba42fc0e2dcb9a9bd404782bff9",
     ".ai/contracts/source-authority.md": "sha256:f50a88e9d041508f21aa7d5ab8e6b0e049dd5426c7a0f588c626c9102081699e",
-    ".ai/contracts/tool-capabilities.md": "sha256:bd21919503352e77e61dc478b11b251b04690c35d0641dfaac5fab58b5b88187",
+    ".ai/contracts/tool-capabilities.md": "sha256:473aecfba51463ffe2f15c7f8c1928aa3c8732a983d6edea06926bf5a35bc868",
     ".ai/contracts/workflow-state-machine.md": "sha256:bacba0585fb0ee0f5ed68f074b714fe58b4d73709c3077b735a7cbeabc70fd0e",
     ".github/agents/config-investigator.agent.md": "sha256:a084442fa3627e89d9d6d869298a10e01168d71003927bb9d5643ebf9f921882",
     ".github/agents/development-assistant.agent.md": "sha256:d6d1eaf2495c87be5148fc12471e9ebf0a44f800f274f3d5b2358570ff46bbae",
     ".github/agents/guardrail-reviewer.agent.md": "sha256:6ab10ac906a623424fe3529bd3f9db03e65239c6921869b85750bdc06ac1cbc4",
     ".github/agents/knowledge-curator.agent.md": "sha256:f87cee5742869635e0d67f66fd994bf28c96a5b5da2356c21bfad46ceae965c2",
     ".github/agents/solution-designer.agent.md": "sha256:cd383e24190efe0fcc82e58cdff94fa3e92aa6a3f41744bffc203eccbb39e5ad",
-    ".github/agents/test-strategist.agent.md": "sha256:bca2db881446111f4d0603ddd5bdd67f49a9a85bb87841a4ed681b4d436ee642",
+    ".github/agents/test-strategist.agent.md": "sha256:285eb384a54a19afe5fcb17f8b1436848243203b8ff2e68ae15c3b54f52bd955",
     ".github/instructions/managed-package-constraints.instructions.md": "sha256:f64007cdad680bec3761cd8a5e391a5743201e2dfbc436f140dc0caeca1a6d5e",
     ".github/instructions/organization-principles.instructions.md": "sha256:d8a94ece21b0a2ec4b12b5665054e0817f8f93345a0becf7e36a735be5c82cb5",
     ".github/instructions/salesforce-best-practices.instructions.md": "sha256:8d286666f9736a2c84a4681d9c1c65c029e47473524494e54dad64ba5993a6ee",
@@ -533,7 +521,6 @@
     ".github/prompts/document-metadata-change.prompt.md": "sha256:667d60a7b0857f4f8bc73b4a470d16081fa4ba9e2b4d40477d54fd43b9111c22",
     ".github/prompts/feature-health.prompt.md": "sha256:28647ddc5360e88de2db6f75dd4673dcf66237c5a4469ce0956f4d1a8635ea0b",
     ".github/prompts/fetch-ado-item.prompt.md": "sha256:4ebe4c347c5b21d3dea9959d387b0b2bb69a0f20e571f15c3e4f1334d175b1bd",
-    ".github/prompts/generate-playwright-test.prompt.md": "sha256:555c92e0aa73438a2e570c90b17fa15c6a1b56dc065770cd8f33bb75008ac337",
     ".github/prompts/inventory-force-app.prompt.md": "sha256:c05375553329e51fc8781cd6190dc9884dad668055d6ec7321b7a6b11d602b04",
     ".github/prompts/investigate-config-records.prompt.md": "sha256:97237d1a85c4c441ff4ccc89bc6a1eb44571e4a00bb339afc8e273489e9c02b2",
     ".github/prompts/investigate-object.prompt.md": "sha256:35ec6d98ca051625850691c2210570e02aeb506646e2d20ee43d49ce8b3edb5a",
@@ -551,7 +538,6 @@
     ".github/skills/check-feature-coverage/SKILL.md": "sha256:e9397e6e5379fc13604cbab4b94c351c8e9169c4ba881479cd3c71c4774b1561",
     ".github/skills/fetch-ado-item/SKILL.md": "sha256:02ad5d68ff86e39c27e6acd29058b617483c0b7d07cd69b007acbae2e88104c8",
     ".github/skills/fetch-test-case/SKILL.md": "sha256:56fc8adf313c98b5588890dd03eda7489673ee497c2b69efe5ccc1e4bdf2539e",
-    ".github/skills/generate-playwright-test/SKILL.md": "sha256:603561c5ef314c5065b85331c8165cd8ebd79f6ed5d403c99139e5168d6d0806",
     ".github/skills/generate-release-handover/SKILL.md": "sha256:41eb1433b621bd01fe7975a23e6e2cc558abcb094e68839521eb74534bb3aa91",
     ".github/skills/generate-technical-documentation/SKILL.md": "sha256:b00d469184a53b78ba1a28e088c9dd8abe25e70f7173b9c448e13910518e5779",
     ".github/skills/inventory-force-app/SKILL.md": "sha256:516ea22ac3cd2cdb8a5b470c0ab36fe137da0576fc3042c8b9434a5ae47d8454",
@@ -564,7 +550,7 @@
     ".github/skills/suggest-test-cases/SKILL.md": "sha256:623e28b5e68a2d3eda593a41261218a9d77822fe162f707ca396bd2f0fb16af1",
     ".github/skills/sync-test-cases/SKILL.md": "sha256:86b1af1a8415d07f548e7160a565933be7dfede396e55341345fe76ffccfe529",
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
-    "config/repo-map-seed.json": "sha256:92f7bfa65c9106c6181b6f6effd3aa92b160b726882a7ced2aa01c221b06d406"
+    "config/repo-map-seed.json": "sha256:06cc542deade50f116309c83116b0c304071e485f4d875d7b857dff637c490d5"
   },
-  "wordCount": 793
+  "wordCount": 780
 }
