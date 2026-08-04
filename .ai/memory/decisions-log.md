@@ -790,3 +790,63 @@ directly. Each lands as its own commit with the full gate.
 - Approved by: owner (chat, 2026-08-04; option "full cut + org-id denylist").
 - Related: entries 2026-07-31 (any non-production reads), 2026-08-04 (composed-SOQL
   blockade removed), .ai/contracts/tool-capabilities.md, SETUP.md §3.
+
+## 2026-08-05 — Debloat wave 2: dead infrastructure removed across seven surfaces
+
+- Context: a repo-wide dead-infrastructure discovery (six parallel audit passes over all
+  286 tracked files) found artifacts that survived their features through the #30/#34/#35
+  retirements. Owner chose deletion over tolerance for every confirmed item, answered the
+  three scope questions explicitly (handoff file: retire; eslint: repoint at the MCP
+  servers; config schema: fail-closed), and separately ordered the full removal of the
+  Playwright browser lane.
+- Executed, one commit per phase, full gate (validator + unit suite + evals) after each:
+  - IMPLEMENTATION_HANDOFF.md retired (dev-history; decisions-log + git history carry its
+    role; cleanup-plan gate D-2).
+  - Dead builder surfaces: the knowledge_registry.py auto-approve regex (both settings
+    files — a standing pre-approval for a deleted binary), the orphan
+    .ai/templates/knowledge-entry.md, the unreachable applyTo branches in
+    render_repo_map.py.
+  - audit/ (2026-07-16 snapshot describing a tree that no longer exists) and the two
+    never-filled .ai/qa scaffolds (keywords-map, ui-navigation-patterns) archived outside
+    the repository; QA layer redesign is pending anyway.
+  - LWC/Jest toolchain retired (zero JS outside scripts/*.mjs; every gate was a
+    guaranteed no-op); eslint now lints the three MCP servers with @eslint/js
+    recommended + node globals — its first real run caught an unused parameter in
+    salesforce_review_server.mjs. 7 devDependencies and 159 lockfile packages dropped.
+  - Playwright lane removed entirely (guard script, prompt, skill, browser config
+    section, receipts machinery, ~13 tests). The hook's browser deny was REWRITTEN
+    FIRST so removal could not soften it: wider name-token set with an exact-name
+    carve-out for open_simple_browser, terminal automation pattern catching leftover
+    guard invocations; deny-not-ask and deny-not-passthrough are pinned by new negative
+    tests and the kept regression evals. tests/e2e/ stays (SFDX promoted-tests lane).
+    Counts 19/19 -> 18/18.
+  - knowledge_benchmark.py deleted (no operator since its CI gate left on 2026-08-04;
+    supersedes the "stays a local tool" line of that decision). TRAVERSAL_LIMITS values
+    stay as adopted constants, derivation note rewritten in place. The inverted
+    stays-out-of-CI pin dies with the file it pinned.
+  - work_record attach-rule deleted (no caller since rule-registry retired). Side
+    effect, accepted: ruleRefs are set only at init --rule-id; no post-init amendment
+    path until a workflow needs one.
+  - Config schema fail-closed: retired keys (allowAgent*, allowAnyNonProduction,
+    maxObjectsPerCall, batchDevToolApproval, browserSessionApproval, the browser
+    section, promotedTestsPath, both required-but-unread cache.*MaxAgeMinutes,
+    knowledge-policy sampleRows) are rejected, not tolerated — supersedes every earlier
+    "tolerated in existing configs" line. Migration notes in SETUP.md §3 and
+    windows-setup.md list the exact keys; stale local configs fail preflight loudly.
+  - Stale text pass: SETUP knowledge_registry/approve-claim workflow rewritten to the
+    entry lanes, SECURITY.md advisory posture refreshed (12 moderate / 0 high as of
+    2026-08-05, gate on high), grounding-architecture Knowledge boundary rewritten to
+    the one-file model, workspace-topology development-MCP paragraph corrected,
+    compatibility counts corrected to the pinned 6/18/18, PR template claim-language
+    replaced with entry-language, repo-map seed rule-registry string dropped,
+    docs/force-app-knowledge-architecture.md archived outside the repository (it
+    described the retired claim registry as live and sat on the README orientation
+    path); README now points at the one-file contract instead.
+- Verification: after the final phase — validate_harness green, full unit suite green,
+  37/37 safety evals, npm lint + prettier:verify green, npm audit gate green, repo map
+  regenerated with render --check green, and a repo-wide sweep for every removed name
+  returns only deliberate tombstones.
+- Approved by: owner (chat, 2026-08-05; scope list + AskUserQuestion answers).
+- Related: the 2026-08-04 over-engineering review (wave 1), PRs #30/#34/#35, SETUP.md §3
+  migration note, tests/test_receipt_gates.py BrowserLaneRetirementTests,
+  tests/test_preflight.py test_retired_allow_agent_flags_are_rejected_by_schema.

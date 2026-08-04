@@ -12,7 +12,7 @@
     { "path": ".cache", "purpose": "Ignored transient caches, drafts, receipts" },
     { "path": ".github", "purpose": "Copilot surface: kernel, agents, prompts, skills, hooks, CI" },
     { "path": ".github/agents", "purpose": "Six role agents with tools, handoffs, role-guard hooks" },
-    { "path": ".github/instructions", "purpose": "Tiered principles + rule-registry.yaml" },
+    { "path": ".github/instructions", "purpose": "Tiered Principle instruction files, loaded per role" },
     { "path": ".github/prompts", "purpose": "Public slash commands, each linking its skill" },
     { "path": ".github/skills", "purpose": "Internal skill procedures (SKILL.md per folder)" },
     { "path": ".vscode", "purpose": "Workspace settings and MCP server definitions" },

@@ -34,8 +34,8 @@ Schemas:                schemas/knowledge-entry.schema.json, knowledge-feature-e
                         nine integration types, ApexPage/ApexComponent)
                         [was "9 schemas / 10 types"; all-type expansion 2026-08-04]
 Prior architecture docs: docs/knowledge-facts-overlay-architecture.md = SHELVED fallback;
-                        docs/force-app-knowledge-architecture.md = v1 pilot description,
-                        updated at cutover.
+                        the v1 pilot description (force-app-knowledge-architecture.md) was
+                        archived outside the repository on 2026-08-05.
 ```
 
 ## 1. Scope of supersession and claim-type home assignment

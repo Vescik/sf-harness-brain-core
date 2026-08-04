@@ -17,7 +17,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 | `.cache` | Ignored transient caches, drafts, receipts |
 | `.github` | Copilot surface: kernel, agents, prompts, skills, hooks, CI |
 | `.github/agents` | Six role agents with tools, handoffs, role-guard hooks |
-| `.github/instructions` | Tiered principles + rule-registry.yaml |
+| `.github/instructions` | Tiered Principle instruction files, loaded per role |
 | `.github/prompts` | Public slash commands, each linking its skill |
 | `.github/skills` | Internal skill procedures (SKILL.md per folder) |
 | `.vscode` | Workspace settings and MCP server definitions |

@@ -79,19 +79,20 @@ transport prevents Knowledge promotion and `SAFE`.
 
 ## Knowledge boundary
 
-- Evidence is immutable and corrections create new receipts.
-- Agents/investigators may create `proposed` claims only.
-- Human reviews promote, reject, contest, supersede, or reverify claims.
-- Verified claims may become stale after `reviewBy` or an invalidating event.
+Knowledge is the one-file entry model (the v1 claim registry retired 2026-08-03; see
+`docs/knowledge-one-file-contract.md` for the normative contract):
+
+- Agents may create and edit `draft` entries only; approval is digest-pinned and human
+  (`entry-approve`/`feature-approve` through the chat confirmation dialog, or a human terminal).
+- An approved entry is citable at its approved digest; editing the source or the entry reopens
+  a draft — stale approvals never carry forward silently.
 - Different environments, package versions, or repository lineages remain separate scopes.
-- Domain Markdown is a generated view; canonical claims/evidence/reviews are schema-controlled.
 - Raw records, secrets, credentials, broad org payloads, and chain-of-thought are never committed.
 - Reference-data snapshots are the one governed record-value path: for a single human-allowlisted
   configuration object, `investigate-config-records` reads bounded rows through the
-  `review_soql_query` facade tool, strips Ids/URLs/audit surfaces, and proposes one
-  `reference-data` claim with `org-soql-sample` evidence. The sanitized, digest-bound snapshot is
-  not a raw record dump; promotion still requires human review, and the claim drifts only via
-  re-observation because no repository commit backs it.
+  `review_soql_query` facade tool, strips Ids/URLs/audit surfaces, and captures a sanitized,
+  digest-bound snapshot — not a raw record dump; approval still requires a human, and the
+  snapshot drifts only via re-observation because no repository commit backs it.
 - Human review and approval receipts are currently hash-bound assertions. Their actor identity is
   not independently provider- or signature-verified; team-wide rollout remains blocked on that
   authenticity control.
@@ -105,8 +106,8 @@ and repository lineage. A new chat must resume from `recordId` and `handoffId` a
 
 ## Acceptance gates
 
-- Every material claim in a design/review has claim and evidence references.
-- Every trusted claim is schema-valid, human-reviewed, fresh, scoped, and uncontested.
+- Every material fact in a design/review is grounded in an approved-current Knowledge entry.
+- Every trusted entry is schema-valid, human-approved at its current digest, and in scope.
 - No model-only inference is verified Knowledge.
 - No incomplete/mismatched org review or source/org drift yields `SAFE`.
 - Direct CLI, default org, and production remain blocked; composed read-only SOQL executes

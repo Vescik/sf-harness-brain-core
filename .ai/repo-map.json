@@ -203,7 +203,7 @@
     },
     {
       "path": ".github/instructions",
-      "purpose": "Tiered principles + rule-registry.yaml"
+      "purpose": "Tiered Principle instruction files, loaded per role"
     },
     {
       "path": ".github/prompts",
@@ -550,7 +550,7 @@
     ".github/skills/suggest-test-cases/SKILL.md": "sha256:623e28b5e68a2d3eda593a41261218a9d77822fe162f707ca396bd2f0fb16af1",
     ".github/skills/sync-test-cases/SKILL.md": "sha256:86b1af1a8415d07f548e7160a565933be7dfede396e55341345fe76ffccfe529",
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
-    "config/repo-map-seed.json": "sha256:06cc542deade50f116309c83116b0c304071e485f4d875d7b857dff637c490d5"
+    "config/repo-map-seed.json": "sha256:d297648de8831ec5f1fa177eec9b89b885bc3791c84c2d03b4718db7c5c880ee"
   },
-  "wordCount": 780
+  "wordCount": 783
 }

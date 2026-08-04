@@ -13,10 +13,10 @@ validation. No object, namespace, package behavior, or business meaning is built
 3. [docs/compatibility.md](docs/compatibility.md) — runtime/version contract.
 4. [.ai/contracts/execution-contract.md](.ai/contracts/execution-contract.md) — common skill
    execution, cache, output, and failure behavior.
-5. [docs/grounding-architecture.md](docs/grounding-architecture.md) — Principles, claim/evidence,
-   repository/org reconciliation, Knowledge promotion, and handoff architecture.
-6. [docs/force-app-knowledge-architecture.md](docs/force-app-knowledge-architecture.md) — governed
-   source inventory and Knowledge-proposal pipeline.
+5. [docs/grounding-architecture.md](docs/grounding-architecture.md) — Principles, Knowledge
+   grounding, repository/org reconciliation, and handoff architecture.
+6. [docs/knowledge-one-file-contract.md](docs/knowledge-one-file-contract.md) — the normative
+   one-file Knowledge entry contract.
 
 The original design history (`HARNESS_BLUEPRINT.md`, `BUILD_REPORT.md`, `HARNESS_DIAGRAMS.md`,
 and both `HANDOFF_FOR_FABLE*.md` reviews) was removed from the working tree on 2026-07-16; it
@@ -29,9 +29,9 @@ for the index). It was historical input only, never the normative runtime specif
 |---|---|---|
 | Safety and Principles | `.github/copilot-instructions.md`, `.github/instructions/` | Minimal always-on kernel; detailed role-loaded Tier 1 → 2 → 3 rules |
 | Orchestration | `.github/agents/` | Design, investigation, development, QA strategy, independent review |
-| Public commands | `.github/prompts/` | Twenty-four deterministic slash-command entry points |
-| Internal capabilities | `.github/skills/` | Twenty-five progressively loaded procedures hidden from the slash menu |
-| Knowledge and contracts | `.ai/knowledge/`, `.ai/contracts/` | Schema-governed claims, immutable evidence, human reviews, source authority |
+| Public commands | `.github/prompts/` | Deterministic slash-command entry points (count pinned by `validate_harness.py`) |
+| Internal capabilities | `.github/skills/` | Progressively loaded procedures hidden from the slash menu |
+| Knowledge and contracts | `.ai/knowledge/`, `.ai/contracts/` | Schema-governed one-file Knowledge entries, human approvals, source authority |
 | Work state and QA | `.ai/change-records/`, `.ai/memory/`, `.ai/qa/` | Revisioned approvals/handoffs, durable decisions, and test inventory |
 | Salesforce project | `sfdx-project.json`, `force-app/`, `manifest/`, `tests/e2e/` | Root SFDX project, source, manifests, and Salesforce tests |
 | Runtime | `.vscode/mcp.json`, `.github/hooks/`, `scripts/` | Reconciled MCP/hidden-CLI review, guarded non-production tools, deterministic checks |

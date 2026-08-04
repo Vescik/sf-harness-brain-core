@@ -237,14 +237,13 @@ owner decision of 2026-07-14.)
 
 - Pull before starting work.
 - Create a branch; do not commit directly to `main`.
-- Investigators prepare sanitized schema-v3 YAML only in ignored `.cache/knowledge-proposals/` and
-  use the guarded `propose` command to create immutable evidence and `proposed` claims. Promotion
-  needs a human either way: the agent may request
-  `knowledge_registry.py approve-claim --claim-id <id> --expected-revision <n>` and the safety
-  hook stops it for your confirmation click (recorded as `copilot-chat-confirmation` with the
-  `knowledge.chatReviewer` name from local config), or a human runs the file-based
-  `review`/`promote` commands directly for external mechanisms. Raw cache and unreviewed
-  `output/` remain ignored.
+- Investigators draft Knowledge as one-file entries through the governed `knowledge_store.py`
+  lanes (`entry-draft`/`draft --component`; the v1 claim registry retired 2026-08-03). Approval
+  needs a human either way: the agent may request the digest-pinned
+  `knowledge_store.py entry-approve`/`feature-approve` and the safety hook stops it for your
+  confirmation click (recorded as `copilot-chat-entry-confirmation` with the
+  `knowledge.chatReviewer` name from local config). Raw cache and unreviewed `output/` remain
+  ignored.
 - Resume governed work from `recordId` and `handoffId`. Validate record revision, role, scope/design
   hashes, approval, evidence, and repository commits; chat history is not workflow state.
 - Agents stop at `design/awaiting_human`. After reviewing the persisted record and design, a named
