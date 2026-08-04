@@ -17,7 +17,6 @@ validation. No object, namespace, package behavior, or business meaning is built
    repository/org reconciliation, Knowledge promotion, and handoff architecture.
 6. [docs/force-app-knowledge-architecture.md](docs/force-app-knowledge-architecture.md) — governed
    source inventory and Knowledge-proposal pipeline.
-7. [IMPLEMENTATION_HANDOFF.md](IMPLEMENTATION_HANDOFF.md) — as-built changes and remaining roadmap.
 
 The original design history (`HARNESS_BLUEPRINT.md`, `BUILD_REPORT.md`, `HARNESS_DIAGRAMS.md`,
 and both `HANDOFF_FOR_FABLE*.md` reviews) was removed from the working tree on 2026-07-16; it

@@ -187,7 +187,6 @@ def check_required_files(audit: Audit) -> None:
         "AGENTS.md",
         "README.md",
         "SETUP.md",
-        "IMPLEMENTATION_HANDOFF.md",
         "sf-harness.code-workspace",
         ".github/copilot-instructions.md",
         ".github/hooks/safety.json",
