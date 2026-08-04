@@ -44,8 +44,7 @@ Goal: assemble every fact the design will stand on, with sources, before proposi
      re-reading and is not a fact.
    - **org usage numbers** — unexpired entry `orgUsage` blocks (via `entry-status`), cited
      with orgKey and observedAt; anything beyond them needs a fresh governed receipt or a
-     blocking question —
-     query --subject-identity <ApiName>` or `--domain`. Entries cannot answer these.
+     blocking question.
    - note entry lanes and org-usage freshness; a drifted or expired premise is named, never relied on.
 6. Salesforce reality:
    - `review_org_identity` must return `VERIFIED` before any org-derived fact is used.

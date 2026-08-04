@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-visualforce.schema.json",
+  "title": "Knowledge Entry profile — salesforce.visualforce v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. One shared profile for the two Visualforce surfaces (ApexPage and ApexComponent — the salesforce.apex many-to-one precedent). VF markup is regex-parsed, not reliably well-formed XML, so every edge carries the per-reference heuristic marker (collector 1.8.0): controller wiring, inputField writes, outputField reads, labels and embeds alike. label/apiVersion come from the sibling -meta.xml and are absent when it is missing.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "standardController": {
+          "type": "string"
+        },
+        "controller": {
+          "type": "string"
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "actionMethods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "label": {
+          "type": "string"
+        },
+        "apiVersion": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

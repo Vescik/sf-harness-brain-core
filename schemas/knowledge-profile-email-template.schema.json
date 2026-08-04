@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-email-template.schema.json",
+  "title": "Knowledge Entry profile — salesforce.email-template v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. Component identity is Folder/Name — the exact format workflow alerts, approval processes, and routing rules reference. The meta-derived facts (templateType, subject, encoding, letterhead, relatedEntityType, available) are absent entirely when the sibling -meta.xml is missing, so only folder is required. Template bodies are free text: every edge is regex-derived and carries the heuristic marker.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "folder"
+      ],
+      "properties": {
+        "folder": {
+          "type": "string"
+        },
+        "templateType": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Sanitized subject line (sanitize_literal: no credentials, emails, IPs, URL paths)."
+        },
+        "encoding": {
+          "type": "string"
+        },
+        "letterhead": {
+          "type": "string"
+        },
+        "relatedEntityType": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

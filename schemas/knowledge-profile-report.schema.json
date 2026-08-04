@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-report.schema.json",
+  "title": "Knowledge Entry profile — salesforce.report v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. Component identity is folder-qualified Folder/Name (the EmailTemplate precedent) — two same-named reports in different folders are distinct components; folder is absent only for a report sitting directly under reports/. Column tokens mix field API names with opaque standard-report tokens (FK_ACCOUNT.NAME), so every field edge is deliberately a per-reference heuristic. filters is capped at 50: filterCount keeps the honest true total and filtersTruncated/factsTruncated disclose the cut; referencesTruncated/truncatedFamilies disclose the edge cap. Filter values are captured sanitized.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "reportType": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "columnCount": {
+          "type": "integer"
+        },
+        "filters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "column": {
+                "type": "string"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "filterCount": {
+          "type": "integer"
+        },
+        "filtersTruncated": {
+          "type": "boolean"
+        },
+        "factsTruncated": {
+          "type": "boolean"
+        },
+        "groupings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hasChart": {
+          "type": "boolean"
+        },
+        "timeFrame": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "dateColumn": {
+              "type": "string"
+            },
+            "interval": {
+              "type": "string"
+            }
+          }
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

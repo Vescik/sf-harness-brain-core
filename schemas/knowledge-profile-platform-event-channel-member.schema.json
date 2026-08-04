@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-platform-event-channel-member.schema.json",
+  "title": "Knowledge Entry profile — salesforce.platform-event-channel-member v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "eventChannel": {
+          "type": "string"
+        },
+        "selectedEntity": {
+          "type": "string",
+          "description": "Which event/CDC entity streams through the channel; a *ChangeEvent entity also yields a heuristic operates-on edge to its base object."
+        },
+        "enrichedFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Fields delivered in change events even when unchanged — subscriber correlation keys."
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

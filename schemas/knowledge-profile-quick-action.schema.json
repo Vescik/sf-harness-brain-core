@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-quick-action.schema.json",
+  "title": "Knowledge Entry profile — salesforce.quick-action v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. The launches-flow edge kind is kind-level heuristic even though the flowDefinition element read is exact XML — a deliberate, conservative under-claim; splitting the kind vocabulary is out of scope.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "actionType": {
+          "type": "string"
+        },
+        "object": {
+          "type": "string",
+          "description": "Target object; absent on global actions, which have no object context."
+        },
+        "targetRecordType": {
+          "type": "string"
+        },
+        "targetParentField": {
+          "type": "string"
+        },
+        "fieldCount": {
+          "type": "integer"
+        },
+        "overrideCount": {
+          "type": "integer"
+        },
+        "successMessage": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

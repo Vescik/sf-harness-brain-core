@@ -92,6 +92,12 @@ class ForceAppKnowledgeTests(unittest.TestCase):
             self.root / "force-app/main/default/namedCredentials/HarnessBilling.namedCredential-meta.xml",
             NAMED_CREDENTIAL_XML,
         )
+        # Generic-bucket component: the durable unprofiled probe (label/rootElement only —
+        # no entry profile by design, unlike the waved types that gain profiles over time).
+        write(
+            self.root / "force-app/main/default/letterhead/HarnessBrand.letterhead-meta.xml",
+            """<Letterhead xmlns="http://soap.sforce.com/2006/04/metadata"><name>HarnessBrand</name></Letterhead>""",
+        )
         write(
             self.root / "force-app/main/default/lwc/harnessEngagementCard/harnessEngagementCard.js-meta.xml",
             """<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata"><isExposed>true</isExposed><targets><target>lightning__RecordPage</target></targets></LightningComponentBundle>""",
@@ -554,7 +560,7 @@ class ForceAppKnowledgeTests(unittest.TestCase):
                 "force-app/main/default/objects/HarnessEngagement__c",
                 "not-force-app/readme.md",
             ],
-            names=["HarnessBilling", "Account__c.field-meta.xml", "NoSuchComponent"],
+            names=["HarnessBilling", "HarnessBrand", "Account__c.field-meta.xml", "NoSuchComponent"],
         )
         by_input = {selection["input"]: selection for selection in result["selections"]}
 
@@ -587,6 +593,10 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertEqual("resolved", credential["resolution"])
         self.assertEqual(["NamedCredential:HarnessBilling"], credential["componentIds"])
 
+        letterhead = by_input["HarnessBrand"]
+        self.assertEqual("resolved", letterhead["resolution"])
+        self.assertEqual(["Letterhead:HarnessBrand"], letterhead["componentIds"])
+
         basename = by_input["Account__c.field-meta.xml"]
         self.assertEqual("resolved", basename["resolution"])
 
@@ -599,11 +609,15 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         # Entry-profiled types route to the entry lane even before the first entry exists.
         self.assertEqual("entry", items["CustomField:HarnessEngagement__c.Account__c"]["lane"])
         self.assertEqual("no-entry", items["CustomField:HarnessEngagement__c.Account__c"]["status"])
+        # Wave 2 profiled the integration family: NamedCredential now routes to the entry lane.
+        self.assertEqual("entry", items["NamedCredential:HarnessBilling"]["lane"])
+        self.assertEqual("no-entry", items["NamedCredential:HarnessBilling"]["status"])
         # A type without an entry profile has NO Knowledge lane since the claim registry
-        # retired; the gap is reported, never a pseudo-status.
-        self.assertEqual("none", items["NamedCredential:HarnessBilling"]["lane"])
-        self.assertEqual("no-entry-profile", items["NamedCredential:HarnessBilling"]["status"])
-        self.assertIn("knowledge_store.PROFILES", items["NamedCredential:HarnessBilling"]["reason"])
+        # retired; the gap is reported, never a pseudo-status. The probe is a generic-bucket
+        # type (Letterhead) that stays unprofiled by design, not by backlog.
+        self.assertEqual("none", items["Letterhead:HarnessBrand"]["lane"])
+        self.assertEqual("no-entry-profile", items["Letterhead:HarnessBrand"]["status"])
+        self.assertIn("knowledge_store.PROFILES", items["Letterhead:HarnessBrand"]["reason"])
 
     def test_resolve_reports_ambiguity_and_never_guesses(self) -> None:
         write(

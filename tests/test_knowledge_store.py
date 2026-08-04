@@ -931,6 +931,400 @@ class ProfileSchemaCoverageTests(unittest.TestCase):
             "targetConfigs": [{"targets": "lightning__RecordPage", "objects": ["A__c"]}],
             "apiProperties": ["recordId"], "wiredAdapters": ["getRecord"],
         },
+        "FieldSet": {
+            "object": "Account", "fullName": "Support_Fields", "label": "Support Fields",
+            "description": "Fields the support console iterates.",
+            "displayedFields": ["SupportTier__c", "Region__c"],
+            "availableFields": ["EscalationNotes__c"],
+        },
+        "CompactLayout": {
+            "object": "Case", "fullName": "Case_Highlights", "label": "Case Highlights",
+            "fields": ["Subject", "Status", "Priority"],
+        },
+        "BusinessProcess": {
+            "object": "Opportunity", "fullName": "EMEA_Sales",
+            "description": "EMEA pipeline stages.", "isActive": True,
+            "values": [{"fullName": "Prospecting", "default": True}, {"fullName": "Closed Won"}],
+            "lifecycleField": "StageName",
+        },
+        "WebLink": {
+            "object": "Account", "fullName": "Open_Billing_Portal", "label": "Open Billing Portal",
+            "displayType": "button", "linkType": "url", "openType": "newWindow",
+            "targetHost": "billing.example.com",
+        },
+        "DuplicateRule": {
+            "object": "Contact", "label": "Standard Contact Duplicate Rule", "active": True,
+            "sortOrder": "1", "actionOnInsert": "Allow", "actionOnUpdate": "Block",
+            "securityOption": "EnforceSharingRules",
+            "operationsOnInsert": ["Alert", "Report"], "operationsOnUpdate": ["Alert"],
+            "matchRules": [
+                {"matchingRule": "Standard_Contact_Match", "matchingRuleObjectType": "Contact",
+                 "mappedFields": [{"input": "Email", "output": "Email"}]}
+            ],
+            "errorCatalog": [
+                {"component": "Contact.Standard_Contact_Duplicate_Rule", "kind": "duplicate-alert",
+                 "errorMessage": "You may be creating a duplicate contact.",
+                 "resolvedErrorMessage": "You may be creating a duplicate contact."}
+            ],
+        },
+        "MatchingRule": {
+            "object": "Contact", "fullName": "Standard_Contact_Match",
+            "label": "Standard Contact Match", "ruleStatus": "Active",
+            "booleanFilter": "1 AND (2 OR 3)",
+            "items": [
+                {"field": "Email", "matchingMethod": "Exact", "blankValueBehavior": "NullNotAllowed"},
+                {"field": "LastName", "matchingMethod": "FuzzyLastName", "blankValueBehavior": "MatchBlanks"},
+            ],
+        },
+        "Queue": {
+            "name": "Tier1_Support", "doesSendEmailToMembers": True,
+            "memberCounts": {"publicGroups": 1, "users": 4}, "servesObjects": ["Case", "Lead"],
+        },
+        "Role": {
+            "label": "EMEA Sales Manager", "caseAccessLevel": "Edit", "contactAccessLevel": "Read",
+            "opportunityAccessLevel": "Edit", "mayForecastManagerShare": False,
+            "description": "Manages the EMEA pipeline.",
+        },
+        "DelegateGroup": {
+            "label": "Regional Admins", "loginAccess": True,
+            "administersRoles": ["EMEA_Sales_Manager"],
+            "assignablePermissionSetCount": 2, "assignableProfileCount": 1,
+        },
+        "PermissionSetGroup": {
+            "label": "Support Agent Bundle", "status": "Updated",
+            "permissionSetCount": 3, "mutingPermissionSetCount": 1,
+        },
+        "StaticResource": {
+            "contentType": "application/zip", "cacheControl": "Public",
+            "description": "Vendor charting bundle.",
+        },
+        "PlatformEventChannel": {"label": "Order Events", "channelType": "event"},
+        "PlatformEventChannelMember": {
+            "eventChannel": "OrderEvents__chn", "selectedEntity": "OrderShipped__e",
+            "enrichedFields": ["OrderId__c", "Status__c"],
+        },
+        "GlobalValueSet": {
+            "masterLabel": "Region", "description": "Shared sales regions.", "sorted": True,
+            "values": [
+                {"fullName": "EMEA", "label": "EMEA", "default": True, "isActive": True},
+                {"fullName": "APAC", "label": "APAC"},
+            ],
+            "valueCount": 2,
+        },
+        "StandardValueSet": {
+            "masterLabel": "Opportunity Stage", "sorted": False,
+            "values": [
+                {"fullName": "Prospecting", "label": "Prospecting", "probability": "10",
+                 "forecastCategory": "Pipeline"},
+                {"fullName": "Closed Won", "label": "Closed Won", "closed": True, "won": True,
+                 "probability": "100", "forecastCategory": "Closed"},
+            ],
+            "valueCount": 12, "valuesTruncated": True,
+        },
+        "CustomLabel": {
+            "value": "Case escalated to Tier 2.", "language": "en_US", "protected": True,
+            "categories": "Support,Notifications", "shortDescription": "Escalation toast",
+        },
+        "CustomTab": {"label": "Status Page", "tabKind": "web", "urlHost": "status.example.com"},
+        "CustomApplication": {
+            "label": "Harness Console", "navType": "Console", "uiType": "Lightning",
+            "formFactors": ["Large"], "tabs": ["standard-Case", "Engagement__c"],
+            "hasUtilityBar": True,
+            "overrides": [
+                {
+                    "action": "View", "content": "Case_Record_Page", "type": "Flexipage",
+                    "object": "Case", "profile": "Support Agent", "formFactor": "Large",
+                }
+            ],
+            "overrideCount": "73", "overridesTruncated": True, "factsTruncated": True,
+        },
+        "FlowDefinition": {
+            "activeVersionNumber": "3", "active": True,
+            "description": "Pins the active version of the router flow.",
+        },
+        "PathAssistant": {
+            "label": "Opportunity Path", "active": True, "object": "Opportunity",
+            "drivingField": "Opportunity.StageName", "recordType": "EMEA",
+            "steps": [
+                {"value": "Prospecting", "fields": ["Amount", "CloseDate"],
+                 "guidance": "Qualify budget and timeline before advancing."}
+            ],
+        },
+        "ListView": {
+            "object": "Case", "fullName": "Tier1_Open_Cases", "label": "Tier1 Open Cases",
+            "filterScope": "Queue", "queue": "Tier1_Support", "booleanFilter": "1 AND 2",
+            "columns": ["CASES.CASE_NUMBER", "CASES.SUBJECT", "CASES.STATUS"],
+            # Digit-string count exercises _normalize_fact coercion; the flags disclose a >50 cut.
+            "columnCount": "63", "columnsTruncated": True, "factsTruncated": True,
+            "filters": [
+                {"field": "Status", "operator": "notEqual", "value": "Closed"},
+                {"field": "Priority", "operator": "equals", "value": "High"},
+            ],
+        },
+        "ReportType": {
+            "label": "Cases with Engagements",
+            "description": "Case rows joined to their engagement work.",
+            "baseObject": "Case", "category": "cases", "deployed": True,
+            # The join-path table's columns emit no edges — columnCount exceeding the edge
+            # count is the documented limitation, not truncation.
+            "tables": ["Case", "Case.Engagements__r"], "columnCount": 24,
+        },
+        "SharingRules": {
+            "object": "Engagement__c",
+            "criteriaRules": [
+                {"name": "Share_EMEA", "label": "Share EMEA", "accessLevel": "Read",
+                 "criteria": [{"field": "Region__c", "operator": "equals", "value": "EMEA"}],
+                 "booleanFilter": "1",
+                 "sharedTo": [{"direction": "sharedTo", "type": "group", "name": "Sales_All"}]},
+            ],
+            "ownerRules": [
+                {"name": "Queue_To_Managers", "accessLevel": "Edit",
+                 "parties": [
+                     {"direction": "sharedTo", "type": "roleAndSubordinates",
+                      "name": "EMEA_Sales_Manager"},
+                     {"direction": "sharedFrom", "type": "queue", "name": "Tier1_Support"},
+                 ]},
+            ],
+            "criteriaRuleCount": 72, "ownerRuleCount": 3,
+            "rulesTruncated": True, "factsTruncated": True,
+            "referencesTruncated": True, "truncatedFamilies": ["filters-field"],
+        },
+        "QuickAction": {
+            "label": "Log Engagement", "actionType": "Create", "object": "Engagement__c",
+            "targetRecordType": "Standard", "targetParentField": "Case__c",
+            "fieldCount": 5, "overrideCount": "2", "successMessage": "Engagement logged.",
+        },
+        "MutingPermissionSet": {
+            "label": "Mute Legacy Export",
+            "mutedObjectAccess": {"Engagement__c": "D+MA"},
+            "mutedSystemPermissions": ["DataExport", "ManageUsers"],
+            "objectPermissionCount": 1, "fieldPermissionCount": "14", "classAccessCount": 1,
+            "customPermissionCount": 1, "recordTypeCount": 1, "flowAccessCount": 1,
+            "userPermissionCount": 2, "tabCount": 1, "pageAccessCount": 1,
+            "applicationVisibilityCount": 1,
+        },
+        "Dashboard": {
+            "folder": "Sales_Dashboards", "label": "EMEA Pipeline",
+            "runningUserPolicy": "LoggedInUser", "componentCount": 6,
+            "reports": ["Sales_Reports/EMEA_Pipeline_by_Stage"],
+        },
+        "EmailTemplate": {
+            "folder": "Support_Templates", "templateType": "html",
+            "subject": "Your case has been escalated", "encoding": "UTF-8",
+            "letterhead": "Support_Letterhead", "relatedEntityType": "Case",
+            "available": True,
+        },
+        "AuraDefinitionBundle": {
+            "definitionTypes": ["cmp", "css", "design", "js"],
+            "implements": ["flexipage:availableForAllPageTypes", "force:hasRecordId"],
+            "extends": "c:harnessBaseCard",
+        },
+        "NamedCredential": {
+            "label": "Billing API", "namedCredentialType": "SecuredEndpoint",
+            "protocol": "NoAuthentication", "principalType": "NamedUser",
+            "generateAuthorizationHeader": True, "allowMergeFieldsInBody": False,
+            "allowMergeFieldsInHeader": False, "externalCredential": "Billing_OAuth",
+            "endpointHost": "api.billing.example.com",
+        },
+        "ExternalCredential": {
+            "label": "Billing OAuth", "authenticationProtocol": "OAuth",
+            "authenticationProtocolVariant": "ClientCredentialsClientSecretBasic",
+            "principals": [
+                {"name": "Billing Principal", "type": "NamedPrincipal", "sequence": "1"}
+            ],
+        },
+        "RemoteSiteSetting": {
+            "isActive": True, "disableProtocolSecurity": False,
+            "endpointHost": "legacy.billing.example.com",
+        },
+        "ExternalDataSource": {
+            "label": "ERP Orders", "sourceType": "OData4", "principalType": "Identity",
+            "protocol": "NoAuthentication", "isWritable": False,
+            "endpointHost": "odata.erp.example.com",
+        },
+        "ExternalServiceRegistration": {
+            "label": "Shipping Service", "registrationProviderType": "Custom",
+            "namedCredential": "Shipping_API", "status": "Complete", "schemaPresent": True,
+        },
+        "ConnectedApp": {
+            "label": "Field Mobile App", "oauthScopes": ["Api", "RefreshToken"],
+            "isAdminApproved": True, "ipRelaxation": "ENFORCE",
+            "callbackHost": "login.example.com", "canvasHost": "canvas.example.com",
+            "samlConfigPresent": True,
+        },
+        "AuthProvider": {
+            "label": "Corporate SSO", "providerType": "OpenIdConnect",
+            "authorizeHost": "sso.example.com", "tokenHost": "sso.example.com",
+            "executionUserPresent": True,
+        },
+        "CspTrustedSite": {
+            "isActive": True, "context": "LEX",
+            "directives": ["ConnectSrc", "ImgSrc"], "endpointHost": "cdn.example.com",
+        },
+        "CorsWhitelistOrigin": {"endpointHost": "app.example.com"},
+        "Profile": {
+            "label": "Support Agent", "custom": True, "userLicense": "Salesforce",
+            "objectAccess": {"Engagement__c": "CRED+VA"},
+            "systemPermissions": ["ViewSetup"],
+            "objectPermissionCount": 3, "fieldPermissionCount": 120, "classAccessCount": 2,
+            "customPermissionCount": 1, "recordTypeCount": 2, "flowAccessCount": 1,
+            "userPermissionCount": 4, "tabCount": 6, "pageAccessCount": 1,
+            "applicationVisibilityCount": 2,
+            "layoutAssignmentCount": 40,
+            "defaultRecordTypes": {"Engagement__c": "Engagement__c.Standard"},
+            "defaultApplication": "Harness_Console",
+            # Presence + digit-string count only — never the IP range values themselves.
+            "loginIpRangesPresent": True, "loginIpRangeCount": "2", "loginHoursPresent": True,
+            # The assigns-layout merge re-caps the combined edge list and must disclose
+            # what it drops — including the assigns-layout family itself.
+            "referencesTruncated": True,
+            "truncatedFamilies": ["assigns-layout", "grants-field-edit"],
+        },
+        "Layout": {
+            "object": "Engagement__c", "fieldCount": 34,
+            "requiredOnLayout": ["Engagement__c.Status__c"],
+            "readonlyOnLayout": ["Engagement__c.Total_Billed__c"],
+            "sections": ["Information", "Billing"],
+            "relatedLists": [
+                {"name": "Engagement_Tasks__r", "fields": ["Subject__c", "Due_Date__c"]}
+            ],
+            "actionCount": 3,
+            "referencesTruncated": True, "truncatedFamilies": ["places-field"],
+        },
+        "FlexiPage": {
+            "label": "Engagement Record Page", "pageType": "RecordPage",
+            "object": "Engagement__c",
+            "template": "flexipage:recordHomeTemplateDesktop",
+            "regionCount": 3, "componentCount": 8, "fieldInstanceCount": 6,
+            "visibilityRuleFields": ["Engagement__c.Status__c"],
+        },
+        "Workflow": {
+            "object": "Case",
+            "rules": [
+                {"name": "Escalate_Aged", "active": True,
+                 "triggerType": "onCreateOrTriggeringUpdate",
+                 "criteria": [{"field": "Status", "operator": "equals", "value": "New"}],
+                 "actions": [{"name": "Notify_Owner", "type": "Alert"}]}
+            ],
+            "fieldUpdates": [
+                {"name": "Set_Priority", "field": "Priority", "operation": "Literal",
+                 "literalValue": "High", "reevaluateOnChange": False}
+            ],
+            "alerts": [
+                {"name": "Notify_Owner", "template": "Support_Templates/Case_Escalated",
+                 "recipientTypes": ["owner"], "senderType": "CurrentUser"}
+            ],
+            "outboundMessages": [
+                {"name": "Sync_Billing", "endpointHost": "erp.example.com",
+                 "fields": ["CaseNumber", "Status"], "includeSessionId": False}
+            ],
+            "tasks": [
+                {"name": "Follow_Up", "assignedToType": "owner", "subject": "Follow up",
+                 "status": "Not Started", "priority": "Normal", "dueDateOffset": "2"}
+            ],
+            "ruleCount": 1, "activeRuleCount": 1,
+            # >100 field updates: digit-string true total plus the per-array flag and
+            # the factsTruncated aggregate that maps coverage to "partial".
+            "fieldUpdateCount": "130", "alertCount": 1,
+            "fieldUpdatesTruncated": True, "factsTruncated": True,
+            "referencesTruncated": True, "truncatedFamilies": ["references-field"],
+        },
+        "AssignmentRules": {
+            "object": "Case",
+            "rules": [
+                {"name": "Standard Case Routing", "active": True,
+                 "entries": [
+                     {"order": 1,
+                      "criteria": [{"field": "Case.Origin", "operator": "equals",
+                                    "value": "Web"}],
+                      "assignedToType": "Queue", "assignedTo": "Tier1_Support"}
+                 ],
+                 # A single rule with >100 entries: entryCount keeps the true total.
+                 "entryCount": 148, "entriesTruncated": True}
+            ],
+            "ruleCount": 1, "factsTruncated": True,
+            "referencesTruncated": True, "truncatedFamilies": ["filters-field"],
+        },
+        "AutoResponseRules": {
+            "object": "Case",
+            "rules": [
+                {"name": "Web Auto Response", "active": True,
+                 "entries": [
+                     {"order": 1,
+                      "criteria": [{"field": "Case.Origin", "operator": "equals",
+                                    "value": "Web"}],
+                      "template": "Support_Templates/Case_Received"}
+                 ],
+                 "entryCount": 1}
+            ],
+            "ruleCount": 1,
+        },
+        "EscalationRules": {
+            "object": "Case",
+            "rules": [
+                {"name": "Aged Case Escalation", "active": True,
+                 "entries": [
+                     {"order": 1,
+                      "criteria": [{"field": "Case.Priority", "operator": "equals",
+                                    "value": "High"}],
+                      "escalationActions": [
+                          {"minutesToEscalation": "60", "notifyCaseOwner": True,
+                           "assignedToType": "Queue", "assignedTo": "Tier2_Support"}
+                      ]}
+                 ],
+                 "entryCount": 1}
+            ],
+            "ruleCount": 1,
+        },
+        "ApprovalProcess": {
+            "object": "Engagement__c", "label": "Discount Approval", "active": True,
+            "recordEditability": "AdminOnly", "allowRecall": True,
+            "finalApprovalRecordLock": True, "finalRejectionRecordLock": False,
+            "entryCriteria": {
+                "criteria": [{"field": "Engagement__c.Discount__c",
+                              "operator": "greaterThan", "value": "20"}],
+                "booleanFilter": "1",
+            },
+            "steps": [
+                {"order": 1, "name": "Manager_Review", "label": "Manager Review",
+                 "approvers": [{"type": "relatedUserField", "field": "Manager__c"}],
+                 "whenMultipleApprovers": "FirstResponse",
+                 "rejectBehavior": "RejectRequest",
+                 "approvalActions": [{"name": "Set_Status_Approved", "type": "FieldUpdate"}]}
+            ],
+            "actionSets": {
+                "finalApproval": [{"name": "Set_Status_Approved", "type": "FieldUpdate"}],
+                "finalRejection": [{"name": "Notify_Requestor", "type": "Alert"}],
+            },
+            "approvalPageFields": ["Name", "Discount__c"],
+            "emailTemplate": "Support_Templates/Approval_Request",
+            "allowedSubmitterTypes": ["owner"],
+            # stepCount is the true total, computed before the 50-step cap slice.
+            "stepCount": 1, "entryCriteriaPresent": True,
+        },
+        "Report": {
+            "folder": "Sales_Reports", "label": "EMEA Pipeline by Stage",
+            "format": "Summary", "reportType": "Opportunity", "scope": "organization",
+            "columnCount": 6,
+            "filters": [{"column": "Opportunity.Region__c", "operator": "equals",
+                         "value": "EMEA"}],
+            # Honest true total (D7): digit-string filterCount above the 50-item cap.
+            "filterCount": "58", "filtersTruncated": True, "factsTruncated": True,
+            "groupings": ["STAGE_NAME"], "hasChart": True,
+            "timeFrame": {"dateColumn": "CLOSE_DATE", "interval": "INTERVAL_CURFY"},
+            "referencesTruncated": True, "truncatedFamilies": ["references-field"],
+        },
+        "ApexPage": {
+            "standardController": "Engagement__c",
+            "extensions": ["EngagementExtension"],
+            "actionMethods": ["save", "recalculate"],
+            "label": "Engagement Edit", "apiVersion": "61.0",
+        },
+        "ApexComponent": {
+            "controller": "BillingSummaryController",
+            "actionMethods": ["refresh"],
+            "label": "Billing Summary", "apiVersion": "61.0",
+        },
     }
 
     def test_a_sample_exists_for_every_profiled_type(self) -> None:

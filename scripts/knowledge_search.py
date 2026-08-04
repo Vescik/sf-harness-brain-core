@@ -201,6 +201,201 @@ PROFILE_FACETS = {
         "field.precision": "number",
         "field.scale": "number",
     },
+    "FieldSet": {
+        "fieldSet.object": "string",
+        "fieldSet.label": "string",
+    },
+    "CompactLayout": {
+        "compactLayout.object": "string",
+        "compactLayout.label": "string",
+    },
+    "BusinessProcess": {
+        "businessProcess.object": "string",
+        "businessProcess.active": "boolean",
+        "businessProcess.lifecycleField": "string",
+    },
+    "WebLink": {
+        "webLink.object": "string",
+        "webLink.linkType": "string",
+        "webLink.isJavascript": "boolean",
+    },
+    "DuplicateRule": {
+        "duplicateRule.object": "string",
+        "duplicateRule.active": "boolean",
+        "duplicateRule.actionOnInsert": "string",
+        "duplicateRule.actionOnUpdate": "string",
+    },
+    "MatchingRule": {
+        "matchingRule.object": "string",
+        "matchingRule.status": "string",
+    },
+    "Queue": {
+        "queue.name": "string",
+        "queue.servesObjects": "string",
+        "queue.doesSendEmailToMembers": "boolean",
+    },
+    "Role": {
+        "role.label": "string",
+        "role.caseAccessLevel": "string",
+        "role.opportunityAccessLevel": "string",
+    },
+    "DelegateGroup": {
+        "delegateGroup.label": "string",
+        "delegateGroup.loginAccess": "boolean",
+    },
+    "PermissionSetGroup": {
+        "permissionSetGroup.label": "string",
+        "permissionSetGroup.status": "string",
+        "permissionSetGroup.permissionSetCount": "number",
+    },
+    "StaticResource": {
+        "staticResource.contentType": "string",
+        "staticResource.cacheControl": "string",
+    },
+    "PlatformEventChannel": {
+        "platformEventChannel.channelType": "string",
+        "platformEventChannel.label": "string",
+    },
+    "PlatformEventChannelMember": {
+        "platformEventChannelMember.eventChannel": "string",
+        "platformEventChannelMember.selectedEntity": "string",
+    },
+    "GlobalValueSet": {
+        "valueSet.sorted": "boolean",
+        "valueSet.valueCount": "number",
+        "valueSet.masterLabel": "string",
+    },
+    "StandardValueSet": {
+        "valueSet.sorted": "boolean",
+        "valueSet.valueCount": "number",
+        "valueSet.masterLabel": "string",
+    },
+    "CustomLabel": {
+        "customLabel.language": "string",
+        "customLabel.protected": "boolean",
+        "customLabel.categories": "string",
+    },
+    "CustomTab": {
+        "customTab.tabKind": "string",
+        "customTab.label": "string",
+    },
+    "CustomApplication": {
+        "customApplication.navType": "string",
+        "customApplication.uiType": "string",
+        "customApplication.hasUtilityBar": "boolean",
+    },
+    "FlowDefinition": {
+        "flowDefinition.active": "boolean",
+        "flowDefinition.activeVersionNumber": "number",
+    },
+    "PathAssistant": {
+        "pathAssistant.object": "string",
+        "pathAssistant.active": "boolean",
+        "pathAssistant.recordType": "string",
+    },
+    "ListView": {
+        "listView.object": "string",
+        "listView.queue": "string",
+        "listView.filterScope": "string",
+    },
+    "ReportType": {
+        "reportType.baseObject": "string",
+        "reportType.category": "string",
+        "reportType.deployed": "boolean",
+    },
+    "SharingRules": {
+        "sharingRules.object": "string",
+        "sharingRules.criteriaRuleCount": "number",
+        "sharingRules.ownerRuleCount": "number",
+    },
+    "QuickAction": {
+        "quickAction.object": "string",
+        "quickAction.actionType": "string",
+    },
+    "MutingPermissionSet": {
+        "mutingPermissionSet.label": "string",
+        "mutingPermissionSet.mutedSystemPermissions": "string",
+        "mutingPermissionSet.fieldPermissionCount": "number",
+    },
+    "Dashboard": {
+        "dashboard.folder": "string",
+        "dashboard.runningUserPolicy": "string",
+    },
+    "EmailTemplate": {
+        "emailTemplate.folder": "string",
+        "emailTemplate.templateType": "string",
+        "emailTemplate.available": "boolean",
+    },
+    "AuraDefinitionBundle": {
+        "aura.extends": "string",
+        "aura.implements": "string",
+    },
+    # The nine integration types share the salesforce.integration profile and one facet set.
+    **{
+        metadata_type: {
+            "integration.endpointHost": "string",
+            "integration.label": "string",
+            "integration.isActive": "boolean",
+        }
+        for metadata_type in (
+            "NamedCredential",
+            "ExternalCredential",
+            "RemoteSiteSetting",
+            "ExternalDataSource",
+            "ExternalServiceRegistration",
+            "ConnectedApp",
+            "AuthProvider",
+            "CspTrustedSite",
+            "CorsWhitelistOrigin",
+        )
+    },
+    "Profile": {
+        "profile.label": "string",
+        "profile.custom": "boolean",
+        "profile.userLicense": "string",
+    },
+    "Layout": {
+        "layout.object": "string",
+        "layout.fieldCount": "number",
+    },
+    "FlexiPage": {
+        "flexiPage.pageType": "string",
+        "flexiPage.object": "string",
+        "flexiPage.template": "string",
+    },
+    "Workflow": {
+        "workflow.object": "string",
+        "workflow.ruleCount": "number",
+        "workflow.activeRuleCount": "number",
+    },
+    # The three routing-rule containers share the salesforce.routing-rules profile
+    # and one facet set.
+    **{
+        metadata_type: {
+            "routingRules.object": "string",
+            "routingRules.ruleCount": "number",
+        }
+        for metadata_type in ("AssignmentRules", "AutoResponseRules", "EscalationRules")
+    },
+    "ApprovalProcess": {
+        "approvalProcess.object": "string",
+        "approvalProcess.active": "boolean",
+        "approvalProcess.stepCount": "number",
+    },
+    "Report": {
+        "report.reportType": "string",
+        "report.folder": "string",
+        "report.format": "string",
+    },
+    # ApexPage and ApexComponent share the salesforce.visualforce profile and one facet set.
+    **{
+        metadata_type: {
+            "visualforce.standardController": "string",
+            "visualforce.controller": "string",
+            "visualforce.apiVersion": "string",
+        }
+        for metadata_type in ("ApexPage", "ApexComponent")
+    },
 }
 FACET_OPERATORS = ("eq", "in", "exists", "prefix", "has", "gte", "lte")
 
@@ -345,6 +540,302 @@ def _lwc_facets(front: dict[str, Any]) -> dict[str, Any]:
     return {"lwc.isExposed": facts.get("isExposed"), "lwc.targets": facts.get("targets")}
 
 
+def _field_set_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {"fieldSet.object": facts.get("object"), "fieldSet.label": facts.get("label")}
+
+
+def _compact_layout_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {"compactLayout.object": facts.get("object"), "compactLayout.label": facts.get("label")}
+
+
+def _business_process_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "businessProcess.object": facts.get("object"),
+        "businessProcess.active": facts.get("isActive"),
+        "businessProcess.lifecycleField": facts.get("lifecycleField"),
+    }
+
+
+def _web_link_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "webLink.object": facts.get("object"),
+        "webLink.linkType": facts.get("linkType"),
+        "webLink.isJavascript": facts.get("isJavascript"),
+    }
+
+
+def _duplicate_rule_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "duplicateRule.object": facts.get("object"),
+        "duplicateRule.active": facts.get("active"),
+        "duplicateRule.actionOnInsert": facts.get("actionOnInsert"),
+        "duplicateRule.actionOnUpdate": facts.get("actionOnUpdate"),
+    }
+
+
+def _matching_rule_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {"matchingRule.object": facts.get("object"), "matchingRule.status": facts.get("ruleStatus")}
+
+
+def _queue_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "queue.name": facts.get("name"),
+        "queue.servesObjects": facts.get("servesObjects"),
+        "queue.doesSendEmailToMembers": facts.get("doesSendEmailToMembers"),
+    }
+
+
+def _role_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "role.label": facts.get("label"),
+        "role.caseAccessLevel": facts.get("caseAccessLevel"),
+        "role.opportunityAccessLevel": facts.get("opportunityAccessLevel"),
+    }
+
+
+def _delegate_group_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {"delegateGroup.label": facts.get("label"), "delegateGroup.loginAccess": facts.get("loginAccess")}
+
+
+def _permission_set_group_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "permissionSetGroup.label": facts.get("label"),
+        "permissionSetGroup.status": facts.get("status"),
+        "permissionSetGroup.permissionSetCount": facts.get("permissionSetCount"),
+    }
+
+
+def _static_resource_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "staticResource.contentType": facts.get("contentType"),
+        "staticResource.cacheControl": facts.get("cacheControl"),
+    }
+
+
+def _platform_event_channel_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "platformEventChannel.channelType": facts.get("channelType"),
+        "platformEventChannel.label": facts.get("label"),
+    }
+
+
+def _platform_event_channel_member_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "platformEventChannelMember.eventChannel": facts.get("eventChannel"),
+        "platformEventChannelMember.selectedEntity": facts.get("selectedEntity"),
+    }
+
+
+def _value_set_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "valueSet.sorted": facts.get("sorted"),
+        "valueSet.valueCount": facts.get("valueCount"),
+        "valueSet.masterLabel": facts.get("masterLabel"),
+    }
+
+
+def _custom_label_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "customLabel.language": facts.get("language"),
+        "customLabel.protected": facts.get("protected"),
+        "customLabel.categories": facts.get("categories"),
+    }
+
+
+def _custom_tab_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {"customTab.tabKind": facts.get("tabKind"), "customTab.label": facts.get("label")}
+
+
+def _custom_application_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "customApplication.navType": facts.get("navType"),
+        "customApplication.uiType": facts.get("uiType"),
+        "customApplication.hasUtilityBar": facts.get("hasUtilityBar"),
+    }
+
+
+def _flow_definition_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "flowDefinition.active": facts.get("active"),
+        "flowDefinition.activeVersionNumber": facts.get("activeVersionNumber"),
+    }
+
+
+def _path_assistant_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "pathAssistant.object": facts.get("object"),
+        "pathAssistant.active": facts.get("active"),
+        "pathAssistant.recordType": facts.get("recordType"),
+    }
+
+
+def _list_view_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "listView.object": facts.get("object"),
+        "listView.queue": facts.get("queue"),
+        "listView.filterScope": facts.get("filterScope"),
+    }
+
+
+def _report_type_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "reportType.baseObject": facts.get("baseObject"),
+        "reportType.category": facts.get("category"),
+        "reportType.deployed": facts.get("deployed"),
+    }
+
+
+def _sharing_rules_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "sharingRules.object": facts.get("object"),
+        "sharingRules.criteriaRuleCount": facts.get("criteriaRuleCount"),
+        "sharingRules.ownerRuleCount": facts.get("ownerRuleCount"),
+    }
+
+
+def _quick_action_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "quickAction.object": facts.get("object"),
+        "quickAction.actionType": facts.get("actionType"),
+    }
+
+
+def _muting_permission_set_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "mutingPermissionSet.label": facts.get("label"),
+        "mutingPermissionSet.mutedSystemPermissions": facts.get("mutedSystemPermissions"),
+        "mutingPermissionSet.fieldPermissionCount": facts.get("fieldPermissionCount"),
+    }
+
+
+def _dashboard_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "dashboard.folder": facts.get("folder"),
+        "dashboard.runningUserPolicy": facts.get("runningUserPolicy"),
+    }
+
+
+def _email_template_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "emailTemplate.folder": facts.get("folder"),
+        "emailTemplate.templateType": facts.get("templateType"),
+        "emailTemplate.available": facts.get("available"),
+    }
+
+
+def _aura_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "aura.extends": facts.get("extends"),
+        "aura.implements": facts.get("implements"),
+    }
+
+
+def _integration_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "integration.endpointHost": facts.get("endpointHost"),
+        "integration.label": facts.get("label"),
+        "integration.isActive": facts.get("isActive"),
+    }
+
+
+def _profile_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "profile.label": facts.get("label"),
+        "profile.custom": facts.get("custom"),
+        "profile.userLicense": facts.get("userLicense"),
+    }
+
+
+def _layout_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "layout.object": facts.get("object"),
+        "layout.fieldCount": facts.get("fieldCount"),
+    }
+
+
+def _flexipage_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "flexiPage.pageType": facts.get("pageType"),
+        "flexiPage.object": facts.get("object"),
+        "flexiPage.template": facts.get("template"),
+    }
+
+
+def _workflow_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "workflow.object": facts.get("object"),
+        "workflow.ruleCount": facts.get("ruleCount"),
+        "workflow.activeRuleCount": facts.get("activeRuleCount"),
+    }
+
+
+def _routing_rules_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "routingRules.object": facts.get("object"),
+        "routingRules.ruleCount": facts.get("ruleCount"),
+    }
+
+
+def _approval_process_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "approvalProcess.object": facts.get("object"),
+        "approvalProcess.active": facts.get("active"),
+        "approvalProcess.stepCount": facts.get("stepCount"),
+    }
+
+
+def _report_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "report.reportType": facts.get("reportType"),
+        "report.folder": facts.get("folder"),
+        "report.format": facts.get("format"),
+    }
+
+
+def _visualforce_facets(front: dict[str, Any]) -> dict[str, Any]:
+    facts = front.get("typeFacts", {})
+    return {
+        "visualforce.standardController": facts.get("standardController"),
+        "visualforce.controller": facts.get("controller"),
+        "visualforce.apiVersion": facts.get("apiVersion"),
+    }
+
+
 PROFILE_PROJECTORS = {
     "Flow": _flow_facets,
     "CustomField": _custom_field_facets,
@@ -356,6 +847,58 @@ PROFILE_PROJECTORS = {
     "RecordType": _record_type_facets,
     "CustomMetadata": _custom_metadata_facets,
     "LightningComponentBundle": _lwc_facets,
+    "FieldSet": _field_set_facets,
+    "CompactLayout": _compact_layout_facets,
+    "BusinessProcess": _business_process_facets,
+    "WebLink": _web_link_facets,
+    "DuplicateRule": _duplicate_rule_facets,
+    "MatchingRule": _matching_rule_facets,
+    "Queue": _queue_facets,
+    "Role": _role_facets,
+    "DelegateGroup": _delegate_group_facets,
+    "PermissionSetGroup": _permission_set_group_facets,
+    "StaticResource": _static_resource_facets,
+    "PlatformEventChannel": _platform_event_channel_facets,
+    "PlatformEventChannelMember": _platform_event_channel_member_facets,
+    "GlobalValueSet": _value_set_facets,
+    "StandardValueSet": _value_set_facets,
+    "CustomLabel": _custom_label_facets,
+    "CustomTab": _custom_tab_facets,
+    "CustomApplication": _custom_application_facets,
+    "FlowDefinition": _flow_definition_facets,
+    "PathAssistant": _path_assistant_facets,
+    "ListView": _list_view_facets,
+    "ReportType": _report_type_facets,
+    "SharingRules": _sharing_rules_facets,
+    "QuickAction": _quick_action_facets,
+    "MutingPermissionSet": _muting_permission_set_facets,
+    "Dashboard": _dashboard_facets,
+    "EmailTemplate": _email_template_facets,
+    "AuraDefinitionBundle": _aura_facets,
+    # The nine integration types share the salesforce.integration profile and projector.
+    "NamedCredential": _integration_facets,
+    "ExternalCredential": _integration_facets,
+    "RemoteSiteSetting": _integration_facets,
+    "ExternalDataSource": _integration_facets,
+    "ExternalServiceRegistration": _integration_facets,
+    "ConnectedApp": _integration_facets,
+    "AuthProvider": _integration_facets,
+    "CspTrustedSite": _integration_facets,
+    "CorsWhitelistOrigin": _integration_facets,
+    "Profile": _profile_facets,
+    "Layout": _layout_facets,
+    "FlexiPage": _flexipage_facets,
+    "Workflow": _workflow_facets,
+    # The three routing-rule containers share the salesforce.routing-rules profile
+    # and projector.
+    "AssignmentRules": _routing_rules_facets,
+    "AutoResponseRules": _routing_rules_facets,
+    "EscalationRules": _routing_rules_facets,
+    "ApprovalProcess": _approval_process_facets,
+    "Report": _report_facets,
+    # ApexPage and ApexComponent share the salesforce.visualforce profile and projector.
+    "ApexPage": _visualforce_facets,
+    "ApexComponent": _visualforce_facets,
 }
 
 
@@ -1698,8 +2241,9 @@ def source_coverage(manifest: dict[str, Any]) -> dict[str, Any]:
         "inCorpus": manifest.get("metadataTypeCounts", {}),
         "note": (
             "Only the metadata types listed in entryHomedTypes can appear as an edge source. "
-            "Profile, Layout, FlexiPage, ApprovalProcess, Workflow, DuplicateRule and other "
-            "non-entry-homed types are structurally absent from this result."
+            "The generic-bucket remainder (Settings, Letterhead, Group, Network, Certificate, "
+            "Document, Territory2 and similar label-only types) is structurally absent from "
+            "this result."
         ),
     }
 
@@ -3102,7 +3646,7 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
             remedy = (
                 "run `entry-draft` then `entry-describe`"
                 if metadata_type in store.PROFILES
-                else "this type has no entry home; describe it in a claim"
+                else "this type has no entry profile; it stays inventory-only until one exists"
             )
             return (f"_no Knowledge Entry in this index generation — {remedy}_", "absent")
         text = (document.get("purpose") or "").replace("\n", " ").strip()
@@ -3212,8 +3756,8 @@ def run_feature_dossier(args: argparse.Namespace) -> dict[str, Any]:
         "the feature's true composition. Run `python scripts/knowledge_store.py entry-coverage` "
         "for the source-side denominator.",
         f"- Only these metadata types can appear at all: "
-        f"{', '.join(f'`{item}`' for item in sorted(store.PROFILES))}. Profile, Layout, FlexiPage, "
-        "ApprovalProcess, Workflow and other unprofiled types are structurally absent.",
+        f"{', '.join(f'`{item}`' for item in sorted(store.PROFILES))}. Letterhead, Settings and "
+        "the other generic-bucket types without an entry profile are structurally absent.",
         "- Nothing here reflects the deployed org, only the repository source.",
         "",
         f"Index generation `{manifest['generation'][7:23]}`.",

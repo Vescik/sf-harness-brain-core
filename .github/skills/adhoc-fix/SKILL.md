@@ -47,9 +47,10 @@ human deploy.
      reported as unknowns in the fix note, never as dependents you have accounted for. `incoming`
      and `outgoing` are keyed by relation kind — iterate the keys, and treat a missing kind as
      silence rather than as "nothing depends on this". A row with `hydrated: false` failed
-     re-reading — it is an unknown in the fix note, never a dependent you have accounted for;
-     `--uses-object`/`--uses-field` searches, which stay the only home for dependents of
-     unprofiled types.
+     re-reading — it is an unknown in the fix note, never a dependent you have accounted for.
+     Generic-bucket types (Settings, Letterhead, Group and similar label-only extraction) have
+     no governed dependency lookup — when one sits in the blast radius, name it as an unknown
+     in the fix note.
    An empty result from either layer is a recorded gap and is NEVER proof that nothing depends on
    this component. When the fix note cites a repository fact, cite what the executor gives you,
    not what the view shows: obtain the citable ref with `python scripts/knowledge_store.py

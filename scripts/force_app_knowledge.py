@@ -53,7 +53,7 @@ CACHE_ROOT = ROOT / ".cache/knowledge-proposals"
 INVENTORY_PATH = CACHE_ROOT / "force-app-inventory.json"
 DRAFT_ROOT = CACHE_ROOT / "force-app-drafts"
 SCHEMA_VERSION = 1
-COLLECTOR_VERSION = "1.7.0"
+COLLECTOR_VERSION = "1.8.0"
 CUSTOM_OBJECT_RE = re.compile(r"\b([A-Za-z][A-Za-z0-9_]*(?:__c|__mdt|__e|__x))\b")
 # Custom-field token inside a formula/expression (validation rules). Standard fields cannot be told
 # apart from function names by source alone, so the usage registry records custom fields only.
@@ -583,6 +583,31 @@ class ForceAppKnowledge:
         for token in sorted(set(FORMULA_FIELD_RE.findall(remaining))):
             add(f"{object_name}.{token}")
         return references
+
+    def cap_references(
+        self,
+        references: list[dict[str, Any]],
+        priorities: dict[str, int] | None = None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Uniform edge cap: prioritized cut at max_usage_refs plus truncation disclosure.
+
+        Returns (kept, truncation_facts); merge the facts dict into the parser's facts so
+        `referencesTruncated`/`truncatedFamilies` reach extraction coverage. Lower priority
+        rank survives longest; unlisted kinds rank 50; the sort is stable so document order
+        is preserved within a rank, and kept edges keep their original relative order."""
+
+        if len(references) <= self.max_usage_refs:
+            return references, {}
+        ranked = sorted(
+            enumerate(references),
+            key=lambda item: ((priorities or {}).get(item[1]["kind"], 50), item[0]),
+        )
+        kept_positions = sorted(position for position, _ in ranked[: self.max_usage_refs])
+        dropped = [reference for _, reference in ranked[self.max_usage_refs :]]
+        return [references[position] for position in kept_positions], {
+            "referencesTruncated": True,
+            "truncatedFamilies": sorted({reference["kind"] for reference in dropped}),
+        }
 
     def parse_field(self, path: Path) -> dict[str, Any]:
         root = self.parse_xml(path)
@@ -1505,19 +1530,49 @@ class ForceAppKnowledge:
                         }
                     )
                 )
+        # Uniform bounds: true totals always stay in the *Count facts; the inlined arrays
+        # are capped with per-array flags plus the aggregate factsTruncated.
+        capped_arrays = {
+            "rules": rules,
+            "fieldUpdates": field_updates,
+            "alerts": alerts,
+            "outboundMessages": outbound_messages,
+            "tasks": tasks,
+        }
+        array_flags = {
+            f"{key}Truncated": True if len(value) > self.MAX_RULE_ENTRIES else None
+            for key, value in capped_arrays.items()
+        }
+        facts_truncated = any(array_flags.values())
+        references, truncation = self.cap_references(
+            references,
+            {
+                "operates-on": 0,
+                "writes-field": 1,
+                "filters-field": 2,
+                "sends-alert": 3,
+                "uses-template": 4,
+                "references-field": 5,
+                "reads-field": 6,
+            },
+        )
         return self.component(
             "Workflow",
             object_name,
             path,
             {
                 "object": object_name,
-                "rules": rules or None,
-                "fieldUpdates": field_updates or None,
-                "alerts": alerts or None,
-                "outboundMessages": outbound_messages or None,
-                "tasks": tasks or None,
+                **{
+                    key: value[: self.MAX_RULE_ENTRIES] or None
+                    for key, value in capped_arrays.items()
+                },
+                **array_flags,
                 "ruleCount": len(rules) or None,
                 "activeRuleCount": sum(1 for rule in rules if rule.get("active")) or None,
+                "fieldUpdateCount": len(field_updates) or None,
+                "alertCount": len(alerts) or None,
+                "factsTruncated": True if facts_truncated else None,
+                **truncation,
             },
             references,
             object_name,
@@ -1867,9 +1922,11 @@ class ForceAppKnowledge:
         standard_controller = next(
             iter(VF_STANDARD_CONTROLLER_RE.findall(source)), None
         )
-        add_reference("operates-on", standard_controller)
+        # Every edge below is regex-derived from possibly-malformed markup (docstring), so
+        # each carries the heuristic marker — stamping them source-exact laundered assurance.
+        add_reference("operates-on", standard_controller, heuristic=True)
         controller = next(iter(AURA_CONTROLLER_RE.findall(source)), None)
-        add_reference("apex-controller", controller)
+        add_reference("apex-controller", controller, heuristic=True)
         extensions = [
             value.strip()
             for match in VF_EXTENSIONS_RE.findall(source)
@@ -1877,7 +1934,7 @@ class ForceAppKnowledge:
             if value.strip()
         ]
         for extension in extensions:
-            add_reference("apex-controller", extension)
+            add_reference("apex-controller", extension, heuristic=True)
         if self.markup_field_extraction:
             for pattern, kind in (
                 (VF_INPUT_FIELD_RE, "writes-field"),
@@ -1890,9 +1947,9 @@ class ForceAppKnowledge:
                         heuristic=True,
                     )
         for label in sorted(set(MARKUP_LABEL_RE.findall(source))):
-            add_reference("uses-label", label)
+            add_reference("uses-label", label, heuristic=True)
         for embed in sorted(set(VF_EMBED_RE.findall(source))):
-            add_reference("embeds-component", embed)
+            add_reference("embeds-component", embed, heuristic=True)
         attribute_objects = sorted(
             {
                 value
@@ -1902,7 +1959,7 @@ class ForceAppKnowledge:
             }
         )
         for value in attribute_objects:
-            add_reference("operates-on", value)
+            add_reference("operates-on", value, heuristic=True)
         facts: dict[str, Any] = {
             "standardController": standard_controller,
             "controller": controller,
@@ -1942,21 +1999,22 @@ class ForceAppKnowledge:
         record_field_lists: list[tuple[str | None, str]] = []
         for path in files:
             source = path.read_text(encoding="utf-8", errors="replace")
+            # All markup-derived edges are regex reads — carry the heuristic marker.
             for value in AURA_CONTROLLER_RE.findall(source):
-                add_reference("apex-controller", value)
+                add_reference("apex-controller", value, heuristic=True)
             for label in MARKUP_LABEL_RE.findall(source):
-                add_reference("uses-label", label)
+                add_reference("uses-label", label, heuristic=True)
             if path.suffix not in {".cmp", ".app", ".evt", ".design"}:
                 continue
             for match in AURA_IMPLEMENTS_RE.findall(source):
                 implements.update(part.strip() for part in match.split(",") if part.strip())
             extends = extends or next(iter(AURA_EXTENDS_RE.findall(source)), None)
             for value in VF_EMBED_RE.findall(source):
-                add_reference("embeds-component", value)
+                add_reference("embeds-component", value, heuristic=True)
             for value in MARKUP_ATTRIBUTE_TYPE_RE.findall(source):
                 bare = re.sub(r"^List<\s*|\s*>$", "", value.strip())
                 if CUSTOM_OBJECT_RE.fullmatch(bare):
-                    add_reference("operates-on", bare)
+                    add_reference("operates-on", bare, heuristic=True)
             if self.markup_field_extraction:
                 objects = AURA_RECORD_OBJECT_RE.findall(source)
                 record_objects.update(objects)
@@ -1964,7 +2022,7 @@ class ForceAppKnowledge:
                 for fields in AURA_RECORD_FIELDS_RE.findall(source):
                     record_field_lists.append((owner, fields))
         for owner in sorted(record_objects):
-            add_reference("operates-on", owner)
+            add_reference("operates-on", owner, heuristic=True)
         for owner, fields in record_field_lists:
             if not owner:
                 continue
@@ -2050,6 +2108,16 @@ class ForceAppKnowledge:
         region_count = sum(
             1 for item in root.iter() if local_name(item.tag) == "flexiPageRegions"
         )
+        references, truncation = self.cap_references(
+            references,
+            {
+                "operates-on": 0,
+                "launches-flow": 1,
+                "displays-component": 2,
+                "places-field": 3,
+                "references-field": 4,
+            },
+        )
         return self.component(
             "FlexiPage",
             name,
@@ -2063,6 +2131,7 @@ class ForceAppKnowledge:
                 "componentCount": component_count or None,
                 "fieldInstanceCount": field_count or None,
                 "visibilityRuleFields": sorted(visibility_fields) or None,
+                **truncation,
             },
             references,
             name,
@@ -2502,6 +2571,17 @@ class ForceAppKnowledge:
                 if value
             }
         )
+        references, approval_truncation = self.cap_references(
+            references,
+            {
+                "operates-on": 0,
+                "sends-alert": 1,
+                "uses-workflow-action": 2,
+                "uses-template": 3,
+                "filters-field": 4,
+                "references-field": 5,
+            },
+        )
         return self.component(
             "ApprovalProcess",
             name,
@@ -2519,7 +2599,9 @@ class ForceAppKnowledge:
                     direct_text(root, "finalRejectionRecordLock")
                 ),
                 "entryCriteria": entry_criteria,
-                "steps": steps or None,
+                "steps": steps[: self.MAX_RULES] or None,
+                "stepsTruncated": True if len(steps) > self.MAX_RULES else None,
+                "factsTruncated": True if len(steps) > self.MAX_RULES else None,
                 "actionSets": action_sets or None,
                 "approvalPageFields": approval_page_fields or None,
                 "emailTemplate": email_template,
@@ -2528,6 +2610,7 @@ class ForceAppKnowledge:
                 "entryCriteriaPresent": any(
                     local_name(item.tag) == "entryCriteria" for item in root.iter()
                 ),
+                **approval_truncation,
             },
             references,
             name,
@@ -3007,15 +3090,29 @@ class ForceAppKnowledge:
         name = path.name.removesuffix(".profile-meta.xml")
         facts, references = self._parse_access_bundle(root)
         layout_count = 0
+        layout_targets: list[str] = []
+        seen_layouts: set[str] = set()
         for element in root.iter():
             if local_name(element.tag) != "layoutAssignments":
                 continue
             layout_count += 1
             layout = direct_text(element, "layout")
-            if layout and len(references) < self.max_usage_refs:
-                reference = {"kind": "assigns-layout", "target": layout}
-                if reference not in references:
-                    references.append(reference)
+            if layout and layout not in seen_layouts:
+                seen_layouts.add(layout)
+                layout_targets.append(layout)
+        # Layout assignment is the question Profile components exist to answer, so those
+        # edges rank first; a re-cap over the combined list must disclose what it drops —
+        # the previous silent `len(references) < max_usage_refs` guard did not.
+        references.extend(
+            {"kind": "assigns-layout", "target": target} for target in layout_targets
+        )
+        references, truncation = self.cap_references(references, {"assigns-layout": 0})
+        if truncation:
+            facts["referencesTruncated"] = True
+            facts["truncatedFamilies"] = sorted(
+                set(facts.get("truncatedFamilies") or [])
+                | set(truncation["truncatedFamilies"])
+            )
         default_record_types = {}
         for element in root.iter():
             if local_name(element.tag) != "recordTypeVisibilities":
@@ -3099,6 +3196,12 @@ class ForceAppKnowledge:
                 "booleanFilter": direct_text(root, "booleanFilter"),
                 "columns": columns[: self.LIST_VIEW_COLUMN_CAP] or None,
                 "columnCount": len(columns) or None,
+                "columnsTruncated": True
+                if len(columns) > self.LIST_VIEW_COLUMN_CAP
+                else None,
+                "factsTruncated": True
+                if len(columns) > self.LIST_VIEW_COLUMN_CAP
+                else None,
                 "filters": filters or None,
             },
             references,
@@ -3235,21 +3338,34 @@ class ForceAppKnowledge:
                         }
                     )
                 )
+        sharing_truncated = (
+            len(criteria_rules) > self.MAX_RULES or len(owner_rules) > self.MAX_RULES
+        )
+        references, truncation = self.cap_references(
+            references, {"operates-on": 0, "shares-with": 1, "filters-field": 2}
+        )
         return self.component(
             "SharingRules",
             object_name,
             path,
             {
                 "object": object_name,
-                "criteriaRules": criteria_rules or None,
-                "ownerRules": owner_rules or None,
+                "criteriaRules": criteria_rules[: self.MAX_RULES] or None,
+                "ownerRules": owner_rules[: self.MAX_RULES] or None,
                 "criteriaRuleCount": len(criteria_rules) or None,
                 "ownerRuleCount": len(owner_rules) or None,
+                "rulesTruncated": True if sharing_truncated else None,
+                "factsTruncated": True if sharing_truncated else None,
+                **truncation,
             },
             references,
             object_name,
         )
 
+    # Bounds for routing-rule files: real Case assignment files run to hundreds of entries.
+    # True totals stay in ruleCount/entryCount; the caps only bound the inlined structures.
+    MAX_RULES = 50
+    MAX_RULE_ENTRIES = 100
     # Rule-file container/entry tags and component types per suffix token.
     RULE_FILE_KINDS = {
         "assignmentRules": ("AssignmentRules", "assignmentRule"),
@@ -3269,10 +3385,13 @@ class ForceAppKnowledge:
         references: list[dict[str, Any]] = [{"kind": "operates-on", "target": object_name}]
         seen_references: set[tuple[str, str]] = {("operates-on", object_name)}
 
-        def add_reference(kind: str, target: str | None) -> None:
+        def add_reference(kind: str, target: str | None, *, heuristic: bool = False) -> None:
             if target and (kind, target) not in seen_references:
                 seen_references.add((kind, target))
-                references.append({"kind": kind, "target": target})
+                reference: dict[str, Any] = {"kind": kind, "target": target}
+                if heuristic:
+                    reference["heuristic"] = True
+                references.append(reference)
 
         def routed(element: ET.Element) -> dict[str, Any]:
             assigned_to_type = direct_text(element, "assignedToType")
@@ -3302,7 +3421,13 @@ class ForceAppKnowledge:
                 formula = direct_text(entry, "formula")
                 if formula:
                     for reference in self.formula_field_references(object_name, formula):
-                        add_reference("filters-field", reference["target"])
+                        # Formula edges are regex-derived; keep their heuristic marker —
+                        # re-emitting them bare would launder assurance (contract §6).
+                        add_reference(
+                            "filters-field",
+                            reference["target"],
+                            heuristic=bool(reference.get("heuristic")),
+                        )
                 template = direct_text(entry, "template")
                 add_reference("uses-template", template)
                 escalation_actions = []
@@ -3340,23 +3465,37 @@ class ForceAppKnowledge:
                         }
                     )
                 )
+            entries_truncated = len(entries) > self.MAX_RULE_ENTRIES
             rules.append(
                 compact(
                     {
                         "name": direct_text(rule, "fullName"),
                         "active": boolean(direct_text(rule, "active")),
-                        "entries": entries or None,
+                        "entries": entries[: self.MAX_RULE_ENTRIES] or None,
+                        "entryCount": len(entries) or None,
+                        "entriesTruncated": True if entries_truncated else None,
                     }
                 )
             )
+        rules_truncated = len(rules) > self.MAX_RULES
+        facts_truncated = rules_truncated or any(
+            rule.get("entriesTruncated") for rule in rules[: self.MAX_RULES]
+        )
+        references, truncation = self.cap_references(
+            references,
+            {"operates-on": 0, "assigns-to": 1, "uses-template": 2, "filters-field": 3},
+        )
         return self.component(
             metadata_type,
             object_name,
             path,
             {
                 "object": object_name,
-                "rules": rules or None,
+                "rules": rules[: self.MAX_RULES] or None,
                 "ruleCount": len(rules) or None,
+                "rulesTruncated": True if rules_truncated else None,
+                "factsTruncated": True if facts_truncated else None,
+                **truncation,
             },
             references,
             object_name,
@@ -3537,9 +3676,14 @@ class ForceAppKnowledge:
                     }
                 )
             )
-        references: list[dict[str, Any]] = [
+        references: list[dict[str, Any]] = []
+        if object_name:
+            # The Object-LayoutName filename split is the SFDX layout naming contract,
+            # so the owning-object edge is a direct read, not a guess.
+            references.append({"kind": "operates-on", "target": object_name})
+        references.extend(
             {"kind": "places-field", "target": target} for target in sorted(field_targets)
-        ]
+        )
         references.extend(
             {"kind": "related-list", "target": item["name"]} for item in related_lists
         )
@@ -3547,6 +3691,16 @@ class ForceAppKnowledge:
         references.extend(
             {"kind": "displays-component", "target": value}
             for value in sorted(display_targets)
+        )
+        references, truncation = self.cap_references(
+            references,
+            {
+                "operates-on": 0,
+                "places-field": 1,
+                "related-list": 2,
+                "action": 3,
+                "displays-component": 4,
+            },
         )
         facts = compact(
             {
@@ -3557,11 +3711,9 @@ class ForceAppKnowledge:
                 "sections": sections or None,
                 "relatedLists": related_lists or None,
                 "actionCount": len(action_names) or None,
+                **truncation,
             }
         )
-        if len(references) > self.max_usage_refs:
-            facts["referencesTruncated"] = True
-            references = references[: self.max_usage_refs]
         return self.component("Layout", name, path, facts, references, name)
 
     # Bound on recorded per-app action overrides; the count is always kept.
@@ -3618,6 +3770,10 @@ class ForceAppKnowledge:
                         }
                     )
                 )
+        references, truncation = self.cap_references(
+            references,
+            {"operates-on": 0, "displays-component": 1, "overrides-view": 2},
+        )
         return self.component(
             "CustomApplication",
             name,
@@ -3634,6 +3790,10 @@ class ForceAppKnowledge:
                 "overridesTruncated": (
                     True if override_count > len(overrides) else None
                 ),
+                "factsTruncated": (
+                    True if override_count > len(overrides) else None
+                ),
+                **truncation,
             },
             references,
             name,
@@ -3803,6 +3963,7 @@ class ForceAppKnowledge:
                 column_count += 1
                 add_field_reference("references-field", field)
         filters: list[dict[str, Any]] = []
+        filter_count = 0
         for item in (
             element
             for element in root.iter()
@@ -3811,6 +3972,7 @@ class ForceAppKnowledge:
             column = direct_text(item, "column")
             if not column:
                 continue
+            filter_count += 1
             add_field_reference("filters-field", column)
             if len(filters) < self.REPORT_ITEM_CAP:
                 filters.append(
@@ -3843,9 +4005,14 @@ class ForceAppKnowledge:
         )
         relative = self.relative(path)
         folder = relative.split("/reports/", 1)[1].rsplit("/", 1)[0] if "/reports/" in relative and "/" in relative.split("/reports/", 1)[1] else None
+        references, truncation = self.cap_references(
+            references, {"filters-field": 0, "references-field": 1}
+        )
         return self.component(
             "Report",
-            name,
+            # Folder-qualified identity: two same-named reports in different folders are
+            # distinct components (the EmailTemplate precedent) — the bare stem collided.
+            f"{folder}/{name}" if folder else name,
             path,
             {
                 "label": direct_text(root, "name"),
@@ -3855,7 +4022,10 @@ class ForceAppKnowledge:
                 "folder": folder,
                 "columnCount": column_count or None,
                 "filters": filters or None,
-                "filterCount": len(filters) or None,
+                "filterCount": filter_count or None,
+                "filtersTruncated": True if filter_count > len(filters) else None,
+                "factsTruncated": True if filter_count > len(filters) else None,
+                **truncation,
                 "groupings": groupings or None,
                 "hasChart": (
                     True
@@ -3883,15 +4053,24 @@ class ForceAppKnowledge:
 
         root = self.parse_xml(path)
         name = path.name.removesuffix(".dashboard-meta.xml")
+        relative = self.relative(path)
+        folder = (
+            relative.split("/dashboards/", 1)[1].rsplit("/", 1)[0]
+            if "/dashboards/" in relative
+            and "/" in relative.split("/dashboards/", 1)[1]
+            else None
+        )
         reports = sorted(set(descendant_texts(root, "report")))
         running_user_policy = direct_text(root, "dashboardType") or (
             "SpecifiedUser" if direct_text(root, "runningUser") else None
         )
         return self.component(
             "Dashboard",
-            name,
+            # Folder-qualified identity, matching the Report/EmailTemplate convention.
+            f"{folder}/{name}" if folder else name,
             path,
             {
+                "folder": folder,
                 "label": direct_text(root, "title") or direct_text(root, "masterLabel"),
                 "runningUserPolicy": running_user_policy,
                 "componentCount": sum(
@@ -4122,8 +4301,10 @@ class ForceAppKnowledge:
                     reference["heuristic"] = True
                 references.append(reference)
 
+        # Template bodies are free text, not XML — every edge here is regex-derived and
+        # carries the heuristic marker.
         related_to = next(iter(self.EMAIL_RELATED_TO_RE.findall(source)), None)
-        add_reference("operates-on", related_to)
+        add_reference("operates-on", related_to, heuristic=True)
         if self.markup_field_extraction:
             for head, field in self.EMAIL_MERGE_RE.findall(source):
                 if head in self.EMAIL_MERGE_STANDARD_HEADS or CUSTOM_OBJECT_RE.fullmatch(
@@ -4131,9 +4312,9 @@ class ForceAppKnowledge:
                 ):
                     add_reference("references-field", f"{head}.{field}", heuristic=True)
             for value in sorted(set(VF_EMBED_RE.findall(source))):
-                add_reference("embeds-component", value)
+                add_reference("embeds-component", value, heuristic=True)
         for match in LABEL_TOKEN_RE.finditer(source):
-            add_reference("uses-label", match.group(1) or match.group(2))
+            add_reference("uses-label", match.group(1) or match.group(2), heuristic=True)
         facts: dict[str, Any] = {}
         meta_path = path.with_name(path.name + "-meta.xml")
         if meta_path.is_file():

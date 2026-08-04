@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-web-link.schema.json",
+  "title": "Knowledge Entry profile — salesforce.web-link v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object"
+      ],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "fullName": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "displayType": {
+          "type": "string"
+        },
+        "linkType": {
+          "type": "string",
+          "description": "url, page, javascript, or sControl — the routing fact for what the button actually does."
+        },
+        "openType": {
+          "type": "string"
+        },
+        "page": {
+          "type": "string",
+          "description": "Visualforce page target when linkType is page."
+        },
+        "targetHost": {
+          "type": "string",
+          "description": "URL targets collapse to their hostname; the full URL (query params, merge fields) is never stored."
+        },
+        "isJavascript": {
+          "type": "boolean",
+          "description": "Present (true) only for JavaScript buttons — a Lightning-migration tech-debt flag; the script body is never stored."
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

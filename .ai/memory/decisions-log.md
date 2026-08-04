@@ -536,3 +536,28 @@ are not durable.
   is still outstanding.
 - Approved by: workspace owner (chat, 2026-08-03, direction + D-A..D-G).
 - Related: the two v1-retirement entries above; output/discovery-2026-08-03-v1-claim-registry-removal.md.
+
+## 2026-08-04 — All-type entry-profile expansion ("Knowledge musi pokrywać wszystkie typy")
+
+- Decision: every metadata type the collector parses into reviewable components gets an
+  entry profile — 48 new types across five groups (UI 16, automation 8, access 7,
+  data/config 8, integration 9), taking knowledge_store.PROFILES from 10 to 58 types over
+  45 profile schemas (shared: apex, value-set, routing-rules, integration, visualforce).
+  The parse_generic_meta fall-through bucket (Settings, Letterhead, Group, Network,
+  Certificate, Document, Territory2, translations and similar label-only extraction) and
+  the CustomLabels container stay deliberately inventory-only: an entry carrying only
+  {label, rootElement} cannot be honestly reviewed. Follow-up path recorded in the plan:
+  dedicated parsers for CustomPermission, LightningMessageChannel, CustomSite,
+  CustomNotificationType, then profiles.
+- Preceded by collector wave 1.8.0 (same day): assurance-laundering fixes (rule-file
+  formulas, Visualforce/Aura/EmailTemplate regex edges), folder-qualified Report/Dashboard
+  identities, uniform truncation (shared cap_references + factsTruncated aggregate mapped
+  to extractionCoverage partial), Profile assigns-layout silent-drop fix, Layout
+  operates-on edge.
+- Consequences: work-record D-B fail-closed coverage widens automatically (reads PROFILES
+  live); D-C "not covered" lists now name only the generic-bucket remainder; coverage ≠
+  citability stands — heuristic-edge sections stay ungroundable per §8.1a; population
+  remains demand-driven under unchanged approval chunk caps. Unprofiled-probe tests
+  re-grounded from Layout/NamedCredential to Letterhead.
+- Approved by: workspace owner (chat, 2026-08-04, "zrob plan i dodaj wszystkie profile").
+- Related: output/plan-2026-08-04-all-type-knowledge-profiles.md.

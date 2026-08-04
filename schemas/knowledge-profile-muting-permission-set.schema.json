@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-muting-permission-set.schema.json",
+  "title": "Knowledge Entry profile — salesforce.muting-permission-set v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. Facts-only by design: the collector discards the access bundle's edges so muted access never mixes into positive-grant aggregation (the owning PSG's mutes-permission-set edge links the component into the graph). Naming trap: only mutedObjectAccess/mutedSystemPermissions carry the muted prefix — every *Count key keeps its positive-grant name from the shared access bundle while counting MUTED grants.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "mutedObjectAccess": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Object to muted CRUD letters (plus +VA/+MA) — access the group REMOVES, in the positive bundle's compact notation."
+        },
+        "mutedSystemPermissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "objectPermissionCount": {
+          "type": "integer"
+        },
+        "fieldPermissionCount": {
+          "type": "integer"
+        },
+        "classAccessCount": {
+          "type": "integer"
+        },
+        "customPermissionCount": {
+          "type": "integer"
+        },
+        "recordTypeCount": {
+          "type": "integer"
+        },
+        "flowAccessCount": {
+          "type": "integer"
+        },
+        "userPermissionCount": {
+          "type": "integer"
+        },
+        "tabCount": {
+          "type": "integer"
+        },
+        "pageAccessCount": {
+          "type": "integer"
+        },
+        "applicationVisibilityCount": {
+          "type": "integer"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

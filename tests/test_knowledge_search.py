@@ -3003,7 +3003,9 @@ class FeatureDossierTests(EntryFixtureMixin, unittest.TestCase):
         self.make_feature(include=[
             "CustomField:c:HarnessAlphaCase__c.Blank__c",  # entry exists, no Purpose
             "ApexClass:c:HarnessGhost",                    # entry-homed type, no entry
-            "Layout:c:HarnessAlphaCase__c-Alpha",           # no entry home at all
+            # No entry home at all: a generic-bucket type that stays unprofiled by
+            # design — wave 3 profiled Layout, the previous probe.
+            "Letterhead:c:HarnessBrand",
         ])
         self.approve_feature()
         text = (store.ROOT / self.dossier(state=["approved-current", "draft"])["path"]).read_text(
@@ -3012,7 +3014,9 @@ class FeatureDossierTests(EntryFixtureMixin, unittest.TestCase):
         self.assertIn("has no Purpose — run `entry-describe`", text)
         self.assertIn("no Knowledge Entry in this index generation — run `entry-draft` then "
                       "`entry-describe`", text)
-        self.assertIn("no entry home; describe it in a claim", text)
+        self.assertIn(
+            "no entry profile; it stays inventory-only until one exists", text
+        )
         # The fixture found a third disagreement while proving the first two: this dossier
         # printed the raw draft sentinel into the Description column as if it were prose, while
         # P5 treats it as the absence it is.

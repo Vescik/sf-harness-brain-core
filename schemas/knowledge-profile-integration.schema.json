@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-integration.schema.json",
+  "title": "Knowledge Entry profile — salesforce.integration v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. One shared profile for the nine integration surfaces (NamedCredential, ExternalCredential, RemoteSiteSetting, ExternalDataSource, ExternalServiceRegistration, ConnectedApp, AuthProvider, CspTrustedSite, CorsWhitelistOrigin — the salesforce.apex many-to-one precedent), so typeFacts declares the union of every branch's keys, all optional; CorsWhitelistOrigin has no branch and emits only label/endpointHost. Collector sanitization contract, quoted: endpoints collapse to host only — never consumer keys, certificates, secrets, usernames, passwords, auth-parameter values, contact e-mails, or URL paths/queries. AuthProvider's invokes-class edges (registrationHandler/plugin) are exact XML reads carried under a kind-level-heuristic kind — a deliberate, conservative under-claim.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "endpointHost": {
+          "type": "string",
+          "description": "Hostname only — the URL's path and query are never captured."
+        },
+        "namedCredentialType": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "principalType": {
+          "type": "string"
+        },
+        "generateAuthorizationHeader": {
+          "type": "boolean"
+        },
+        "allowMergeFieldsInBody": {
+          "type": "boolean"
+        },
+        "allowMergeFieldsInHeader": {
+          "type": "boolean"
+        },
+        "externalCredential": {
+          "type": "string"
+        },
+        "authenticationProtocol": {
+          "type": "string"
+        },
+        "authenticationProtocolVariant": {
+          "type": "string"
+        },
+        "principals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "ExternalCredential principals: name, kind and sequence only — never their auth-parameter values."
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "disableProtocolSecurity": {
+          "type": "boolean"
+        },
+        "sourceType": {
+          "type": "string"
+        },
+        "isWritable": {
+          "type": "boolean"
+        },
+        "registrationProviderType": {
+          "type": "string"
+        },
+        "namedCredential": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "schemaPresent": {
+          "type": "boolean"
+        },
+        "oauthScopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "isAdminApproved": {
+          "type": "boolean"
+        },
+        "ipRelaxation": {
+          "type": "string"
+        },
+        "callbackHost": {
+          "type": "string"
+        },
+        "canvasHost": {
+          "type": "string"
+        },
+        "samlConfigPresent": {
+          "type": "boolean"
+        },
+        "providerType": {
+          "type": "string"
+        },
+        "authorizeHost": {
+          "type": "string"
+        },
+        "tokenHost": {
+          "type": "string"
+        },
+        "executionUserPresent": {
+          "type": "boolean"
+        },
+        "context": {
+          "type": "string"
+        },
+        "directives": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}

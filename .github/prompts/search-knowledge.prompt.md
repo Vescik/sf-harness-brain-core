@@ -1,7 +1,7 @@
 ---
 name: search-knowledge
 description: Search governed Knowledge - approved one-file Entries and their org-usage blocks; effective facts are reported separately from non-effective records.
-argument-hint: "keyword=<term> | text=<fragment> | subject=<identity> | uses-object=<Object> | uses-field=<Object.Field> | error=<pasted message> [type=<MetadataType>] [namespace=<ns>]"
+argument-hint: "keyword=<term> | text=<fragment> | subject=<identity> | anchor=<Identity> | error=<pasted message> [type=<MetadataType>] [namespace=<ns>]"
 agent: config-investigator
 tools: ['read', 'search', 'execute/runInTerminal', 'vscode/askQuestions']
 ---
@@ -9,8 +9,8 @@ tools: ['read', 'search', 'execute/runInTerminal', 'vscode/askQuestions']
 Use the [search-knowledge skill](../skills/search-knowledge/SKILL.md).
 
 Require at least one filter (`keyword`, `text`, `subject`, `error`, or a dependency lookup
-`uses-object`/`uses-field`/`invokes`; ask once with `#tool:vscode/askQuestions` if none was given)
-and pass the rest through as narrowing filters.
+via `anchor=<Identity>` — the skill's `--relation-anchor` search; ask once with
+`#tool:vscode/askQuestions` if none was given) and pass the rest through as narrowing filters.
 
 Route by question type: repository-source facts (what a component declares, what touches a field,
 which Flow emits a pasted message) come from approved Knowledge Entries; org usage numbers come

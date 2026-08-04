@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sf-harness-brain-core/schemas/knowledge-profile-approval-process.schema.json",
+  "title": "Knowledge Entry profile — salesforce.approval-process v1",
+  "description": "typeFacts carry the collector's extraction faithfully: an adapter passes every fact through except a documented exclusion, so a fact the profile does not declare fails validation loudly instead of vanishing from the entry. Component identity is the dotted Object.Process the SFDX filename carries. Action sets reference the owning object's Workflow fieldUpdates/alerts by name — \"final approval writes Object.Field\" lives across two files, closed by the uses-workflow-action/sends-alert edges. User approver names are never captured (usernames); related-user-field approvers are a field read. steps is capped at 50 with stepsTruncated/factsTruncated disclosing the cut, while stepCount is the true total computed before the cap. referencesTruncated/truncatedFamilies disclose the edge cap.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "typeFacts"
+  ],
+  "properties": {
+    "typeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "object": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "recordEditability": {
+          "type": "string"
+        },
+        "allowRecall": {
+          "type": "boolean"
+        },
+        "finalApprovalRecordLock": {
+          "type": "boolean"
+        },
+        "finalRejectionRecordLock": {
+          "type": "boolean"
+        },
+        "entryCriteria": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "stepsTruncated": {
+          "type": "boolean"
+        },
+        "factsTruncated": {
+          "type": "boolean"
+        },
+        "actionSets": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "approvalPageFields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "emailTemplate": {
+          "type": "string"
+        },
+        "allowedSubmitterTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stepCount": {
+          "type": "integer",
+          "description": "True step total, computed before the 50-step cap slice."
+        },
+        "entryCriteriaPresent": {
+          "type": "boolean"
+        },
+        "referencesTruncated": {
+          "type": "boolean"
+        },
+        "truncatedFamilies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "target",
+              "assurance"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[a-z][a-z-]{2,40}$"
+              },
+              "target": {
+                "type": "string",
+                "minLength": 1
+              },
+              "assurance": {
+                "enum": [
+                  "source-exact",
+                  "source-derived-heuristic"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "intentionalErrors": {
+      "type": "array",
+      "maxItems": 0
+    }
+  }
+}
