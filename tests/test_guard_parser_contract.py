@@ -3,12 +3,12 @@ from __future__ import annotations
 import argparse
 import unittest
 import unittest.mock
+from pathlib import Path
 
 from scripts import copilot_role_guard as guard
 from scripts import force_app_knowledge
 from scripts import knowledge_search
 from scripts import knowledge_store
-from scripts import salesforce_read
 from scripts import work_record
 
 
@@ -19,7 +19,6 @@ INTENTIONALLY_UNGUARDED = {
     "force_app_knowledge": {},
     "knowledge_store": {},
     "knowledge_search": {},
-    "salesforce_read": {},
     "work_record": {
         "approve": "human-terminal-only: SAFE-HUMAN-001 — hard-denied for every role "
         "in work_record_command_allowed and by the global safety hook",
@@ -32,7 +31,6 @@ INTENTIONALLY_EXCLUDED_FLAGS: dict[str, dict[str, set[str]]] = {
     "force_app_knowledge": {},
     "knowledge_store": {},
     "knowledge_search": {},
-    "salesforce_read": {},
 }
 
 
@@ -112,29 +110,14 @@ class GuardParserContractTests(unittest.TestCase):
             guard.KNOWLEDGE_SEARCH_COMMAND_FLAGS,
         )
 
-    def test_salesforce_read_guard_mirrors_parser(self) -> None:
-        self.contract(
-            "salesforce_read",
-            salesforce_read.build_parser(),
-            guard.SALESFORCE_READ_FLAGS,
-        )
-
-    def test_salesforce_read_guard_behavior_pins(self) -> None:
-        role = sorted(guard.SALESFORCE_READ_ROLES)[0]
-        # Bare scoped enumeration is allowed; any flagged variant of it is not.
-        self.assertTrue(guard.salesforce_read_command_allowed(["orgs"], role))
-        self.assertFalse(guard.salesforce_read_command_allowed(["orgs", "--json"], role))
-        # --org stays mandatory for records/retrieve.
-        self.assertFalse(
-            guard.salesforce_read_command_allowed(["records", "--object", "Account"], role)
-        )
-        # Repeated --metadata (argparse append) is a valid guarded shape.
-        self.assertTrue(
-            guard.salesforce_read_command_allowed(
-                ["retrieve", "--org", "dev-sbx", "--metadata", "Flow:A", "--metadata", "Flow:B"],
-                role,
-            )
-        )
+    def test_salesforce_read_lane_stays_retired(self) -> None:
+        # Owner decision 2026-08-04: the CLI record-read lane was retired in favor of
+        # review_soql_query on the facade. A reappearing script or guard surface means an
+        # accidental resurrection, not a merge artifact to keep.
+        root = Path(__file__).resolve().parents[1]
+        self.assertFalse((root / "scripts" / "salesforce_read.py").exists())
+        self.assertFalse(hasattr(guard, "salesforce_read_command_allowed"))
+        self.assertFalse(hasattr(guard, "SALESFORCE_READ_FLAGS"))
 
     def test_work_record_guard_covers_parser_commands(self) -> None:
         # The work_record guard validates command membership per role plus role-binding
@@ -269,9 +252,9 @@ class GuardParserContractTests(unittest.TestCase):
             frozenset({"config-investigator", "knowledge-curator"}),
             guard.FORCE_APP_KNOWLEDGE_ROLES,
         )
-        # The curator never gains org-facing or work-record authority — including the
-        # org-usage attach lane (contract §6.6).
-        self.assertNotIn("knowledge-curator", guard.SALESFORCE_READ_ROLES)
+        # The curator never gains work-record authority or the org-usage attach lane
+        # (contract §6.6). Its only org surface is the review_soql_query facade MCP tool
+        # (owner decision 2026-08-04) — never an org terminal command.
         self.assertNotIn("knowledge-curator", getattr(guard, "WORK_RECORD_COMMANDS", {}))
         self.assertNotIn("knowledge-curator", guard.ORG_ATTACH_ROLES)
 

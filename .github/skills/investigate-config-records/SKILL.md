@@ -25,7 +25,7 @@ must be re-observed, never re-read from an old report.
 ## Input
 
 Require exactly one `objectApiName` and one `org` — a configured review-org alias (enumerable via
-`python scripts/salesforce_read.py orgs`); there is no default alias. The object must be on
+the `review_configured_orgs` facade tool); there is no default alias. The object must be on
 `salesforce.review.allowedObjectApiNames`; if it is not, stop and report the missing allowlist
 entry instead of widening scope. Optional: `fields` (must remain a subset of the reviewed field
 contract), `recordId` (work record to attach evidence to). Reject a generic "dump the org",
@@ -52,14 +52,14 @@ snapshot that fills the row cap is treated as transactional and returned unresol
    external-id field) plus the configuration-bearing fields (status values, flags, ordering,
    defaults). Exclude record Ids, audit fields (`CreatedBy`, `LastModifiedBy`, timestamps), owner
    fields, and free-text/long-text fields.
-4. Read records only through the guarded facade, passing every flag explicitly — omitting
-   `--fields` silently defaults to `Id`, which must never be persisted:
-   `python scripts/salesforce_read.py records --org <alias> --object <objectApiName>
-   --fields <field,list> --order-by <naturalKey> --limit 200`.
-   200 is the facade's hard cap (its silent default is 50); `--order-by` on the natural key makes
-   the snapshot deterministic and digestable.
-5. Sanitize each returned row before any other use: drop the `attributes` key (its `url` embeds
-   the record Id) and any value outside the requested field list, keeping `--order-by` order.
+4. Read records only through the governed `review_soql_query` facade tool, selecting every
+   field explicitly — never `Id`, which must never be persisted:
+   `SELECT <field, list> FROM <objectApiName> ORDER BY <naturalKey> LIMIT 200`.
+   Always state the `LIMIT` (an overflowing result returns `RESULT_TRUNCATED`); `ORDER BY` on
+   the natural key makes the snapshot deterministic and digestable.
+5. Sanitize each returned row before any other use: the facade already strips vendor
+   `attributes`; additionally drop any value outside the requested field list, keeping the
+   `ORDER BY` order.
 6. Assess completeness. If the returned row count equals the limit, enumeration is not proven
    complete: record `enumerationComplete: false`, assert no absence, and return `UNRESOLVED` —
    the object is transactional-sized, not a config table. Never treat a missing row as proof a
@@ -81,13 +81,11 @@ snapshot that fills the row cap is treated as transactional and returned unresol
 
 ## Prohibitions
 
-- Never invoke or suggest direct `sf`/`sfdx`, SOSL, a Tooling flag, or an unguarded Salesforce
-  MCP tool; snapshot records flow only through `salesforce_read.py records`. Composed read-only
-  SOQL (owner decisions 2026-07-30, 2026-08-04) runs verbatim through the governed
-  `review_soql_query` facade tool —
-  useful for scoping (counts, distributions) before a snapshot; the snapshot rows themselves stay
-  on the `salesforce_read.py records` lane.
-- Never exceed the 200-row or configured field caps, chain calls to paginate past them, or
+- Never invoke or suggest direct `sf`/`sfdx`, SOSL, or an unguarded Salesforce
+  MCP tool; every read — scoping (counts, distributions) and the snapshot rows alike — runs
+  verbatim through the governed `review_soql_query` facade tool (owner decisions 2026-07-30,
+  2026-08-04; the retired `salesforce_read.py` lane no longer exists).
+- Never exceed the 200-row snapshot cap, chain queries to paginate past it, or
   snapshot more than one object per invocation.
 - Never persist credentials, usernames, record Ids, URLs, `attributes` payloads, owner/audit
   values, or free-text business content; snapshot values are limited to the configuration-bearing

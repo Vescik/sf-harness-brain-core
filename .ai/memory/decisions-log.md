@@ -624,3 +624,26 @@ are not durable.
   instead of a server-side LIMIT rewrite.
 - Related: output/discovery-2026-08-04-soql-unblock.md (decision record, layer map, accepted
   risks, out-of-scope follow-ups: salesforce_read.py retirement, org-sampling ceremony).
+
+## 2026-08-04 — salesforce_read.py CLI lane retired (redundant after the SOQL unblock)
+
+- Owner directive (chat, 2026-08-04, follow-up to the SOQL unblock): remove the redundant
+  script, its test, and every reference. `scripts/salesforce_read.py` (records/retrieve/orgs)
+  and `tests/test_salesforce_read.py` are deleted.
+- Rationale: with `review_soql_query` unblocked, the structured record-read lane was a second,
+  CLI-transport path to the same rows — exactly the parallel-lane rot the v1 retirement warned
+  about. `orgs` was a twin of `review_configured_orgs`; `retrieve` cached metadata agents can
+  get authoritatively via `review_object_contract` facts or the human-confirmed
+  `sf project retrieve start`.
+- Layers removed with it: role-guard SALESFORCE_READ_* surface + dispatch, the auto-approve
+  regex in `.vscode/settings.json`/`sf-harness.code-workspace`, the `salesforce-read` preflight
+  capability (choices + role-guard mirror), validate_harness required-file + guarded-name pins,
+  and the config key `review.maxObjectsPerCall` (schema-optional now, read by nothing; removed
+  from the example config, tolerated in existing local configs).
+- Negative pins added: the script must not reappear (guard-parser contract), the old command
+  shape denies for every role (safety-hook tests), the guard surface must not resurface
+  (receipt-gate tests).
+- Agent-facing text now routes record reads to `review_soql_query`; investigate-config-records
+  snapshots run their SELECT through the facade (explicit field list, never Id, LIMIT 200,
+  ORDER BY natural key) — the skill's own sanitization rules are unchanged.
+- Gate: validate_harness 2594 checks PASS, 966 unit tests OK (1 skip), run_evals 38/38.

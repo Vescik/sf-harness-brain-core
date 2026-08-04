@@ -129,7 +129,8 @@
   decisions-log entry). The configured MCP surface is read-only by construction; the recurring
   Windows `exit code 2` startup error is gone.
 - Widened the guarded `scripts/salesforce_read.py` read flow (structured records + cached
-  metadata retrieve) to Solution Designer and Development Assistant, and wired the
+  metadata retrieve) to Solution Designer and Development Assistant (lane later retired
+  2026-08-04 in favor of `review_soql_query`), and wired the
   principles → knowledge → org-context sequence into the designer/developer agent bodies and the
   solution-design skill.
 - Carved out `sf project retrieve start --target-org <configured-alias>` as the only raw

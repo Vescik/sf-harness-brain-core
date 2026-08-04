@@ -87,8 +87,8 @@ transport prevents Knowledge promotion and `SAFE`.
 - Domain Markdown is a generated view; canonical claims/evidence/reviews are schema-controlled.
 - Raw records, secrets, credentials, broad org payloads, and chain-of-thought are never committed.
 - Reference-data snapshots are the one governed record-value path: for a single human-allowlisted
-  configuration object, `investigate-config-records` reads bounded rows through
-  `scripts/salesforce_read.py records`, strips Ids/URLs/audit surfaces, and proposes one
+  configuration object, `investigate-config-records` reads bounded rows through the
+  `review_soql_query` facade tool, strips Ids/URLs/audit surfaces, and proposes one
   `reference-data` claim with `org-soql-sample` evidence. The sanitized, digest-bound snapshot is
   not a raw record dump; promotion still requires human review, and the claim drifts only via
   re-observation because no repository commit backs it.

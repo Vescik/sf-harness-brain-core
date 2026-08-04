@@ -177,8 +177,8 @@ click, via `chat.tools.terminal.autoApprove` in `.vscode/settings.json`:
 - Auto-approved: `preflight.py`, `work_record.py` (except `approve`), `knowledge_registry.py`
   (except `promote`/`review`), `knowledge_store.py` (except `entry-approve`/`feature-approve`/
   `entry-revoke`/`feature-revoke` — those stay on the chat-confirmation lane), `knowledge_search.py`
-  (read-only), `force_app_knowledge.py`, `playwright_guard.py`, and `salesforce_read.py` (guarded
-  read-only records/metadata; see §6). The regexes are anchored and reject shell metacharacters, so
+  (read-only), `force_app_knowledge.py`, and `playwright_guard.py`. The regexes are anchored and
+  reject shell metacharacters, so
   chained or redirected commands never auto-run.
 - Never auto-approved: `work_record.py approve` (human-only, SAFE-HUMAN-001) and raw
   `sf`/`sfdx`/`rm`/`del` (explicitly denied — a deny always wins). Auto-approval only skips the
@@ -222,9 +222,9 @@ owner decision of 2026-07-14.)
   `python3` → `python`) and **refuses to start** when none can `import yaml` — run
   `python scripts/first_launch.py` (or `pip install -r requirements-dev.txt`) and restart the
   server; the terminal command menu in the search-knowledge skill is the operator fallback.
-- Record-level and metadata reads for design/development context run through the guarded
-  `python scripts/salesforce_read.py records|retrieve` command (auto-approved; allowlisted
-  object, bounded fields/rows, retrieve into an ignored cache). There is no write-mode Salesforce
+- Record-level reads for design/development context run through the facade's
+  `review_soql_query` tool (the CLI `salesforce_read.py` lane was retired 2026-08-04).
+  There is no write-mode Salesforce
   MCP server: agents never deploy, and the only raw Salesforce CLI they may request is
   `sf project retrieve start --target-org <configured-alias>`, which the safety hook stops for
   per-invocation human confirmation.

@@ -12,7 +12,6 @@ from scripts import approve_dev_tool_batch as approve_batch
 from scripts import copilot_role_guard as role_guard
 from scripts import copilot_safety_hook as safety
 from scripts import playwright_guard
-from scripts import salesforce_read
 
 
 ORIGIN = "https://acme--dev.sandbox.my.salesforce.com"
@@ -224,40 +223,11 @@ class ScopedEnumerationTests(unittest.TestCase):
         )
         self.assertIn("no model-controlled arguments", with_args)
 
-    def test_salesforce_read_orgs_lists_only_configured_aliases(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            config_path = Path(tmp) / "harness.local.json"
-            config_path.write_text(
-                json.dumps(base_config(allowScopedEnumeration=True)), encoding="utf-8"
-            )
-            stdout = StringIO()
-            with (
-                patch.object(salesforce_read, "CONFIG_PATH", config_path),
-                patch("sys.stdout", stdout),
-            ):
-                self.assertEqual(0, salesforce_read.main(["orgs"]))
-            payload = json.loads(stdout.getvalue())
-        self.assertEqual(1, payload["orgCount"])
-        self.assertEqual("dev-sbx", payload["orgs"][0]["alias"])
-        self.assertNotIn("expectedInstanceHost", json.dumps(payload))
-
-    def test_salesforce_read_orgs_fails_closed_without_the_toggle(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            config_path = Path(tmp) / "harness.local.json"
-            config_path.write_text(json.dumps(base_config()), encoding="utf-8")
-            with (
-                patch.object(salesforce_read, "CONFIG_PATH", config_path),
-                patch("sys.stdout", StringIO()),
-            ):
-                self.assertEqual(2, salesforce_read.main(["orgs"]))
-
-    def test_role_guard_allows_only_the_bare_orgs_form(self) -> None:
-        self.assertTrue(
-            role_guard.salesforce_read_command_allowed(["orgs"], "config-investigator")
-        )
-        self.assertFalse(
-            role_guard.salesforce_read_command_allowed(["orgs", "--root", "/tmp"], "config-investigator")
-        )
+    def test_retired_salesforce_read_surfaces_are_gone(self) -> None:
+        # Owner decision 2026-08-04: configured-orgs enumeration lives on the
+        # review_configured_orgs facade tool alone; the CLI twin was retired with
+        # scripts/salesforce_read.py and must not resurface in the role guard.
+        self.assertFalse(hasattr(role_guard, "salesforce_read_command_allowed"))
 
 
 class DevToolBatchTests(unittest.TestCase):

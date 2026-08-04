@@ -666,14 +666,16 @@ class RoleGuardTests(unittest.TestCase):
                     )
                     self.assertEqual(hook_decision(output), "deny")
 
-    def test_designer_and_developer_may_use_guarded_salesforce_read(self) -> None:
+    def test_retired_salesforce_read_command_is_denied_for_every_role(self) -> None:
+        # Owner decision 2026-08-04: the CLI record-read lane is retired; record reads go
+        # through the review_soql_query facade tool. The old command shape must deny cleanly
+        # for every role instead of resurrecting via a stale allowlist path.
         from scripts import copilot_role_guard as role_guard
 
         command = "python scripts/salesforce_read.py records --org dev-sbx --object ExampleManagedObject__c --fields Id,Name"
-        for role in ("solution-designer", "config-investigator", "development-assistant", "guardrail-reviewer"):
+        for role in role_guard.ALLOWED_PREFIXES:
             with self.subTest(role=role):
-                self.assertTrue(role_guard.allowed_role_command(command, ROOT, role))
-        self.assertFalse(role_guard.allowed_role_command(command, ROOT, "test-strategist"))
+                self.assertFalse(role_guard.allowed_role_command(command, ROOT, role))
 
     def test_designer_can_write_solution_design_drafts(self) -> None:
         allowed = run_hook(

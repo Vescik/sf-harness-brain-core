@@ -35,9 +35,8 @@ human deploy.
    (the safety hook records the receipt; only configured non-production aliases are accepted).
 2. Read the retrieved source and confirm the diagnosis against it — the exact element, formula,
    or connector that is wrong. When the defect plausibly depends on real record shape (field
-   fill, picklist values in use, lookup population), probe it through the governed reads
-   (`review_soql_query` on the facade — verbatim SOQL over the Salesforce MCP transport — or
-   `salesforce_read.py records`) rather
+   fill, picklist values in use, lookup population), probe it through the governed
+   `review_soql_query` facade tool — verbatim SOQL over the Salesforce MCP transport — rather
    than assuming — preferred practice per the 2026-07-30/2026-08-04 owner decisions; probed numbers quoted
    in the fix note cite the org alias and observation time. If the retrieved state
    contradicts the diagnosis, stop and report instead of guessing.

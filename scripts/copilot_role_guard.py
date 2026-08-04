@@ -68,7 +68,6 @@ PREFLIGHT_CAPABILITIES = frozenset(
         "ado",
         "release",
         "metadata",
-        "salesforce-read",
         "salesforce-write",
         "salesforce-review",
         "playwright",
@@ -321,57 +320,6 @@ PATH_KEYS = {
     "files",
     "paths",
 }
-
-# Guarded read-only Salesforce access (structured SOQL + metadata retrieve). Available to the
-# design/build/verify roles so an agent can ground its context in the connected org (principles →
-# knowledge → org reality) without delegating every record read. The script itself enforces the
-# object allowlist, field/limit bounds, and the live sandbox proof. No mutation surface.
-# (Widened from investigator/reviewer-only by the 2026-07-14 owner decision on the read-only
-# MCP/CLI model — see .ai/memory/decisions-log.md.)
-SALESFORCE_READ_ROLES = {
-    "solution-designer",
-    "config-investigator",
-    "development-assistant",
-    "guardrail-reviewer",
-}
-SALESFORCE_READ_FLAGS = {
-    "records": {"--org", "--object", "--fields", "--limit", "--order-by"},
-    "retrieve": {"--org", "--metadata"},
-    # Contract-surface entry: flagless; authorization for the exact ["orgs"] invocation is the
-    # fast path in salesforce_read_command_allowed, and any flagged variant stays denied.
-    "orgs": frozenset(),
-}
-
-
-def salesforce_read_command_allowed(parts: list[str], role: str) -> bool:
-    if role not in SALESFORCE_READ_ROLES or not parts:
-        return False
-    if "--root" in parts or any(part.startswith("--root=") for part in parts):
-        return False
-    if parts == ["orgs"]:
-        # Scoped enumeration of configured aliases only; the script enforces the safety toggle.
-        return True
-    allowed = SALESFORCE_READ_FLAGS.get(parts[0])
-    if allowed is None:
-        return False
-    rest = parts[1:]
-    seen_org = False
-    index = 0
-    while index < len(rest):
-        token = rest[index]
-        if token.startswith("--") and "=" in token:
-            flag = token.split("=", 1)[0]
-            if flag not in allowed:
-                return False
-            seen_org = seen_org or flag == "--org"
-            index += 1
-            continue
-        if token not in allowed or index + 1 >= len(rest) or rest[index + 1].startswith("--"):
-            return False
-        seen_org = seen_org or token == "--org"
-        index += 2
-    return seen_org
-
 
 # Set by main() so denial logging can name the tool/role without threading them everywhere.
 _EVENT_CONTEXT = {"tool": "", "role": ""}
@@ -657,7 +605,6 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
     browser_guard = (root / "scripts/playwright_guard.py").resolve()
     work_record = (root / "scripts/work_record.py").resolve()
     force_app_knowledge = (root / "scripts/force_app_knowledge.py").resolve()
-    salesforce_read = (root / "scripts/salesforce_read.py").resolve()
     validate_harness = (root / "scripts/validate_harness.py").resolve()
     run_evals = (root / "scripts/run_evals.py").resolve()
     validate_handover_output = (root / "scripts/validate_handover_output.py").resolve()
@@ -703,8 +650,6 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         return knowledge_search_command_allowed(remainder, role)
     if script == force_app_knowledge:
         return force_app_knowledge_command_allowed(remainder, role)
-    if script == salesforce_read:
-        return salesforce_read_command_allowed(remainder, role)
     if script == validate_handover_output:
         # Read-only render self-check, every role (same rationale as validate_harness above).
         # --template is deliberately NOT accepted here: guarded agents may only check a draft
@@ -864,7 +809,7 @@ def main() -> int:
                         f"{args.role}: this exact command is outside the terminal allowlist. "
                         "Allowed families: guarded harness scripts (scripts/preflight.py, "
                         "validate_harness.py, run_evals.py, work_record.py, "
-                        "force_app_knowledge.py, salesforce_read.py, "
+                        "force_app_knowledge.py, "
                         "validate_handover_output.py), "
                         "read-only git (status/diff/log/show/ls-files), file reads "
                         "(ls/cat/grep/type/Get-Content), and tool --version checks — all plain, "

@@ -175,7 +175,6 @@ def check_required_files(audit: Audit) -> None:
         "scripts/salesforce_review_server.mjs",
         "scripts/work_record.py",
         "scripts/force_app_knowledge.py",
-        "scripts/salesforce_read.py",
         "scripts/render_repo_map.py",
         "config/repo-map-seed.json",
         ".ai/repo-map.md",
@@ -865,7 +864,7 @@ def check_skill_commands(audit: Audit) -> None:
     first command. Fail closed here so the skill text and the guard can never drift apart again.
     """
 
-    guarded = "preflight|work_record|force_app_knowledge|salesforce_read|validate_handover_output|playwright_guard"
+    guarded = "preflight|work_record|force_app_knowledge|validate_handover_output|playwright_guard"
     bare = re.compile(r"`\s*scripts/(?:" + guarded + r")\.py(?:\s|`)")
     backslash = re.compile(r"`[^`]*(?:scripts\\|\.venv\\)")
     for skill in sorted((ROOT / ".github/skills").glob("*/SKILL.md")):
