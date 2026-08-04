@@ -58,6 +58,7 @@ ALLOWED_TOOLS = {
     "web/fetch",
     "vscode/askQuestions",
     "agent",
+    "knowledge/*",
     "ado-readonly/*",
     "salesforce-readonly/review_org_identity",
     "salesforce-readonly/review_installed_packages",
@@ -164,6 +165,8 @@ def check_required_files(audit: Audit) -> None:
         ".github/pull_request_template.md",
         ".vscode/settings.json",
         ".vscode/mcp.json",
+        ".github/mcp.json",
+        "scripts/knowledge_mcp_server.mjs",
         "config/harness.example.json",
         "schemas/harness-config.schema.json",
         "requirements-dev.lock",
@@ -532,7 +535,10 @@ def check_settings_and_mcp(audit: Audit) -> None:
 
     mcp = load_json(ROOT / ".vscode/mcp.json", audit)
     servers = mcp.get("servers", {}) if isinstance(mcp, dict) else {}
-    audit.require(set(servers) == {"ado-readonly", "salesforce-readonly"}, "MCP server set is unexpected")
+    audit.require(
+        set(servers) == {"ado-readonly", "salesforce-readonly", "knowledge"},
+        "MCP server set is unexpected",
+    )
     ado = servers.get("ado-readonly", {})
     # Local stdio @azure-devops/mcp (owner decision 2026-07-14): the hosted endpoint did not
     # honor the X-MCP-Toolsets header, so the local server with actually-honored -d domain args
@@ -570,6 +576,29 @@ def check_settings_and_mcp(audit: Audit) -> None:
     audit.require(
         "salesforce-development" not in servers,
         "MCP is read-only by the 2026-07-14 decision; the development/write server must not return",
+    )
+    # Knowledge MCP (owner decision 2026-08-04: MCP is the only named read surface for
+    # agents). The server binds no org and takes no inputs; both host configs must point
+    # at the same guarded wrapper.
+    knowledge = servers.get("knowledge", {})
+    audit.require(knowledge.get("command") == "node", "knowledge: wrapper must run with node")
+    audit.require(
+        knowledge.get("args") == ["scripts/knowledge_mcp_server.mjs"],
+        "knowledge: exactly the guarded wrapper, no extra args — it binds no org and takes no secrets",
+    )
+    cli_mcp = load_json(ROOT / ".github/mcp.json", audit)
+    cli_servers = cli_mcp.get("mcpServers", {}) if isinstance(cli_mcp, dict) else {}
+    audit.require(
+        set(cli_servers) == {"knowledge"},
+        ".github/mcp.json (Copilot CLI) carries exactly the knowledge server — org-bound "
+        "servers stay in .vscode/mcp.json where inputs exist",
+    )
+    cli_knowledge = cli_servers.get("knowledge", {})
+    audit.require(cli_knowledge.get("type") == "local", ".github/mcp.json knowledge: type must be local")
+    audit.require(cli_knowledge.get("command") == "node", ".github/mcp.json knowledge: wrapper must run with node")
+    audit.require(
+        cli_knowledge.get("args") == knowledge.get("args"),
+        "the CLI and VS Code knowledge servers must launch the same wrapper",
     )
     serialized = json.dumps(mcp).lower()
     audit.require(
@@ -738,8 +767,12 @@ KNOWLEDGE_MASTER_PLAN = "docs/knowledge-master-plan-2026-07-25.md"
 # `search-knowledge`, which owns the command menu and is not a Set A consumer — so it was green
 # while measuring the wrong thing. Parsing the plan means moving a surface between sets, or
 # renaming one, fails here in the plan's own words rather than silently.
-SET_A_CALL = "knowledge_search.py context --identity"
-# The second half of a correct step-1 lookup. `context --identity` without the re-read rule lets
+# 2026-08-04 (owner decision, MCP-only definitions): the step-1 surface is the MCP tool,
+# not the CLI literal — the v1-retirement lesson is that two competing lanes in agent-facing
+# text rot into bypass. The CLI menu survives only in search-knowledge as the operator
+# fallback, which is deliberately NOT a Set A surface.
+SET_A_CALL = "knowledge_context"
+# The second half of a correct step-1 lookup. A context lookup without the re-read rule lets
 # an agent cite a row carrying `hydrated: false`, which contract §14.2 rules uncitable — the
 # retrieval defect P0–P4 made visible, re-introduced at the last hop. Wave 2 claimed the rule was
 # present in all eight Set A surfaces when it was present in two, so §7 asserts both tokens.

@@ -32,8 +32,8 @@ to the governed record reads instead of rejecting them (owner decision 2026-07-3
 ## Procedure
 
 1. Validate the work record when one was provided, then read relevant approved Knowledge
-   Entries plus metadata-repository state (`python scripts/knowledge_search.py context
-   --identity <id>`; re-read any `hydrated: false` row from its entry file before relying on it).
+   Entries plus metadata-repository state (the `knowledge_context` tool;
+   re-read any `hydrated: false` row from its entry file before relying on it).
 2. Classify the source authority required. A package guarantee needs a vendor source; business
    meaning needs reviewed human evidence; live deployed configuration may use org observation.
 3. Define the smallest factual proposition. For an absence question, require completeness,
@@ -60,7 +60,7 @@ When an org alias with allowAgentRead+allowAgentReview is configured and
 `python scripts/preflight.py --capability salesforce-review` passes, org sampling is the
 default persistence path for object/field usage numbers. For each target entry whose org lane
 is not already `org-fresh` (recompute it with
-`python scripts/knowledge_store.py entry-status --identity <id>` — never from chat history):
+the `knowledge_entry_status` tool — never from chat history):
 compose read-only SOQL probes for the entry's object — aggregates (COUNT, GROUP BY, COUNT(field)
 fill counts) plus one bounded row sample (explicit `LIMIT 25`, `ORDER BY CreatedDate DESC`,
 at most 20 contract-derived columns; never select Id, Email-type, or long-text values — measure

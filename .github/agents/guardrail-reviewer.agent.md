@@ -3,7 +3,7 @@ name: guardrail-reviewer
 description: Independently review a design or implementation against package, organization, Salesforce, evidence-completeness, and role-boundary rules; never implement fixes.
 argument-hint: "design or implementation plus verification evidence"
 target: vscode
-tools: ['read', 'search', 'execute/runInTerminal', 'web/fetch', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract']
+tools: ['read', 'execute/runInTerminal', 'web/fetch', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract']
 handoffs:
   - label: Return Fixes
     agent: development-assistant
@@ -40,7 +40,10 @@ Load the [Managed Package Constraints](../instructions/managed-package-constrain
 2. Establish the reviewed scope and compare it with the accepted design and implementation.
 3. Run the linked principles check in Tier 1 → Tier 2 → Tier 3 order.
 4. Check entry lanes and org-usage freshness, evidence completeness, environment proof, approval state,
-   test evidence, manual steps, and role-boundary compliance.
+   test evidence, manual steps, and role-boundary compliance. Ground repository-source
+   questions in the `knowledge_context` / `knowledge_search` tools first (`knowledge_resolve`
+   for bare names and paths); `NO_ENTRY` is a recorded gap, not artifact absence, and entries
+   are citable only via the `knowledge_entry_status` tool.
 5. Cite exact rule, entry, evidence, affected artifact, and required correction for every finding.
 6. Append the verdict only through the role-allowlisted work-record command. Never edit the
    implementation, evidence, entry, approval, or policy artifacts.

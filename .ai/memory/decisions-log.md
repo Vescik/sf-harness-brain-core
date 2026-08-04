@@ -561,3 +561,38 @@ are not durable.
   re-grounded from Layout/NamedCredential to Letterhead.
 - Approved by: workspace owner (chat, 2026-08-04, "zrob plan i dodaj wszystkie profile").
 - Related: output/plan-2026-08-04-all-type-knowledge-profiles.md.
+
+## 2026-08-04 — Knowledge MCP is the agents' only named read surface (server + full wiring)
+
+- Decision: expose governed Knowledge retrieval as a first-class MCP server
+  (`scripts/knowledge_mcp_server.mjs`, 11 read-only tools: context, search, impact,
+  resolve, entry-status + explain, tree, feature-drift, feature-dossier, edge-health,
+  capabilities) and make it the **default first source** for repository questions in every
+  agent definition. Native force-app search stays legitimate only after a recorded
+  `NO_ENTRY` gap or to verify/edit actual source.
+- D1 (scope): all six agents get `knowledge/*`. D2 (stale index): the wrapper rebuilds the
+  gitignored cache once and retries once, so the INDEX STALE dance never reaches agents.
+  D4 (hardness): middle — the native `search` grant was REMOVED from solution-designer,
+  config-investigator and guardrail-reviewer (readers; `knowledge_resolve` covers
+  name/path→file discovery over the full inventory), kept for development-assistant,
+  test-strategist, knowledge-curator (they edit/verify source content). D5 (definitions):
+  FULL transition — no CLI dual-path in agent-facing text; owner's rationale is the
+  v1-retirement lesson that two competing lanes in definitions rot into bypass.
+- Set A re-pin: `validate_harness.py` SET_A_CALL moved from the CLI literal to
+  `knowledge_context`; master-plan §7 Set A now counts **10** surfaces
+  (investigate-object and suggest-test-cases joined — both had adopted the step-1 lookup
+  after the plan was written; suggest-test-cases was also still citing the retired v1
+  `query --subject-identity` interface, fixed here). The CLI command menu survives only in
+  search-knowledge as the operator fallback. Curator store-maintenance commands
+  (inventory, entry-readiness, entry-coverage) stay terminal by design; write lanes
+  (draft/approve/pin) stay chat+terminal — SAFE-HUMAN-001 untouched.
+- Wiring: `.vscode/mcp.json` + new `.github/mcp.json` (Copilot CLI reads only the latter);
+  validator pins both configs, the server-set, the tool allowlist↔argparse contract
+  (tests/test_knowledge_mcp_contract.py) and readOnlyHint; smoke over real stdio in
+  tests/test_knowledge_mcp_server.py.
+- Measurement: baseline (pre-wiring, clone at c992317) recorded in
+  harness-lab RESULTS-LOG — Knowledge never consulted in 3/6 runs, consulted late
+  (call 13/13/30) in the rest; the after-leg runs on the wired HEAD.
+- Approved by: workspace owner (chat, 2026-08-04 — "chcę żeby knowledge search był default",
+  full-MCP + środkowa twardość wybrane w AskUserQuestion).
+- Related: output/discovery-2026-08-03-knowledge-mcp-server.md (plan + execution update).

@@ -30,7 +30,7 @@ For BRD attachments:
    rationale. Identify gaps and orphan Stories; an enabler is a review item, not an automatic error.
 4. Check Tier 1 constraints and Known Limitations for affected package surfaces. Query both
    layers for each affected object rather than only reading the static view:
-   - `python scripts/knowledge_search.py context --identity <Identity>` — parts, dependents and
+   - the `knowledge_context` tool — parts, dependents and
      permission grants for the entry-homed types, with their coverage denominator. Count
      coverage from `parts`, `permissions` and `incoming` only — those are the approved-current
      buckets; the `*NonCurrent` siblings are opted-in lanes and belong in the gap list. `incoming`
@@ -65,7 +65,7 @@ the entry. Absence, deployed state, and semantics are never grounded by an entry
 search hit is never proof of absence.
 
 Cite what the executor gives you, not what the view shows: obtain the citable ref with
-`python scripts/knowledge_store.py entry-status --identity <Identity>`. A search result, a
+the `knowledge_entry_status` tool. A search result, a
 `context` pack and a generated dossier are never themselves citable.
 
 An entry can be approved, current and still refuse to ground a fact: contract §8.1 grounds only

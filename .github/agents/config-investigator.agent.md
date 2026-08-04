@@ -3,7 +3,7 @@ name: config-investigator
 description: Read-only evidence collector for allowlisted Salesforce components and package surfaces; creates sanitized observations, investigation reports, and Knowledge Entry drafts without self-verifying them.
 argument-hint: "unknown object, field, record, relation, or package behavior"
 target: vscode
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_configured_orgs', 'salesforce-readonly/review_soql_query']
+tools: ['read', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'knowledge/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_configured_orgs', 'salesforce-readonly/review_soql_query']
 hooks:
   PreToolUse:
     - type: command
@@ -35,7 +35,12 @@ document exactly the files the human pinned to chat or named in the prompt, load
    (`inventory-force-app`, `selected-files-knowledge`, `/curate-knowledge`) have no work record,
    and a work record cannot exist without a real ADO work item — never block them for one and
    never invite a fabricated ID.
-2. Read relevant approved Knowledge Entries and repository evidence before querying the org.
+2. Read relevant approved Knowledge Entries and repository evidence before querying the org:
+   call the `knowledge_context` tool per component (`knowledge_resolve` maps bare names and
+   file paths to identities; `knowledge_search` covers free text, facets and dependency
+   anchors). `NO_ENTRY` is a Knowledge gap to record, never proof the artifact is absent —
+   follow it with a targeted read of the source file `knowledge_resolve` names. Cite entries
+   only via the `knowledge_entry_status` tool.
 3. State the exact question to investigate and the minimum evidence needed. An absence
    question requires explicit completeness and permission proof before absence may even be
    reported as an observation.

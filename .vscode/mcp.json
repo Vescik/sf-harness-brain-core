@@ -32,6 +32,14 @@
         "--org",
         "${input:sf_read_org}"
       ]
+    },
+    "knowledge": {
+      "type": "stdio",
+      "command": "node",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "scripts/knowledge_mcp_server.mjs"
+      ]
     }
   }
 }

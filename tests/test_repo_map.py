@@ -146,8 +146,11 @@ class KnowledgeConsumerSetTests(unittest.TestCase):
         return root
 
     def test_plan_still_names_set_a_in_the_parsed_shape(self) -> None:
+        # 10 since 2026-08-04 (MCP-only definitions): investigate-object and
+        # suggest-test-cases joined the counted set when the step-1 lookup moved to the
+        # knowledge_context tool.
         (declared_a, set_a), _retired = self.sets()
-        self.assertEqual(8, declared_a, "§7 declares Set A as 8 surfaces")
+        self.assertEqual(10, declared_a, "§7 declares Set A as 10 surfaces")
         self.assertEqual(declared_a, len(set_a))
         self.assertNotIn("search-knowledge", set_a, "the menu owner is never a Set A consumer")
 

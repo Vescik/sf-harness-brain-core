@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "knowledge": {
+      "type": "local",
+      "command": "node",
+      "args": [
+        "scripts/knowledge_mcp_server.mjs"
+      ],
+      "tools": [
+        "*"
+      ]
+    }
+  }
+}

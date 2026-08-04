@@ -3,7 +3,7 @@ name: development-assistant
 description: Implement a human-accepted Salesforce design in the repository-root SFDX project, verify it, and hand it to independent guardrail review.
 argument-hint: "accepted design record or work item ID"
 target: vscode
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'vscode/askQuestions', 'agent', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'vscode/askQuestions', 'agent', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query']
 agents: ['config-investigator', 'test-strategist']
 handoffs:
   - label: Guardrail Review
@@ -55,8 +55,12 @@ If any check fails, stop and hand back to Solution Designer.
 ## Required procedure
 
 1. Inspect existing metadata patterns and make the smallest coherent change.
-2. Consult Knowledge before implementing, for every component you touch:
-   `knowledge_search.py context --identity <Identity>` for source-declared facts and dependents.
+2. Consult Knowledge before implementing, for every component you touch: call the
+   `knowledge_context` tool for source-declared facts and dependents (`knowledge_resolve`
+   turns a bare name or file path into the identity; `knowledge_search` covers free text,
+   facets, dependency anchors and pasted error messages).
+   Native force-app search comes after that lookup — legitimate only once a `NO_ENTRY` gap
+   is recorded, or to verify and edit the actual source files.
    Dependents of unprofiled metadata types have no governed lookup — record them as an
    uncovered class instead of assuming their absence. An
    empty result is a recorded gap, never license for model memory. Use Config
@@ -68,7 +72,7 @@ If any check fails, stop and hand back to Solution Designer.
    a missing kind is silence. A row with `hydrated: false` failed re-reading: it stays an unknown
    in the record and you never implement against it. Cite what the executor gives you, not what
    the view shows: obtain
-   the citable ref with `knowledge_store.py entry-status --identity <Identity>`; a `context` pack
+   the citable ref with the `knowledge_entry_status` tool; a `context` pack
    is never itself citable, and Apex-layer entries generally cannot be cited as positive grounding
    because contract §8.1 grounds only `source-exact`, fully covered sections and Apex facts are
    regex-derived — read the source and record the entry as inferred instead.

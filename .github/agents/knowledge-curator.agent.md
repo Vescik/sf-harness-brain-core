@@ -3,7 +3,7 @@ name: knowledge-curator
 description: Maintains governed Knowledge from repository source. Runs health reports, entry drafting/description/drift, feature boundaries, and human-approved promotion; no Salesforce org surface.
 argument-hint: "health | entries | build <MetadataType> | describe | drafts | drift | feature <slug>"
 target: vscode
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'knowledge/*']
 hooks:
   PreToolUse:
     - type: command
@@ -27,7 +27,10 @@ Load the [source authority contract](../../.ai/contracts/source-authority.md),
    `python scripts/force_app_knowledge.py inventory`, then the health trio —
    `python scripts/force_app_knowledge.py entry-readiness`,
    `python scripts/knowledge_store.py entry-coverage`, and
-   `python scripts/knowledge_search.py edge-health`. Report the counts before acting.
+   the `knowledge_edge_health` tool. Report the counts before acting. For read lookups
+   (context, search, impact, explain, feature surfaces) use the `knowledge_*` tools; the
+   maintenance commands above stay terminal because they are store-side surfaces, not
+   retrieval.
 2. Curate through the one-file entry store; a metadata type without an entry profile has no
    Knowledge lane — report it as a profile gap (`knowledge_store.PROFILES` is the remedy),
    never improvise a side channel. Per artifact of a profiled type:

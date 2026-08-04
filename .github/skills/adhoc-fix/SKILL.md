@@ -41,8 +41,9 @@ human deploy.
    in the fix note cite the org alias and observation time. If the retrieved state
    contradicts the diagnosis, stop and report instead of guessing.
 3. Consult Knowledge for dependents before touching the component, both layers:
-   - `python scripts/knowledge_search.py context --identity <Identity>` — who reads, writes and
-     grants access to it today, with per-edge assurance. `parts`, `permissions` and `incoming`
+   - the `knowledge_context` tool — who reads, writes and
+     grants access to it today, with per-edge assurance (`knowledge_resolve` maps the
+     component's name or file path to its identity). `parts`, `permissions` and `incoming`
      hold the approved-current rows; the `*NonCurrent` siblings are opted-in lanes and are
      reported as unknowns in the fix note, never as dependents you have accounted for. `incoming`
      and `outgoing` are keyed by relation kind — iterate the keys, and treat a missing kind as

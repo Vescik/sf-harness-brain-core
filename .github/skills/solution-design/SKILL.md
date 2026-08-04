@@ -32,8 +32,9 @@ Goal: assemble every fact the design will stand on, with sources, before proposi
    this change (managed-package MP-*, organization ORG-*, platform SF-*). This list is the
    verification checklist for Phase 3.
 5. Knowledge, both layers, in this order:
-   - **repository-source facts** — `python scripts/knowledge_search.py context --identity <Identity>`
-     for each named component. One call returns its purpose, parts, incoming/outgoing usage,
+   - **repository-source facts** — the `knowledge_context` tool
+     for each named component (`knowledge_resolve` maps bare names and file paths to
+     identities). One call returns its purpose, parts, incoming/outgoing usage,
      permission grants, execution `chains`, coverage and citations. `NO_ENTRY` means no *entry*
      exists, not that the artifact does not — it never licenses inference.
      Ground the design on `parts`, `permissions` and `incoming` only: those hold approved-current
@@ -145,7 +146,7 @@ the entry. Absence, deployed state, and semantics are never grounded by an entry
 search hit is never proof of absence.
 
 Cite what the executor gives you, not what the view shows: obtain the citable ref with
-`python scripts/knowledge_store.py entry-status --identity <Identity>`. A search result, a
+the `knowledge_entry_status` tool. A search result, a
 `context` pack and a generated dossier are never themselves citable.
 
 An entry can be approved, current and still refuse to ground a fact: contract §8.1 grounds only
