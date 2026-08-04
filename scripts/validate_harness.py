@@ -7,18 +7,32 @@ import json
 import re
 import subprocess
 import sys
+import traceback
 import xml.etree.ElementTree as ET
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
-import yaml
-from jsonschema import Draft202012Validator
+try:
+    import yaml
+    from jsonschema import Draft202012Validator
+except ImportError as exc:  # system interpreters lack the dev deps; name the remedy
+    print(
+        f"validate_harness: missing dev dependency ({getattr(exc, 'name', None) or exc}); "
+        "run through the repo .venv or `pip install -r requirements-dev.lock`",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
 
 try:
     from schema_format import FORMAT_CHECKER
 except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
     from scripts.schema_format import FORMAT_CHECKER
+
+try:
+    from knowledge_digest import canonical_digest
+except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
+    from scripts.knowledge_digest import canonical_digest
 
 try:
     from validate_handover_output import template_fixed_texts
@@ -111,8 +125,24 @@ def relative(path: Path) -> str:
         return str(path)
 
 
+def required_text(path: Path, audit: Audit) -> str:
+    """Read a named file, recording an audit error instead of raising when it is unreadable.
+
+    check_required_files only records a missing file; a later unconditional read_text
+    would raise and discard every already-collected finding."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        audit.require(False, f"{relative(path)}: unreadable: {exc}")
+        return ""
+
+
 def frontmatter(path: Path, audit: Audit) -> tuple[dict[str, Any], str]:
-    text = path.read_text(encoding="utf-8")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        audit.require(False, f"{relative(path)}: unreadable: {exc}")
+        return {}, ""
     match = re.match(r"\A---\s*\n(.*?)\n---\s*\n?", text, re.DOTALL)
     audit.require(match is not None, f"{relative(path)}: missing YAML frontmatter")
     if match is None:
@@ -135,11 +165,11 @@ def load_json(path: Path, audit: Audit) -> Any:
 
 
 def load_jsonc(path: Path, audit: Audit) -> Any:
-    text = path.read_text(encoding="utf-8")
-    text = re.sub(r"^\s*//.*$", "", text, flags=re.MULTILINE)
     try:
+        text = path.read_text(encoding="utf-8")
+        text = re.sub(r"^\s*//.*$", "", text, flags=re.MULTILINE)
         return json.loads(text)
-    except json.JSONDecodeError as exc:
+    except (OSError, json.JSONDecodeError) as exc:
         audit.require(False, f"{relative(path)}: invalid JSONC: {exc}")
         return {}
 
@@ -261,9 +291,12 @@ def check_required_files(audit: Audit) -> None:
     audit.require(not (ROOT / "salesforce").exists(), "legacy nested salesforce/ project remains")
 
 
-def check_salesforce_project(audit: Audit) -> None:
-    salesforce_root = ROOT
+def check_salesforce_project(audit: Audit, root: Path = ROOT) -> None:
+    salesforce_root = root
     project = load_json(salesforce_root / "sfdx-project.json", audit)
+    if not isinstance(project, dict):
+        audit.require(False, "sfdx-project.json must be a JSON object")
+        project = {}
     package_directories = project.get("packageDirectories", []) if isinstance(project, dict) else []
     audit.require(
         any(
@@ -326,11 +359,11 @@ def check_salesforce_project(audit: Audit) -> None:
     )
 
 
-def check_customizations(audit: Audit) -> None:
-    agent_paths = sorted((ROOT / ".github/agents").glob("*.agent.md"))
-    prompt_paths = sorted((ROOT / ".github/prompts").glob("*.prompt.md"))
-    skill_paths = sorted((ROOT / ".github/skills").glob("*/SKILL.md"))
-    instruction_paths = sorted((ROOT / ".github/instructions").glob("*.instructions.md"))
+def check_customizations(audit: Audit, root: Path = ROOT) -> None:
+    agent_paths = sorted((root / ".github/agents").glob("*.agent.md"))
+    prompt_paths = sorted((root / ".github/prompts").glob("*.prompt.md"))
+    skill_paths = sorted((root / ".github/skills").glob("*/SKILL.md"))
+    instruction_paths = sorted((root / ".github/instructions").glob("*.instructions.md"))
     actual = {
         "agents": len(agent_paths),
         "prompts": len(prompt_paths),
@@ -349,8 +382,9 @@ def check_customizations(audit: Audit) -> None:
         audit.require(bool(data.get("description")), f"{relative(path)}: description is required")
         audit.require(bool(data.get("argument-hint")), f"{relative(path)}: argument-hint is required")
         tools = data.get("tools")
-        audit.require(isinstance(tools, list), f"{relative(path)}: tools must be an array")
-        if isinstance(tools, list):
+        tools_ok = isinstance(tools, list) and all(isinstance(tool, str) for tool in tools)
+        audit.require(tools_ok, f"{relative(path)}: tools must be an array of tool-name strings")
+        if tools_ok:
             unknown = sorted(set(tools) - ALLOWED_TOOLS)
             legacy = sorted(set(tools) & LEGACY_TOOLS)
             audit.require(not unknown, f"{relative(path)}: unknown tools: {unknown}")
@@ -378,12 +412,16 @@ def check_customizations(audit: Audit) -> None:
                 audit.require(target in agents or target in BUILT_IN_AGENTS, f"{label} has unknown agent {target!r}")
                 audit.require(handoff.get("send") is False, f"{label} must remain human-triggered with send: false")
 
-    guardrail_tools = set(agents.get("guardrail-reviewer", {}).get("tools", []))
+    guardrail_tools = {
+        tool
+        for tool in (agents.get("guardrail-reviewer", {}).get("tools") or [])
+        if isinstance(tool, str)
+    }
     audit.require("edit/editFiles" not in guardrail_tools, "guardrail-reviewer must not edit")
     audit.require("execute/runInTerminal" in guardrail_tools, "guardrail-reviewer needs guarded work-record execution")
     audit.require("salesforce-development/*" not in guardrail_tools, "guardrail-reviewer must not mutate Salesforce")
     reviewer_hooks = agents.get("guardrail-reviewer", {}).get("hooks", {})
-    audit.require("guardrail-reviewer" in json.dumps(reviewer_hooks), "guardrail-reviewer role guard is required")
+    audit.require("guardrail-reviewer" in json.dumps(reviewer_hooks, default=str), "guardrail-reviewer role guard is required")
 
     prompt_names: list[str] = []
     for path in prompt_paths:
@@ -396,8 +434,9 @@ def check_customizations(audit: Audit) -> None:
         audit.require(prompt_agent in agents or prompt_agent in BUILT_IN_AGENTS, f"{relative(path)}: unknown agent {prompt_agent!r}")
         tools = data.get("tools")
         if tools is not None:
-            audit.require(isinstance(tools, list), f"{relative(path)}: tools must be an array")
-            if isinstance(tools, list):
+            tools_ok = isinstance(tools, list) and all(isinstance(tool, str) for tool in tools)
+            audit.require(tools_ok, f"{relative(path)}: tools must be an array of tool-name strings")
+            if tools_ok:
                 audit.require(not (set(tools) - ALLOWED_TOOLS), f"{relative(path)}: unknown tools {sorted(set(tools) - ALLOWED_TOOLS)}")
         audit.require("skill](" in body.lower(), f"{relative(path)}: prompt must link its skill")
         if isinstance(name, str):
@@ -647,27 +686,32 @@ def check_settings_and_mcp(audit: Audit) -> None:
         audit.require("timeout" in pre[0] and "timeoutSec" not in pre[0], "hook must use the current timeout property")
         audit.require(pre[0].get("timeout", 0) >= 10, "global hook timeout must accommodate guarded command parsing")
 
-    launcher = (ROOT / "scripts/start_salesforce_mcp.mjs").read_text(encoding="utf-8")
+    launcher = required_text(ROOT / "scripts/start_salesforce_mcp.mjs", audit)
+    # Owner decision 2026-08-04: the launcher's per-alias grants, development/write lane,
+    # and startup identity subprocess were retired — identity is proven per call in the
+    # review facade. These markers pin what must survive that slimming.
     for marker in (
-        "verify_salesforce_org.py",
-        'environment !== "development"',
-        "METADATA_ROOT",
-        "development mode is disabled on Windows",
-        "Organization.IsSandbox",
+        "production-like",
+        'environment === "production"',
+        "org changes are human-only",
+        "salesforce_review_server.mjs",
     ):
         audit.require(marker in launcher, f"Salesforce MCP launcher is missing runtime gate: {marker}")
+    audit.require("spawnSync" not in launcher, "the launcher's startup identity subprocess was retired; identity is proven per call in the facade")
     audit.require('"data,metadata,testing,code-analysis"' not in launcher, "broad Salesforce data-write toolset is forbidden")
+    facade = required_text(ROOT / "scripts/salesforce_review_server.mjs", audit)
+    for marker in ("deniedOrganizationIds", "assertOrgIdPermitted", "validateMcpIdentity"):
+        audit.require(marker in facade, f"Salesforce review facade is missing runtime gate: {marker}")
 
-    development = (ROOT / ".github/agents/development-assistant.agent.md").read_text(encoding="utf-8")
-    development_frontmatter = yaml.safe_load(development.split("---", 2)[1])
-    audit.require("execute/runInTerminal" in development_frontmatter.get("tools", []), "Development Assistant needs guarded preflight execution")
-    audit.require("development-assistant" in json.dumps(development_frontmatter.get("hooks", {})), "Development Assistant role guard is required")
+    development_frontmatter, _ = frontmatter(ROOT / ".github/agents/development-assistant.agent.md", audit)
+    audit.require("execute/runInTerminal" in (development_frontmatter.get("tools") or []), "Development Assistant needs guarded preflight execution")
+    audit.require("development-assistant" in json.dumps(development_frontmatter.get("hooks", {}), default=str), "Development Assistant role guard is required")
     doc_prompt, _ = frontmatter(ROOT / ".github/prompts/document-metadata-change.prompt.md", audit)
     audit.require("salesforce-development/*" not in doc_prompt.get("tools", []), "Documentation prompt must not inherit Salesforce write tools")
     audit.require("execute/runInTerminal" in doc_prompt.get("tools", []), "Documentation prompt needs guarded metadata/ADO preflight execution")
     release_prompt, _ = frontmatter(ROOT / ".github/prompts/release-handover.prompt.md", audit)
     audit.require("execute/runInTerminal" in release_prompt.get("tools", []), "Release prompt needs guarded release/ADO preflight execution")
-    role_guard = (ROOT / "scripts/copilot_role_guard.py").read_text(encoding="utf-8")
+    role_guard = required_text(ROOT / "scripts/copilot_role_guard.py", audit)
     audit.require(role_guard.count('".cache/ado-items/"') >= 3, "ADO cache must be writable by its three consuming roles")
     audit.require('".cache/test-cases/"' in role_guard, "Test Strategist must be able to write Test Case cache")
     audit.require('".cache/org-usage/"' in role_guard, "Config Investigator must be able to author org-usage probes-files (contract §6.6)")
@@ -683,13 +727,13 @@ def check_settings_and_mcp(audit: Audit) -> None:
         "preflight capabilities must stay universally runnable diagnostics",
     )
 
-    compatibility = (ROOT / "docs/compatibility.md").read_text(encoding="utf-8")
+    compatibility = required_text(ROOT / "docs/compatibility.md", audit)
     audit.require("1.112" in compatibility, "compatibility baseline must state the minimum VS Code version")
     audit.require("read-only by construction" in compatibility, "the read-only MCP model must be explicit")
     audit.require("human confirmation" in compatibility, "the human-approved CLI retrieve boundary must be explicit")
-    agents_contract = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    agents_contract = required_text(ROOT / "AGENTS.md", audit)
     audit.require("Built-in/default Agent mode" in agents_contract, "supported custom-agent boundary must be explicit")
-    security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    security = required_text(ROOT / "SECURITY.md", audit)
     audit.require("dedicated OS account, VM, or container" in security, "production credential isolation is required")
 
 
@@ -712,7 +756,7 @@ def check_ci(audit: Audit) -> None:
     audit.require("npm run prettier:verify" in serialized, "CI must run the root Salesforce formatting gate")
     audit.require("npm run lint" in serialized, "CI must run the root Salesforce lint gate")
     audit.require("npm run test:unit:ci" in serialized, "CI must run the root LWC unit gate")
-    codeowners = (ROOT / ".github/CODEOWNERS").read_text(encoding="utf-8")
+    codeowners = required_text(ROOT / ".github/CODEOWNERS", audit)
     for owned_path in ("/sfdx-project.json", "/force-app/", "/manifest/", "/tests/e2e/"):
         audit.require(owned_path in codeowners, f"CODEOWNERS is missing root Salesforce path: {owned_path}")
     audit.require("/salesforce/" not in codeowners, "CODEOWNERS retains the legacy nested Salesforce path")
@@ -794,8 +838,12 @@ def plan_consumer_set(plan_text: str, label: str) -> tuple[int | None, list[str]
     text = " ".join(bullet.group(0).split())
     # The bold intro can itself contain backticks (`context --identity`), so the surface list
     # starts at the first colon after the intro closes, never at the first colon in the bullet.
-    tail = text[text.index("**", text.index("**") + 2) + 2:]
-    colon = tail.index(":")
+    # A bullet whose bold intro never closes (or has no colon) is unparsed, not a crash.
+    try:
+        tail = text[text.index("**", text.index("**") + 2) + 2:]
+        colon = tail.index(":")
+    except ValueError:
+        return None, []
     declared = re.search(r"\((\d+) surfaces\)", tail[:colon])
     names = [name for name in re.findall(r"`([^`]+)`", tail[colon + 1:]) if not name.startswith("-")]
     return (int(declared.group(1)) if declared else None, names)
@@ -893,16 +941,14 @@ def check_release_handover_contract(audit: Audit) -> None:
     docs/evidence-analysis-2026-07-24.md).
     """
 
-    template = (ROOT / ".ai/templates/release-handover.md").read_text(encoding="utf-8")
+    template = required_text(ROOT / ".ai/templates/release-handover.md", audit)
     audit.require(
         template.count("<!-- repeat-per-item -->") == 1,
         "release-handover template must contain exactly one <!-- repeat-per-item --> marker "
         "(scripts/validate_handover_output.py keys per-item repetition on it; keep it when "
         "editing the template)",
     )
-    skill = (ROOT / ".github/skills/generate-release-handover/SKILL.md").read_text(
-        encoding="utf-8"
-    )
+    skill = required_text(ROOT / ".github/skills/generate-release-handover/SKILL.md", audit)
     audit.require(
         "../../../.ai/templates/release-handover.md" in skill,
         "generate-release-handover must load the template by path (single structure source)",
@@ -942,6 +988,16 @@ def check_python_yaml_safety(audit: Audit) -> None:
             )
 
 
+def apply_patch(instance: Any, dotted: str, value: Any) -> None:
+    """Apply one dotted-path patch in place; KeyError/TypeError when the path does not
+    resolve in the base fixture (the caller reports the offending path by name)."""
+    target = instance
+    parts = dotted.split(".")
+    for part in parts[:-1]:
+        target = target[part]
+    target[parts[-1]] = value
+
+
 def check_schemas_and_evals(audit: Audit) -> None:
     mappings = {
         "ado-item-cache.schema.json": ("ado-item.complete.json", "ado-item.partial.json"),
@@ -974,12 +1030,19 @@ def check_schemas_and_evals(audit: Audit) -> None:
         instance = deepcopy(
             load_json(ROOT / "evals/fixtures" / case["baseFixture"], audit)
         )
+        patched = True
         for dotted, value in case.get("patch", {}).items():
-            target = instance
-            parts = dotted.split(".")
-            for part in parts[:-1]:
-                target = target[part]
-            target[parts[-1]] = value
+            try:
+                apply_patch(instance, dotted, value)
+            except (KeyError, TypeError):
+                audit.require(
+                    False,
+                    f"invalid-contract-states.json: case {case.get('id')}: patch path "
+                    f"{dotted!r} does not resolve in {case.get('baseFixture')}",
+                )
+                patched = False
+        if not patched:
+            continue
         errors = list(Draft202012Validator(schema).iter_errors(instance))
         audit.require(bool(errors), f"negative contract fixture was incorrectly accepted: {case.get('id')}")
 
@@ -998,8 +1061,8 @@ def check_schemas_and_evals(audit: Audit) -> None:
 
 
 def check_grounding_contracts(audit: Audit) -> None:
-    root_instructions = (ROOT / ".github/copilot-instructions.md").read_text(encoding="utf-8")
-    agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    root_instructions = required_text(ROOT / ".github/copilot-instructions.md", audit)
+    agents_md = required_text(ROOT / "AGENTS.md", audit)
     markdown_link = re.compile(r"(?<!!)\[[^\]]+\]\([^)]+\)")
     audit.require(not markdown_link.search(root_instructions), "always-on safety kernel must not pull role resources through Markdown links")
     # 120 → 150 (2026-08-03): the cap keeps this file from growing into a second instruction
@@ -1015,7 +1078,7 @@ def check_grounding_contracts(audit: Audit) -> None:
     )
     source_ids: set[str] = set()
     for path in principle_paths:
-        source_ids.update(re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", path.read_text(encoding="utf-8")))
+        source_ids.update(re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", required_text(path, audit)))
 
     # Owner decision 2026-08-04: the rule-registry.yaml re-encoding of these sources was
     # retired. The invariant that keeps `work_record attach-rule` resolution unambiguous is
@@ -1024,7 +1087,7 @@ def check_grounding_contracts(audit: Audit) -> None:
     declarations: list[str] = []
     for path in principle_paths:
         declarations.extend(
-            re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", path.read_text(encoding="utf-8"))
+            re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", required_text(path, audit))
         )
     duplicate_ids = sorted({rule_id for rule_id in declarations if declarations.count(rule_id) > 1})
     audit.require(not duplicate_ids, f"rule IDs declared more than once across Principle sources: {duplicate_ids}")
@@ -1153,7 +1216,7 @@ def check_grounding_contracts(audit: Audit) -> None:
     audit.require(example_review.get("enabled") is False, "example Salesforce review must be disabled")
     audit.require(example_review.get("allowedPackageNamespaces") == [], "disabled example package allowlist must be empty")
     audit.require(example_review.get("allowedObjectApiNames") == [], "disabled example object allowlist must be empty")
-    workflow = (ROOT / ".github/workflows/harness-ci.yml").read_text(encoding="utf-8")
+    workflow = required_text(ROOT / ".github/workflows/harness-ci.yml", audit)
     audit.require("npm ci --ignore-scripts" in workflow, "CI must install the pinned Salesforce review runtime without lifecycle scripts")
     audit.require(
         "python scripts/knowledge_store.py entry-check" in workflow,
@@ -1197,12 +1260,17 @@ def check_repo_map(audit: Audit) -> None:
         )
 
 
-def check_placeholders(audit: Audit) -> None:
+def check_placeholders(audit: Audit, root: Path = ROOT) -> None:
     found: set[str] = set()
-    for base in (ROOT / ".github", ROOT / ".ai/contracts"):
+    for base in (root / ".github", root / ".ai/contracts"):
         for path in base.glob("**/*"):
-            if path.is_file():
-                found.update(re.findall(r"<TU_WSTAW_[^>]+>", path.read_text(encoding="utf-8")))
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:  # binary assets carry no human placeholders
+                continue
+            found.update(re.findall(r"<TU_WSTAW_[^>]+>", text))
     audit.require(found == EXPECTED_HUMAN_PLACEHOLDERS, f"human placeholder register drifted: found {sorted(found)}")
 
 
@@ -1254,8 +1322,6 @@ def check_org_usage(audit: Audit, root: Path = ROOT) -> None:
     artifacts = root / ".ai/knowledge/artifacts"
     org_bearing = 0
     if artifacts.is_dir():
-        from scripts.knowledge_digest import canonical_digest
-
         for path in sorted(artifacts.rglob("*.md")):
             text = path.read_text(encoding="utf-8")
             if "orgUsage" not in text:
@@ -1314,25 +1380,48 @@ def check_org_usage(audit: Audit, root: Path = ROOT) -> None:
         )
 
 
+def run_checks(audit: Audit, checks: Iterable[Callable[[Audit], None]]) -> None:
+    """Run every check; an uncaught exception becomes a named audit error, not a lost report.
+
+    The 2026-08-04 deep test showed a single malformed input file raising through a check
+    and discarding every already-collected finding. The traceback still goes to stderr for
+    debugging; the report keeps accumulating and printing."""
+    for check in checks:
+        try:
+            check(audit)
+        except Exception as exc:
+            traceback.print_exc()
+            audit.require(
+                False,
+                f"{check.__name__} crashed ({type(exc).__name__}: {exc}) — remaining "
+                "checks in this function were skipped",
+            )
+
+
 def main() -> int:
     audit = Audit()
-    check_required_files(audit)
-    check_salesforce_project(audit)
-    check_customizations(audit)
-    check_links(audit)
-    check_settings_and_mcp(audit)
-    check_ci(audit)
-    check_schemas_and_evals(audit)
-    check_grounding_contracts(audit)
-    check_contracts_match_mcp(audit)
-    check_repo_map(audit)
-    check_placeholders(audit)
-    check_secret_signatures(audit)
-    check_python_yaml_safety(audit)
-    check_skill_commands(audit)
-    check_release_handover_contract(audit)
-    check_knowledge_consumer_sets(audit)
-    check_org_usage(audit)
+    run_checks(
+        audit,
+        (
+            check_required_files,
+            check_salesforce_project,
+            check_customizations,
+            check_links,
+            check_settings_and_mcp,
+            check_ci,
+            check_schemas_and_evals,
+            check_grounding_contracts,
+            check_contracts_match_mcp,
+            check_repo_map,
+            check_placeholders,
+            check_secret_signatures,
+            check_python_yaml_safety,
+            check_skill_commands,
+            check_release_handover_contract,
+            check_knowledge_consumer_sets,
+            check_org_usage,
+        ),
+    )
     if audit.errors:
         print(f"FAIL: harness validation ({len(audit.errors)} errors, {audit.checks} checks)")
         for message in audit.errors:

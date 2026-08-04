@@ -162,13 +162,13 @@ team lead / harness maintainer:
 | `ado.project` | ADO project name | team lead |
 | `ado.releaseQueryId` | Saved ADO query id for release scope (only release flows need it) | team lead |
 | `salesforce.orgs[].alias` | Your local alias for each sandbox (you choose it; reuse it in Part 7) | you |
-| `salesforce.orgs[].expectedInstanceHost` | The sandbox My Domain host | filled in Part 7 |
-| `salesforce.orgs[].expectedOrganizationId` | The sandbox org id | filled in Part 7 |
+| `salesforce.orgs[].expectedInstanceHost` | The org's My Domain host (optional pin; set together with the org id) | filled in Part 7 |
+| `salesforce.orgs[].expectedOrganizationId` | The org id (optional pin; set together with the host) | filled in Part 7 |
 | `salesforce.review.allowedObjectApiNames` | Objects the agent may read via the review facade | team lead (keep narrow) |
 | `browser` section + `workspace.promotedTestsPath` | Guarded Playwright settings | **omit entirely** — optional, needed only for browser testing on macOS/Linux |
 
-Leave every `allowAgentWrite` as `false`. Write mode is a separate, human-approved decision and
-does not run on Windows at all.
+There is no write mode: agents only read, and org changes ship through the human-run release
+process (the write lane was retired 2026-08-04).
 
 ## Part 7 — Set `ADO_ORGANIZATION` and authorize a sandbox
 
@@ -209,9 +209,10 @@ From the JSON `result`, copy the host part of `instanceUrl` (looks like
 the host must carry a sandbox (`*--*.sandbox.my.salesforce.com`), scratch-org, or Developer
 Edition (`*.develop.my.salesforce.com`) signature, and live `Organization.IsSandbox` must agree
 with it — `true` for a sandbox or scratch org, `false` for a Developer Edition. Production is
-refused by design. A Developer Edition additionally needs
-`salesforce.review.allowAnyNonProduction: true` and, for now, a hand-written config entry
-(`first_launch.py` does not offer that path yet).
+refused by design, and the facade re-proves this identity on every tool call. No toggle is
+needed for any non-production shape (owner decision 2026-08-04); the pins are optional — an
+unlisted alias is also readable, but only configured entries can anchor work-record evidence
+and Knowledge org snapshots.
 
 ## Part 8 — Final verification
 

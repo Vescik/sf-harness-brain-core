@@ -55,27 +55,29 @@ root rather than searching subfolders, parent directories, sibling directories, 
 From the repository root, copy `config/harness.example.json` to ignored
 `config/harness.local.json`, then replace every placeholder with approved values. Keep
 `workspace.salesforceRootName` set to `brain-core`; manifest and promoted-test paths are relative
-to the repository/SFDX root. Do not add production aliases/origins. For each review-enabled
-alias, record the exact expected sandbox hostname and organization ID, explicitly allow agent
-review, configure the package namespaces and component API-name allowlist, and keep the review API
-version/current evidence window deliberate. Keep every `allowAgentWrite` set to `false`: since the
-2026-07-14 decision the harness configures no write-mode Salesforce MCP server, agents never
-deploy, and org changes ship through the human-run release process. The only raw Salesforce CLI
-an agent may request is `sf project retrieve start` against a configured alias, and the safety
-hook stops each invocation for human confirmation.
+to the repository/SFDX root. Do not add production aliases/origins. An org entry is
+`{alias, environment}`; the identity pins (`expectedInstanceHost` + `expectedOrganizationId`)
+are optional and travel together — with pins the facade holds the alias to that exact org,
+without them it freezes the live-discovered identity for the session. Configure the package
+namespaces and component API-name allowlist, and keep the review API version/current evidence
+window deliberate. Org changes ship through the human-run release process (the write-mode
+Salesforce MCP lane was removed 2026-07-14 and retired outright 2026-08-04). The only raw
+Salesforce CLI an agent may request is `sf project retrieve start` against a configured
+non-production alias, and the safety hook stops each invocation for human confirmation.
 
-To let agents read any proven non-production org without a per-alias entry (scratch orgs,
-Developer Edition orgs), set `salesforce.review.allowAnyNonProduction` to `true` (owner decision
-2026-07-31). Live identity proof still runs for every session — the host must carry a canonical
-sandbox, scratch, or Developer Edition signature consistent with `Organization.IsSandbox` — and
-production stays refused everywhere. To hard-block one alias, add an entry with
-`environment: "production"`; that marker wins over the toggle.
+Which org a developer connects is the developer's responsibility (owner decision 2026-08-04):
+any alias — configured or not — is admitted once its live identity proves a canonical sandbox,
+scratch, or Developer Edition signature consistent with `Organization.IsSandbox`. The proof
+runs inside the review facade on every tool call. Production stays refused everywhere. Two
+config-level brakes remain: an entry with `environment: "production"` hard-blocks its alias,
+and `salesforce.review.deniedOrganizationIds` hard-blocks specific organization IDs whatever
+alias resolves to them.
 
 The checked-in `manifest/package.xml` is only a generic starter. Narrow it to the exact components
 in the accepted work record before retrieve, validation, or deployment; a wildcard does not grant
-scope and must not be used as a substitute for claim-backed ownership or human approval. This is
-enforced: `preflight --capability salesforce-write` fails while the configured manifest still
-contains any `<members>*</members>` entry.
+scope and must not be used as a substitute for claim-backed ownership or human approval. Deploys
+are performed by a human, and that human review is where manifest narrowing is checked (the
+automated wildcard gate retired with the write capability, 2026-08-04).
 
 The `browser` section and `workspace.promotedTestsPath` are optional — add them only when you
 use guarded Playwright browser testing (macOS/Linux); the example omits them and the
@@ -113,12 +115,11 @@ creates `config/harness.local.json`, collects your ADO settings, walks you throu
 each sandbox (auto-filling its host and org id, refusing anything that is not a real sandbox),
 and runs the verification gates.
 
-> **Developer Edition orgs are not yet supported by this script.** It accepts only
-> `*--*.sandbox.my.salesforce.com` with `IsSandbox=true`, while the runtime does admit a
-> Developer Edition under `allowAnyNonProduction` (see §3). Until the script catches up, add
-> such an alias to `config/harness.local.json` by hand — host, organization ID, and the
-> `allowAgentRead`/`allowAgentReview` grants — and verify it with
-> `python scripts/verify_salesforce_org.py --org <alias>`.
+> **Developer Edition orgs:** the script records them like any other non-production org
+> (host + organization ID; `IsSandbox=false` is expected there). A config entry is optional
+> for reading — an unlisted alias is proven live by the facade — but only configured entries
+> can anchor work-record evidence and Knowledge org snapshots. To sanity-check an alias
+> up front, run `python scripts/verify_salesforce_org.py --org <alias>`.
 
 ```bash
 python scripts/first_launch.py

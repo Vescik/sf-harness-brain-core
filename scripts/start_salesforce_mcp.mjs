@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
-const METADATA_ROOT = REPO_ROOT;
 const CONFIG_PATH = resolve(REPO_ROOT, "config", "harness.local.json");
 const SALESFORCE_MCP_VERSION = "0.30.15";
 const SALESFORCE_MCP_BIN = resolve(
@@ -31,7 +30,7 @@ function parseArgs(argv) {
     const key = argv[index];
     const value = argv[index + 1];
     if (!key?.startsWith("--") || value === undefined) {
-      fail("expected --mode <review|development> --org <alias>");
+      fail("expected --mode review --org <alias>");
     }
     parsed[key.slice(2)] = value;
   }
@@ -39,8 +38,10 @@ function parseArgs(argv) {
 }
 
 const { mode, org } = parseArgs(process.argv.slice(2));
-if (!new Set(["review", "development"]).has(mode)) {
-  fail(`unsupported mode '${mode ?? ""}'`);
+// The development/write lane was retired 2026-08-04 (owner decision): org changes are
+// human-only, so the vendor MCP is never spawned with write toolsets from this launcher.
+if (mode !== "review") {
+  fail(`unsupported mode '${mode ?? ""}'; org changes are human-only`);
 }
 if (!org || /(^|[^a-z])(prod|production)([^a-z]|$)/i.test(org)) {
   fail("the org alias is missing or production-like");
@@ -60,94 +61,27 @@ try {
 }
 
 const entry = config?.salesforce?.orgs?.find((candidate) => candidate?.alias === org);
-const allowAnyNonProduction = config?.salesforce?.review?.allowAnyNonProduction === true;
 const environment = entry ? String(entry.environment).trim().toLowerCase() : null;
 if (environment === "production") {
   fail(`alias '${org}' is marked production in local configuration`);
 }
-if (!entry && !(mode === "review" && allowAnyNonProduction)) {
-  fail(`alias '${org}' is not present in config/harness.local.json`);
-}
 if (entry && !new Set(["development", "qa", "uat"]).has(environment)) {
   fail(`alias '${org}' has an unsupported environment classification`);
 }
-if (mode === "development" && environment !== "development") {
-  fail(`development mode requires environment=development for alias '${org}'`);
+if (config?.salesforce?.review?.enabled !== true) {
+  fail("Salesforce org review is disabled in local configuration");
 }
-if (mode === "review") {
-  if (config?.salesforce?.review?.enabled !== true) {
-    fail("Salesforce org review is disabled in local configuration");
-  }
-  // A configured entry keeps its explicit grants even under allowAnyNonProduction; only
-  // aliases with no entry at all take the dynamic identity-proof lane.
-  if (entry && (entry.allowAgentRead !== true || entry.allowAgentReview !== true)) {
-    fail(`alias '${org}' does not grant allowAgentReview`);
-  }
-} else if (entry?.allowAgentWrite !== true) {
-  fail(`alias '${org}' does not grant allowAgentWrite`);
-}
-
+// Owner decision 2026-08-04: which org a developer connects is the developer's
+// responsibility. No per-alias grants and no startup identity subprocess here — any
+// non-production-looking alias is admitted, and the review facade proves live
+// non-production identity on every tool call and refuses any organization ID listed
+// in salesforce.review.deniedOrganizationIds.
 if (!existsSync(SALESFORCE_MCP_BIN)) {
   fail(`pinned @salesforce/mcp@${SALESFORCE_MCP_VERSION} is missing; run npm ci`);
 }
 
-if (mode === "development") {
-  if (process.platform === "win32") {
-    fail("development mode is disabled on Windows because MCP sandboxing is unavailable");
-  }
-  if (config?.safety?.sharedSandboxWritesApproved !== true) {
-    fail("shared-sandbox writes are not approved in local configuration");
-  }
-  if (!String(config?.safety?.sharedSandboxApprovalRef ?? "").trim()) {
-    fail("shared-sandbox approval reference is missing");
-  }
-  if (!existsSync(resolve(METADATA_ROOT, "sfdx-project.json"))) {
-    fail(`Salesforce metadata root is missing sfdx-project.json: ${METADATA_ROOT}`);
-  }
-}
-
-// Windows installs expose `python` (python.org installer); non-Windows uses `python3`.
-const python = process.platform === "win32" ? "python" : "python3";
-const verificationArgs = [resolve(SCRIPT_DIR, "verify_salesforce_org.py"), "--org", org];
-const verification = spawnSync(python, verificationArgs, {
+const child = spawn(process.execPath, [REVIEW_SERVER, "--org", org], {
   cwd: REPO_ROOT,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"],
-  timeout: 30000,
-  shell: false,
-});
-if (verification.status !== 0) {
-  // Naming only the sandbox flag sent readers chasing it, when the usual cause is a
-  // production target, a host/identity mismatch, or a Developer Edition without
-  // allowAnyNonProduction. `Organization.IsSandbox` is one input to the proof, not the verdict.
-  fail(
-    "live non-production identity proof failed (host signature, organization ID, or " +
-    "Organization.IsSandbox consistency); MCP server was not started. A Developer Edition " +
-    "reports IsSandbox=false by design and needs salesforce.review.allowAnyNonProduction. " +
-    `Run: python scripts/verify_salesforce_org.py --org ${org}`,
-  );
-}
-
-let executable = process.execPath;
-let args;
-let cwd;
-if (mode === "review") {
-  args = [REVIEW_SERVER, "--org", org];
-  cwd = REPO_ROOT;
-} else {
-  args = [
-    SALESFORCE_MCP_BIN,
-    "--orgs",
-    org,
-    "--no-telemetry",
-    "--toolsets",
-    "metadata,testing,code-analysis",
-  ];
-  cwd = METADATA_ROOT;
-}
-
-const child = spawn(executable, args, {
-  cwd,
   env: { ...process.env, SF_ORG_API_VERSION: String(config.salesforce.review.apiVersion) },
   stdio: "inherit",
   shell: false,

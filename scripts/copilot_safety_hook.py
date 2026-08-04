@@ -347,8 +347,8 @@ def is_non_production_salesforce_origin(origin: str) -> bool:
 
     Deliberately wider than is_salesforce_sandbox_origin(), which stays strict for the
     browser allowlist. This one guards mentions of an org URL in a tool call, where a
-    Developer Edition is a legitimate target under the 2026-07-31 allowAnyNonProduction
-    decision; denying it there blocked org reads the read facade itself permits.
+    Developer Edition is a legitimate target under the read-anywhere convention
+    (owner 2026-08-04); denying it there blocked org reads the read facade itself permits.
     """
     return _origin_matches(origin, (SANDBOX_HOST, SCRATCH_HOST, DEV_EDITION_HOST))
 
@@ -403,13 +403,9 @@ def salesforce_review_tool_error(
     review = config.get("salesforce", {}).get("review", {})
     if review.get("enabled") is not True or review.get("requireDualSource") is not True:
         return "dual-source Salesforce org review is disabled"
-    # Owner decision 2026-07-31: allowAnyNonProduction admits aliases with no config entry on
-    # live identity proof (enforced by the facade), so an empty grant list is no longer a deny.
-    if review.get("allowAnyNonProduction") is not True and not any(
-        org.get("allowAgentRead") is True and org.get("allowAgentReview") is True
-        for org in config.get("salesforce", {}).get("orgs", [])
-    ):
-        return "no configured sandbox alias grants agent review"
+    # Owner decision 2026-08-04: any alias is admitted on the facade's live identity proof
+    # (per call, with review.deniedOrganizationIds as the org-level brake), so the hook
+    # holds no per-alias grant gate — only tool-shape checks below.
     lowered = tool_name.lower()
     matched = next((name for name in SALESFORCE_REVIEW_TOOLS if lowered.endswith(name)), None)
     if matched is None:
@@ -559,8 +555,14 @@ def approved_retrieve_command(parts: list[str], config: dict[str, Any] | None) -
     alias = targets[0]
     if PRODUCTION_PATTERNS[0].search(alias):
         return False
+    # Owner decision 2026-08-04: a configured non-production entry is the allowance —
+    # the per-alias allowAgent* grants were retired with the read-anywhere convention.
     for org in config.get("salesforce", {}).get("orgs", []):
-        if org.get("alias") == alias and org.get("allowAgentRead") is True:
+        if org.get("alias") == alias and str(org.get("environment", "")).lower() in {
+            "development",
+            "qa",
+            "uat",
+        }:
             return True
     return False
 

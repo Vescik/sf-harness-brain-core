@@ -64,7 +64,6 @@ PREFLIGHT_CAPABILITIES = frozenset(
         "ado",
         "release",
         "metadata",
-        "salesforce-write",
         "salesforce-review",
         "playwright",
     }

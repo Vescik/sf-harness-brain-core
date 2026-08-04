@@ -51,8 +51,9 @@ class HostClassificationTests(unittest.TestCase):
 
 
 class ConfigWritingTests(unittest.TestCase):
-    def test_developer_edition_turns_on_allow_any_non_production(self) -> None:
-        """Without the toggle, preflight rejects the very entry onboarding just wrote."""
+    def test_developer_edition_writes_pins_and_no_flags(self) -> None:
+        """Owner 2026-08-04: onboarding writes identity pins only — no allowAgent* flags
+        and no allowAnyNonProduction toggle (both retired with the read-anywhere convention)."""
         cfg = {
             "ado": {},
             "salesforce": {"orgs": [{"environment": "development"}], "review": {}},
@@ -63,7 +64,6 @@ class ConfigWritingTests(unittest.TestCase):
                 "host": "orgfarm-x-dev-ed.develop.my.salesforce.com",
                 "orgId": "00D000000000000EAA",
             },
-            "review.allowAnyNonProduction": True,
         }
         with tempfile.TemporaryDirectory() as name:
             path = Path(name) / "harness.local.json"
@@ -72,10 +72,12 @@ class ConfigWritingTests(unittest.TestCase):
                 first_launch.apply_config(pending)
             written = json.loads(path.read_text(encoding="utf-8"))
 
-        self.assertTrue(written["salesforce"]["review"]["allowAnyNonProduction"])
+        self.assertNotIn("allowAnyNonProduction", written["salesforce"]["review"])
         org = written["salesforce"]["orgs"][0]
         self.assertEqual(org["expectedInstanceHost"], "orgfarm-x-dev-ed.develop.my.salesforce.com")
-        self.assertFalse(org["allowAgentWrite"])
+        self.assertEqual(org["expectedOrganizationId"], "00D000000000000EAA")
+        for retired in ("allowAgentRead", "allowAgentReview", "allowAgentWrite"):
+            self.assertNotIn(retired, org)
 
     def test_sandbox_onboarding_does_not_touch_the_toggle(self) -> None:
         cfg = {

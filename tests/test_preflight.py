@@ -136,40 +136,33 @@ class PreflightValidationTests(unittest.TestCase):
         )
         self.assertEqual(list(Draft202012Validator(schema).iter_errors(config)), [])
 
-    def test_developer_edition_host_is_accepted_when_any_non_production_is_allowed(self) -> None:
-        """allowAnyNonProduction must reach preflight, not just the hook and the facade.
-
-        Preflight is the gate every skill runs first, so while it rejected a Developer
-        Edition the whole workspace was unusable on an org the read facade and
-        verify_salesforce_org both accept.
-        """
+    def test_developer_edition_host_pin_is_accepted_unconditionally(self) -> None:
+        """Owner 2026-08-04: any non-production host shape passes preflight; no toggle exists."""
         config = safe_config()
         config["salesforce"]["orgs"][0]["expectedInstanceHost"] = (
             "orgfarm-x-dev-ed.develop.my.salesforce.com"
         )
-        self.assertTrue(any("Developer Edition" not in item and "sandbox" in item
-                            for item in preflight.validate_config(config)))
-
-        config["salesforce"]["review"]["allowAnyNonProduction"] = True
         self.assertEqual(
             [item for item in preflight.validate_config(config) if "identity host" in item],
             [],
         )
 
-    def test_production_host_stays_rejected_even_when_any_non_production_is_allowed(self) -> None:
+    def test_production_host_pin_stays_rejected(self) -> None:
         config = safe_config()
-        config["salesforce"]["review"]["allowAnyNonProduction"] = True
         config["salesforce"]["orgs"][0]["expectedInstanceHost"] = "acme.my.salesforce.com"
         self.assertTrue(
             any("identity host" in item for item in preflight.validate_config(config))
         )
 
-    def test_developer_edition_host_is_rejected_by_logic_and_schema(self) -> None:
+    def test_develop_browser_origin_stays_rejected(self) -> None:
+        """The browser allowlist keeps the strict sandbox/scratch shape even though the org
+        read lane accepts a Developer Edition (the browser gate is a different risk)."""
         config = safe_config()
         develop_host = "acme.develop.my.salesforce.com"
         config["salesforce"]["orgs"][0]["expectedInstanceHost"] = develop_host
         config["browser"]["allowedOrigins"] = [f"https://{develop_host}"]
         failures = preflight.validate_config(config)
+        self.assertEqual([item for item in failures if "identity host" in item], [])
         self.assertTrue(any("sandbox or scratch" in item for item in failures))
         schema = json.loads(
             (ROOT / "schemas/harness-config.schema.json").read_text(encoding="utf-8")
@@ -182,23 +175,42 @@ class PreflightValidationTests(unittest.TestCase):
         failures = preflight.validate_config(config)
         self.assertTrue(any("Production-like Salesforce alias" in item for item in failures))
 
-    def test_only_development_may_allow_writes(self) -> None:
-        config = safe_config()
-        config["salesforce"]["orgs"][1]["allowAgentWrite"] = True
-        failures = preflight.validate_config(config)
-        self.assertTrue(any("Only development aliases" in item for item in failures))
-
-    def test_review_requires_read_permission(self) -> None:
+    def test_retired_allow_agent_flags_are_ignored(self) -> None:
+        """Owner 2026-08-04: allowAgent* flags are tolerated in old configs, read by nothing."""
         config = safe_config()
         config["salesforce"]["orgs"][0]["allowAgentRead"] = False
-        failures = preflight.validate_config(config)
-        self.assertTrue(any("review requires read permission" in item for item in failures))
-
-    def test_review_requires_explicit_alias(self) -> None:
-        config = safe_config()
         config["salesforce"]["orgs"][0]["allowAgentReview"] = False
+        config["salesforce"]["orgs"][1]["allowAgentWrite"] = True
+        self.assertEqual(preflight.validate_config(config), [])
+
+    def test_pinless_entry_and_empty_org_list_pass(self) -> None:
+        """A minimal {alias, environment} entry (or none at all) is a valid read config —
+        the facade proves live identity per call; pins only add the exact-org lane."""
+        config = safe_config()
+        config["salesforce"]["orgs"] = [{"alias": "any-dev", "environment": "development"}]
+        self.assertEqual(preflight.validate_config(config), [])
+        config["salesforce"]["orgs"] = []
+        self.assertEqual(preflight.validate_config(config), [])
+        schema = json.loads(
+            (ROOT / "schemas/harness-config.schema.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(list(Draft202012Validator(schema).iter_errors(config)), [])
+
+    def test_identity_pins_must_travel_together(self) -> None:
+        config = safe_config()
+        del config["salesforce"]["orgs"][0]["expectedOrganizationId"]
         failures = preflight.validate_config(config)
-        self.assertTrue(any("no alias grants" in item for item in failures))
+        self.assertTrue(any("pins must be set together" in item for item in failures))
+        schema = json.loads(
+            (ROOT / "schemas/harness-config.schema.json").read_text(encoding="utf-8")
+        )
+        self.assertNotEqual(list(Draft202012Validator(schema).iter_errors(config)), [])
+
+    def test_denied_organization_ids_shape_is_validated(self) -> None:
+        config = safe_config()
+        config["salesforce"]["review"]["deniedOrganizationIds"] = ["not-an-id"]
+        failures = preflight.validate_config(config)
+        self.assertTrue(any("deniedOrganizationIds" in item for item in failures))
 
     def test_unknown_environment_is_rejected(self) -> None:
         config = safe_config()
@@ -206,12 +218,12 @@ class PreflightValidationTests(unittest.TestCase):
         failures = preflight.validate_config(config)
         self.assertTrue(any("not non-production" in item for item in failures))
 
-    def test_write_alias_requires_shared_sandbox_approval(self) -> None:
+    def test_shared_sandbox_approval_requires_reference(self) -> None:
         config = safe_config()
-        config["safety"]["sharedSandboxWritesApproved"] = False
+        config["safety"]["sharedSandboxWritesApproved"] = True
         config["safety"]["sharedSandboxApprovalRef"] = ""
         failures = preflight.validate_config(config)
-        self.assertTrue(any("shared-sandbox coordination" in item for item in failures))
+        self.assertTrue(any("approval reference" in item for item in failures))
 
     def test_production_login_origin_is_rejected(self) -> None:
         failures = preflight.validate_origins(
@@ -302,51 +314,6 @@ class PreflightValidationTests(unittest.TestCase):
                 self.assertIsNotNone(preflight.load_fresh_receipt("ado", 30))
                 with patch.dict("os.environ", {"ADO_ORGANIZATION": "org-two"}):
                     self.assertIsNone(preflight.load_fresh_receipt("ado", 30))
-
-    def test_wildcard_manifest_blocks_salesforce_write(self) -> None:
-        manifest = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<Package xmlns="http://soap.sforce.com/2006/04/metadata">\n'
-            "  <types><members>*</members><name>CustomObject</name></types>\n"
-            "  <types><members>ExampleClass</members><name>ApexClass</name></types>\n"
-            "  <version>67.0</version>\n"
-            "</Package>\n"
-        )
-        with TemporaryDirectory() as name:
-            root = Path(name)
-            (root / "manifest").mkdir()
-            (root / "manifest" / "package.xml").write_text(manifest, encoding="utf-8")
-            with patch.object(preflight, "metadata_root", return_value=root):
-                failures = preflight.manifest_wildcard_failures(safe_config())
-        self.assertEqual(len(failures), 1)
-        self.assertIn("wildcard", failures[0])
-        self.assertIn("CustomObject", failures[0])
-        self.assertNotIn("ApexClass", failures[0])
-
-    def test_narrowed_manifest_passes_wildcard_gate(self) -> None:
-        manifest = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<Package xmlns="http://soap.sforce.com/2006/04/metadata">\n'
-            "  <types><members>ExampleManagedObject__c</members><name>CustomObject</name></types>\n"
-            "  <version>67.0</version>\n"
-            "</Package>\n"
-        )
-        with TemporaryDirectory() as name:
-            root = Path(name)
-            (root / "manifest").mkdir()
-            (root / "manifest" / "package.xml").write_text(manifest, encoding="utf-8")
-            with patch.object(preflight, "metadata_root", return_value=root):
-                self.assertEqual(preflight.manifest_wildcard_failures(safe_config()), [])
-
-    def test_malformed_manifest_fails_wildcard_gate(self) -> None:
-        with TemporaryDirectory() as name:
-            root = Path(name)
-            (root / "manifest").mkdir()
-            (root / "manifest" / "package.xml").write_text("<Package>", encoding="utf-8")
-            with patch.object(preflight, "metadata_root", return_value=root):
-                failures = preflight.manifest_wildcard_failures(safe_config())
-        self.assertEqual(len(failures), 1)
-        self.assertIn("not valid XML", failures[0])
 
     def test_workspace_path_traversal_is_rejected(self) -> None:
         with TemporaryDirectory() as name:

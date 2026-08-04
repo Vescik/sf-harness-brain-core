@@ -148,33 +148,38 @@ function loadRuntime(alias) {
   if (configured?.environment === "production") {
     throw new ReviewError("ALIAS_MARKED_PRODUCTION");
   }
-  // Owner decision 2026-07-31: with review.allowAnyNonProduction, an alias without a config
-  // entry is admitted on live identity proof alone (sandbox, scratch, or Developer Edition
-  // host signature); the proven identity is frozen on first proof for the session. Explicit
-  // entries keep the pinned lane unchanged, and environment=production is a hard deny marker.
-  const dynamic = !configured && review?.allowAnyNonProduction === true;
-  if (!configured && !dynamic) throw new ReviewError("ALIAS_NOT_ALLOWLISTED");
-  const entry = configured ?? {
-    alias,
-    environment: "dynamic",
-    allowAgentRead: true,
-    allowAgentReview: true,
-    allowAgentWrite: false,
-  };
-  if (configured && (entry.allowAgentRead !== true || entry.allowAgentReview !== true)) {
-    throw new ReviewError("ALIAS_PERMISSION_DENIED");
-  }
+  // Owner decision 2026-08-04 (supersedes the 2026-07-31 allowAnyNonProduction toggle):
+  // which org a developer connects is the developer's responsibility. Any alias — configured
+  // or not — is admitted on live identity proof alone; the proven identity is frozen on
+  // first proof for the session. environment=production stays a hard deny marker, and any
+  // organization ID listed in review.deniedOrganizationIds is refused at proof time.
+  const dynamic = !configured;
+  const entry = configured ?? { alias, environment: "dynamic" };
   if (review?.enabled !== true) throw new ReviewError("REVIEW_DISABLED");
-  if (configured) {
-    if (!["development", "qa", "uat"].includes(entry.environment)) {
-      throw new ReviewError("CONFIG_INVALID");
-    }
+  if (configured && !["development", "qa", "uat"].includes(entry.environment)) {
+    throw new ReviewError("CONFIG_INVALID");
+  }
+  // Identity pins are optional (owner decision 2026-08-04): both present → the exact-org
+  // pinned lane; both absent → discovery, exactly like an unlisted alias; exactly one
+  // present is a config error. Knowledge org-attach still requires the pin (owner D-4).
+  const hasHostPin = configured && entry.expectedInstanceHost !== undefined;
+  const hasOrgIdPin = configured && entry.expectedOrganizationId !== undefined;
+  if (hasHostPin !== hasOrgIdPin) throw new ReviewError("CONFIG_INVALID");
+  const pinned = hasHostPin && hasOrgIdPin;
+  if (pinned) {
     if (!NON_PRODUCTION_HOST.test(String(entry.expectedInstanceHost ?? ""))) {
       throw new ReviewError("CONFIG_INVALID");
     }
     if (!ORG_ID.test(String(entry.expectedOrganizationId ?? ""))) {
       throw new ReviewError("CONFIG_INVALID");
     }
+  }
+  const deniedOrganizationIds = review?.deniedOrganizationIds ?? [];
+  if (
+    !Array.isArray(deniedOrganizationIds) ||
+    deniedOrganizationIds.some((orgId) => !ORG_ID.test(String(orgId)))
+  ) {
+    throw new ReviewError("CONFIG_INVALID");
   }
   if (!/^\d{2}\.0$/.test(String(review.apiVersion ?? ""))) {
     throw new ReviewError("CONFIG_INVALID");
@@ -232,10 +237,19 @@ function loadRuntime(alias) {
     review,
     policy,
     dynamic,
+    pinned,
+    // Salesforce IDs come back 15- or 18-character; the first 15 are the identity.
+    deniedOrganizationIds: new Set(deniedOrganizationIds.map((orgId) => String(orgId).slice(0, 15))),
     discovered: { host: null, orgId: null, isSandbox: null },
     allowedObjects: new Set(allowedObjectApiNames),
     allowedPackageNamespaces: new Set(review.allowedPackageNamespaces),
   };
+}
+
+function assertOrgIdPermitted(runtime, orgId) {
+  if (runtime.deniedOrganizationIds.has(String(orgId).slice(0, 15))) {
+    throw new ReviewError("ORG_ID_DENIED");
+  }
 }
 
 function now() {
@@ -350,6 +364,16 @@ function testExecutable(name, fallback) {
   return process.env[name] || fallback;
 }
 
+// GUI-launched VS Code on macOS inherits launchd's PATH (/usr/bin:/bin:/usr/sbin:/sbin),
+// which misses every standard `sf` install location — the bare spawn then fails as
+// CLI_UNAVAILABLE even though the CLI works in any terminal (live failure, 2026-08-04).
+// POSIX execvp resolves the executable against the CHILD environment's PATH, so appending
+// the standard prefixes here is enough; Windows terminals inherit the user PATH already.
+const SPAWN_PATH = process.platform === "win32"
+  ? process.env.PATH
+  : [process.env.PATH, "/usr/local/bin", "/opt/homebrew/bin"].filter(Boolean).join(":");
+const SPAWN_ENV = { ...process.env, PATH: SPAWN_PATH };
+
 function runJsonProcess(command, args, runtime, failureCode) {
   return new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
@@ -358,7 +382,7 @@ function runJsonProcess(command, args, runtime, failureCode) {
     const maxBytes = runtime.policy.maxVendorPayloadBytes;
     const child = spawn(command, args, {
       cwd: REPO_ROOT,
-      env: process.env,
+      env: SPAWN_ENV,
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -446,9 +470,9 @@ async function collectCliIdentity(runtime) {
     throw new ReviewError("CLI_SCHEMA_MISMATCH");
   }
   const host = instance.hostname.toLowerCase();
-  const expectedHost = runtime.dynamic
-    ? runtime.discovered.host ?? host
-    : runtime.entry.expectedInstanceHost.toLowerCase();
+  const expectedHost = runtime.pinned
+    ? runtime.entry.expectedInstanceHost.toLowerCase()
+    : runtime.discovered.host ?? host;
   if (
     instance.protocol !== "https:" ||
     instance.port ||
@@ -463,12 +487,13 @@ async function collectCliIdentity(runtime) {
     throw new ReviewError("IDENTITY_HOST_MISMATCH");
   }
   const displayOrgId = String(display?.id ?? display?.orgId ?? "");
-  const expectedOrgId = runtime.dynamic
-    ? runtime.discovered.orgId ?? displayOrgId
-    : runtime.entry.expectedOrganizationId;
+  const expectedOrgId = runtime.pinned
+    ? runtime.entry.expectedOrganizationId
+    : runtime.discovered.orgId ?? displayOrgId;
   if (!ORG_ID.test(displayOrgId) || displayOrgId !== expectedOrgId) {
     throw new ReviewError("IDENTITY_ORG_ID_MISMATCH");
   }
+  assertOrgIdPermitted(runtime, displayOrgId);
 
   const identityResult = requireSuccessfulCli(
     await cli(runtime, [
@@ -492,7 +517,7 @@ async function collectCliIdentity(runtime) {
   }
   const wantSandbox = !DEV_EDITION_HOST.test(host);
   if (records[0]?.IsSandbox !== wantSandbox) throw new ReviewError("NOT_SANDBOX");
-  if (runtime.dynamic) {
+  if (!runtime.pinned) {
     runtime.discovered.host = host;
     runtime.discovered.orgId = displayOrgId;
     runtime.discovered.isSandbox = wantSandbox;
@@ -554,7 +579,7 @@ class McpJsonLineClient {
     ];
     this.child = spawn(processConfig.command, args, {
       cwd: REPO_ROOT,
-      env: { ...process.env, SF_ORG_API_VERSION: this.runtime.review.apiVersion },
+      env: { ...SPAWN_ENV, SF_ORG_API_VERSION: this.runtime.review.apiVersion },
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -697,26 +722,27 @@ function validateMcpIdentity(runtime, payload) {
   if (payload.records.length !== 1) throw new ReviewError("MCP_SCHEMA_MISMATCH", "INCOMPLETE");
   const record = payload.records[0];
   const recordId = String(record?.Id ?? "");
-  const expectedOrgId = runtime.dynamic
-    ? runtime.discovered.orgId ?? recordId
-    : runtime.entry.expectedOrganizationId;
+  const expectedOrgId = runtime.pinned
+    ? runtime.entry.expectedOrganizationId
+    : runtime.discovered.orgId ?? recordId;
   if (!ORG_ID.test(recordId) || recordId !== expectedOrgId) {
     throw new ReviewError("IDENTITY_ORG_ID_MISMATCH");
   }
+  assertOrgIdPermitted(runtime, recordId);
   // Fail closed when the CLI leg has not frozen an identity yet: the old
   // `?? record?.IsSandbox` fallback compared the record to ITSELF and always passed, so
   // this leg would have asserted its own truth. Unreachable today only because every
   // caller goes through cliIdentityGate first — which is not an invariant worth betting on.
-  if (runtime.dynamic && runtime.discovered.isSandbox === null) {
+  if (!runtime.pinned && runtime.discovered.isSandbox === null) {
     throw new ReviewError("NOT_SANDBOX");
   }
-  const wantSandbox = runtime.dynamic
-    ? runtime.discovered.isSandbox
-    : !DEV_EDITION_HOST.test(String(runtime.entry.expectedInstanceHost ?? ""));
+  const wantSandbox = runtime.pinned
+    ? !DEV_EDITION_HOST.test(String(runtime.entry.expectedInstanceHost ?? ""))
+    : runtime.discovered.isSandbox;
   if (typeof record?.IsSandbox !== "boolean" || record.IsSandbox !== wantSandbox) {
     throw new ReviewError("NOT_SANDBOX");
   }
-  if (runtime.dynamic) {
+  if (!runtime.pinned) {
     runtime.discovered.orgId = recordId;
     runtime.discovered.isSandbox = record.IsSandbox;
   }
@@ -1269,9 +1295,6 @@ function reviewConfiguredOrgs(runtime) {
     .map((entry) => ({
       alias: entry.alias,
       environment: entry.environment ?? null,
-      allowAgentRead: entry.allowAgentRead === true,
-      allowAgentReview: entry.allowAgentReview === true,
-      allowAgentWrite: entry.allowAgentWrite === true,
     }));
   return makeEnvelope({
     runtime,

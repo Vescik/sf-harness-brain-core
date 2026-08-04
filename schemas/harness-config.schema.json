@@ -75,7 +75,7 @@
       "properties": {
         "orgs": {
           "type": "array",
-          "minItems": 1,
+          "minItems": 0,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -89,7 +89,7 @@
                 "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
               },
               "environment": {
-                "description": "production is a deny marker (owner decision 2026-07-31): the alias is refused everywhere, even under review.allowAnyNonProduction.",
+                "description": "production is a deny marker: the alias is refused everywhere (owner decisions 2026-07-31 and 2026-08-04).",
                 "enum": [
                   "development",
                   "qa",
@@ -98,12 +98,15 @@
                 ]
               },
               "allowAgentRead": {
+                "description": "Retired 2026-08-04 (read-anywhere convention); tolerated in existing configs, read by nothing.",
                 "type": "boolean"
               },
               "allowAgentWrite": {
+                "description": "Retired 2026-08-04 with the development/write lane; tolerated in existing configs, read by nothing.",
                 "type": "boolean"
               },
               "allowAgentReview": {
+                "description": "Retired 2026-08-04 (read-anywhere convention); tolerated in existing configs, read by nothing.",
                 "type": "boolean"
               },
               "expectedInstanceHost": {
@@ -126,55 +129,27 @@
             },
             "allOf": [
               {
+                "description": "Identity pins are optional (owner 2026-08-04) but travel together: both present keeps the strict exact-org lane, both absent is the discovery lane, exactly one is a config error.",
                 "if": {
-                  "properties": {
-                    "allowAgentReview": {
-                      "const": true
-                    }
-                  },
                   "required": [
-                    "allowAgentReview"
+                    "expectedInstanceHost"
                   ]
                 },
                 "then": {
-                  "properties": {
-                    "allowAgentRead": {
-                      "const": true
-                    }
-                  }
+                  "required": [
+                    "expectedOrganizationId"
+                  ]
                 }
               },
               {
                 "if": {
-                  "properties": {
-                    "environment": {
-                      "const": "production"
-                    }
-                  },
                   "required": [
-                    "environment"
+                    "expectedOrganizationId"
                   ]
                 },
                 "then": {
-                  "properties": {
-                    "allowAgentRead": {
-                      "const": false
-                    },
-                    "allowAgentWrite": {
-                      "const": false
-                    },
-                    "allowAgentReview": {
-                      "const": false
-                    }
-                  }
-                },
-                "else": {
                   "required": [
-                    "allowAgentRead",
-                    "allowAgentWrite",
-                    "allowAgentReview",
-                    "expectedInstanceHost",
-                    "expectedOrganizationId"
+                    "expectedInstanceHost"
                   ]
                 }
               }
@@ -197,8 +172,18 @@
               "type": "boolean"
             },
             "allowAnyNonProduction": {
-              "description": "Owner decision 2026-07-31: when true, review-mode aliases without a config entry are admitted on live identity proof alone (sandbox, scratch, or Developer Edition host + consistent Organization row). Entries marked environment=production stay denied. Default false keeps the strict allowlist.",
+              "description": "Retired 2026-08-04: any alias proving a non-production identity is admitted unconditionally; tolerated in existing configs, read by nothing. deniedOrganizationIds is the remaining org-level brake.",
               "type": "boolean"
+            },
+            "deniedOrganizationIds": {
+              "description": "Owner decision 2026-08-04: organization IDs (00D…, 15 or 18 characters) that agents must never read, whatever alias resolves to them. Enforced at live identity proof time in the review facade (both transport legs) and by verify_salesforce_org.py. The org-level complement of the developer's-responsibility read-anywhere convention.",
+              "type": "array",
+              "maxItems": 50,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^00D[A-Za-z0-9]{12}(?:[A-Za-z0-9]{3})?$"
+              }
             },
             "apiVersion": {
               "type": "string",

@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Prove that an authorized alias resolves to a non-production Salesforce org.
 
-Two proof lanes exist. A configured org entry with identity pins keeps the strict
-lane: live host and organization ID must match the pinned values. When
-`salesforce.review.allowAnyNonProduction` is true (owner decision 2026-07-31),
-an alias without a usable entry takes the dynamic lane: the live identity must
-carry a canonical non-production hostname (sandbox, scratch, or Developer
-Edition) and an Organization row consistent with that hostname. Production is
-always refused: by alias pattern, by an entry marked `environment: production`,
-and by the host/IsSandbox signature check in both lanes.
+Two proof lanes exist. A configured org entry carrying both identity pins
+(`expectedInstanceHost` + `expectedOrganizationId`) keeps the strict lane: live
+host and organization ID must match the pinned values. Every other alias —
+configured without pins, or absent from configuration entirely — takes the
+dynamic lane (owner decision 2026-08-04, superseding the 2026-07-31
+allowAnyNonProduction toggle): the live identity must carry a canonical
+non-production hostname (sandbox, scratch, or Developer Edition) and an
+Organization row consistent with that hostname. Production is always refused:
+by alias pattern, by an entry marked `environment: production`, and by the
+host/IsSandbox signature check in both lanes. An organization ID listed in
+`salesforce.review.deniedOrganizationIds` is refused in both lanes.
 """
 
 from __future__ import annotations
@@ -114,6 +117,7 @@ def verify_is_sandbox(
     *,
     expected_host: str | None = None,
     expected_org_id: str | None = None,
+    denied_org_ids: frozenset[str] | set[str] = frozenset(),
     # 60s per sf CLI call: a cold `sf` start (Node JIT, plugin scan) regularly exceeded the
     # old 25s/10s budgets on team machines, so the non-production proof failed on latency
     # alone (owner-reported live failure, 2026-08-04). Raise deliberately, never to silence
@@ -160,6 +164,8 @@ def verify_is_sandbox(
                 return False, "locally authorized non-production host does not match local policy"
             if local_org_id != normalized_expected_org_id:
                 return False, "locally authorized organization does not match local policy"
+        if local_org_id[:15] in denied_org_ids:
+            return False, "organization ID is denied by local policy (deniedOrganizationIds)"
         completed = runner(
             [
                 executable,
@@ -190,6 +196,8 @@ def verify_is_sandbox(
             return False, "live Organization identity does not match local policy"
     elif query_identity[1] and query_identity[1] != local_org_id:
         return False, "live Organization identity does not match the authorized alias"
+    if query_identity[1] and query_identity[1][:15] in denied_org_ids:
+        return False, "organization ID is denied by local policy (deniedOrganizationIds)"
     return True, f"non-production identity proven for host '{host}'"
 
 
@@ -216,24 +224,34 @@ def org_entry(alias: str) -> dict[str, Any] | None:
     return entry
 
 
-def allow_any_non_production() -> bool:
+def denied_organization_ids() -> frozenset[str]:
+    """First-15-character keys of `salesforce.review.deniedOrganizationIds` (owner 2026-08-04)."""
     config = load_config()
     if config is None:
-        return False
-    return (
-        config.get("salesforce", {}).get("review", {}).get("allowAnyNonProduction")
-        is True
-    )
+        return frozenset()
+    raw = config.get("salesforce", {}).get("review", {}).get("deniedOrganizationIds")
+    if not isinstance(raw, list):
+        return frozenset()
+    return frozenset(str(org_id)[:15] for org_id in raw if isinstance(org_id, str))
 
 
-def configured_identity(alias: str) -> tuple[str, str] | None:
+def configured_identity(alias: str) -> tuple[str, str] | None | str:
+    """Both pins → (host, org_id); no pins → None (dynamic lane); anything else → error text."""
     entry = org_entry(alias)
     if not isinstance(entry, dict):
         return None
+    has_host = entry.get("expectedInstanceHost") is not None
+    has_org_id = entry.get("expectedOrganizationId") is not None
+    if not has_host and not has_org_id:
+        return None
     host = str(entry.get("expectedInstanceHost", "")).lower()
     org_id = str(entry.get("expectedOrganizationId", ""))
-    if not is_allowed_non_production_host(host) or not ORG_ID.fullmatch(org_id):
-        return None
+    if has_host != has_org_id:
+        return "configured identity pins must be set together or not at all"
+    if not is_allowed_non_production_host(host):
+        return "configured non-production host is invalid"
+    if not ORG_ID.fullmatch(org_id):
+        return "configured organization ID is invalid"
     return host, org_id
 
 
@@ -246,20 +264,19 @@ def main() -> int:
         print("ERROR: Salesforce org proof failed: alias is marked production in local policy")
         return 2
     identity = configured_identity(args.org)
+    if isinstance(identity, str):
+        print(f"ERROR: Salesforce org proof failed: {identity}")
+        return 2
+    denied = denied_organization_ids()
     if identity is not None:
         ok, reason = verify_is_sandbox(
             args.org,
             expected_host=identity[0],
             expected_org_id=identity[1],
+            denied_org_ids=denied,
         )
-    elif allow_any_non_production():
-        ok, reason = verify_is_sandbox(args.org)
     else:
-        print(
-            "ERROR: Salesforce org proof failed: configured identity is missing or invalid "
-            "(set salesforce.review.allowAnyNonProduction to permit any proven non-production org)"
-        )
-        return 2
+        ok, reason = verify_is_sandbox(args.org, denied_org_ids=denied)
     if not ok:
         print(f"ERROR: Salesforce org proof failed: {reason}")
         return 2

@@ -12,14 +12,12 @@ deliberately not on the role-guard allowlist. It:
      sandbox, scratch org, or Developer Edition — auto-fills the expected host +
      organization id from ``sf org display``, and refuses anything else. The live
      ``Organization.IsSandbox`` value must match what the hostname implies (true for a
-     sandbox or scratch org, false for a Developer Edition), which is the proof; a
-     Developer Edition also switches ``review.allowAnyNonProduction`` on, without which
-     preflight would reject the entry this script just wrote (mirrors SAFE-ENV-001);
+     sandbox or scratch org, false for a Developer Edition), which is the proof
+     (mirrors SAFE-ENV-001);
   6. runs preflight / validate to confirm the setup.
 
-Windows note: only REVIEW (read-only) Salesforce mode is supported there; development/write
-mode requires macOS/Linux (MCP sandboxing is unavailable on Windows). Orgs are therefore
-always configured for review only (allowAgentWrite = false).
+Salesforce MCP is review (read-only) mode only; org changes are human-only
+(owner decision 2026-08-04 — the development/write lane was retired).
 
 Credentials are never handled by this script: ``sf org login web`` performs interactive
 browser OAuth, and no tokens/passwords are read, printed, or stored.
@@ -293,15 +291,6 @@ def authorize_sandboxes(sf_path: str, pending: dict[str, object]) -> None:
             continue
 
         pending[f"org.{env_name}"] = {"alias": alias, "host": host, "orgId": org_id}
-        if not expected_is_sandbox:
-            # A Developer Edition entry is only usable once the toggle is on: preflight keeps
-            # the strict sandbox/scratch shape while it is off, so onboarding would otherwise
-            # write a config its own verification step rejects.
-            pending["review.allowAnyNonProduction"] = True
-            warn(
-                f"'{alias}' is a Developer Edition; enabling "
-                "salesforce.review.allowAnyNonProduction so the identity proof accepts it."
-            )
         ok(f"recorded '{env_name}': {alias} -> {host} ({org_id})")
 
 
@@ -335,14 +324,9 @@ def apply_config(pending: dict[str, object]) -> None:
                 org["alias"] = entry["alias"]
                 org["expectedInstanceHost"] = entry["host"]
                 org["expectedOrganizationId"] = entry["orgId"]
-                org["allowAgentRead"] = True
-                org["allowAgentReview"] = True
-                org["allowAgentWrite"] = False
 
     if pending.get("review.objects"):
         cfg["salesforce"]["review"]["allowedObjectApiNames"] = pending["review.objects"]
-    if pending.get("review.allowAnyNonProduction"):
-        cfg["salesforce"]["review"]["allowAnyNonProduction"] = True
 
     with CONFIG_PATH.open("w", encoding="utf-8") as fh:
         json.dump(cfg, fh, indent=2)

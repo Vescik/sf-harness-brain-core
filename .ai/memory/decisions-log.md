@@ -717,3 +717,73 @@ directly. Each lands as its own commit with the full gate.
 - Accepted residual, documented in the workflow comment: moderate fast-xml-parser advisory
   (<5.7.0) on a 4.x copy nested under the MCP code-analyzer provider — unfixable in range
   from this repo.
+
+## 2026-08-04 — Validator crash-class hardening (deep-test gap fix)
+
+- Context: a 39-case mutation test of `scripts/validate_harness.py` (driver kept in the
+  builder workspace, findings in `output/deep-test-2026-08-04-validate-harness.md`)
+  confirmed 25 inputs where a malformed file raised an uncaught traceback through a
+  `check_*` function. `Audit.require` collects without aborting, so the crash discarded
+  every already-collected finding; exit stayed 1 (no false-green) but the report was
+  lost. Worst case (C6): the lazy `from scripts.knowledge_digest import canonical_digest`
+  in `check_org_usage` fails with ModuleNotFoundError under `python
+  scripts/validate_harness.py` — the CI invocation — the moment `.ai/knowledge/artifacts/`
+  exists, i.e. on the first org-bearing clone (org-usage Phase 4). Latent here only
+  because the public origin has no artifacts directory.
+- Finding / decision: full hardening set (owner choice over a minimal wrapper-only
+  variant): (1) `run_checks` wrapper in `main()` converts any check crash into a named
+  audit error, traceback to stderr, remaining checks keep running; (2) C6 import moved
+  to the header with the existing dual-mode fallback, so direct-run CI exercises it
+  every run; (3) guarded reads — `required_text` helper at ~13 named-file reads,
+  OSError handling in `frontmatter()`/`load_jsonc()`; (4) parse guards in
+  `plan_consumer_set`, the negative-fixture patch loop (`apply_patch` helper), and the
+  development-assistant frontmatter read (now the shared helper); (5) tools/hooks
+  frontmatter guards in `check_customizations` (`array of tool-name strings`,
+  `json.dumps(..., default=str)`); (6) `check_placeholders` skips undecodable files like
+  every other full-tree scanner; (7) missing dev dependency now prints the remedy
+  (.venv / requirements-dev.lock) instead of a bare ImportError.
+- Impact: post-fix driver rerun: 0 crashes — 37/39 clean FAIL reports with attributable
+  errors, 2 designed PASSes (binary asset skipped; foreign-cwd run). Pristine repo:
+  PASS 2561 checks; suite 975 tests OK; evals 37 PASS. New
+  `tests/test_validate_harness.py` (15 tests) pins the wrapper, the no-lazy-`scripts.*`
+  -import rule (AST scan), guarded reads, and the hostile-frontmatter cases. Deliberately
+  NOT hardened per-site: every remaining type-blind `.get()` (the wrapper subsumes them);
+  a stray binary under `.github/` is by decision not a defect.
+- Approved by: owner (chat, 2026-08-04; depth question answered "full set").
+- Related: output/deep-test-2026-08-04-validate-harness.md (untracked research doc),
+  tests/test_validate_harness.py, docs/grounding-architecture.md (unchanged semantics).
+
+## 2026-08-04 — Org gates slimmed to read-anywhere + deniedOrganizationIds
+
+- Context: live failure — MCP startup blocked on a Developer Edition alias by the
+  launcher's startup identity subprocess (which also silently killed the verifier at 30 s
+  against its legitimate 2×60 s budget, misreporting cold-start latency as identity
+  failure). A mechanics map showed `allowAgentWrite` dead (write lane unreachable four
+  ways), `allowAgentRead`/`allowAgentReview` only ever checked as a pair and bypassed
+  under `allowAnyNonProduction`, and the facade already re-proving live non-production
+  identity on every tool call.
+- Finding / decision (owner, chat): which org a developer connects is the developer's
+  responsibility. Retired: the three per-org `allowAgent*` flags, the
+  `allowAnyNonProduction` toggle (dynamic lane is the unconditional default), the
+  launcher's development/write mode and its startup `verify_salesforce_org.py` spawn,
+  `preflight --capability salesforce-write`, and the manifest-wildcard gate. Added, as
+  the owner's one required dependency: `salesforce.review.deniedOrganizationIds` — org
+  IDs refused at live proof time in both facade legs (`ORG_ID_DENIED`) and in
+  verify/preflight, matched on the 15-character prefix. Identity pins became optional
+  (both-or-neither; lone pin is CONFIG_INVALID). Supersedes the 2026-07-31
+  allowAnyNonProduction decision and the 2026-08-04 "Kept: … identity proof" line as far
+  as the STARTUP proof goes — the per-call facade proof it praised is exactly what
+  remains. D-4 unchanged: Knowledge org-attach still requires the configured
+  `expectedOrganizationId`; work records still require a configured entry (dynamic
+  receipts refused).
+- Impact: minimal org entry is `{alias, environment}`; unlisted aliases readable on live
+  proof; production refusal unchanged (alias pattern, environment marker, per-call
+  host/IsSandbox signature, `nonProduction` receipt fact; SAFE-ENV-001 reworded off
+  "exact allowlisted"). retrieve-start allowance re-keyed to configured non-production
+  entry. Schema tolerates retired keys in old configs. Gate: 977 unit tests OK, 37/37
+  evals, validator green (modulo the unrelated local IMPLEMENTATION_HANDOFF.md
+  deletion); live devmp end-to-end VERIFIED through launcher → facade →
+  review_org_identity. Full write-up: output/discovery-2026-08-04-org-gate-slimming.md.
+- Approved by: owner (chat, 2026-08-04; option "full cut + org-id denylist").
+- Related: entries 2026-07-31 (any non-production reads), 2026-08-04 (composed-SOQL
+  blockade removed), .ai/contracts/tool-capabilities.md, SETUP.md §3.

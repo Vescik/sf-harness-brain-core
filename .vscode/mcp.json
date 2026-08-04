@@ -3,7 +3,7 @@
     {
       "id": "sf_read_org",
       "type": "promptString",
-      "description": "Allowlisted non-production Salesforce alias for read-only investigation"
+      "description": "Non-production Salesforce alias for read-only investigation (proven live per call)"
     }
   ],
   "servers": {

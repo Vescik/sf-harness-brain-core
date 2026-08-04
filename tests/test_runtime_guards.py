@@ -185,6 +185,21 @@ class SalesforceProofTests(unittest.TestCase):
                     ok, reason = verifier.verify_is_sandbox("dev-box", runner=runner)
                 self.assertTrue(ok, reason)
 
+    def test_denied_organization_id_is_refused_in_both_lanes(self) -> None:
+        # review.deniedOrganizationIds (owner 2026-08-04) is the org-level brake of the
+        # read-anywhere convention; the 15-character prefix is the identity, so an
+        # 18-character live ID must still match a 15-character denylist entry.
+        denied = frozenset({ORG_ID[:15]})
+        for pins in ({}, {"expected_host": SANDBOX_HOST, "expected_org_id": ORG_ID}):
+            with self.subTest(pinned=bool(pins)):
+                runner = Mock(side_effect=self._display_and_query(SANDBOX_HOST, ORG_ID, True))
+                with patch.object(verifier.shutil, "which", return_value="/usr/bin/sf"):
+                    ok, reason = verifier.verify_is_sandbox(
+                        "dev-box", denied_org_ids=denied, runner=runner, **pins
+                    )
+                self.assertFalse(ok)
+                self.assertIn("deniedOrganizationIds", reason)
+
     def test_dynamic_lane_rejects_production_signature_and_identity_drift(self) -> None:
         cases = [
             # Production host never parses as non-production, with or without pins.

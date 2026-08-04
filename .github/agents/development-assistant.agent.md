@@ -46,8 +46,9 @@ Before editing, verify all of the following:
 - No blocking question remains.
 - The single `brain-core` workspace root is the repository/SFDX root and contains
   `sfdx-project.json`.
-- Any referenced Salesforce alias is configured as non-production with agent read/review
-  permission; the agent never deploys — org changes ship through the human-run release process.
+- Any referenced Salesforce alias resolves to a proven non-production org (a configured entry
+  is required for evidence capture); the agent never deploys — org changes ship through the
+  human-run release process.
 - Applicable Tier 1 constraints and Known Limitations are cited.
 
 If any check fails, stop and hand back to Solution Designer.

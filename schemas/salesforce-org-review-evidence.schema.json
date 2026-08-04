@@ -753,13 +753,10 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["alias", "environment", "allowAgentRead", "allowAgentReview", "allowAgentWrite"],
+            "required": ["alias", "environment"],
             "properties": {
               "alias": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$" },
-              "environment": { "type": ["string", "null"], "maxLength": 40 },
-              "allowAgentRead": { "type": "boolean" },
-              "allowAgentReview": { "type": "boolean" },
-              "allowAgentWrite": { "type": "boolean" }
+              "environment": { "type": ["string", "null"], "maxLength": 40 }
             }
           }
         }
@@ -899,6 +896,7 @@
         "MCP_TOOL_ERROR",
         "NOT_SANDBOX",
         "OBJECT_NOT_ALLOWLISTED",
+        "ORG_ID_DENIED",
         "QUERY_PROFILE_DENIED",
         "QUERY_VALIDATION_DENIED",
         "RESULT_TRUNCATED",
@@ -928,6 +926,7 @@
         "INTERNAL_ERROR",
         "NOT_SANDBOX",
         "OBJECT_NOT_ALLOWLISTED",
+        "ORG_ID_DENIED",
         "QUERY_PROFILE_DENIED",
         "QUERY_VALIDATION_DENIED",
         "SCOPED_ENUMERATION_DISABLED",
