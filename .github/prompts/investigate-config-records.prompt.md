@@ -12,8 +12,8 @@ Require exactly one `objectApiName` (ask once with `#tool:vscode/askQuestions` i
 object must be on the configured review allowlist and hold reference data — config tables such as
 statuses, stages, or settings — not transactional records. Resolve a configured review-org alias
 (there is no default) and always pass it as `--org`. Fields come from the guarded object
-contract — caller-supplied `fields` must stay a subset of it; records come only from
-`python scripts/salesforce_read.py records`, bounded, ordered by the natural key, and sanitized.
+contract — caller-supplied `fields` must stay a subset of it; records come only from the
+`review_soql_query` facade tool, bounded, ordered by the natural key, and sanitized.
 
 The outcome is a sanitized snapshot report under `output/` with its content digest and
 observation time — never a verified fact and never citable Knowledge: record values drift

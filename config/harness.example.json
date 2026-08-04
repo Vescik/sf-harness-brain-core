@@ -46,7 +46,6 @@
       "requireDualSource": true,
       "allowedPackageNamespaces": [],
       "allowedObjectApiNames": [],
-      "maxObjectsPerCall": 10,
       "maxFieldsPerObject": 500,
       "evidenceMaxAgeMinutes": 30
     }

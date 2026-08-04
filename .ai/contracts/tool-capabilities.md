@@ -9,10 +9,8 @@ upgrade.
 | Reconciled Salesforce org identity | `salesforce-readonly/review_org_identity` | investigator, design, review |
 | Reconciled installed package inventory | `salesforce-readonly/review_installed_packages` | investigator, design, review |
 | Reconciled allowlisted object contract | `salesforce-readonly/review_object_contract` | investigator, design, review, QA |
-| Scoped enumeration of configured org aliases (requires `safety.allowScopedEnumeration`) | `salesforce-readonly/review_configured_orgs` or `scripts/salesforce_read.py orgs` | investigator |
-| Composed read-only SOQL (statement-validated, bounded LIMIT, sanitized single-source values) | `salesforce-readonly/review_soql_query` | investigator, design, development |
-| Guarded structured record read (allowlisted objects, bounded rows, no free-form SOQL) | `scripts/salesforce_read.py records` guarded terminal command | investigator, review |
-| Guarded metadata retrieve (allowlisted types → ignored cache dir) | `scripts/salesforce_read.py retrieve` guarded terminal command | investigator, review |
+| Scoped enumeration of configured org aliases (requires `safety.allowScopedEnumeration`) | `salesforce-readonly/review_configured_orgs` | investigator |
+| Composed read-only SOQL incl. record reads (verbatim, Salesforce MCP transport only, unredacted single-source rows) | `salesforce-readonly/review_soql_query` | investigator, design, development, knowledge curation |
 | Salesforce non-production source retrieve into the project (per-invocation human confirmation; the only direct `sf` command not denied) | `sf project retrieve start` guarded terminal command | development only |
 | Browser exploration/test generation | pinned `playwright-cli` through guarded terminal execution | Test Strategist only |
 | Interactive human confirmation | `vscode/askQuestions` | prompts and approval gates |
@@ -52,20 +50,17 @@ Raw `list_all_orgs`, raw `run_soql_query`, aliases, directories, Tooling flags, 
 and vendor payloads are not exposed to an agent. MCP/CLI agreement is transport corroboration from
 the same org, not independent truth.
 
-Policy (owner decision 2026-07-30): composed read-only SOQL is permitted — and recommended when a
-task depends on record data structure — through the governed facade's `review_soql_query` tool
-only. The facade validates the statement (single read-only SELECT, FROM objects checked against
-the configured allowlist minus a hard secret-adjacent deny-set, bounded LIMIT appended or
-enforced), executes it against the identity-proven non-production org, and returns sanitized single-source
-values (emails and record-Id-shaped strings redacted, `attributes` stripped, text capped). The
-test-pinned deny-set covers credential/auth surfaces and high-sensitivity org-management/log
-entities on both APIs: NamedCredential, ExternalCredential, ConnectedApplication, AuthProvider,
-AuthSession, LoginHistory, LoginIp, OauthToken, SetupAuditTrail, TwoFactorInfo,
-TwoFactorMethodsInfo, SandboxInfo, SandboxProcess, ApexLog, EventLogFile, Certificate,
-SamlSsoConfig. An
+Policy (owner decision 2026-07-30, widened 2026-08-04): composed read-only SOQL is permitted —
+and recommended whenever a task depends on record data structure — through the governed facade's
+`review_soql_query` tool only, for the Solution Designer, Knowledge Curator, Development
+Assistant, and Config Investigator roles. The 2026-08-04 decision removed the statement
+blockade entirely: no grammar validation, no secret-adjacent object deny-set, no LIMIT
+policing, no value redaction. The statement executes verbatim over the pinned Salesforce MCP
+child — never the CLI — against the identity-proven non-production org, and rows return
+unredacted (`attributes` noise stripped), bounded only by payload size and timeout. An
 absent `review.allowedObjectApiNames` key means all objects (equivalent to `["*"]`) — an explicit
-list remains supported for orgs holding sensitive data. The raw paths above stay denied
-regardless.
+list remains supported and honored for orgs holding sensitive data. The raw paths above stay
+denied regardless: SOQL never runs through raw CLI or raw vendor tools.
 
 Policy (owner decision 2026-07-31): any proven non-production org may be read. With
 `salesforce.review.allowAnyNonProduction` enabled, an alias absent from local configuration is
@@ -75,18 +70,15 @@ for the rest of the session. Configured entries keep their pinned host/organizat
 an entry marked `environment: "production"` is a hard deny the toggle never overrides. Production
 signatures stay refused in every lane.
 
-For record-level reads and metadata retrieval, the investigator and reviewer roles use the guarded
-`scripts/salesforce_read.py` wrapper rather than raw CLI. It never accepts a free-form SOQL string:
-the caller supplies an allowlisted object, a validated field list, a bounded row limit (≤200), and
-an optional simple `ORDER BY`; the wrapper constructs the `SELECT`, proves the target is a live
-non-production org, and there is no `WHERE`/subquery surface, so cross-object or arbitrary reads
-are impossible. `retrieve` pulls only allowlisted metadata types into an ignored cache directory and
-never writes to the org or tracked source. Object access is bounded by `review.allowedObjectApiNames`,
-which governs both schema reviews and record reads. Setting it to `["*"]` opts into every object
-(the object name is still API-name validated, so injection is impossible, but any object becomes
-readable). On a full-copy sandbox that means record reads can reach copied production data across
-all objects — prefer an explicit list when the org holds sensitive data, or restrict which roles
-hold record-read access (currently investigator and reviewer only).
+Record-level reads run through `review_soql_query` alone: the guarded
+`scripts/salesforce_read.py` CLI wrapper (structured record reads, cached metadata retrieve,
+orgs listing) was retired on 2026-08-04 as a redundant second lane once composed SOQL was
+unblocked. Metadata comes into the project only via the human-confirmed
+`sf project retrieve start`. Object access is bounded by `review.allowedObjectApiNames`,
+which governs both schema reviews and record reads. Setting it to `["*"]` (or omitting it)
+opts into every object. On a full-copy sandbox that means record reads can reach copied
+production data across all objects — prefer an explicit list when the org holds sensitive
+data.
 
 Development mode exists only as a launcher lane (`start_salesforce_mcp.mjs --mode development`),
 not as a configured MCP server: `.vscode/mcp.json` registers no `salesforce-development` entry and

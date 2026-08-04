@@ -31,7 +31,7 @@ The role guard only permits the harness's own Python scripts, and only when invo
   Select it once via "Python: Select Interpreter" → `.venv`; the integrated terminal then activates
   it automatically. Running system Python fails with `ModuleNotFoundError`.
 - Run from the repository root. Only `preflight.py`, `work_record.py`,
-  `knowledge_store.py`, `knowledge_search.py`, `force_app_knowledge.py`, `salesforce_read.py`,
+  `knowledge_store.py`, `knowledge_search.py`, `force_app_knowledge.py`,
   `validate_handover_output.py` (read-only handover render check), `validate_harness.py`,
   `run_evals.py`, and `playwright_guard.py` are permitted, each with its allowlisted
   subcommands.

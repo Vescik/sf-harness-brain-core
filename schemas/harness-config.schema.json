@@ -189,7 +189,6 @@
             "apiVersion",
             "requireDualSource",
             "allowedPackageNamespaces",
-            "maxObjectsPerCall",
             "maxFieldsPerObject",
             "evidenceMaxAgeMinutes"
           ],
@@ -229,6 +228,7 @@
               }
             },
             "maxObjectsPerCall": {
+              "description": "Retired 2026-08-04 with scripts/salesforce_read.py; tolerated in existing configs, read by nothing.",
               "type": "integer",
               "minimum": 1,
               "maximum": 10
@@ -301,7 +301,7 @@
           "type": "boolean"
         },
         "allowScopedEnumeration": {
-          "description": "Expose the review_configured_orgs facade (and `salesforce_read.py orgs`) listing ONLY the orgs configured in this file. Foreign enumeration tools stay denied. Default off.",
+          "description": "Expose the review_configured_orgs facade listing ONLY the orgs configured in this file. Foreign enumeration tools stay denied. Default off.",
           "type": "boolean"
         },
         "batchDevToolApproval": {

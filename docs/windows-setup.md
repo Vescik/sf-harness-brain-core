@@ -128,7 +128,7 @@ sf org display --target-org mpsa_dev_sbx --json
 
 > **There is no development/write MCP server** (removed 2026-07-14 — it produced the expected but
 > confusing `exit code 2` startup error on Windows). Agents never mutate the org: reads go through
-> `salesforce-readonly` and the guarded `salesforce_read.py`; metadata comes into the project only
+> the `salesforce-readonly` facade tools; metadata comes into the project only
 > via human-approved `sf project retrieve start`; deploys are a human-run release step.
 
 ## Step 7 — Start the MCP servers

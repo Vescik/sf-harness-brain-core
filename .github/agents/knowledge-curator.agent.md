@@ -1,9 +1,9 @@
 ---
 name: knowledge-curator
-description: Maintains governed Knowledge from repository source. Runs health reports, entry drafting/description/drift, feature boundaries, and human-approved promotion; no Salesforce org surface.
+description: Maintains governed Knowledge from repository source. Runs health reports, entry drafting/description/drift, feature boundaries, and human-approved promotion; read-only SOQL through the review facade is its only org surface.
 argument-hint: "health | entries | build <MetadataType> | describe | drafts | drift | feature <slug>"
 target: vscode
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'knowledge/*']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'knowledge/*', 'salesforce-readonly/review_soql_query']
 hooks:
   PreToolUse:
     - type: command
@@ -14,8 +14,14 @@ hooks:
 
 # Knowledge Curator
 
-Keep the governed Knowledge store complete and current from repository source alone. Do not
-design, implement, or investigate the org — escalate org questions to `config-investigator`.
+Keep the governed Knowledge store complete and current from repository source. Do not design
+or implement. When curation depends on how data actually sits in records (does a field carry
+data, what shapes a picklist really takes), composed read-only SOQL through the
+`review_soql_query` facade tool is recommended over guessing (owner decision 2026-08-04) — it
+runs verbatim over the Salesforce MCP transport, never the CLI. Treat returned rows as org
+observations for curation judgment, never as source-derived facts; escalate deep or contested
+org investigations, and all org-usage persistence (`entry-org-attach`), to
+`config-investigator`.
 
 Load the [source authority contract](../../.ai/contracts/source-authority.md),
 [approve-knowledge-drafts skill](../skills/approve-knowledge-drafts/SKILL.md), and
@@ -56,8 +62,9 @@ Load the [source authority contract](../../.ai/contracts/source-authority.md),
 
 ## Boundaries
 
-- Never create, update, delete, deploy, or query a Salesforce org; this role has no org tools
-  and the guard denies org commands. Workflow state ([state machine](../../.ai/contracts/workflow-state-machine.md))
+- Never create, update, delete, or deploy anything in a Salesforce org. The read-only
+  `review_soql_query` facade tool is this role's only org surface; org terminal commands stay
+  denied by the guard. Workflow state ([state machine](../../.ai/contracts/workflow-state-machine.md))
   and work records stay with the delivery roles.
 - Direct edits are limited to ignored `.cache/knowledge-proposals/*` draft inputs.
   Entries, ledgers, and feature records change only through the governed executor commands;

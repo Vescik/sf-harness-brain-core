@@ -53,24 +53,25 @@ a Principle, record noncompliance. When sources disagree on a normalized claim, 
 
 Agents never receive raw Salesforce CLI, aliases, directories, Tooling flags, or raw vendor
 payloads. Composed read-only SOQL is permitted — and, for record data-shape questions,
-recommended (owner decision 2026-07-30) — but a composed statement executes only through the
-governed `salesforce-readonly` facade's `review_soql_query` tool, which validates it (single
-read-only SELECT, allowlisted FROM objects minus a secret-adjacent deny-set, bounded LIMIT),
-executes it against the identity-proven sandbox, and returns a sanitized single-source envelope.
-The facade exposes only:
+recommended (owner decisions 2026-07-30 and 2026-08-04) — through the governed
+`salesforce-readonly` facade's `review_soql_query` tool only. The 2026-08-04 decision removed
+the statement blockade: the statement executes verbatim over the pinned Salesforce MCP (never
+the CLI) against the identity-proven non-production org, and rows return unredacted in a
+single-source envelope. An explicitly configured `review.allowedObjectApiNames` list is still
+honored. The facade exposes only:
 
 - `review_org_identity`
 - `review_installed_packages`
 - `review_object_contract`
 - `review_configured_orgs` (only when `safety.allowScopedEnumeration` is enabled; lists the
   locally configured aliases and permissions only — never unconfigured orgs, ids, or hosts)
-- `review_soql_query` (composed read-only SOQL; statement-validated, values sanitized and
-  single-source)
+- `review_soql_query` (composed read-only SOQL; executed verbatim, single-source, rows
+  unredacted)
 
 The facade binds one configured allowlisted non-production org (sandbox, scratch org, or an owner-admitted Developer Edition), runs fixed evidence profiles — plus
-validated composed statements for `review_soql_query` — through the pinned
-Salesforce MCP and a private CLI allowlist, sanitizes the receipts, and reconciles what is
-dual-sourced. Results are `VERIFIED`, `MISMATCH`, `INCOMPLETE`, or `BLOCKED`.
+verbatim composed statements for `review_soql_query` — through the pinned
+Salesforce MCP and a private CLI allowlist, sanitizes the profile receipts, and reconciles what
+is dual-sourced. Results are `VERIFIED`, `MISMATCH`, `INCOMPLETE`, or `BLOCKED`.
 
 MCP/CLI agreement corroborates transport from the same org; it is not an independent source of
 business or vendor truth. Mismatch, truncation, schema drift, identity failure, or one missing
@@ -86,8 +87,8 @@ transport prevents Knowledge promotion and `SAFE`.
 - Domain Markdown is a generated view; canonical claims/evidence/reviews are schema-controlled.
 - Raw records, secrets, credentials, broad org payloads, and chain-of-thought are never committed.
 - Reference-data snapshots are the one governed record-value path: for a single human-allowlisted
-  configuration object, `investigate-config-records` reads bounded rows through
-  `scripts/salesforce_read.py records`, strips Ids/URLs/audit surfaces, and proposes one
+  configuration object, `investigate-config-records` reads bounded rows through the
+  `review_soql_query` facade tool, strips Ids/URLs/audit surfaces, and proposes one
   `reference-data` claim with `org-soql-sample` evidence. The sanitized, digest-bound snapshot is
   not a raw record dump; promotion still requires human review, and the claim drifts only via
   re-observation because no repository commit backs it.
@@ -108,8 +109,8 @@ and repository lineage. A new chat must resume from `recordId` and `handoffId` a
 - Every trusted claim is schema-valid, human-reviewed, fresh, scoped, and uncontested.
 - No model-only inference is verified Knowledge.
 - No incomplete/mismatched org review or source/org drift yields `SAFE`.
-- Direct CLI, default org, production, and raw sensitive output remain blocked; composed
-  read-only SOQL executes only through the identity-gated facade under statement validation.
+- Direct CLI, default org, and production remain blocked; composed read-only SOQL executes
+  only through the identity-gated facade, verbatim over the Salesforce MCP transport.
 - Deterministic fresh-chat handoff and negative false-safe fixtures must pass locally and in CI.
   No cross-model behavior matrix is currently certified; model/host scenarios remain a pilot gate
   until each explicit model and version is executed and its evidence recorded.

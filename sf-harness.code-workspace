@@ -47,10 +47,6 @@
         "approve": true,
         "matchCommandLine": true
       },
-      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]salesforce_read\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
-        "approve": true,
-        "matchCommandLine": true
-      },
       "/^git\\s+(status|diff|log|show|blame|describe|shortlog|rev-parse|ls-files|grep)(\\s+[^\\n\\r;&|<>`$()]*)?$/": {
         "approve": true,
         "matchCommandLine": true

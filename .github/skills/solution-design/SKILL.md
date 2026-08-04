@@ -54,11 +54,10 @@ Goal: assemble every fact the design will stand on, with sources, before proposi
    - Repository metadata: read the relevant `force-app/` sources (or the current inventory) for
      intended state; note source/org drift as `CONTESTED`.
    - Record-level context (example data shapes, picklist usage, volumes): answer it yourself
-     first — querying the sandbox is the recommended default (owner decision 2026-07-30), a
-     blocking question to a human is the fallback. Compose read-only SOQL through the
-     `review_soql_query` facade tool (aggregates and GROUP BY allowed; results sanitized), or
-     read through the guarded `python scripts/salesforce_read.py records --org <alias>
-     --object <ApiName> --fields <list>` command — bounded fields/rows, live sandbox proof.
+     first — querying the sandbox is the recommended default (owner decisions 2026-07-30,
+     2026-08-04), a blocking question to a human is the fallback. Compose any read-only SOQL
+     through the `review_soql_query` facade tool (verbatim execution over the Salesforce MCP
+     transport, never the CLI; rows returned unredacted).
      Any org-observed number carried into the persisted design cites the org alias and
      observation time — live query results are timestamped sandbox observations, never durable
      facts or production truth. When the number should outlive this design and the subject is a

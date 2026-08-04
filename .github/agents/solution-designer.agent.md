@@ -52,12 +52,12 @@ five phases (discover -> plan -> verify -> execute -> verify) structure the proc
    platform, or unknown. Inspect the metadata repository for intended state when relevant.
 5. Ground the design in the connected org when repository/Knowledge facts are insufficient:
    check Principles and Knowledge first, then enrich context through the read-only review tools
-   (`review_org_identity` → `review_object_contract`) and the guarded
-   `python scripts/salesforce_read.py records|retrieve` command (allowlisted object, bounded
-   fields/rows, cached metadata). When the design depends on how data actually sits in records
-   (structure, fill, real shapes), a bounded sandbox read is preferred over a guess or a blocking
-   question (owner decision 2026-07-30); compose the query through the governed
-   `review_soql_query` facade tool (aggregates and GROUP BY allowed; results sanitized). A
+   (`review_org_identity` → `review_object_contract`,
+   `review_soql_query` for record-level context). When the design depends on how data actually sits in records
+   (structure, fill, real shapes), a sandbox read is preferred over a guess or a blocking
+   question (owner decisions 2026-07-30, 2026-08-04); compose any read-only SOQL through the
+   governed `review_soql_query` facade tool — it runs verbatim over the Salesforce MCP
+   transport (never the CLI) and returns unredacted rows. A
    live result cited in a persisted design carries its org alias and observation time; when the
    number should outlive the design and the subject is a wave-1 entry (CustomObject,
    CustomField), request an org attach from Config Investigator — the only role with

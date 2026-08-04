@@ -309,7 +309,7 @@ def validate_capability(config: dict, capability: str) -> list[str]:
             failures.append(
                 "ADO_ORGANIZATION must exactly match ado.organization in local configuration"
             )
-    if capability in {"salesforce-read", "salesforce-write", "salesforce-review"}:
+    if capability in {"salesforce-write", "salesforce-review"}:
         required_commands = (
             ("node", "sf")
             if capability == "salesforce-review"
@@ -322,8 +322,6 @@ def validate_capability(config: dict, capability: str) -> list[str]:
             "allowAgentWrite"
             if capability == "salesforce-write"
             else "allowAgentReview"
-            if capability == "salesforce-review"
-            else "allowAgentRead"
         )
         if shutil.which("sf") is not None:
             for org in config.get("salesforce", {}).get("orgs", []):
@@ -471,7 +469,6 @@ def main() -> int:
             "base",
             "ado",
             "metadata",
-            "salesforce-read",
             "salesforce-write",
             "salesforce-review",
             "playwright",

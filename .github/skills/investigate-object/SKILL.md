@@ -26,7 +26,7 @@ reason to stop.
 Reject a generic “inspect the org,” unspecified target, record dump, or component outside the
 configured review allowlist. Route record data-shape questions (structure, fill, distributions)
 to the governed record reads instead of rejecting them (owner decision 2026-07-30):
-`review_soql_query` on the facade, `salesforce_read.py records`, or
+`review_soql_query` on the facade, or
 [investigate-config-records](../investigate-config-records/SKILL.md).
 
 ## Procedure

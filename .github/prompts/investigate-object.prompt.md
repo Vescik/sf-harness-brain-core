@@ -10,7 +10,7 @@ Use the [investigate-object skill](../skills/investigate-object/SKILL.md).
 
 Require exactly one `objectApiName` (ask once with `#tool:vscode/askQuestions` if missing). The
 name must be on the configured review allowlist; evidence stays bounded, sanitized, and
-dual-source reconciled through the guarded review tools and `python scripts/salesforce_read.py`.
+dual-source reconciled through the guarded review tools (record reads via `review_soql_query`).
 
 The outcome is a sanitized investigation report under `output/` — never a verified fact and
 never citable Knowledge by itself. Numbers worth keeping persist through the skill's governed

@@ -596,3 +596,54 @@ are not durable.
 - Approved by: workspace owner (chat, 2026-08-04 — "chcę żeby knowledge search był default",
   full-MCP + środkowa twardość wybrane w AskUserQuestion).
 - Related: output/discovery-2026-08-03-knowledge-mcp-server.md (plan + execution update).
+
+## 2026-08-04 — Composed-SOQL blockade removed; SOQL recommended for designer/curator/developer, MCP-transport only
+
+- Owner directive (chat, 2026-08-04, over-engineering review): "blokada powinna być w ogóle
+  zdjęta jeśli chodzi o odpalanie SOQL"; SOQL usage is to be RECOMMENDED for the Solution
+  Designer, the Knowledge agent, and the Development Assistant — "ale tylko przez Salesforce
+  MCP, a nie CLI".
+- `review_soql_query` is now a governed pass-through: the statement executes VERBATIM over
+  the pinned Salesforce MCP child against the identity-proven non-production org. Removed:
+  statement grammar validation, the 17-object secret-adjacent deny-set (NamedCredential …
+  SamlSsoConfig), LIMIT parsing/rewriting and the `soqlMaxRows` policy key, email/record-Id
+  redaction + 120-char truncation, and the sensitive-output blanking for SOQL envelopes.
+  Accepted consequence, stated to the owner: sandbox record values (emails, record Ids,
+  secret-adjacent objects) are now agent-visible and appear in transcripts.
+- Kept: one-alias binding; non-production identity proof (now cached per server session —
+  the CLI leg no longer re-runs three subprocesses per query; every MCP leg still re-checks
+  org id + sandbox flag); an EXPLICITLY configured `review.allowedObjectApiNames` list;
+  payload byte caps + SOQL timeout; `queryDigest` now over the verbatim submitted statement;
+  `fromObjects` extraction (org-sampling executor contract). `entry-org-attach` unchanged.
+- The "MCP not CLI" rule is enforcement-unchanged: the safety hook still denies every raw
+  `sf`/`sfdx` data command and raw vendor tools; the facade's SOQL data path never touched
+  the CLI. Knowledge Curator gains `salesforce-readonly/review_soql_query` as its only org
+  surface (role-guard terminal denials unchanged).
+- Envelope schema: `facts.soqlQuery` slimmed to queryDigest/fromObjects/useToolingApi/
+  matched/records; missing-LIMIT overflow now surfaces as INCOMPLETE/RESULT_TRUNCATED
+  instead of a server-side LIMIT rewrite.
+- Related: output/discovery-2026-08-04-soql-unblock.md (decision record, layer map, accepted
+  risks, out-of-scope follow-ups: salesforce_read.py retirement, org-sampling ceremony).
+
+## 2026-08-04 — salesforce_read.py CLI lane retired (redundant after the SOQL unblock)
+
+- Owner directive (chat, 2026-08-04, follow-up to the SOQL unblock): remove the redundant
+  script, its test, and every reference. `scripts/salesforce_read.py` (records/retrieve/orgs)
+  and `tests/test_salesforce_read.py` are deleted.
+- Rationale: with `review_soql_query` unblocked, the structured record-read lane was a second,
+  CLI-transport path to the same rows — exactly the parallel-lane rot the v1 retirement warned
+  about. `orgs` was a twin of `review_configured_orgs`; `retrieve` cached metadata agents can
+  get authoritatively via `review_object_contract` facts or the human-confirmed
+  `sf project retrieve start`.
+- Layers removed with it: role-guard SALESFORCE_READ_* surface + dispatch, the auto-approve
+  regex in `.vscode/settings.json`/`sf-harness.code-workspace`, the `salesforce-read` preflight
+  capability (choices + role-guard mirror), validate_harness required-file + guarded-name pins,
+  and the config key `review.maxObjectsPerCall` (schema-optional now, read by nothing; removed
+  from the example config, tolerated in existing local configs).
+- Negative pins added: the script must not reappear (guard-parser contract), the old command
+  shape denies for every role (safety-hook tests), the guard surface must not resurface
+  (receipt-gate tests).
+- Agent-facing text now routes record reads to `review_soql_query`; investigate-config-records
+  snapshots run their SELECT through the facade (explicit field list, never Id, LIMIT 200,
+  ORDER BY natural key) — the skill's own sanitization rules are unchanged.
+- Gate: validate_harness 2594 checks PASS, 966 unit tests OK (1 skip), run_evals 38/38.
