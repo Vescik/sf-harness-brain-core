@@ -50,10 +50,12 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Audit npm dependency tree
-        # Hard-fail only on CRITICAL advisories in the production tree. The @salesforce/mcp
-        # transitive tree currently carries lower-severity advisories that are not fixable from
-        # here (pinned upstream); Dependabot surfaces and proposes fixes for those separately.
-        run: npm audit --omit=dev --audit-level=critical
+        # Hard-fail on HIGH+ advisories in the production tree (tightened from critical on
+        # 2026-08-04 after the deps-hygiene lockfile refresh cleared every high). Known
+        # accepted residual: the moderate fast-xml-parser advisory on a 4.x copy nested in
+        # the MCP code-analyzer provider — unfixable in range from here, discovery
+        # 2026-08-04. Moderate stays non-blocking (it would flap on upstream churn).
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Compile Python controls
         run: python -m compileall -q scripts tests

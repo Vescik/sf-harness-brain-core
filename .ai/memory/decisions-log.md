@@ -700,3 +700,20 @@ directly. Each lands as its own commit with the full gate.
   instruction files; CODEOWNERS row dropped.
 - Retirement pins: registry file and schema must not return
   (test_rule_ids_declare_exactly_once_and_the_registry_stays_retired).
+
+## 2026-08-04 — Deps hygiene: 18 Dependabot alerts cleared by a lockfile refresh; audit gate tightened to high
+
+- All 18 open alerts (brace-expansion ×6 DoS, undici ×5, ip-address ×3, postcss ×2,
+  fast-uri, hono) were transitive and IN-RANGE: one `npm update undici ip-address fast-uri
+  hono brace-expansion postcss` cleared every high/moderate they raised — undici 8.10.0,
+  ip-address 10.4.0, fast-uri 3.1.5, hono 4.13.0, postcss 8.5.25, brace-expansion
+  1.1.18/2.1.4/5.0.9. The @salesforce/mcp@0.30.15 + provider 0.9.8 pins and the overrides
+  block are untouched; lockfile-only diff.
+- Reachability (discovery output/discovery-2026-08-04-dependabot-alerts.md): nothing was a
+  live exploit path — hono/ip-address sit in the MCP SDK's HTTP transport (we spawn stdio),
+  postcss/brace-expansion are dev-tooling, undici talks only to the identity-proven org.
+- CI npm-audit gate tightened `--audit-level=critical` → `high` (prod tree is now clean at
+  high; moderate stays non-blocking by design).
+- Accepted residual, documented in the workflow comment: moderate fast-xml-parser advisory
+  (<5.7.0) on a 4.x copy nested under the MCP code-analyzer provider — unfixable in range
+  from this repo.
