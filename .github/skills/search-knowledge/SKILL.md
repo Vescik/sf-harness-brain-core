@@ -26,6 +26,16 @@ metadata type, namespace, lifecycle state.
 
 1. **Repository-source questions — query entries first.** Never grep entry Markdown by hand.
 
+   **Primary surface — the `knowledge` MCP tools**: `knowledge_context`, `knowledge_search`,
+   `knowledge_impact`, `knowledge_resolve` (bare name or file path → identity),
+   `knowledge_entry_status` (the citable receipt), plus the deep-dive set
+   (`knowledge_explain`, `knowledge_tree`, `knowledge_feature_drift`,
+   `knowledge_feature_dossier`, `knowledge_edge_health`, `knowledge_capabilities`). They
+   expose exactly the commands below with the same JSON envelopes, so every reading rule in
+   this skill applies verbatim to the tool results. The terminal menu below is the
+   **operator fallback** for sessions where the MCP server is unavailable (its startup
+   failure message names the fix); it is not an agent lane choice.
+
    <!-- knowledge-search-command-menu — R2 anchor. This skill owns the prose; a phase that adds
         a `knowledge_search.py` subcommand appends ONE line inside these markers and edits
         nothing else. The menu sat three commands stale (`tree`, `feature-drift`,

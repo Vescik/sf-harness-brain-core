@@ -23,16 +23,17 @@ identity when applicable, and accepted design/approval hashes. Reject unspecifie
    and Tier 3 Salesforce practice in order. Apply precedence only to competing prescriptions.
 3. Discover, then require. First establish the baseline of facts the design must address — do not
    rely only on what the author happened to cite. Query both layers:
-   - `python scripts/knowledge_search.py context --identity <Identity>` for each affected
-     artifact (source-declared facts, parts, dependents, permission grants, in one call). Only
+   - the `knowledge_context` tool for each affected
+     artifact (source-declared facts, parts, dependents, permission grants, in one call;
+     `knowledge_resolve` maps bare names and paths to identities). Only
      `parts`, `permissions` and `incoming` are approved-current; the `partsNonCurrent` /
      `permissionsNonCurrent` / `incomingNonCurrent` siblings are opted-in lanes and can never
      make a premise `verified`. `incoming` and `outgoing` are keyed by relation kind, so iterate
      the keys rather than a flat list, and treat an absent kind as silence, not as absence. A row
      carrying `hydrated: false` failed re-reading, so it can never make a premise `verified` —
      record it as a gap;
-   - `python scripts/knowledge_search.py search --relation-anchor <Identity> --direction
-     incoming` for dependents beyond the context pack's depth-1 view. Only generic-bucket
+   - the `knowledge_search` tool with a `relationAnchor` and `direction: incoming`
+     for dependents beyond the context pack's depth-1 view. Only generic-bucket
      types (Settings, Letterhead, Group and similar label-only extraction) have no entry and
      no governed dependency lookup — name them explicitly when present, or the result looks
      clean while a whole class went unchecked.
@@ -74,7 +75,7 @@ the entry. Absence, deployed state, and semantics are never grounded by an entry
 search hit is never proof of absence.
 
 Cite what the executor gives you, not what the view shows: obtain the citable ref with
-`python scripts/knowledge_store.py entry-status --identity <Identity>`. A search result, a
+the `knowledge_entry_status` tool. A search result, a
 `context` pack and a generated dossier are never themselves citable.
 
 An entry can be approved, current and still refuse to ground a fact: contract §8.1 grounds only

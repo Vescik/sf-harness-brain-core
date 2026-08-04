@@ -106,7 +106,11 @@ class PreflightValidationTests(unittest.TestCase):
         # server-side read-only mode, so ADO read-only is harness policy, not construction
         # (owner decision 2026-07-14).
         mcp = json.loads((ROOT / ".vscode/mcp.json").read_text(encoding="utf-8"))
-        self.assertEqual(set(mcp["servers"]), {"ado-readonly", "salesforce-readonly"})
+        self.assertEqual(
+            set(mcp["servers"]), {"ado-readonly", "salesforce-readonly", "knowledge"}
+        )
+        knowledge = mcp["servers"]["knowledge"]
+        self.assertEqual(["scripts/knowledge_mcp_server.mjs"], knowledge["args"])
         self.assertNotIn("sandbox", mcp)
         readonly_args = mcp["servers"]["salesforce-readonly"]["args"]
         self.assertEqual(readonly_args[readonly_args.index("--mode") + 1], "review")

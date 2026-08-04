@@ -212,6 +212,15 @@ owner decision of 2026-07-14.)
   executes only through the facade's `review_soql_query` tool — statement-validated, bounded,
   and sanitized. MCP/CLI agreement is transport corroboration from the same org, not independent
   package/business authority.
+- `knowledge` starts through `scripts/knowledge_mcp_server.mjs` and is the primary read
+  surface over governed Knowledge (context/search/impact/resolve/entry-status plus the
+  curator deep-dive set) — read-only by construction, binds no org, takes no secrets. VS Code
+  asks for one-time trust on first start. Copilot CLI reads the same server from
+  `.github/mcp.json` (it does not read `.vscode/mcp.json`). The server resolves its Python
+  interpreter at startup (`KNOWLEDGE_MCP_PYTHON` env override → repo `.venv` → `py -3` →
+  `python3` → `python`) and **refuses to start** when none can `import yaml` — run
+  `python scripts/first_launch.py` (or `pip install -r requirements-dev.txt`) and restart the
+  server; the terminal command menu in the search-knowledge skill is the operator fallback.
 - Record-level and metadata reads for design/development context run through the guarded
   `python scripts/salesforce_read.py records|retrieve` command (auto-approved; allowlisted
   object, bounded fields/rows, retrieve into an ignored cache). There is no write-mode Salesforce
