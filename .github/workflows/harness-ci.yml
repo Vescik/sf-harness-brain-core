@@ -22,8 +22,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     # Headroom for the windows-latest leg: NTFS + Defender make file IO and process spawns
     # (the facade subprocess tests) several times slower than ubuntu-latest, and runner noise
-    # varies between runs. (The 3000-entry benchmark gate that once justified 30 minutes was
-    # removed from CI on 2026-08-04 — owner decision; knowledge_benchmark.py stays local-only.)
+    # varies between runs. (The 3000-entry benchmark gate that once justified 30 minutes left
+    # CI on 2026-08-04; the benchmark itself was retired on 2026-08-05.)
     timeout-minutes: 30
     steps:
       - name: Check out repository

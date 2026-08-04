@@ -1076,9 +1076,9 @@ def check_grounding_contracts(audit: Audit) -> None:
         source_ids.update(re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", required_text(path, audit)))
 
     # Owner decision 2026-08-04: the rule-registry.yaml re-encoding of these sources was
-    # retired. The invariant that keeps `work_record attach-rule` resolution unambiguous is
-    # that every rule ID is DECLARED EXACTLY ONCE across the Principle sources — the tier is
-    # a property of which file declares it (work_record.RULE_SOURCE_TIERS).
+    # retired. The invariant that keeps `work_record init --rule-id` resolution unambiguous
+    # is that every rule ID is DECLARED EXACTLY ONCE across the Principle sources — the tier
+    # is a property of which file declares it (work_record.RULE_SOURCE_TIERS).
     declarations: list[str] = []
     for path in principle_paths:
         declarations.extend(
