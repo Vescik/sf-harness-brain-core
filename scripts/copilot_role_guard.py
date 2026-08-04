@@ -397,7 +397,10 @@ def work_record_command_allowed(parts: list[str], role: str) -> bool:
     if not parts or "--root" in parts or any(part.startswith("--root=") for part in parts):
         return False
     command = parts[0]
-    if command == "approve" or command not in WORK_RECORD_COMMANDS.get(role, set()):
+    # `approve` is deliberately in NO role's command set (SAFE-HUMAN-001); the denial layers
+    # are the global safety hook and the in-process work_record backstop — this guard only
+    # contributes ordinary set membership (owner decision 2026-08-04, layer dedup).
+    if command not in WORK_RECORD_COMMANDS.get(role, set()):
         return False
     if command in {
         "context",

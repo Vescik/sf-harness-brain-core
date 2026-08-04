@@ -512,7 +512,10 @@ def check_settings_and_mcp(audit: Audit) -> None:
                     allow_hits = True
                 if value is False or (isinstance(value, dict) and value.get("approve") is False):
                     deny_hits = True
-            audit.require(deny_hits, "terminal auto-approve must explicitly deny work_record.py approve (SAFE-HUMAN-001)")
+            # Owner decision 2026-08-04 (SAFE-HUMAN layer dedup): the explicit deny entry was
+            # removed — the invariant is that NOTHING auto-approves the command (the lookahead
+            # in the allow patterns), leaving the click to the human while the safety hook and
+            # the in-process work_record backstop do the actual denying.
             audit.require(not (allow_hits and not deny_hits), "terminal auto-approve must not auto-approve work_record.py approve (SAFE-HUMAN-001)")
     workspace_folders = workspace.get("folders", []) if isinstance(workspace, dict) else []
     folders = {

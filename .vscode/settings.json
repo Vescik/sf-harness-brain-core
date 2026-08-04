@@ -17,7 +17,8 @@
   // Pre-approve the workspace's own guarded scripts so agents run them without a click.
   // matchCommandLine regexes are anchored and forbid shell metacharacters (; & | > < ` $),
   // so chained/redirected commands never auto-run. The human-only `work_record.py approve`
-  // and the knowledge promote/review commands are excluded and explicitly denied; raw sf/sfdx
+  // and the knowledge promote/review commands are excluded by lookahead (denial itself lives
+  // in the safety hook + the executor backstop, owner decision 2026-08-04); raw sf/sfdx
   // and destructive commands stay denied (false always wins). This only skips the approval
   // click — the role guard and safety hook still enforce the actual boundaries.
   // MCP read-only tools cannot be pre-approved from settings (VS Code has no per-tool key yet);
@@ -58,10 +59,6 @@
     },
     "/^(ls|pwd|cat|head|tail|wc|grep|findstr|where|which|dir|type|Get-ChildItem|Get-Content|Get-Location|Select-String|Test-Path)(\\s+[^\\n\\r;&|<>`$()]*)?$/": {
       "approve": true,
-      "matchCommandLine": true
-    },
-    "/scripts[\\\\/]work_record\\.py\\s+approve\\b/": {
-      "approve": false,
       "matchCommandLine": true
     },
     "sf": false,

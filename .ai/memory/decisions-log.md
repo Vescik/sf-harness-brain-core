@@ -669,3 +669,13 @@ directly. Each lands as its own commit with the full gate.
 - safety.batchDevToolApproval: schema-tolerated with a "retired, read by nothing"
   description (existing local configs stay valid); removed from the example config.
 - Pins: mutating dev tool always asks; pipeline surfaces must not resurface.
+
+### B — SAFE-HUMAN-001 deduplicated to two layers
+- Kept: the global safety hook (primary wall, incl. the knowledge approve trap) and the
+  in-process SF_HARNESS_AGENT_CONTEXT backstop in work_record.py (catches non-Copilot agent
+  contexts).
+- Removed: the explicit `"approve": false` regex entry in .vscode/settings.json +
+  code-workspace (the allow-patterns' `(?!approve\b)` lookahead still leaves the click to a
+  human — validate_harness now pins "nothing auto-approves" instead of "an explicit deny
+  exists"), and the guard's `command == "approve"` special-case (set membership already
+  excludes it; outcome pin test_work_record_approve_stays_unreachable_for_every_role stays).
