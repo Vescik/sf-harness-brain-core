@@ -1,32 +1,67 @@
 {
   "schemaVersion": 1,
-  "manifestVersion": "sd-cap-p2",
+  "manifestVersion": "sd-cap-p5",
   "gateEvaluatorVersion": "sd-gate-v1",
-  "materialSince": "sd-cap-p2",
+  "materialSince": "sd-cap-p5",
   "concernProfiles": [
     "data-model-and-configuration-integrity",
     "security-and-execution-context",
     "transaction-and-automation",
     "volume-and-performance",
+    "integrations-and-contracts",
+    "user-journey-and-accessibility",
+    "errors-and-observability",
     "package-boundaries-and-upgrade",
+    "migration-rollout-rollback",
     "verification-feasibility"
   ],
-  "probeKinds": ["object-baseline", "categorical-distribution", "config-effectivity"],
+  "probeKinds": [
+    "object-baseline",
+    "churn-profile",
+    "field-fill",
+    "field-cardinality",
+    "categorical-distribution",
+    "key-integrity",
+    "relationship-shape",
+    "config-effectivity",
+    "precedence-collision",
+    "config-snapshot",
+    "sample-shape"
+  ],
   "evidenceSourceTypes": [
     "knowledge-entry",
     "repository-receipt",
+    "org-object-contract",
     "org-soql-sample",
-    "human-sme-attestation"
+    "human-sme-attestation",
+    "vendor-documentation",
+    "ado-approved-artifact"
   ],
-  "configurationActions": ["create-records", "modify-records", "reuse", "dependency-only"],
-  "componentActions": ["use", "create", "modify", "dependency-only"],
+  "configurationActions": [
+    "create-records",
+    "modify-records",
+    "delete-records",
+    "reuse",
+    "retire",
+    "dependency-only"
+  ],
+  "componentActions": [
+    "use",
+    "create",
+    "modify",
+    "delete",
+    "retire",
+    "dependency-only"
+  ],
   "adapters": {
-    "adoRequirement": false,
+    "adoRequirement": true,
     "repositoryEvidence": true,
     "salesforceEnvelope": true,
     "knowledgeReference": true
   },
-  "riskPolicies": ["standard-risk-seed"],
+  "riskPolicies": [
+    "standard-risk-seed"
+  ],
   "transitions": [
     "draft->draft",
     "draft->awaiting_human_input",

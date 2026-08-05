@@ -28,9 +28,14 @@ Require exactly one `objectApiName` and one `org` — a configured review-org al
 the `review_configured_orgs` facade tool); there is no default alias. The object must be on
 `salesforce.review.allowedObjectApiNames`; if it is not, stop and report the missing allowlist
 entry instead of widening scope. Optional: `fields` (must remain a subset of the reviewed field
-contract), `recordId` (work record to attach evidence to). Reject a generic "dump the org",
-multiple objects in one call, or an object that is transactional rather than reference data — a
-snapshot that fills the row cap is treated as transactional and returned unresolved.
+contract), `slice` (a predicate that bounds the snapshot to the configuration the design needs),
+`recordId` (work record to attach evidence to). Reject a generic "dump the org" or multiple
+objects in one call.
+
+**Row count is not a classification.** A configuration table with thousands of rows is still
+configuration, and a small table is not automatically reference data. Classify from what the
+records *do* — are they read by branching logic, do they carry active/default/priority flags or
+effective windows, who maintains them — not from how many there are.
 
 ## Procedure
 
@@ -52,30 +57,42 @@ snapshot that fills the row cap is treated as transactional and returned unresol
    external-id field) plus the configuration-bearing fields (status values, flags, ordering,
    defaults). Exclude record Ids, audit fields (`CreatedBy`, `LastModifiedBy`, timestamps), owner
    fields, and free-text/long-text fields.
-4. Read records only through the governed `review_soql_query` facade tool, selecting every
-   field explicitly — never `Id`, which must never be persisted:
-   `SELECT <field, list> FROM <objectApiName> ORDER BY <naturalKey> LIMIT 200`.
-   Always state the `LIMIT` (an overflowing result returns `RESULT_TRUNCATED`); `ORDER BY` on
-   the natural key makes the snapshot deterministic and digestable.
+4. Scope before you snapshot. Run aggregates first through the facade — a row count, a
+   distribution over the type/status discriminator, and a churn profile (recent creates and
+   modifications) — so you know the shape of the table before selecting rows from it. Aggregates
+   may cover the whole population; they carry no row values.
+5. Snapshot only the slice the design needs. Read records through the governed
+   `review_soql_query` facade tool, selecting every field explicitly — never `Id`, which must
+   never be persisted:
+   `SELECT <field, list> FROM <objectApiName> WHERE <slice predicate> ORDER BY <naturalKey> LIMIT <n>`.
+   Always state the `LIMIT`; `ORDER BY` on the natural key makes the snapshot deterministic and
+   digestable.
+6. When completeness of the slice is material to the design, paginate deterministically by
+   keyset — `WHERE <naturalKey> > '<last key of the previous page>'` in natural-key order — and
+   record the count before and after, the page count and the final watermark. Do not paginate
+   because a table is large; paginate because the design's conclusion depends on having seen
+   every row of the slice.
 5. Sanitize each returned row before any other use: the facade already strips vendor
    `attributes`; additionally drop any value outside the requested field list, keeping the
    `ORDER BY` order.
-6. Assess completeness. If the returned row count equals the limit, enumeration is not proven
-   complete: record `enumerationComplete: false`, assert no absence, and return `UNRESOLVED` —
-   the object is transactional-sized, not a config table. Never treat a missing row as proof a
-   config value does not exist.
-7. Build the snapshot: object identity, the natural-key-ordered sanitized record list, row
+7. State completeness honestly, in one of three forms: `complete` (the slice was fully
+   enumerated, with the pagination evidence to show it), `partial` (the read hit its limit and
+   more rows exist), or `slice-bounded` (the snapshot deliberately covers only the predicate the
+   design needs). A `partial` result supports no absence claim. A `slice-bounded` result supports
+   no claim about the rest of the table — never generalize a slice to the whole object. Never
+   treat a missing row as proof a config value does not exist.
+8. Build the snapshot: object identity, the natural-key-ordered sanitized record list, row
    count, and `contentDigest` = `sha256:<64 hex>` over the canonical JSON (sorted keys, compact
    separators) of the ordered sanitized rows. Identity convention for records inside the
    snapshot: `<ObjectApiName>.<NaturalKey>` (mirrors the `Type__mdt.Record` CustomMetadata
    convention).
-8. Write the snapshot report under `output/` (e.g.
+9. Write the snapshot report under `output/` (e.g.
    `output/reference-data/<objectApiName>-<orgKey>.md`): scope (exact `environment`, `orgKey`,
    namespace prefix), `observedAt`/`retrievedAt`, the sanitized rows, the completeness block,
    the `contentDigest`, a `sanitization` note naming the stripped surfaces, and limitations —
    above all that the values drift without any repository signal and expire with the org's
    refresh cadence.
-9. When the caller provided `recordId`, attach the snapshot as work-record evidence with
+10. When the caller provided `recordId`, attach the snapshot as work-record evidence with
    `python scripts/work_record.py append-evidence --record-id <ID> ...` (the report file is the
    artifact); otherwise the investigation is a standalone read.
 
@@ -85,8 +102,8 @@ snapshot that fills the row cap is treated as transactional and returned unresol
   MCP tool; every read — scoping (counts, distributions) and the snapshot rows alike — runs
   verbatim through the governed `review_soql_query` facade tool (owner decisions 2026-07-30,
   2026-08-04; the retired `salesforce_read.py` lane no longer exists).
-- Never exceed the 200-row snapshot cap, chain queries to paginate past it, or
-  snapshot more than one object per invocation.
+- Never snapshot more than one object per invocation, and never widen a slice to "see what is
+  there" — widen it because a named design question needs the wider set.
 - Never persist credentials, usernames, record Ids, URLs, `attributes` payloads, owner/audit
   values, or free-text business content; snapshot values are limited to the configuration-bearing
   fields the human scoped via the allowlist.

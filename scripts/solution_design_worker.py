@@ -346,6 +346,11 @@ class Worker:
             summary["questions"] = state["questions"]
             summary["probes"] = state["probes"]
             summary["evidence"] = state["evidenceRefs"]
+            # Suggestions, not obligations. Only an activated candidate becomes a tracked probe,
+            # and only a tracked probe can block — which is what keeps a wide object from
+            # generating one obligation per field.
+            summary["probeCandidates"] = core.probe_candidates(state)
+            summary["noProgressQuestions"] = core.no_progress_questions(state)
         if view in ("decisions", "all"):
             summary["decisions"] = state["decisions"]
             summary["scope"] = state["scope"]

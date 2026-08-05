@@ -1241,6 +1241,20 @@ def evaluate(
     gaps += gate_g7(state)
     gaps += gate_g8(state, rule_map, definitions, applicable_concerns)
     gaps += gate_g9(state, design_text)
+    # §15.4: repeated sampling that changes nothing is a loop, not diligence. Route it to a
+    # human instead of letting the designer issue unbounded SOQL against the same question.
+    for stalled in no_progress_questions(state):
+        gaps.append(
+            _gap(
+                "SD-G4",
+                stalled["questionId"],
+                "no-progress",
+                "human-input",
+                f"{stalled['attempts']} probes have not moved this question "
+                f"({stalled['unhelpful']} inconclusive or without material impact); it needs a "
+                f"human or vendor authority, not another query",
+            )
+        )
     return {
         "result": "READY" if not gaps else "OPEN",
         "gaps": gaps,
@@ -2271,3 +2285,159 @@ def seed_obligations(state: dict[str, Any]) -> dict[str, Any]:
             }
         )
     return state
+
+
+# --------------------------------------------------------------------------------------
+# Adaptive sampling (§15)
+# --------------------------------------------------------------------------------------
+
+NO_PROGRESS_ATTEMPTS = 2
+CONFIG_ROLES = frozenset({"configuration", "reference-data", "mixed"})
+
+
+def probe_candidates(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Probes worth running, derived from what the design is actually deciding.
+
+    Candidates come from open material questions, record-driven configuration and risk
+    triggers — never from enumerating fields. A wide object must not produce one obligation per
+    field; that is the failure that made the previous sampling advice unusable on a real package.
+    Only an activated candidate becomes a tracked probe, and only a tracked probe can block.
+    """
+    candidates: list[dict[str, Any]] = []
+    planned = {(probe["kind"], probe["target"]["objectApiName"]) for probe in state.get("probes", [])}
+
+    def offer(kind: str, obj: str, why: str, question: str | None, requiredness: str) -> None:
+        if (kind, obj) in planned:
+            return
+        planned.add((kind, obj))
+        candidates.append(
+            {
+                "kind": kind,
+                "target": {"objectApiName": obj},
+                "rationale": why,
+                "questionId": question,
+                "suggestedRequiredness": requiredness,
+            }
+        )
+
+    classifications = {item["classificationId"]: item for item in state.get("dataClassifications", [])}
+    for artefact in state.get("configurationArtefacts", []):
+        obj = artefact["objectApiName"]
+        classification = classifications.get(artefact["classificationRef"], {})
+        mutating = artefact["action"] in MUTATING_CONFIG_ACTIONS
+        if classification.get("assurance") in (None, "unknown"):
+            offer(
+                "object-baseline",
+                obj,
+                "the slice classification is unproven, and size plus date span is the cheapest "
+                "first observation",
+                None,
+                "hard" if mutating else "advisory",
+            )
+            offer(
+                "churn-profile",
+                obj,
+                "change frequency separates admin-maintained configuration from package-seeded "
+                "rows far better than row count does",
+                None,
+                "conditional",
+            )
+        if classification.get("dataRole") in CONFIG_ROLES and mutating:
+            offer(
+                "config-effectivity",
+                obj,
+                "records the design changes may carry effective windows that decide which one "
+                "actually applies",
+                None,
+                "conditional",
+            )
+            offer(
+                "precedence-collision",
+                obj,
+                "two active records in one scope change the outcome, and the design has to say "
+                "which wins",
+                None,
+                "conditional",
+            )
+        if artefact.get("naturalKeyFields"):
+            offer(
+                "key-integrity",
+                obj,
+                "the design addresses these records by natural key, so nulls or duplicates in it "
+                "break the change",
+                None,
+                "hard" if mutating else "advisory",
+            )
+
+    for question in state.get("questions", []):
+        if question["status"] not in UNCLOSED_QUESTION_STATUSES:
+            continue
+        if "org-soql-sample" not in question["requiredAuthority"]:
+            continue
+        subject = next(
+            (
+                artefact["objectApiName"]
+                for artefact in state.get("configurationArtefacts", [])
+                if artefact["objectApiName"].lower() in question["question"].lower()
+            ),
+            None,
+        ) or next(
+            (
+                component["objectApiName"]
+                for component in _in_scope_components(state)
+                if component["objectApiName"].lower() in question["question"].lower()
+            ),
+            None,
+        )
+        if subject:
+            offer(
+                "categorical-distribution",
+                subject,
+                f"open question {question['questionId']} needs an org observation",
+                question["questionId"],
+                "hard" if question["materiality"] == "blocking" else "advisory",
+            )
+
+    for risk in state.get("riskObligations", []):
+        if risk["status"] != "open" or risk["severity"] != "high":
+            continue
+        for component in _in_scope_components(state):
+            if component["componentId"] in risk.get("triggerRefs", []):
+                offer(
+                    "object-baseline",
+                    component["objectApiName"],
+                    f"high risk {risk['riskId']} depends on the volume this automation will face",
+                    None,
+                    "conditional",
+                )
+    return candidates
+
+
+def no_progress_questions(state: dict[str, Any]) -> list[dict[str, Any]]:
+    """Questions where repeated sampling has stopped changing anything.
+
+    Issuing more SOQL against a question that two probes already failed to close is not
+    diligence, it is a loop. Such a question becomes a human obligation instead.
+    """
+    stalled: list[dict[str, Any]] = []
+    for question in state.get("questions", []):
+        if question["status"] in ("closed", "needs-human"):
+            continue
+        probes = [probe for probe in state.get("probes", []) if probe["questionId"] == question["questionId"]]
+        if len(probes) < NO_PROGRESS_ATTEMPTS:
+            continue
+        unhelpful = [
+            probe
+            for probe in probes
+            if probe.get("fitnessVerdict") == "inconclusive"
+            or probe.get("decisionImpact") == "no-material-impact"
+        ]
+        if len(unhelpful) >= NO_PROGRESS_ATTEMPTS:
+            stalled.append(
+                {
+                    "questionId": question["questionId"],
+                    "attempts": len(probes),
+                    "unhelpful": len(unhelpful),
+                }
+            )
+    return stalled
