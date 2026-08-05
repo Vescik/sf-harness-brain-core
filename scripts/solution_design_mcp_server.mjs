@@ -184,6 +184,43 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "design_import_soql_envelope",
+    description:
+      "Import a review-facade SOQL result BY REFERENCE and derive the durable sanitized receipt. " +
+      "You never carry rows into durable state: name the receiptRef the facade returned, the " +
+      "probe it answers and the derivation you want. Developer Edition evidence is marked " +
+      "non-representative and cannot close a target-package question.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["caseId", "writerId", "expectedCaseVersion", "receiptRef"],
+      properties: {
+        caseId: CASE_ID,
+        writerId: { type: "string" },
+        expectedCaseVersion: CASE_VERSION,
+        receiptRef: { type: "string", description: "64-hex reference returned by review_soql_query" },
+        probeId: { type: "string" },
+        questionId: { type: "string" },
+        kind: {
+          enum: [
+            "object-baseline",
+            "field-fill",
+            "field-cardinality",
+            "categorical-distribution",
+            "key-integrity",
+            "relationship-shape",
+            "config-effectivity",
+            "sample-shape",
+          ],
+        },
+        options: { type: "object", description: "Deriver options, e.g. field or key fields" },
+        persistenceMode: { enum: ["aggregate", "shape", "config-snapshot", "transient"] },
+        replaySpec: { type: "object", description: "Durable canonical/parameterized replay plan" },
+        expiresAt: { type: "string" },
+      },
+    },
+  },
+  {
     name: "design_submit",
     description:
       "The only design completeness gate. OPEN leaves the draft editable and returns routed " +
@@ -285,6 +322,7 @@ const DIRECT_OPERATIONS = {
   design_apply: "apply",
   design_import_repository_receipt: "import-repository-receipt",
   design_import_knowledge_reference: "import-knowledge-reference",
+  design_import_soql_envelope: "import-soql-envelope",
   design_submit: "submit",
   design_start_development: "start-development",
 };
