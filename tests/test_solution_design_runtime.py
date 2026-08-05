@@ -1220,7 +1220,13 @@ class AdoAdapterNodeTests(unittest.TestCase):
         console.log(JSON.stringify({ path: ADO_ENTRYPOINT, exists: existsSync(ADO_ENTRYPOINT) }));
         """
         payload = self.run_node(script)
-        self.assertIn("node_modules/@azure-devops/mcp/dist/index.js", payload["path"])
+        # Compare with separators normalized: `join()` is correct on both platforms, and
+        # asserting a POSIX path made this test fail on Windows CI for no reason but its own
+        # naivety. The property under test is WHERE the adapter points, not how the OS spells it.
+        self.assertIn(
+            "node_modules/@azure-devops/mcp/dist/index.js",
+            payload["path"].replace("\\", "/"),
+        )
         self.assertTrue(payload["exists"], "run `npm ci --ignore-scripts` first")
 
     def test_no_runtime_package_acquisition_remains(self) -> None:
