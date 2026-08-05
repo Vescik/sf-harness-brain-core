@@ -38,6 +38,11 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
     from scripts.knowledge_digest import canonical_digest
 
 try:
+    import solution_design_core
+except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
+    from scripts import solution_design_core
+
+try:
     from validate_handover_output import template_fixed_texts
 except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
     from scripts.validate_handover_output import template_fixed_texts
@@ -1455,14 +1460,7 @@ def check_design_cases(audit: Audit, root: Path = ROOT) -> None:
     directories = [path for path in sorted(cases_root.iterdir()) if (path / "record.json").is_file()]
     if not directories:
         return
-    try:
-        import solution_design_core as core
-    except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
-        try:
-            from scripts import solution_design_core as core
-        except ModuleNotFoundError:  # pragma: no cover - degrade to a named error, never crash
-            audit.require(False, "solution design core is not importable; Design Case checks skipped")
-            return
+    core = solution_design_core
     for case_directory in directories:
         record_path = case_directory / "record.json"
         record = load_json(record_path, audit)
