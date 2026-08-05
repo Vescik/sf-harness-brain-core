@@ -2042,3 +2042,158 @@ def design_scaffold(case_id: str, title: str, state: dict[str, Any]) -> str:
             parts.append(f"<!-- END GENERATED:{section} -->")
             parts.append("")
     return "\n".join(parts).rstrip("\n") + "\n"
+
+
+# --------------------------------------------------------------------------------------
+# Requirement snapshot and AC lineage (§10.1)
+# --------------------------------------------------------------------------------------
+
+
+def _ac_id(project: str, item_id: int, local_key: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", f"{project}-{item_id}-{local_key}").strip("-")
+    return f"AC-{slug}"[:120]
+
+
+def reconcile_acceptance_criteria(
+    previous: list[dict[str, Any]], snapshot: dict[str, Any]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Map adapter output onto stable AC identities.
+
+    Identity and content are separate. A child work item that represents one AC derives its
+    identity from project/item id plus a durable source-local key, so editing its text changes
+    `textDigest` and not `acId`.
+
+    An unkeyed rich-text field has no such durable key, so the reconciliation is conservative:
+    a clause whose normalized fingerprint matches exactly one previous clause keeps that
+    identity; anything else — a split, a merge, a rewrite, or two clauses collapsing to the
+    same fingerprint — is reported for human reconciliation rather than silently reassigned.
+    Ordinal position is never identity, because a reorder would then rewrite every AC.
+    """
+    project = str(snapshot.get("project") or "local")
+    criteria: list[dict[str, Any]] = []
+    ambiguities: list[str] = []
+    previous_by_lineage = {item["lineageKey"]: item for item in previous}
+
+    for child in snapshot.get("children", []):
+        lineage = f"ado:{project}:{child['id']}:work-item"
+        existing = previous_by_lineage.get(lineage)
+        summary = child.get("acceptanceCriteria") or child.get("title") or ""
+        criteria.append(
+            {
+                "acId": existing["acId"] if existing else _ac_id(project, child["id"], "work-item"),
+                "sourceItemId": child["id"],
+                "sourceLocalKey": "work-item",
+                "lineageKey": lineage,
+                "sourceRevision": child.get("revision"),
+                "summary": summary[:2000] or f"Child work item {child['id']}",
+                "textDigest": "sha256:" + hashlib.sha256(summary.encode("utf-8")).hexdigest(),
+                "inScope": existing["inScope"] if existing else True,
+            }
+        )
+
+    clauses = snapshot.get("rootAcceptanceCriteria", [])
+    previous_clauses = [
+        item for item in previous if item["sourceLocalKey"].startswith("ac-clause")
+    ]
+    fingerprint_index: dict[str, list[dict[str, Any]]] = {}
+    for item in previous_clauses:
+        fingerprint_index.setdefault(item.get("fingerprint", item["textDigest"]), []).append(item)
+
+    for clause in clauses:
+        fingerprint = clause["fingerprint"]
+        matches = fingerprint_index.get(fingerprint, [])
+        if len(matches) == 1:
+            identity = matches[0]["acId"]
+            lineage = matches[0]["lineageKey"]
+        elif len(matches) > 1:
+            ambiguities.append(
+                f"acceptance-criteria clause {clause['ordinal']} matches {len(matches)} prior "
+                f"clauses; human reconciliation required before this snapshot can be trusted"
+            )
+            continue
+        else:
+            local_key = f"ac-clause-{clause['ordinal']}"
+            identity = _ac_id(project, snapshot["itemId"], local_key)
+            lineage = f"ado:{project}:{snapshot['itemId']}:{local_key}"
+            if previous_clauses and len(previous_clauses) != len(clauses):
+                ambiguities.append(
+                    f"acceptance-criteria clause count moved from {len(previous_clauses)} to "
+                    f"{len(clauses)}; a split, merge or rewrite needs human reconciliation"
+                )
+        criteria.append(
+            {
+                "acId": identity,
+                "sourceItemId": snapshot["itemId"],
+                "sourceLocalKey": f"ac-clause-{clause['ordinal']}",
+                "lineageKey": lineage,
+                "sourceRevision": snapshot.get("revision"),
+                "summary": clause["summary"],
+                "textDigest": clause["textDigest"],
+                "inScope": True,
+            }
+        )
+
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for item in criteria:
+        if item["acId"] in seen:
+            ambiguities.append(f"duplicate acceptance-criteria identity {item['acId']}")
+            continue
+        seen.add(item["acId"])
+        deduped.append(item)
+    return deduped, sorted(set(ambiguities))
+
+
+def requirement_snapshot_from_adapter(
+    snapshot: dict[str, Any], previous: dict[str, Any], *, at: str
+) -> dict[str, Any]:
+    """Build the durable requirement snapshot from executor-authored adapter output."""
+    criteria, ambiguities = reconcile_acceptance_criteria(
+        previous.get("acceptanceCriteria", []), snapshot
+    )
+    contradictions = list(ambiguities)
+    for item_id in snapshot.get("missingDetailItemIds", []):
+        contradictions.append(
+            f"child work item {item_id} arrived summary-only; a summary child cannot satisfy "
+            f"acceptance-criteria completeness"
+        )
+    return {
+        "sourceType": "ado",
+        "itemId": snapshot["itemId"],
+        "itemType": snapshot.get("itemType") or None,
+        "revision": snapshot.get("revision"),
+        "retrievedAt": at,
+        "sourceDigest": snapshot["sourceDigest"],
+        "includedItems": list(snapshot.get("includedItems", [])),
+        "excludedItems": list(snapshot.get("excludedItems", [])),
+        "acceptanceCriteria": criteria,
+        "completeness": "complete"
+        if snapshot.get("completeness") == "complete" and criteria and not contradictions
+        else ("partial" if criteria else "absent"),
+        "attestationRef": previous.get("attestationRef"),
+        "unresolvedContradictions": sorted(set(contradictions))[:50],
+    }
+
+
+def requirement_drift(
+    snapshot: dict[str, Any], observed_revisions: dict[str, int]
+) -> list[str]:
+    """Revisions that moved since the snapshot was taken (§25 P3.4)."""
+    drifted: list[str] = []
+    root_id = snapshot.get("itemId")
+    if root_id is not None:
+        observed = observed_revisions.get(str(root_id), observed_revisions.get(root_id))
+        if observed is not None and observed != snapshot.get("revision"):
+            drifted.append(
+                f"work item {root_id} moved from revision {snapshot.get('revision')} to {observed}"
+            )
+    by_item = {
+        criterion["sourceItemId"]: criterion["sourceRevision"]
+        for criterion in snapshot.get("acceptanceCriteria", [])
+        if criterion.get("sourceItemId") and criterion["sourceLocalKey"] == "work-item"
+    }
+    for item_id, revision in sorted(by_item.items()):
+        observed = observed_revisions.get(str(item_id), observed_revisions.get(item_id))
+        if observed is not None and observed != revision:
+            drifted.append(f"child work item {item_id} moved from revision {revision} to {observed}")
+    return drifted

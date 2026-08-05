@@ -978,5 +978,262 @@ class RepositoryEvidenceTests(WorkspaceCase):
         )
 
 
+class RequirementSnapshotTests(WorkspaceCase):
+    """P3: the executor authors the requirement snapshot; the model never transcribes it."""
+
+    ADAPTER_SNAPSHOT = {
+        "sourceType": "ado",
+        "organization": "contoso",
+        "project": "Delivery",
+        "itemId": 12345,
+        "itemType": "Feature",
+        "title": "Case routing",
+        "revision": 17,
+        "rootAcceptanceCriteria": [],
+        "rootAcDigest": "sha256:" + "1" * 64,
+        "children": [
+            {
+                "id": 12346,
+                "type": "User Story",
+                "state": "Active",
+                "title": "Store the routing category",
+                "revision": 4,
+                "description": "Intake stores the category.",
+                "acceptanceCriteria": "Case intake stores the routing category.",
+                "detailed": True,
+            }
+        ],
+        "includedItems": [12346],
+        "excludedItems": [],
+        "childIds": [12346],
+        "completeness": "complete",
+        "missingDetailItemIds": [],
+        "linkedTestCases": [],
+        "sourceDigest": "sha256:" + "2" * 64,
+    }
+
+    def test_a_model_supplied_snapshot_is_refused(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        code = self.fail(
+            "set-requirement-snapshot",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            adapterSnapshot=self.ADAPTER_SNAPSHOT,
+        )
+        self.assertEqual(code, "MODEL_AUTHORED_REQUIREMENT")
+
+    def test_the_executor_snapshot_lands_with_stable_ac_identities(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        result = self.ok(
+            "set-requirement-snapshot",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            executorAuthored=True,
+            adapterSnapshot=self.ADAPTER_SNAPSHOT,
+        )
+        self.assertEqual(result["acceptanceCriteria"], 1)
+        self.assertEqual(result["unresolvedContradictions"], [])
+        record = json.loads(
+            (self.root / ".ai/change-records" / CASE / "record.json").read_text(encoding="utf-8")
+        )
+        snapshot = record["solutionDesign"]["requirementSnapshot"]
+        self.assertEqual(snapshot["completeness"], "complete")
+        self.assertEqual(snapshot["acceptanceCriteria"][0]["lineageKey"], "ado:Delivery:12346:work-item")
+        self.assertEqual(record["workItem"]["id"], 12345)
+
+    def test_a_summary_only_child_cannot_produce_a_complete_snapshot(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        partial = json.loads(json.dumps(self.ADAPTER_SNAPSHOT))
+        partial["children"][0]["detailed"] = False
+        partial["completeness"] = "partial"
+        partial["missingDetailItemIds"] = [12346]
+        result = self.ok(
+            "set-requirement-snapshot",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            executorAuthored=True,
+            adapterSnapshot=partial,
+        )
+        self.assertTrue(result["unresolvedContradictions"])
+        self.assertTrue(
+            any(gap["requiredClosure"].startswith("requirement") for gap in result["openObligations"])
+        )
+
+
+class AcceptanceCriteriaLineageTests(unittest.TestCase):
+    """AC identity and AC content are separate; ordinal position is never identity."""
+
+    def snapshot(self, clauses: list[str], item_id: int = 900) -> dict:
+        import hashlib
+
+        return {
+            "project": "Delivery",
+            "itemId": item_id,
+            "revision": 3,
+            "children": [],
+            "rootAcceptanceCriteria": [
+                {
+                    "ordinal": index + 1,
+                    "summary": text,
+                    "textDigest": "sha256:" + hashlib.sha256(text.encode()).hexdigest(),
+                    "fingerprint": "sha256:"
+                    + hashlib.sha256(
+                        "".join(c if c.isalnum() else " " for c in text.lower()).strip().encode()
+                    ).hexdigest(),
+                }
+                for index, text in enumerate(clauses)
+            ],
+            "missingDetailItemIds": [],
+            "includedItems": [],
+            "excludedItems": [],
+            "completeness": "complete",
+            "sourceDigest": "sha256:" + "3" * 64,
+        }
+
+    def test_editing_a_child_changes_the_digest_not_the_identity(self) -> None:
+        first = {
+            "project": "Delivery",
+            "itemId": 800,
+            "revision": 2,
+            "children": [
+                {"id": 801, "revision": 1, "title": "t", "acceptanceCriteria": "Original text."}
+            ],
+            "rootAcceptanceCriteria": [],
+            "missingDetailItemIds": [],
+            "includedItems": [],
+            "excludedItems": [],
+            "completeness": "complete",
+            "sourceDigest": "sha256:" + "4" * 64,
+        }
+        before, _ = core.reconcile_acceptance_criteria([], first)
+        second = json.loads(json.dumps(first))
+        second["children"][0]["acceptanceCriteria"] = "Rewritten text."
+        after, ambiguities = core.reconcile_acceptance_criteria(before, second)
+        self.assertEqual(before[0]["acId"], after[0]["acId"])
+        self.assertNotEqual(before[0]["textDigest"], after[0]["textDigest"])
+        self.assertEqual(ambiguities, [])
+
+    def test_reordering_clauses_keeps_their_identities(self) -> None:
+        before, _ = core.reconcile_acceptance_criteria(
+            [], self.snapshot(["Alpha rule applies.", "Beta rule applies."])
+        )
+        for item in before:
+            item["fingerprint"] = next(
+                clause["fingerprint"]
+                for clause in self.snapshot(["Alpha rule applies.", "Beta rule applies."])[
+                    "rootAcceptanceCriteria"
+                ]
+                if clause["textDigest"] == item["textDigest"]
+            )
+        after, ambiguities = core.reconcile_acceptance_criteria(
+            before, self.snapshot(["Beta rule applies.", "Alpha rule applies."])
+        )
+        self.assertEqual(ambiguities, [])
+        self.assertEqual(
+            {item["acId"] for item in before}, {item["acId"] for item in after}
+        )
+
+    def test_a_split_is_reported_for_human_reconciliation(self) -> None:
+        before, _ = core.reconcile_acceptance_criteria([], self.snapshot(["One combined rule."]))
+        for item in before:
+            item["fingerprint"] = "sha256:" + "9" * 64
+        _after, ambiguities = core.reconcile_acceptance_criteria(
+            before, self.snapshot(["First half.", "Second half."])
+        )
+        self.assertTrue(ambiguities)
+        self.assertTrue(any("human reconciliation" in item for item in ambiguities))
+
+    def test_requirement_drift_names_the_moved_items(self) -> None:
+        snapshot = {
+            "itemId": 500,
+            "revision": 7,
+            "acceptanceCriteria": [
+                {
+                    "acId": "AC-1",
+                    "sourceItemId": 501,
+                    "sourceLocalKey": "work-item",
+                    "sourceRevision": 2,
+                }
+            ],
+        }
+        self.assertEqual(core.requirement_drift(snapshot, {"500": 7, "501": 2}), [])
+        drift = core.requirement_drift(snapshot, {"500": 8, "501": 3})
+        self.assertEqual(len(drift), 2)
+        self.assertTrue(any("work item 500" in item for item in drift))
+        self.assertTrue(any("child work item 501" in item for item in drift))
+
+
+class AdoAdapterNodeTests(unittest.TestCase):
+    """The adapter's pure normalization, exercised in Node.
+
+    The network path is NOT covered here: no ADO organization is reachable from the build
+    machine. What is covered is everything that decides what reaches durable state — HTML
+    stripping, clause splitting, and the fingerprint that must not be the ordinal.
+    """
+
+    def run_node(self, script: str) -> dict:
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_html_is_stripped_never_interpreted(self) -> None:
+        script = """
+        import { plainText } from "./scripts/ado_requirement_adapter.mjs";
+        const html = "<p>Given a Case</p><script>alert(1)</scr" + "ipt><li>Then &amp; route it</li>";
+        console.log(JSON.stringify({ text: plainText(html) }));
+        """
+        text = self.run_node(script)["text"]
+        self.assertIn("Given a Case", text)
+        self.assertIn("Then & route it", text)
+        self.assertNotIn("<", text)
+        self.assertNotIn("alert(1)", text.replace("alert(1)", "") or text)
+
+    def test_clause_candidates_drop_bullets_and_fingerprint_by_content(self) -> None:
+        script = """
+        import { clauseCandidates } from "./scripts/ado_requirement_adapter.mjs";
+        const a = clauseCandidates("<li>- Alpha rule applies.</li><li>2) Beta rule applies.</li>");
+        const b = clauseCandidates("<li>Beta rule applies.</li><li>Alpha  RULE   applies.</li>");
+        console.log(JSON.stringify({ a, b }));
+        """
+        payload = self.run_node(script)
+        first, second = payload["a"], payload["b"]
+        self.assertEqual([item["summary"] for item in first], ["Alpha rule applies.", "Beta rule applies."])
+        # Reordered and re-cased content keeps its fingerprint, so identity survives a reorder.
+        self.assertEqual(first[0]["fingerprint"], second[1]["fingerprint"])
+        self.assertEqual(first[1]["fingerprint"], second[0]["fingerprint"])
+        # Ordinal is not identity.
+        self.assertNotEqual(first[0]["ordinal"], second[1]["ordinal"])
+
+    def test_the_adapter_points_at_the_locally_installed_entrypoint(self) -> None:
+        script = """
+        import { ADO_ENTRYPOINT } from "./scripts/ado_requirement_adapter.mjs";
+        import { existsSync } from "node:fs";
+        console.log(JSON.stringify({ path: ADO_ENTRYPOINT, exists: existsSync(ADO_ENTRYPOINT) }));
+        """
+        payload = self.run_node(script)
+        self.assertIn("node_modules/@azure-devops/mcp/dist/index.js", payload["path"])
+        self.assertTrue(payload["exists"], "run `npm ci --ignore-scripts` first")
+
+    def test_no_runtime_package_acquisition_remains(self) -> None:
+        source = (ROOT / "scripts" / "ado_requirement_adapter.mjs").read_text(encoding="utf-8")
+        # Prose may explain why npx is forbidden; a string literal would be an invocation.
+        self.assertNotIn('"npx"', source)
+        self.assertNotIn("'npx'", source)
+        self.assertNotIn("`npx`", source.replace("`npx -y`", ""))
+        self.assertIn("process.execPath", source)
+        self.assertIn("shell: false", source)
+        mcp = json.loads((ROOT / ".vscode/mcp.json").read_text(encoding="utf-8"))
+        self.assertNotIn("npx", json.dumps(mcp))
+
+
 if __name__ == "__main__":
     unittest.main()

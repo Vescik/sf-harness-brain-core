@@ -625,15 +625,23 @@ def check_settings_and_mcp(audit: Audit) -> None:
     ado = servers.get("ado-readonly", {})
     # Local stdio @azure-devops/mcp (owner decision 2026-07-14): the hosted endpoint did not
     # honor the X-MCP-Toolsets header, so the local server with actually-honored -d domain args
-    # replaces it. Read-only is policy (hook + role guard), no longer server-enforced; the
-    # package version is pinned so the exposed tool surface cannot drift silently.
+    # replaces it. Read-only is policy (hook + role guard), no longer server-enforced.
+    #
+    # 2026-08-05 (rebuild P3): the launcher moved from `npx -y` to the lockfile-resolved local
+    # entrypoint. Runtime package acquisition executes whatever the registry serves at start
+    # time; a pinned version does not pin the fetch. The package now carries a dependency
+    # admission record and lockfile integrity, and the workspace starts offline.
     audit.require(ado.get("type") == "stdio", "ADO MCP must be the local stdio server")
-    audit.require(ado.get("command") == "npx", "ADO MCP must launch through npx")
+    audit.require(
+        ado.get("command") == "node",
+        "ADO MCP must launch the locally installed entrypoint with node, never acquire a "
+        "package at runtime",
+    )
+    audit.require(ado.get("cwd") == "${workspaceFolder}", "ADO MCP must start in the workspace root")
     audit.require(
         ado.get("args")
         == [
-            "-y",
-            "@azure-devops/mcp@2.8.1",
+            "node_modules/@azure-devops/mcp/dist/index.js",
             "${env:ADO_ORGANIZATION}",
             "-d",
             "work-items",
@@ -641,9 +649,13 @@ def check_settings_and_mcp(audit: Audit) -> None:
             "test-plans",
             "search",
         ],
-        "ADO MCP args must pin the package version, take the organization from the "
-        "preflight-checked environment, and bound the domains to "
+        "ADO MCP args must resolve the lockfile-installed entrypoint, take the organization "
+        "from the preflight-checked environment, and bound the domains to "
         "work-items/wiki/test-plans/search",
+    )
+    audit.require(
+        "@azure-devops/mcp" in json.dumps(load_json(ROOT / "package.json", audit) or {}),
+        "@azure-devops/mcp must be a declared dependency, not a runtime acquisition",
     )
     audit.require(not any(item.get("id") == "ado_org" for item in mcp.get("inputs", [])), "independent ADO organization prompt is forbidden")
     for name in ("salesforce-readonly",):
@@ -705,7 +717,7 @@ def check_settings_and_mcp(audit: Audit) -> None:
         "${workspacefolder:" not in serialized,
         "MCP configuration must not use a named workspaceFolder variable; direct folder opens cannot resolve it",
     )
-    for forbidden in ("@latest", "allow_all_orgs", "default_target_org", "login.salesforce.com"):
+    for forbidden in ("@latest", "allow_all_orgs", "default_target_org", "login.salesforce.com", "npx"):
         audit.require(forbidden not in serialized, f"MCP config contains forbidden token {forbidden!r}")
     # OS-level MCP sandbox keys were removed with the write server (2026-07-14): the fleet is
     # Windows (where VS Code cannot sandbox MCP) and the remaining servers are read-only by
@@ -1371,10 +1383,11 @@ def third_party_python_imports(root: Path) -> dict[str, set[str]]:
 def check_dependency_admissions(audit: Audit, root: Path = ROOT) -> None:
     """DEP-01: a third-party Python import without a current admission record fails the build.
 
-    The npm side of DEP-01 is not enforced here. `.vscode/mcp.json` still acquires the ADO
-    server through `npx -y`, which the rebuild plan owns in P3 together with that package's
-    admission record and offline-start proof; claiming npm coverage now would be a green
-    check over an unremediated acquisition path.
+    The npm side is enforced structurally rather than by import scan: `check_settings_and_mcp`
+    pins every MCP launcher to a locally installed entrypoint and refuses the token `npx`
+    anywhere in the configuration, and `@azure-devops/mcp` carries its own admission record.
+    A Node import scan would add little on top of that, because the wrappers are built on
+    Node built-ins by policy.
     """
     records: dict[str, dict] = {}
     admissions = root / "config" / "dependency-admissions"

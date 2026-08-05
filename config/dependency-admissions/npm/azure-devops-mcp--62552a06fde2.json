@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "ecosystem": "npm",
+  "packageName": "@azure-devops/mcp",
+  "safeSlug": "azure-devops-mcp",
+  "nameDigest12": "62552a06fde2",
+  "version": "2.8.1",
+  "importNames": [
+    "@azure-devops/mcp"
+  ],
+  "purpose": "The read-only Azure DevOps MCP server that supplies requirement, hierarchy, acceptance-criteria and linked Test Case context. Admitting it as a locally installed, lockfile-resolved dependency replaces the previous runtime `npx -y` acquisition, which resolved and executed a package from the network at every session start.",
+  "rejectedAlternatives": [
+    {
+      "alternative": "keep `npx -y @azure-devops/mcp@2.8.1` at runtime",
+      "whyInsufficient": "Runtime package acquisition executes whatever the registry serves at start time. The version is pinned but the fetch is not, `-y` suppresses the install prompt, and an offline or degraded network breaks the workflow silently. §19.6.4 names this exact pattern as debt to remediate, not to copy."
+    },
+    {
+      "alternative": "a hand-written Azure DevOps REST client using Node built-ins",
+      "whyInsufficient": "The workspace consumes work items, hierarchies, wiki pages, test plans and project-scoped search across four domains. Reimplementing that surface — with its auth, paging and revision semantics — would be a larger, less reviewed attack surface than the vendor server, and it would drift from the tool schemas the agent-facing contracts pin."
+    }
+  ],
+  "integrity": {
+    "lockfile": "package-lock.json",
+    "mechanism": "npm-lockfile-integrity",
+    "artifactDigests": [
+      "sha512-DwW+9Jt07s6UVksXeKVd6hLvXrMFKW5EI6pmr+SRR5sbdztoYTORPLIqhvMGLo+ZL366OkE6sneqq/rd7382bg=="
+    ]
+  },
+  "provenance": {
+    "sourceRepository": "https://github.com/microsoft/azure-devops-mcp",
+    "sourceCommit": null,
+    "maintainerNote": "Published by Microsoft under the @azure-devops scope; the repository follows Microsoft's Coordinated Vulnerability Disclosure process through MSRC.",
+    "checkedAt": "2026-08-05T00:00:00Z",
+    "note": "Provenance is evidence of origin, not proof of benign content. The server is policy-bound to read actions by the safety hook and role guard; it has no server-side read-only mode."
+  },
+  "advisoryCheck": {
+    "sources": [
+      "npm audit against this repository's lockfile (measured 2026-08-05)",
+      "https://github.com/advisories (GitHub Advisory Database)"
+    ],
+    "checkedAt": "2026-08-05T00:00:00Z",
+    "outcome": "no-known-advisory",
+    "detail": "Measured, not asserted: `npm audit` reports 12 moderate / 0 high both before and after this dependency joined the lock — identical counts and identical advisory ids (GHSA-8988-4f7v-96qf, GHSA-gh4j-gqv2-49f6, both in the pre-existing @salesforce/mcp telemetry chain). A standalone install of @azure-devops/mcp@2.8.1 DOES pull @modelcontextprotocol/sdk on a vulnerable @hono/node-server <2.0.5 (GHSA-frvp-7c67-39w9, Windows path traversal in serve-static via encoded %5C). In this repository the pre-existing `@hono/node-server: ^2.0.5` override resolves it to 2.0.11, and the advisory is verifiably absent from the tree. That override is therefore load-bearing for this admission and must not be removed without re-running this check."
+  },
+  "transitiveDeltaDigest": "sha256:29b7b5f51dd52cff86a641a997086885765919def83f869e89808433651b1340",
+  "lifecycleScripts": {
+    "disabled": true,
+    "note": "Installed and verified with `npm ci --ignore-scripts`; the offline start proof runs against that install. No lifecycle script from this package or its tree is executed."
+  },
+  "license": "MIT",
+  "supportedPlatforms": [
+    "windows",
+    "macos",
+    "linux"
+  ],
+  "cooldown": {
+    "applied": true,
+    "reason": "2.8.1 is the version this workspace has already been launching through npx since the 2026-07-14 owner decision; it is not a new release being adopted early. This admission changes the acquisition path, not the version."
+  },
+  "owner": "workspace owner (sf-harness-brain-core)",
+  "reviewBy": "2027-02-05",
+  "rollbackCriterion": "Remove or re-review if the @hono/node-server override is dropped or stops resolving >=2.0.5, if an advisory affecting 2.8.1 or its tree appears, if the transitive delta digest changes without a fresh admission, or if the ADO read surface is retired. Rollback is reverting to the previous release, never re-enabling runtime `npx -y`."
+}

@@ -913,3 +913,43 @@ directly. Each lands as its own commit with the full gate.
 - Related: `plan-2026-08-05-solution-design-rebuild.md` (builder-side),
   `.ai/contracts/solution-design-runtime.md`, `tests/test_solution_design_core.py`,
   `tests/test_solution_design_runtime.py`.
+
+## 2026-08-05 — ADO dependency admitted; requirement snapshots become executor-authored (P3, partial)
+
+- Decision: stop acquiring the Azure DevOps MCP server at runtime, and stop letting a model
+  transcription of a work item become the requirement of record.
+- `npx -y @azure-devops/mcp@2.8.1` is gone. A pinned version never pinned the *fetch*: `npx`
+  resolved and executed whatever the registry served at every session start, `-y` suppressed the
+  prompt, and a degraded network broke the workflow silently. The package is now a declared exact
+  dependency started as `node node_modules/@azure-devops/mcp/dist/index.js`, and the validator
+  refuses the token `npx` anywhere in the MCP configuration.
+- The admission decision was measured, not asserted. `npm audit` reports 12 moderate / 0 high
+  both before and after the dependency joined the lock — the same two advisory ids, both in the
+  pre-existing `@salesforce/mcp` telemetry chain. A standalone install of the package DOES pull
+  `@modelcontextprotocol/sdk` on a vulnerable `@hono/node-server` <2.0.5 (GHSA-frvp-7c67-39w9,
+  Windows path traversal via encoded `%5C`); this repository's pre-existing
+  `@hono/node-server: ^2.0.5` override resolves it to 2.0.11 and the advisory is verifiably
+  absent. That override is therefore load-bearing for this admission and the record says so.
+- Offline start proven on macOS: `npm ci --ignore-scripts --offline`, then the entrypoint
+  initializes over stdio and reports `Azure DevOps MCP Server 2.8.1`. Windows is unverified here.
+- `scripts/ado_requirement_adapter.mjs` is a narrow internal read adapter, not a second ADO
+  toolset. It starts the admitted entrypoint through `process.execPath` with an argument array
+  and `shell: false`, reads work-item get/get_batch only, strips HTML without interpreting it,
+  and marks a child that arrived without a body as summary-only so the requirement gate sees it.
+- AC identity and AC content are separated. A child work item derives identity from
+  project/item id plus a durable local key, so an edit changes `textDigest` and not `acId`.
+  An unkeyed rich-text field has no such key, so reconciliation is conservative and
+  fingerprint-based: a reorder keeps identities, and a split, merge, rewrite or collision is
+  reported for human reconciliation rather than silently reassigned. Ordinal position is never
+  identity — that would rewrite every AC on a reorder.
+- `set-requirement-snapshot` refuses a payload without `executorAuthored`, so the model cannot
+  import its own transcription. `design_submit` re-reads the root and child revisions
+  immediately before candidate creation; a drift check that cannot run raises rather than
+  submitting silently over possibly-stale ACs.
+- NOT done in this slice, and not claimed: Knowledge reference import and limitation import
+  (P3.6/P3.9), discovery-frontier and package-question seeding (P3.10), and linked Test Case
+  context (P3.11 — the adapter has the input and returns an empty list). The live ADO network
+  path is unexercised: no organization is reachable from the build machine, so only the pure
+  normalization and the Python reconciliation are covered by tests.
+- Verification: validate_harness green (2676 checks), full unit suite green (45 runtime tests),
+  37/37 safety evals, eslint clean, node --check clean, offline `npm ci` install verified.

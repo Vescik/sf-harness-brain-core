@@ -335,6 +335,10 @@ class Worker:
         if view in ("verification", "all"):
             summary["verificationContract"] = state["verificationContract"]
             summary["requirementSnapshot"] = state["requirementSnapshot"]
+            # The submit-time drift recheck needs the project to re-read revisions. It lives on
+            # the change record, not in the Design Case state, so surface it explicitly rather
+            # than letting the wrapper guess.
+            summary["workItemProject"] = (record.get("workItem") or {}).get("project")
         summary["concernCoverage"] = state["concernCoverage"]
         return summary
 
@@ -478,6 +482,61 @@ class Worker:
         summary["workingTreeDrift"] = facts["workingTreeDrift"]
         return summary
 
+    # -- op: requirement snapshot ----------------------------------------------------
+
+    def op_set_requirement_snapshot(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Store an ADO requirement snapshot authored by the internal read adapter.
+
+        `executorAuthored` is not decoration: a snapshot the model transcribed from a tool
+        result is model output, and model output is never evidence. The MCP wrapper sets this
+        after running the adapter itself; nothing model-facing can.
+        """
+        if not params.get("executorAuthored"):
+            raise WorkerError(
+                "MODEL_AUTHORED_REQUIREMENT",
+                "a requirement snapshot must come from the internal ADO adapter, not from a "
+                "model-supplied payload",
+            )
+        adapter_snapshot = params.get("adapterSnapshot")
+        if not isinstance(adapter_snapshot, dict):
+            raise WorkerError("INVALID_INPUT", "adapterSnapshot must be an object")
+        case_id = params["caseId"]
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            self._require_writer(record, params.get("writerId"))
+            self._require_version(record, design, params.get("expectedCaseVersion"))
+            state = record["solutionDesign"]
+            if state["status"] not in ("draft", "awaiting_human_input"):
+                raise WorkerError(
+                    "INVALID_TRANSITION", "requirements refresh only from an editable draft"
+                )
+            previous = state["requirementSnapshot"]
+            state["requirementSnapshot"] = core.requirement_snapshot_from_adapter(
+                adapter_snapshot, previous, at=utc_now()
+            )
+            state["stateSequence"] += 1
+            record["workItem"] = {
+                "system": "azure-devops",
+                "organization": str(adapter_snapshot.get("organization", ""))[:128],
+                "project": str(adapter_snapshot.get("project", ""))[:128],
+                "id": int(adapter_snapshot["itemId"]),
+                "type": str(adapter_snapshot.get("itemType") or "Unknown")[:128],
+                "url": None,
+                "revision": adapter_snapshot.get("revision"),
+                "fetchedAt": utc_now(),
+            }
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["acceptanceCriteria"] = len(
+            record["solutionDesign"]["requirementSnapshot"]["acceptanceCriteria"]
+        )
+        summary["unresolvedContradictions"] = record["solutionDesign"]["requirementSnapshot"][
+            "unresolvedContradictions"
+        ]
+        return summary
+
     # -- op: submit ------------------------------------------------------------------
 
     def op_submit(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -489,6 +548,16 @@ class Worker:
             state = record["solutionDesign"]
             if state["status"] not in ("draft", "awaiting_human_input"):
                 raise WorkerError("INVALID_TRANSITION", f"cannot submit from {state['status']}")
+            # Independent cheap source-revision recheck (§25 P3.4). The wrapper re-reads the
+            # root and child revisions immediately before submit; a mismatch becomes a targeted
+            # requirement-drift obligation instead of a candidate over stale ACs.
+            observed = params.get("observedRevisions")
+            if isinstance(observed, dict):
+                drift = core.requirement_drift(state["requirementSnapshot"], observed)
+                if drift:
+                    state["requirementSnapshot"]["unresolvedContradictions"] = sorted(
+                        set(state["requirementSnapshot"]["unresolvedContradictions"]) | set(drift)
+                    )[:50]
             # Render every generated section in memory first, so the candidate and the working
             # copy are hashed from identical final bytes.
             rendered = core.render_generated_sections(design, state)
@@ -948,6 +1017,7 @@ OPERATIONS = {
     "apply": "op_apply",
     "submit": "op_submit",
     "import-repository-receipt": "op_import_repository_receipt",
+    "set-requirement-snapshot": "op_set_requirement_snapshot",
     "record-human-input": "op_record_human_input",
     "confirm-candidate": "op_confirm_candidate",
     "request-candidate-revision": "op_request_candidate_revision",
