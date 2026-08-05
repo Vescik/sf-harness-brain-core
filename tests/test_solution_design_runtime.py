@@ -1384,7 +1384,10 @@ class SamplingDeriverTests(unittest.TestCase):
             "ns__Start__c": "2026-01-01",
             "ns__End__c": None,
             "ns__Parent__c": "a02000000000001AAA",
-            "Password__c": "hunter2",
+            # Deliberately not a realistic credential: the test proves the FIELD NAME routes
+            # the value to withholding, and a password-shaped literal in a repository is exactly
+            # what a secret scanner should flag regardless of whether it is real.
+            "Password__c": "FIXTURE-WITHHELD-VALUE",
         },
         {
             "attributes": {"type": "ns__Rule__c"},
@@ -1430,7 +1433,7 @@ class SamplingDeriverTests(unittest.TestCase):
         shape = self.derivers.sample_shape(self.ROWS)
         self.assertEqual(shape["fields"]["Id"], [{"shape": "salesforce-id", "count": 3}])
         serialized = json.dumps(shape)
-        self.assertNotIn("hunter2", serialized)
+        self.assertNotIn("FIXTURE-WITHHELD-VALUE", serialized)
         self.assertNotIn("a01000000000001AAA", serialized)
 
     def test_config_snapshot_withholds_ids_audit_and_sensitive_fields(self) -> None:
@@ -1442,7 +1445,7 @@ class SamplingDeriverTests(unittest.TestCase):
         self.assertEqual(first["ns__Type__c"], "Routing")
         self.assertEqual(first["Password__c"]["withheld"], "sensitive-field")
         self.assertEqual(first["ns__Parent__c"]["withheld"], "salesforce-id")
-        self.assertNotIn("hunter2", json.dumps(snapshot))
+        self.assertNotIn("FIXTURE-WITHHELD-VALUE", json.dumps(snapshot))
 
     def test_an_unknown_kind_fails_closed_rather_than_persisting_rows(self) -> None:
         with self.assertRaises(self.derivers.DeriverError):
