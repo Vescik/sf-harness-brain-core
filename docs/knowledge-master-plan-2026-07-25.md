@@ -595,10 +595,10 @@ gate, with no gap line — a completeness regression in exactly the surfaces SAF
 *correct* layer-2 call this plan says to preserve, so a single 12/12 target would demand converting
 exactly what §7 protects:
 
-- **Set A — step-1 *source* lookup is the `knowledge_context` MCP tool** (10 surfaces):
+- **Set A — step-1 *source* lookup is the `knowledge_context` MCP tool** (9 surfaces):
   `solution-design`, `check-against-principles`, `check-feature-coverage`, `adhoc-fix`,
   `investigate-config-records`, `generate-technical-documentation`, `investigate-object`,
-  `suggest-test-cases`, `development-assistant.agent.md`, `test-strategist.agent.md`.
+  `development-assistant.agent.md`, `test-strategist.agent.md`.
 - **Set B — stays layer-2, each with its stated reason**: `search-knowledge` step 2 (org/runtime/
   business/vendor questions), `batch-knowledge` (drill-downs), `propose-force-app-knowledge`
   (duplicate check while authoring v1 claims), plus every `--uses-object`/`--uses-field` call
@@ -611,7 +611,10 @@ surface moved from the CLI literal to the knowledge_context MCP tool, because tw
 lanes in agent-facing text rot into bypass — the v1-retirement lesson. The CLI menu survives
 only in search-knowledge as the operator fallback, which stays deliberately outside Set A.
 investigate-object and suggest-test-cases had adopted the step-1 lookup after this plan was
-written and join the counted set (8 → 10).
+written and joined the counted set (8 → 10). Set A revision 2026-08-05 (Solution Design rebuild,
+P1): `suggest-test-cases` was retired as dead functionality — the Verification Contract is now the
+canonical verification plan — so the counted set is 9. This line is the live contract the validator
+parses; the retired surface survives only in historical audit text elsewhere.
 
 **Each Set A surface owes two things, and the gate must count both.** `context --identity` is only
 half of a correct step-1 lookup: a row carrying `hydrated: false` failed re-reading and is not a

@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import ast
+import hashlib
+import importlib.util
 import json
 import re
 import subprocess
@@ -41,7 +44,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 6, "prompts": 18, "skills": 18, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 17, "skills": 17, "instructions": 3}
 # Budget for each grounding subprocess below. entry-check parses and validates every entry at
 # roughly 4.5 ms per entry (measured at 9 000), so a corpus in the low tens of thousands is the
 # constraint here, not the code. Raise this deliberately from a measurement — never to silence a
@@ -79,6 +82,25 @@ ALLOWED_TOOLS = {
     "salesforce-readonly/review_object_contract",
     "salesforce-readonly/review_configured_orgs",
     "salesforce-readonly/review_soql_query",
+    "solution-design/design_open",
+    "solution-design/design_context",
+    "solution-design/design_check",
+    "solution-design/design_apply",
+    "solution-design/design_import_repository_receipt",
+    "solution-design/design_submit",
+    "solution-design/design_request_human_input",
+    "solution-design/design_request_candidate_decision",
+    "solution-design/design_request_writer_transfer",
+    "solution-design/design_start_development",
+}
+# Internal runtime operations that are never model-facing tools. Granting one of these — or a
+# `solution-design/*` wildcard that would reach them — is a contract failure, not a convenience.
+FORBIDDEN_SOLUTION_DESIGN_GRANTS = {
+    "solution-design/*",
+    "solution-design/record-human-input",
+    "solution-design/confirm-candidate",
+    "solution-design/request-candidate-revision",
+    "solution-design/transfer-case-writer",
 }
 LEGACY_TOOLS = {"readFile", "editFiles", "runInTerminal", "fetch", "codebase", "githubRepo"}
 REQUIRED_SETTINGS = (
@@ -382,6 +404,13 @@ def check_customizations(audit: Audit, root: Path = ROOT) -> None:
         tools_ok = isinstance(tools, list) and all(isinstance(tool, str) for tool in tools)
         audit.require(tools_ok, f"{relative(path)}: tools must be an array of tool-name strings")
         if tools_ok:
+            forbidden = sorted(set(tools) & FORBIDDEN_SOLUTION_DESIGN_GRANTS)
+            audit.require(
+                not forbidden,
+                f"{relative(path)}: grants an internal Solution Design operation or wildcard "
+                f"{forbidden}; human transition operations are never model-facing tools",
+            )
+        if tools_ok:
             unknown = sorted(set(tools) - ALLOWED_TOOLS)
             legacy = sorted(set(tools) & LEGACY_TOOLS)
             audit.require(not unknown, f"{relative(path)}: unknown tools: {unknown}")
@@ -435,6 +464,12 @@ def check_customizations(audit: Audit, root: Path = ROOT) -> None:
             audit.require(tools_ok, f"{relative(path)}: tools must be an array of tool-name strings")
             if tools_ok:
                 audit.require(not (set(tools) - ALLOWED_TOOLS), f"{relative(path)}: unknown tools {sorted(set(tools) - ALLOWED_TOOLS)}")
+                forbidden = sorted(set(tools) & FORBIDDEN_SOLUTION_DESIGN_GRANTS)
+                audit.require(
+                    not forbidden,
+                    f"{relative(path)}: grants an internal Solution Design operation or wildcard "
+                    f"{forbidden}; human transition operations are never model-facing tools",
+                )
         audit.require("skill](" in body.lower(), f"{relative(path)}: prompt must link its skill")
         if isinstance(name, str):
             prompt_names.append(name)
@@ -472,13 +507,26 @@ def check_customizations(audit: Audit, root: Path = ROOT) -> None:
         audit.require(required_link in all_agent_bodies, f"agents do not explicitly load required resource {required_link}")
     for path in agent_paths:
         data, body = frontmatter(path, audit)
+        # A handoff must name durable identifiers, never chat context. The Design Case lane names
+        # a caseId plus a candidateId; the legacy work-record lane names a recordId plus a
+        # handoffId. Both are durable; neither may be reconstructed from the conversation.
+        identifier_pairs = (("recordid", "handoffid"), ("caseid", "candidateid"))
         for handoff in data.get("handoffs", []) or []:
             if isinstance(handoff, dict):
                 prompt = str(handoff.get("prompt", "")).lower()
-                audit.require("recordid" in prompt and "handoffid" in prompt, f"{relative(path)}: handoff must require recordId and handoffId")
+                audit.require(
+                    any(all(token in prompt for token in pair) for pair in identifier_pairs),
+                    f"{relative(path)}: handoff must require durable identifiers "
+                    f"(recordId+handoffId, or caseId+candidateId for a Design Case)",
+                )
                 audit.require(" above" not in prompt and "previous response" not in prompt, f"{relative(path)}: handoff depends on chat context")
         if data.get("handoffs"):
-            audit.require("recordid" in body.lower() and "handoffid" in body.lower(), f"{relative(path)}: completion contract must return record and handoff IDs")
+            lowered = body.lower()
+            audit.require(
+                any(all(token in lowered for token in pair) for pair in identifier_pairs),
+                f"{relative(path)}: completion contract must return durable identifiers "
+                f"(recordId+handoffId, or caseId+candidateId for a Design Case)",
+            )
 
 
 def check_links(audit: Audit) -> None:
@@ -571,7 +619,7 @@ def check_settings_and_mcp(audit: Audit) -> None:
     mcp = load_json(ROOT / ".vscode/mcp.json", audit)
     servers = mcp.get("servers", {}) if isinstance(mcp, dict) else {}
     audit.require(
-        set(servers) == {"ado-readonly", "salesforce-readonly", "knowledge"},
+        set(servers) == {"ado-readonly", "salesforce-readonly", "knowledge", "solution-design"},
         "MCP server set is unexpected",
     )
     ado = servers.get("ado-readonly", {})
@@ -621,6 +669,23 @@ def check_settings_and_mcp(audit: Audit) -> None:
         knowledge.get("args") == ["scripts/knowledge_mcp_server.mjs"],
         "knowledge: exactly the guarded wrapper, no extra args — it binds no org and takes no secrets",
     )
+    # Solution Design MCP (rebuild P2): the sole state-mutation surface over the Design Case
+    # runtime. It binds no org and takes no inputs, and it is registered in the VS Code host
+    # only — the human-bound elicitation surface the approval contract depends on does not
+    # exist in the CLI host.
+    solution_design = servers.get("solution-design", {})
+    audit.require(
+        solution_design.get("command") == "node", "solution-design: wrapper must run with node"
+    )
+    audit.require(
+        solution_design.get("args") == ["scripts/solution_design_mcp_server.mjs"],
+        "solution-design: exactly the guarded wrapper, no extra args",
+    )
+    audit.require(
+        solution_design.get("cwd") == "${workspaceFolder}",
+        "solution-design: wrapper must start in the workspace root",
+    )
+
     cli_mcp = load_json(ROOT / ".github/mcp.json", audit)
     cli_servers = cli_mcp.get("mcpServers", {}) if isinstance(cli_mcp, dict) else {}
     audit.require(
@@ -1269,6 +1334,139 @@ def check_placeholders(audit: Audit, root: Path = ROOT) -> None:
     audit.require(found == EXPECTED_HUMAN_PLACEHOLDERS, f"human placeholder register drifted: found {sorted(found)}")
 
 
+def third_party_python_imports(root: Path) -> dict[str, set[str]]:
+    """Top-level module names imported by scripts/*.py that resolve outside the standard library.
+
+    Resolution is by spec origin rather than a hand-kept stdlib list, because a hand-kept list
+    silently misclassifies extension modules (`math`, `unicodedata`) and turns the admission
+    gate into an inert check.
+    """
+    local = {path.stem for path in (root / "scripts").glob("*.py")} | {"scripts"}
+    found: dict[str, set[str]] = {}
+    for path in sorted((root / "scripts").glob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, OSError):
+            continue
+        names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names.add(node.module.split(".")[0])
+        for name in names:
+            if not name or name in local:
+                continue
+            try:
+                spec = importlib.util.find_spec(name)
+            except (ImportError, ValueError):
+                spec = None
+            origin = getattr(spec, "origin", None) or ""
+            search = " ".join(getattr(spec, "submodule_search_locations", None) or [])
+            if "site-packages" in origin or "dist-packages" in origin or "site-packages" in search:
+                found.setdefault(name, set()).add(path.name)
+    return found
+
+
+def check_dependency_admissions(audit: Audit, root: Path = ROOT) -> None:
+    """DEP-01: a third-party Python import without a current admission record fails the build.
+
+    The npm side of DEP-01 is not enforced here. `.vscode/mcp.json` still acquires the ADO
+    server through `npx -y`, which the rebuild plan owns in P3 together with that package's
+    admission record and offline-start proof; claiming npm coverage now would be a green
+    check over an unremediated acquisition path.
+    """
+    records: dict[str, dict] = {}
+    admissions = root / "config" / "dependency-admissions"
+    for path in sorted(admissions.glob("*/*.json")):
+        record = load_json(path, audit)
+        if not isinstance(record, dict):
+            continue
+        expected = f"{record.get('safeSlug')}--{record.get('nameDigest12')}.json"
+        audit.require(
+            path.name == expected,
+            f"{relative(path)}: admission filename must be '{expected}' (safe slug plus name digest)",
+        )
+        canonical = f"{record.get('ecosystem')}:{str(record.get('packageName', '')).lower()}"
+        audit.require(
+            record.get("nameDigest12")
+            == hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12],
+            f"{relative(path)}: nameDigest12 does not match sha256('{canonical}')",
+        )
+        for name in record.get("importNames", []):
+            audit.require(
+                name not in records,
+                f"import name '{name}' is claimed by two admission records",
+            )
+            records[name] = record
+    lock = (root / "requirements-dev.lock").read_text(encoding="utf-8") if (
+        root / "requirements-dev.lock"
+    ).is_file() else ""
+    for name, users in sorted(third_party_python_imports(root).items()):
+        record = records.get(name)
+        audit.require(
+            record is not None,
+            f"third-party import '{name}' (used by {', '.join(sorted(users))}) has no dependency "
+            f"admission record under config/dependency-admissions/",
+        )
+        if record is None:
+            continue
+        pin = f"{record['packageName']}=={record['version']}"
+        audit.require(
+            pin in lock,
+            f"admission record for '{name}' pins {pin}, which is absent from requirements-dev.lock",
+        )
+        for digest in record.get("integrity", {}).get("artifactDigests", []):
+            audit.require(
+                f"--hash={digest}" in lock,
+                f"admission record for '{name}' lists artifact digest {digest[:19]}… that the "
+                f"lockfile does not contain",
+            )
+
+
+def check_retired_surfaces(audit: Audit, root: Path = ROOT) -> None:
+    """A replacement phase removes its predecessor; this proves the old name is unreachable.
+
+    Every retired surface names the exact tokens that must not appear in a tracked file, plus
+    the historical audit documents that are allowed to keep describing it. The scan covers the
+    whole tracked tree so a deletion cannot leave a live consumer behind in an unexpected
+    directory, which is the failure mode §5.3 of the rebuild plan exists to prevent.
+    """
+    manifest = load_json(root / "config/retired-surfaces.json", audit)
+    if not isinstance(manifest, dict):
+        return
+    result = subprocess.run(
+        ["git", "ls-files"], cwd=root, text=True, capture_output=True, check=False
+    )
+    if result.returncode != 0:
+        audit.require(False, "retired-surface scan cannot list tracked files")
+        return
+    tracked = [line for line in result.stdout.splitlines() if line]
+    for entry in manifest.get("retired", []):
+        # The manifest names the retired tokens by construction; scanning it would always fail.
+        allowlist = set(entry.get("historicalAllowlist", [])) | {"config/retired-surfaces.json"}
+        tokens = entry.get("tokens", [])
+        offenders: list[str] = []
+        for relative_path in tracked:
+            if relative_path in allowlist:
+                continue
+            path = root / relative_path
+            if not path.is_file():
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            if any(token in text for token in tokens):
+                offenders.append(relative_path)
+        audit.require(
+            not offenders,
+            f"retired surface '{entry.get('name')}' (removed in {entry.get('retiredIn')}) is still "
+            f"referenced by {', '.join(sorted(offenders)[:6])}; replacement is "
+            f"{entry.get('replacement')}",
+        )
+
+
 def check_contracts_match_mcp(audit: Audit) -> None:
     """Normative contracts must not advertise MCP servers that mcp.json does not configure.
 
@@ -1415,6 +1613,8 @@ def main() -> int:
             check_release_handover_contract,
             check_knowledge_consumer_sets,
             check_org_usage,
+            check_retired_surfaces,
+            check_dependency_admissions,
         ),
     )
     if audit.errors:

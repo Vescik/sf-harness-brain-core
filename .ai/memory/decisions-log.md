@@ -850,3 +850,66 @@ directly. Each lands as its own commit with the full gate.
 - Related: the 2026-08-04 over-engineering review (wave 1), PRs #30/#34/#35, SETUP.md §3
   migration note, tests/test_receipt_gates.py BrowserLaneRetirementTests,
   tests/test_preflight.py test_retired_allow_agent_flags_are_rejected_by_schema.
+
+## 2026-08-05 — Solution Design rebuilt as a Design Case with an executed evidence loop (P1+P2)
+
+- Decision: replace the five-phase narrative Solution Design flow with one canonical, versioned
+  Design Case whose readiness is *computed* by a runtime, not announced by the model. Owner
+  decisions D-01…D-20 of the rebuild plan are the authority; this entry records what landed.
+- Why the old flow had to go, not be patched: two creation lanes (`output/solution-design/` and
+  the governed record) meant two definitions of readiness; workflow state lived in Markdown a
+  write hook then had to parse; completeness was enforced on every draft write, so a draft could
+  not be repaired; and the designer typed six or more work-record commands per design.
+- P1 — semantics first, before any tooling:
+  - six closed schemas (state, evidence, candidate, transition receipt, rule map, dependency
+    admission) and `scripts/solution_design_core.py` as their single implementation;
+  - `sd-c14n-v1` is a *separate*, stricter canonicalizer from `work_record.canonical_bytes`
+    (NFC with key-collision rejection, no binary floats, int64 bounds). `caseVersion` and
+    `candidateDigest` are distinct tokens and neither is reused as the other;
+  - `config/solution-design-rule-map.json` covers all 50 canonical rule IDs — 22 selector-driven,
+    28 with explicit `manualApplicability`. An unmapped hard rule fails registry validation
+    instead of vanishing from the engine;
+  - concern applicability is computed from scope, not from the questions the model happened to
+    ask: omitting a material concern keeps submit OPEN even when every authored question is
+    closed. This is the gate that existed nowhere before;
+  - `suggest-test-cases` retired with every active consumer (prompt, skill, technical-doc §9,
+    taxonomy, Set A count 10→9, EXPECTED_COUNTS 18→17, repo map). `config/retired-surfaces.json`
+    plus a validator scan proves the name is unreachable outside an explicit historical
+    allowlist; the scan was verified by positive control, not assumed;
+  - dependency admission records for `jsonschema` and `PyYAML` plus a DEP-01 check that resolves
+    imports by spec origin — a hand-kept stdlib list would have misclassified `math` and
+    `unicodedata` and made the gate inert. PyYAML got a record because leaving it out would have
+    left a real import unguarded; the npm side stays uncovered on purpose and says so.
+- P2 — the executor, and the removal of what it replaces, in one slice:
+  - `governed_state.py` (Windows-hostile path refusal, exclusive-create lease with an owner nonce
+    and quarantine-not-overwrite reclaim, journalled two-file commit), the NDJSON
+    `solution_design_worker.py` as the only mutating surface, a read-only `solution_design.py`
+    CLI with no transition verb to guard, and a Node-built-ins MCP server owning one persistent
+    worker behind a per-case queue;
+  - human decisions come only from native VS Code MCP elicitation. The three request tools carry
+    no answer, decision or status field; a client without elicitation support gets
+    `UNSUPPORTED_HOST_CAPABILITY` and there is no chat or terminal fallback;
+  - `SAFE-CLAIM-001` migrated to v4: a governed repository receipt (exact commit, blob OID, range,
+    content digest, coverage) joins approved Knowledge as an authority for positive intended-source
+    claims. Landed atomically with `repository_evidence_adapter.py`, the contract text and its
+    negative tests. A model raw-file read stays UNVERIFIED in both lanes;
+  - the Solution Designer lost `execute/runInTerminal`, its work-record command grants became an
+    empty set, and `output/solution-design/` left its write allowlist. `init`,
+    `resolve-question` and `bind-entry` are now agent-unreachable and declared as such;
+  - candidates, approvals, reviews and divergences joined `is_governed_record_path`, so an agent
+    cannot edit a candidate bundle or approval receipt through the ordinary write path.
+- Fail-closed while incomplete: `config/solution-design-capabilities.json` is pinned to
+  `sd-cap-p2`. A probe kind, evidence source, action or concern outside that manifest returns
+  `UNSUPPORTED_CAPABILITY`, and no candidate, approval or handoff can be produced. P3–P7 expand
+  the one runtime; there is no second lane to fall back to.
+- Verification: `validate_harness.py` PASS (2658 checks), full unit suite green including 68 new
+  core tests and 34 new runtime tests, 37/37 safety evals, `py_compile` over every script,
+  `node --check` over every `.mjs`, repo map regenerated. The vertical slice
+  (OPEN → repository receipt → human attestation → READY → candidate → approval → handoff) runs
+  end-to-end on a fixture through the real worker.
+- NOT verified, and not claimed: the native Windows run (build machine is macOS), VS Code Policy
+  Diagnostics for the anti-auto-approval policy, and the `devmp` transport smoke — the Salesforce
+  envelope it would exercise is P4 and does not exist yet. These stay open exit criteria.
+- Related: `plan-2026-08-05-solution-design-rebuild.md` (builder-side),
+  `.ai/contracts/solution-design-runtime.md`, `tests/test_solution_design_core.py`,
+  `tests/test_solution_design_runtime.py`.

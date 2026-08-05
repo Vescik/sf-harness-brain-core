@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:solution-design-rule-map.schema.json",
+  "title": "Solution Design rule applicability registry",
+  "description": "Machine-readable selectors that decide which canonical rule IDs enter a Design Case. Every active canonical hard-rule ID must appear exactly once, either under rules (selector-driven) or under manualApplicability (process rules whose applicability is not derivable from structured scope facts).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "policyVersion", "rules", "manualApplicability"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "policyVersion": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "rules": {
+      "type": "object",
+      "maxProperties": 200,
+      "propertyNames": { "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tier", "severity", "requiredClosures", "route"],
+        "oneOf": [{ "required": ["when"] }, { "required": ["whenAny"] }],
+        "properties": {
+          "tier": { "enum": ["kernel", "tier-1", "tier-2", "tier-3"] },
+          "severity": { "enum": ["blocking", "advisory"] },
+          "whenAny": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 6,
+            "items": { "$ref": "#/$defs/selector" }
+          },
+          "when": { "$ref": "#/$defs/selector" },
+          "requiredClosures": {
+            "type": "array",
+            "maxItems": 20,
+            "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+          },
+          "route": {
+            "enum": ["requirements", "grounding", "design", "verification", "human-input"]
+          }
+        }
+      }
+    },
+    "manualApplicability": {
+      "type": "object",
+      "maxProperties": 200,
+      "propertyNames": { "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tier", "severity", "blockingSemantics", "reason"],
+        "properties": {
+          "tier": { "enum": ["kernel", "tier-1", "tier-2", "tier-3"] },
+          "severity": { "enum": ["blocking", "advisory"] },
+          "blockingSemantics": {
+            "enum": [
+              "enforced-outside-design-gates",
+              "designer-declared-verdict-required",
+              "never-blocks-submit"
+            ]
+          },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+              "componentActions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 6,
+                "items": {
+                  "enum": ["use", "create", "modify", "delete", "retire", "dependency-only"]
+                }
+              },
+              "artefactTypes": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 60,
+                "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+              },
+              "componentOwnership": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 4,
+                "items": { "enum": ["package-owned", "subscriber-owned", "platform", "unknown"] }
+              },
+              "hostObjectOwnership": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 4,
+                "items": { "enum": ["package-owned", "subscriber-owned", "platform", "unknown"] }
+              },
+              "configurationActions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 6,
+                "items": {
+                  "enum": [
+                    "create-records",
+                    "modify-records",
+                    "delete-records",
+                    "reuse",
+                    "retire",
+                    "dependency-only"
+                  ]
+                }
+              },
+              "dataRoles": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 7,
+                "items": {
+                  "enum": [
+                    "configuration",
+                    "reference-data",
+                    "transactional",
+                    "operational-state",
+                    "telemetry-audit",
+                    "mixed",
+                    "unknown"
+                  ]
+                }
+              },
+              "concernProfiles": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+              },
+      "always": { "const": true }
+      }
+    }
+  }
+}

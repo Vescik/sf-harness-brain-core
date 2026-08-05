@@ -63,20 +63,23 @@ If the answer is "none", this section keeps an explicit "None" — it never disa
 
 <!-- Include any relevant limitations recorded on the approved Knowledge Entries. -->
 
-## 9. Suggested Test Cases
+## 9. Verification Contract
 
 <!--
-Result of the suggest-test-cases skill. Grouped by confidence. Each suggestion carries an
-explicit match rationale. These are UNCONFIRMED suggestions for review — do not confuse with
-the "Tests" section of release-handover.md, which lists formally linked (confirmed) Test Cases.
-If there are no hits: state that explicitly and suggest /sync-test-cases for the relevant
-suite instead of leaving an empty section.
+Projection of the Design Case Verification Contract (`record.json.solutionDesign.verificationContract`)
+for the accepted candidate, plus any formally linked ADO Test Cases those entries reference.
+This is the canonical verification plan: every in-scope acceptance criterion appears here with an
+assertion, method, pass criteria, expected evidence and executor/stage. It is not a relevance
+ranking and it is never model-ranked. When the change has no Design Case, state that explicitly
+and list only the formally linked Test Cases from the synced inventory.
 -->
 
-### High probability
+| Verification ID | AC | Assertion | Method | Pass criteria | Expected evidence | Executor / Stage |
+|---|---|---|---|---|---|---|
 
-- `<Test Case ID>` — `<title>` — rationale: `<why this matches>`
+### Formally linked Test Cases
 
-### Worth checking
-
-- `<Test Case ID>` — `<title>` — rationale: `<why this might match>`
+<!--
+Confirmed relations only, from the synced inventory (`/sync-test-cases`). An empty list is stated
+explicitly, never inferred as absence of coverage.
+-->

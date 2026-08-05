@@ -16,16 +16,23 @@ catalogs, resume pointers) before exploring the tree.
   contested, scope-mismatched, or unresolved evidence yields `INCOMPLETE — NEEDS HUMAN`, never
   `SAFE`.
 - **SAFE-CLAIM-001 — material facts require governed grounding.** A material fact about the
-  intended repository-source state of a force-app artifact must reference a current approved
-  Knowledge Entry (`entryRef`; lane `approved-current` confirmed by the entry executor's
-  receipt, never by a raw file read) covering a source-exact, fully-covered section, and only
-  for positive presence assertions. Deployed org state and record data are grounded only by a
-  fresh receipt from the governed review facade or an unexpired entry `orgUsage` block —
-  transcript numbers and old reports are not grounding. Absence or completeness of source,
-  runtime behavior, business meaning, package limitations, and vendor guarantees have no
-  governed grounding surface: state them as `UNVERIFIED` observations with their source and
-  bounds, or escalate to a human — never as verified facts. Model inference, chat recollection,
-  and generic Salesforce knowledge may propose but cannot verify. (v3 per
+  intended repository-source state of a force-app artifact must reference **either** a current
+  approved Knowledge Entry (`entryRef`; lane `approved-current` confirmed by the entry
+  executor's receipt, never by a raw file read) covering a source-exact, fully-covered section,
+  **or** a governed repository receipt authored by the repository-evidence adapter and bound to
+  repository identity, a full commit SHA, a normalized repository-relative path, the blob OID,
+  the line/structural range, a content digest and its coverage — and in both cases only for
+  positive presence assertions. A model raw-file read remains `UNVERIFIED` in either lane: the
+  adapter reads the exact Git object, and the receipt is what carries authority. A receipt whose
+  working tree drifted from the commit describes the commit, never the current workspace.
+  Deployed org state and record data are grounded only by a fresh receipt from the governed
+  review facade or an unexpired entry `orgUsage` block — transcript numbers and old reports are
+  not grounding. Absence or completeness of source, runtime behavior, business meaning, package
+  limitations, and vendor guarantees have no governed grounding surface: state them as
+  `UNVERIFIED` observations with their source and bounds, or escalate to a human — never as
+  verified facts. Model inference, chat recollection, and generic Salesforce knowledge may
+  propose but cannot verify. (v4: repository-receipt fallback added with the Solution Design
+  rebuild, 2026-08-05, together with its adapter, schema and negative tests; v3 per
   docs/knowledge-one-file-contract.md §8; claim registry retired, owner-approved 2026-08-03.)
 - **SAFE-TOOL-001 — never invent execution.** Never state or imply that a file, repository, MCP
   tool, CLI command, org query, test, approval, or handoff was inspected or completed without its

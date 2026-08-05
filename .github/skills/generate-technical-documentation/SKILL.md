@@ -47,7 +47,10 @@ large or heterogeneous. Do not infer which manifest members belong to the work i
    a generated view are never themselves citable. An empty result from either layer is a recorded
    gap and is never proof that nothing depends on the component. Use Config Investigator only for
    a material unknown; Knowledge writes are a separate approval.
-5. Run `suggest-test-cases` on structured touched artifacts and context.
+5. Project the verification plan: read the accepted Design Case candidate's Verification
+   Contract and render it into section 9, together with the ADO Test Cases those entries
+   formally reference. Never rank or suggest Test Cases; when no Design Case exists, say so
+   and list only formally linked cases from the synced inventory.
 6. Ask the human for non-metadata deployment steps with `vscode/askQuestions`; record explicit
    `None` when confirmed. Never infer activation/data-fix steps from absence in the manifest.
 7. Fill every section of the technical-documentation template and common output envelope,

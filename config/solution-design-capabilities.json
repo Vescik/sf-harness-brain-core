@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "manifestVersion": "sd-cap-p2",
+  "gateEvaluatorVersion": "sd-gate-v1",
+  "materialSince": "sd-cap-p2",
+  "concernProfiles": [
+    "data-model-and-configuration-integrity",
+    "security-and-execution-context",
+    "transaction-and-automation",
+    "volume-and-performance",
+    "package-boundaries-and-upgrade",
+    "verification-feasibility"
+  ],
+  "probeKinds": ["object-baseline", "categorical-distribution", "config-effectivity"],
+  "evidenceSourceTypes": [
+    "knowledge-entry",
+    "repository-receipt",
+    "org-soql-sample",
+    "human-sme-attestation"
+  ],
+  "configurationActions": ["create-records", "modify-records", "reuse", "dependency-only"],
+  "componentActions": ["use", "create", "modify", "dependency-only"],
+  "adapters": {
+    "adoRequirement": false,
+    "repositoryEvidence": true,
+    "salesforceEnvelope": true,
+    "knowledgeReference": true
+  },
+  "riskPolicies": ["standard-risk-seed"],
+  "transitions": [
+    "draft->draft",
+    "draft->awaiting_human_input",
+    "awaiting_human_input->draft",
+    "draft->candidate",
+    "candidate->awaiting_human",
+    "awaiting_human->accepted",
+    "awaiting_human->draft",
+    "accepted->development"
+  ],
+  "generatedSections": [
+    "ACCEPTANCE-CRITERIA",
+    "CURRENT-STATE-GROUNDING",
+    "DATA-CLASSIFICATIONS",
+    "CONCERN-COVERAGE",
+    "SOLUTION-ARTEFACTS",
+    "CONFIGURATION-ARTEFACTS",
+    "DECISIONS",
+    "RISKS-LIMITATIONS",
+    "VERIFICATION-CONTRACT",
+    "EVIDENCE-APPENDIX"
+  ]
+}
