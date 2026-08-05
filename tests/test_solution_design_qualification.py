@@ -224,11 +224,12 @@ class ConcurrencyQualificationTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix="sd-qual-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name) / "repo"
-        self.root.mkdir()
-        for relative in ("config", "schemas", ".github"):
-            shutil.copytree(ROOT / relative, self.root / relative, dirs_exist_ok=True)
+        # Only `config/` is read out of the temp root — schemas and instruction files resolve
+        # against the real repository root — and no test here needs git history, so this stays
+        # a single small copy rather than three directories and a subprocess.
+        (self.root / "config").mkdir(parents=True)
+        shutil.copytree(ROOT / "config", self.root / "config", dirs_exist_ok=True)
         (self.root / ".ai").mkdir()
-        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
         self.worker = worker_module.Worker(self.root)
 
     def call(self, operation: str, **params):

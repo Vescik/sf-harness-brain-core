@@ -7,6 +7,7 @@ about a target managed package, which no fixture can establish.
 
 from __future__ import annotations
 
+import atexit
 import importlib.util
 import json
 import os
@@ -71,34 +72,66 @@ def rule_verdict(rule_id: str) -> dict:
     }
 
 
+_TEMPLATE_ROOT: Path | None = None
+
+
+def _template_repo() -> Path:
+    """Build the fixture repository ONCE, not once per test.
+
+    Every test used to copy three directories (852K) and run three `git` subprocesses. Locally
+    that is 19 seconds; on NTFS with Defender, where process spawns and file IO are several
+    times slower, ~110 of them is what pushed the windows-latest job past its 30-minute cap.
+
+    Only `config/` is ever read out of the temp root — schemas and instruction files resolve
+    against the real repository root — so the template is small, and each test copies an
+    already-committed tree instead of rebuilding one.
+    """
+    global _TEMPLATE_ROOT
+    if _TEMPLATE_ROOT is not None:
+        return _TEMPLATE_ROOT
+    holder = tempfile.mkdtemp(prefix="sd-template-")
+    atexit.register(shutil.rmtree, holder, True)
+    root = Path(holder) / "repo"
+    root.mkdir()
+    shutil.copytree(ROOT / "config", root / "config", dirs_exist_ok=True)
+    (root / ".ai").mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.email=harness@example.invalid",
+            "-c",
+            "user.name=harness",
+            "commit",
+            "-qm",
+            "seed",
+        ],
+        cwd=root,
+        check=True,
+    )
+    _TEMPLATE_ROOT = root
+    return root
+
+
+def _template_commit() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=_template_repo(),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
 class WorkspaceCase(unittest.TestCase):
     def setUp(self) -> None:
         temporary = tempfile.TemporaryDirectory(prefix="sd-runtime-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name) / "repo"
-        self.root.mkdir()
-        for relative in ("config", "schemas", ".github"):
-            shutil.copytree(ROOT / relative, self.root / relative, dirs_exist_ok=True)
-        (self.root / ".ai").mkdir()
-        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
-        subprocess.run(["git", "add", "-A"], cwd=self.root, check=True)
-        subprocess.run(
-            [
-                "git",
-                "-c",
-                "user.email=harness@example.invalid",
-                "-c",
-                "user.name=harness",
-                "commit",
-                "-qm",
-                "seed",
-            ],
-            cwd=self.root,
-            check=True,
-        )
-        self.commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=self.root, capture_output=True, text=True, check=True
-        ).stdout.strip()
+        shutil.copytree(_template_repo(), self.root, symlinks=True)
+        self.commit = _template_commit()
         self.worker = worker_module.Worker(self.root)
 
     def call(self, operation: str, **params):
