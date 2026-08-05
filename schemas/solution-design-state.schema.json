@@ -29,8 +29,12 @@
     "activeCandidateRef"
   ],
   "properties": {
-    "schemaVersion": { "const": 1 },
-    "caseId": { "$ref": "#/$defs/caseId" },
+    "schemaVersion": {
+      "const": 1
+    },
+    "caseId": {
+      "$ref": "#/$defs/caseId"
+    },
     "status": {
       "enum": [
         "draft",
@@ -44,63 +48,122 @@
         "complete"
       ]
     },
-    "stateSequence": { "type": "integer", "minimum": 1 },
-    "writerAssignment": { "$ref": "#/$defs/writerAssignment" },
-    "nextFocus": {
-      "enum": ["requirements", "grounding", "design", "verification", "human-input", "none"]
+    "stateSequence": {
+      "type": "integer",
+      "minimum": 1
     },
-    "requirementSnapshot": { "$ref": "#/$defs/requirementSnapshot" },
-    "scope": { "$ref": "#/$defs/scope" },
+    "writerAssignment": {
+      "$ref": "#/$defs/writerAssignment"
+    },
+    "nextFocus": {
+      "enum": [
+        "requirements",
+        "grounding",
+        "design",
+        "verification",
+        "human-input",
+        "none"
+      ]
+    },
+    "requirementSnapshot": {
+      "$ref": "#/$defs/requirementSnapshot"
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
     "configurationArtefacts": {
       "type": "array",
       "maxItems": 200,
-      "items": { "$ref": "#/$defs/configurationArtefact" }
+      "items": {
+        "$ref": "#/$defs/configurationArtefact"
+      }
     },
     "dataClassifications": {
       "type": "array",
       "maxItems": 200,
-      "items": { "$ref": "#/$defs/dataClassification" }
+      "items": {
+        "$ref": "#/$defs/dataClassification"
+      }
     },
-    "questions": { "type": "array", "maxItems": 400, "items": { "$ref": "#/$defs/question" } },
+    "questions": {
+      "type": "array",
+      "maxItems": 400,
+      "items": {
+        "$ref": "#/$defs/question"
+      }
+    },
     "concernCoverage": {
       "type": "array",
       "maxItems": 40,
-      "items": { "$ref": "#/$defs/concernCoverage" }
+      "items": {
+        "$ref": "#/$defs/concernCoverage"
+      }
     },
-    "probes": { "type": "array", "maxItems": 400, "items": { "$ref": "#/$defs/probe" } },
-    "decisions": { "type": "array", "maxItems": 200, "items": { "$ref": "#/$defs/decision" } },
+    "probes": {
+      "type": "array",
+      "maxItems": 400,
+      "items": {
+        "$ref": "#/$defs/probe"
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    },
     "riskObligations": {
       "type": "array",
       "maxItems": 200,
-      "items": { "$ref": "#/$defs/riskObligation" }
+      "items": {
+        "$ref": "#/$defs/riskObligation"
+      }
     },
     "verificationContract": {
       "type": "array",
       "maxItems": 400,
-      "items": { "$ref": "#/$defs/verification" }
+      "items": {
+        "$ref": "#/$defs/verification"
+      }
     },
     "applicableRules": {
       "type": "array",
       "maxItems": 200,
-      "items": { "$ref": "#/$defs/ruleVerdict" }
+      "items": {
+        "$ref": "#/$defs/ruleVerdict"
+      }
     },
     "limitationRefs": {
       "type": "array",
       "maxItems": 200,
-      "items": { "$ref": "#/$defs/limitation" }
+      "items": {
+        "$ref": "#/$defs/limitation"
+      }
     },
     "evidenceRefs": {
       "type": "array",
       "maxItems": 400,
-      "items": { "$ref": "#/$defs/evidenceRef" }
+      "items": {
+        "$ref": "#/$defs/evidenceRef"
+      }
     },
     "knowledgeCandidates": {
       "type": "array",
       "maxItems": 100,
-      "items": { "$ref": "#/$defs/knowledgeCandidate" }
+      "items": {
+        "$ref": "#/$defs/knowledgeCandidate"
+      }
     },
     "activeCandidateRef": {
-      "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/activeCandidateRef" }]
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/activeCandidateRef"
+        }
+      ]
     }
   },
   "$defs": {
@@ -108,17 +171,46 @@
       "type": "string",
       "pattern": "^(ADO-[a-z0-9][a-z0-9-]{0,62}-[1-9][0-9]*|SD-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9][a-z0-9-]{0,40})$"
     },
-    "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
-    "shortText": { "type": "string", "minLength": 1, "maxLength": 400 },
-    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-    "timestamp": { "type": "string", "format": "date-time" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "shortText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 400
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
     "refList": {
       "type": "array",
       "maxItems": 100,
-      "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
     },
-    "apiName": { "type": "string", "minLength": 1, "maxLength": 200 },
-    "ownership": { "enum": ["package-owned", "subscriber-owned", "platform", "unknown"] },
+    "apiName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "ownership": {
+      "enum": [
+        "package-owned",
+        "subscriber-owned",
+        "platform",
+        "unknown"
+      ]
+    },
     "authority": {
       "enum": [
         "knowledge-entry",
@@ -131,7 +223,15 @@
         "production-authoritative-human"
       ]
     },
-    "route": { "enum": ["requirements", "grounding", "design", "verification", "human-input"] },
+    "route": {
+      "enum": [
+        "requirements",
+        "grounding",
+        "design",
+        "verification",
+        "human-input"
+      ]
+    },
     "concernProfileId": {
       "enum": [
         "data-model-and-configuration-integrity",
@@ -149,13 +249,36 @@
     "writerAssignment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["writerId", "assignedAt", "assignmentSequence", "transferReceiptRef"],
+      "required": [
+        "writerId",
+        "assignedAt",
+        "assignmentSequence",
+        "transferReceiptRef"
+      ],
       "properties": {
-        "writerId": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "assignedAt": { "$ref": "#/$defs/timestamp" },
-        "assignmentSequence": { "type": "integer", "minimum": 1 },
+        "writerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "assignedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "assignmentSequence": {
+          "type": "integer",
+          "minimum": 1
+        },
         "transferReceiptRef": {
-          "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 200 }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          ]
         }
       }
     },
@@ -173,14 +296,47 @@
         "inScope"
       ],
       "properties": {
-        "acId": { "type": "string", "pattern": "^AC-[A-Za-z0-9._-]+$" },
-        "sourceItemId": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 1 }] },
-        "sourceLocalKey": { "$ref": "#/$defs/shortText" },
-        "lineageKey": { "$ref": "#/$defs/shortText" },
-        "sourceRevision": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
-        "summary": { "$ref": "#/$defs/text" },
-        "textDigest": { "$ref": "#/$defs/digest" },
-        "inScope": { "type": "boolean" }
+        "acId": {
+          "type": "string",
+          "pattern": "^AC-[A-Za-z0-9._-]+$"
+        },
+        "sourceItemId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ]
+        },
+        "sourceLocalKey": {
+          "$ref": "#/$defs/shortText"
+        },
+        "lineageKey": {
+          "$ref": "#/$defs/shortText"
+        },
+        "sourceRevision": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/text"
+        },
+        "textDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "inScope": {
+          "type": "boolean"
+        }
       }
     },
     "requirementSnapshot": {
@@ -201,18 +357,71 @@
         "unresolvedContradictions"
       ],
       "properties": {
-        "sourceType": { "enum": ["ado", "human-request"] },
-        "itemId": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 1 }] },
-        "itemType": {
-          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/shortText" }]
+        "sourceType": {
+          "enum": [
+            "ado",
+            "human-request"
+          ]
         },
-        "revision": { "oneOf": [{ "type": "null" }, { "type": "integer", "minimum": 0 }] },
-        "retrievedAt": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/timestamp" }] },
-        "sourceDigest": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/digest" }] },
+        "itemId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 1
+            }
+          ]
+        },
+        "itemType": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/shortText"
+            }
+          ]
+        },
+        "revision": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "integer",
+              "minimum": 0
+            }
+          ]
+        },
+        "retrievedAt": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/timestamp"
+            }
+          ]
+        },
+        "sourceDigest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
+        },
         "includedItems": {
           "type": "array",
           "maxItems": 200,
-          "items": { "type": "integer", "minimum": 1 }
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
         },
         "excludedItems": {
           "type": "array",
@@ -220,26 +429,62 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["itemId", "reason"],
+            "required": [
+              "itemId",
+              "reason"
+            ],
             "properties": {
-              "itemId": { "type": "integer", "minimum": 1 },
-              "reason": { "$ref": "#/$defs/shortText" }
+              "itemId": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "reason": {
+                "$ref": "#/$defs/shortText"
+              }
             }
           }
         },
         "acceptanceCriteria": {
           "type": "array",
           "maxItems": 200,
-          "items": { "$ref": "#/$defs/acceptanceCriterion" }
+          "items": {
+            "$ref": "#/$defs/acceptanceCriterion"
+          }
         },
-        "completeness": { "enum": ["complete", "partial", "absent"] },
+        "completeness": {
+          "enum": [
+            "complete",
+            "partial",
+            "absent"
+          ]
+        },
         "attestationRef": {
-          "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 200 }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          ]
         },
         "unresolvedContradictions": {
           "type": "array",
           "maxItems": 50,
-          "items": { "$ref": "#/$defs/shortText" }
+          "items": {
+            "$ref": "#/$defs/shortText"
+          }
+        },
+        "linkedTestCaseIds": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "description": "Formally related ADO Test Case ids, read as context and mapping targets for the Verification Contract. Never a ranking, never the canonical verification plan."
         }
       }
     },
@@ -265,60 +510,146 @@
         "acIds"
       ],
       "properties": {
-        "componentId": { "type": "string", "pattern": "^CMP-[A-Za-z0-9._-]+$" },
-        "objectApiName": { "$ref": "#/$defs/apiName" },
-        "artefactType": { "$ref": "#/$defs/apiName" },
-        "apiName": { "$ref": "#/$defs/apiName" },
+        "componentId": {
+          "type": "string",
+          "pattern": "^CMP-[A-Za-z0-9._-]+$"
+        },
+        "objectApiName": {
+          "$ref": "#/$defs/apiName"
+        },
+        "artefactType": {
+          "$ref": "#/$defs/apiName"
+        },
+        "apiName": {
+          "$ref": "#/$defs/apiName"
+        },
         "action": {
-          "enum": ["use", "create", "modify", "delete", "retire", "dependency-only"]
+          "enum": [
+            "use",
+            "create",
+            "modify",
+            "delete",
+            "retire",
+            "dependency-only"
+          ]
         },
-        "disposition": { "enum": ["in-scope", "dependency-only", "out-of-scope", "unknown"] },
+        "disposition": {
+          "enum": [
+            "in-scope",
+            "dependency-only",
+            "out-of-scope",
+            "unknown"
+          ]
+        },
         "dispositionReason": {
-          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/shortText" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/shortText"
+            }
+          ]
         },
-        "provisionalApiName": { "type": "boolean" },
-        "description": { "$ref": "#/$defs/text" },
-        "componentOwnership": { "$ref": "#/$defs/ownership" },
-        "hostObjectOwnership": { "$ref": "#/$defs/ownership" },
-        "packageBoundaryRefs": { "$ref": "#/$defs/refList" },
+        "provisionalApiName": {
+          "type": "boolean"
+        },
+        "description": {
+          "$ref": "#/$defs/text"
+        },
+        "componentOwnership": {
+          "$ref": "#/$defs/ownership"
+        },
+        "hostObjectOwnership": {
+          "$ref": "#/$defs/ownership"
+        },
+        "packageBoundaryRefs": {
+          "$ref": "#/$defs/refList"
+        },
         "extensionPointStatus": {
-          "enum": ["not-applicable", "available", "unavailable", "unknown"]
+          "enum": [
+            "not-applicable",
+            "available",
+            "unavailable",
+            "unknown"
+          ]
         },
-        "sourceState": { "enum": ["absent", "present", "unknown"] },
-        "targetState": { "enum": ["proposed", "modified", "removed", "unchanged", "unknown"] },
-        "evidenceRefs": { "$ref": "#/$defs/refList" },
-        "decisionRefs": { "$ref": "#/$defs/refList" },
-        "acIds": { "$ref": "#/$defs/refList" }
+        "sourceState": {
+          "enum": [
+            "absent",
+            "present",
+            "unknown"
+          ]
+        },
+        "targetState": {
+          "enum": [
+            "proposed",
+            "modified",
+            "removed",
+            "unchanged",
+            "unknown"
+          ]
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "decisionRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "acIds": {
+          "$ref": "#/$defs/refList"
+        }
       }
     },
     "scope": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["components", "frontierComplete"],
+      "required": [
+        "components",
+        "frontierComplete"
+      ],
       "properties": {
         "components": {
           "type": "array",
           "maxItems": 400,
-          "items": { "$ref": "#/$defs/scopeComponent" }
+          "items": {
+            "$ref": "#/$defs/scopeComponent"
+          }
         },
-        "frontierComplete": { "type": "boolean" }
+        "frontierComplete": {
+          "type": "boolean"
+        }
       }
     },
     "slice": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["predicateTemplate", "parameters"],
+      "required": [
+        "predicateTemplate",
+        "parameters"
+      ],
       "properties": {
-        "predicateTemplate": { "$ref": "#/$defs/text" },
+        "predicateTemplate": {
+          "$ref": "#/$defs/text"
+        },
         "parameters": {
           "type": "object",
           "maxProperties": 30,
           "additionalProperties": {
             "oneOf": [
-              { "type": "string", "maxLength": 400 },
-              { "type": "integer" },
-              { "type": "boolean" },
-              { "type": "null" }
+              {
+                "type": "string",
+                "maxLength": 400
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         }
@@ -339,10 +670,26 @@
         "limitations"
       ],
       "properties": {
-        "classificationId": { "type": "string", "pattern": "^CLS-[A-Za-z0-9._-]+$" },
-        "objectApiName": { "$ref": "#/$defs/apiName" },
-        "slice": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/slice" }] },
-        "schemaOwnership": { "$ref": "#/$defs/ownership" },
+        "classificationId": {
+          "type": "string",
+          "pattern": "^CLS-[A-Za-z0-9._-]+$"
+        },
+        "objectApiName": {
+          "$ref": "#/$defs/apiName"
+        },
+        "slice": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/slice"
+            }
+          ]
+        },
+        "schemaOwnership": {
+          "$ref": "#/$defs/ownership"
+        },
         "dataStewardship": {
           "enum": [
             "package-seeded",
@@ -373,11 +720,15 @@
             "unknown"
           ]
         },
-        "evidenceRefs": { "$ref": "#/$defs/refList" },
+        "evidenceRefs": {
+          "$ref": "#/$defs/refList"
+        },
         "limitations": {
           "type": "array",
           "maxItems": 50,
-          "items": { "$ref": "#/$defs/shortText" }
+          "items": {
+            "$ref": "#/$defs/shortText"
+          }
         }
       }
     },
@@ -399,16 +750,34 @@
         "verificationRefs"
       ],
       "properties": {
-        "configurationArtefactId": { "type": "string", "pattern": "^CFG-[A-Za-z0-9._-]+$" },
-        "objectApiName": { "$ref": "#/$defs/apiName" },
-        "classificationRef": { "type": "string", "pattern": "^CLS-[A-Za-z0-9._-]+$" },
+        "configurationArtefactId": {
+          "type": "string",
+          "pattern": "^CFG-[A-Za-z0-9._-]+$"
+        },
+        "objectApiName": {
+          "$ref": "#/$defs/apiName"
+        },
+        "classificationRef": {
+          "type": "string",
+          "pattern": "^CLS-[A-Za-z0-9._-]+$"
+        },
         "naturalKeyFields": {
           "type": "array",
           "maxItems": 30,
-          "items": { "$ref": "#/$defs/apiName" }
+          "items": {
+            "$ref": "#/$defs/apiName"
+          }
         },
         "sliceRef": {
-          "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^CLS-[A-Za-z0-9._-]+$" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^CLS-[A-Za-z0-9._-]+$"
+            }
+          ]
         },
         "action": {
           "enum": [
@@ -420,13 +789,34 @@
             "dependency-only"
           ]
         },
-        "description": { "$ref": "#/$defs/text" },
-        "evidenceRefs": { "$ref": "#/$defs/refList" },
-        "decisionRefs": { "$ref": "#/$defs/refList" },
-        "acIds": { "$ref": "#/$defs/refList" },
-        "migrationRefs": { "$ref": "#/$defs/refList" },
-        "rollbackRef": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/shortText" }] },
-        "verificationRefs": { "$ref": "#/$defs/refList" }
+        "description": {
+          "$ref": "#/$defs/text"
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "decisionRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "acIds": {
+          "$ref": "#/$defs/refList"
+        },
+        "migrationRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "rollbackRef": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/shortText"
+            }
+          ]
+        },
+        "verificationRefs": {
+          "$ref": "#/$defs/refList"
+        }
       }
     },
     "question": {
@@ -444,14 +834,26 @@
         "route"
       ],
       "properties": {
-        "questionId": { "type": "string", "pattern": "^Q-[A-Za-z0-9._-]+$" },
-        "question": { "$ref": "#/$defs/text" },
-        "materiality": { "enum": ["blocking", "advisory"] },
+        "questionId": {
+          "type": "string",
+          "pattern": "^Q-[A-Za-z0-9._-]+$"
+        },
+        "question": {
+          "$ref": "#/$defs/text"
+        },
+        "materiality": {
+          "enum": [
+            "blocking",
+            "advisory"
+          ]
+        },
         "requiredAuthority": {
           "type": "array",
           "minItems": 1,
           "maxItems": 8,
-          "items": { "$ref": "#/$defs/authority" }
+          "items": {
+            "$ref": "#/$defs/authority"
+          }
         },
         "status": {
           "enum": [
@@ -465,13 +867,35 @@
             "stale"
           ]
         },
-        "answer": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }] },
-        "closureAuthority": {
-          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/authority" }]
+        "answer": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
         },
-        "evidenceRefs": { "$ref": "#/$defs/refList" },
-        "limitations": { "$ref": "#/$defs/refList" },
-        "route": { "$ref": "#/$defs/route" }
+        "closureAuthority": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/authority"
+            }
+          ]
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "limitations": {
+          "$ref": "#/$defs/refList"
+        },
+        "route": {
+          "$ref": "#/$defs/route"
+        }
       }
     },
     "concernCoverage": {
@@ -490,55 +914,141 @@
         "notApplicableReason"
       ],
       "properties": {
-        "concernId": { "type": "string", "pattern": "^COV-[A-Z0-9-]+$" },
-        "profileId": { "$ref": "#/$defs/concernProfileId" },
-        "applicability": { "enum": ["applicable", "not-applicable"] },
-        "status": { "enum": ["open", "addressed", "risk-raised"] },
-        "triggerRefs": { "$ref": "#/$defs/refList" },
-        "treatmentRefs": { "$ref": "#/$defs/refList" },
-        "questionRefs": { "$ref": "#/$defs/refList" },
-        "riskRefs": { "$ref": "#/$defs/refList" },
-        "verificationRefs": { "$ref": "#/$defs/refList" },
+        "concernId": {
+          "type": "string",
+          "pattern": "^COV-[A-Z0-9-]+$"
+        },
+        "profileId": {
+          "$ref": "#/$defs/concernProfileId"
+        },
+        "applicability": {
+          "enum": [
+            "applicable",
+            "not-applicable"
+          ]
+        },
+        "status": {
+          "enum": [
+            "open",
+            "addressed",
+            "risk-raised"
+          ]
+        },
+        "triggerRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "treatmentRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "questionRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "riskRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "verificationRefs": {
+          "$ref": "#/$defs/refList"
+        },
         "notApplicableReason": {
-          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
         }
       }
     },
     "replaySpec": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "canonicalTemplate", "parameters", "apiMode", "replayable"],
+      "required": [
+        "kind",
+        "canonicalTemplate",
+        "parameters",
+        "apiMode",
+        "replayable"
+      ],
       "properties": {
-        "kind": { "enum": ["canonical-soql", "object-contract", "manual-only"] },
-        "canonicalTemplate": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }] },
+        "kind": {
+          "enum": [
+            "canonical-soql",
+            "object-contract",
+            "manual-only"
+          ]
+        },
+        "canonicalTemplate": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
+        },
         "parameters": {
           "type": "array",
           "maxItems": 30,
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name", "source"],
+            "required": [
+              "name",
+              "source"
+            ],
             "properties": {
-              "name": { "$ref": "#/$defs/apiName" },
+              "name": {
+                "$ref": "#/$defs/apiName"
+              },
               "source": {
-                "enum": ["persisted-safe-literal", "governed-resolver", "manual-entry"]
+                "enum": [
+                  "persisted-safe-literal",
+                  "governed-resolver",
+                  "manual-entry"
+                ]
               },
               "value": {
                 "oneOf": [
-                  { "type": "string", "maxLength": 400 },
-                  { "type": "integer" },
-                  { "type": "boolean" },
-                  { "type": "null" }
+                  {
+                    "type": "string",
+                    "maxLength": 400
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               },
               "resolverRef": {
-                "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/shortText" }]
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/$defs/shortText"
+                  }
+                ]
               }
             }
           }
         },
-        "apiMode": { "enum": ["data", "tooling"] },
-        "replayable": { "type": "boolean" }
+        "apiMode": {
+          "enum": [
+            "data",
+            "tooling"
+          ]
+        },
+        "replayable": {
+          "type": "boolean"
+        }
       }
     },
     "probe": {
@@ -562,9 +1072,23 @@
         "recheckPlan"
       ],
       "properties": {
-        "probeId": { "type": "string", "pattern": "^P-[A-Za-z0-9._-]+$" },
-        "questionId": { "type": "string", "pattern": "^Q-[A-Za-z0-9._-]+$" },
-        "origin": { "enum": ["requirement", "question", "decision", "risk", "concern"] },
+        "probeId": {
+          "type": "string",
+          "pattern": "^P-[A-Za-z0-9._-]+$"
+        },
+        "questionId": {
+          "type": "string",
+          "pattern": "^Q-[A-Za-z0-9._-]+$"
+        },
+        "origin": {
+          "enum": [
+            "requirement",
+            "question",
+            "decision",
+            "risk",
+            "concern"
+          ]
+        },
         "kind": {
           "enum": [
             "object-contract",
@@ -587,27 +1111,102 @@
         "target": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["objectApiName"],
+          "required": [
+            "objectApiName"
+          ],
           "properties": {
-            "objectApiName": { "$ref": "#/$defs/apiName" },
-            "slice": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }] }
+            "objectApiName": {
+              "$ref": "#/$defs/apiName"
+            },
+            "slice": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/text"
+                }
+              ]
+            }
           }
         },
-        "queryDigest": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/digest" }] },
-        "suggestedSoql": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }] },
-        "replaySpec": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/replaySpec" }] },
-        "expectedResultShape": {
-          "enum": ["aggregate", "distribution", "shape", "snapshot", "single-value"]
+        "queryDigest": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/digest"
+            }
+          ]
         },
-        "completenessCriterion": { "$ref": "#/$defs/text" },
-        "requiredness": { "enum": ["hard", "conditional", "advisory"] },
+        "suggestedSoql": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
+        },
+        "replaySpec": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/replaySpec"
+            }
+          ]
+        },
+        "expectedResultShape": {
+          "enum": [
+            "aggregate",
+            "distribution",
+            "shape",
+            "snapshot",
+            "single-value"
+          ]
+        },
+        "completenessCriterion": {
+          "$ref": "#/$defs/text"
+        },
+        "requiredness": {
+          "enum": [
+            "hard",
+            "conditional",
+            "advisory"
+          ]
+        },
         "conditionalPredicate": {
-          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
         },
         "notApplicableReason": {
-          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
         },
-        "persistenceMode": { "enum": ["aggregate", "shape", "config-snapshot", "transient"] },
+        "persistenceMode": {
+          "enum": [
+            "aggregate",
+            "shape",
+            "config-snapshot",
+            "transient"
+          ]
+        },
         "freshnessClass": {
           "enum": [
             "schema-observation",
@@ -616,7 +1215,9 @@
             "row-shape-observation"
           ]
         },
-        "stopCondition": { "$ref": "#/$defs/text" },
+        "stopCondition": {
+          "$ref": "#/$defs/text"
+        },
         "status": {
           "enum": [
             "planned",
@@ -629,17 +1230,36 @@
           ]
         },
         "receiptRef": {
-          "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^EV-[A-Za-z0-9._-]+$" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^EV-[A-Za-z0-9._-]+$"
+            }
+          ]
         },
         "fitnessVerdict": {
           "oneOf": [
-            { "type": "null" },
-            { "enum": ["fit", "fit-with-constraints", "not-fit", "inconclusive"] }
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "fit",
+                "fit-with-constraints",
+                "not-fit",
+                "inconclusive"
+              ]
+            }
           ]
         },
         "decisionImpact": {
           "oneOf": [
-            { "type": "null" },
+            {
+              "type": "null"
+            },
             {
               "enum": [
                 "changed-scope",
@@ -663,7 +1283,11 @@
             "never"
           ]
         },
-        "attempts": { "type": "integer", "minimum": 0, "maximum": 100 }
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        }
       }
     },
     "decision": {
@@ -685,20 +1309,64 @@
         "verificationRefs"
       ],
       "properties": {
-        "decisionId": { "type": "string", "pattern": "^D-[0-9]{3,6}$" },
-        "designAnchor": { "type": "string", "pattern": "^#[A-Za-z0-9._-]+$" },
-        "summary": { "$ref": "#/$defs/text" },
-        "rationaleSummary": { "$ref": "#/$defs/text" },
-        "alternativeRefs": { "$ref": "#/$defs/refList" },
-        "trivialityReason": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }] },
-        "status": { "enum": ["proposed", "accepted", "superseded"] },
-        "materiality": { "enum": ["material", "trivial"] },
-        "acIds": { "$ref": "#/$defs/refList" },
-        "componentIds": { "$ref": "#/$defs/refList" },
-        "questionIds": { "$ref": "#/$defs/refList" },
-        "evidenceRefs": { "$ref": "#/$defs/refList" },
-        "riskRefs": { "$ref": "#/$defs/refList" },
-        "verificationRefs": { "$ref": "#/$defs/refList" }
+        "decisionId": {
+          "type": "string",
+          "pattern": "^D-[0-9]{3,6}$"
+        },
+        "designAnchor": {
+          "type": "string",
+          "pattern": "^#[A-Za-z0-9._-]+$"
+        },
+        "summary": {
+          "$ref": "#/$defs/text"
+        },
+        "rationaleSummary": {
+          "$ref": "#/$defs/text"
+        },
+        "alternativeRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "trivialityReason": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "proposed",
+            "accepted",
+            "superseded"
+          ]
+        },
+        "materiality": {
+          "enum": [
+            "material",
+            "trivial"
+          ]
+        },
+        "acIds": {
+          "$ref": "#/$defs/refList"
+        },
+        "componentIds": {
+          "$ref": "#/$defs/refList"
+        },
+        "questionIds": {
+          "$ref": "#/$defs/refList"
+        },
+        "evidenceRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "riskRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "verificationRefs": {
+          "$ref": "#/$defs/refList"
+        }
       }
     },
     "riskObligation": {
@@ -719,31 +1387,79 @@
         "verificationRefs"
       ],
       "properties": {
-        "riskId": { "type": "string", "pattern": "^R-[0-9]{3,6}$" },
-        "profileId": { "$ref": "#/$defs/shortText" },
-        "summary": { "$ref": "#/$defs/text" },
-        "impact": { "$ref": "#/$defs/text" },
-        "severity": { "enum": ["low", "medium", "high"] },
-        "status": { "enum": ["open", "mitigated", "accepted", "not-applicable"] },
-        "triggerRefs": { "$ref": "#/$defs/refList" },
+        "riskId": {
+          "type": "string",
+          "pattern": "^R-[0-9]{3,6}$"
+        },
+        "profileId": {
+          "$ref": "#/$defs/shortText"
+        },
+        "summary": {
+          "$ref": "#/$defs/text"
+        },
+        "impact": {
+          "$ref": "#/$defs/text"
+        },
+        "severity": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "status": {
+          "enum": [
+            "open",
+            "mitigated",
+            "accepted",
+            "not-applicable"
+          ]
+        },
+        "triggerRefs": {
+          "$ref": "#/$defs/refList"
+        },
         "requiredClosures": {
           "type": "array",
           "maxItems": 30,
-          "items": { "$ref": "#/$defs/shortText" }
+          "items": {
+            "$ref": "#/$defs/shortText"
+          }
         },
         "satisfiedClosures": {
           "type": "array",
           "maxItems": 30,
-          "items": { "$ref": "#/$defs/shortText" }
+          "items": {
+            "$ref": "#/$defs/shortText"
+          }
         },
         "mitigationDesignRef": {
-          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/shortText" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/shortText"
+            }
+          ]
         },
-        "evidenceRefs": { "$ref": "#/$defs/refList" },
+        "evidenceRefs": {
+          "$ref": "#/$defs/refList"
+        },
         "acceptedRiskReceiptRef": {
-          "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 200 }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          ]
         },
-        "verificationRefs": { "$ref": "#/$defs/refList" }
+        "verificationRefs": {
+          "$ref": "#/$defs/refList"
+        }
       }
     },
     "verification": {
@@ -762,16 +1478,41 @@
         "recheckProbeRefs"
       ],
       "properties": {
-        "verificationId": { "type": "string", "pattern": "^V-[0-9]{3,6}$" },
-        "acIds": { "$ref": "#/$defs/refList" },
-        "decisionRefs": { "$ref": "#/$defs/refList" },
-        "assertion": { "$ref": "#/$defs/text" },
-        "method": { "$ref": "#/$defs/shortText" },
-        "stage": { "enum": ["pre-development", "development", "pre-review", "post-deployment"] },
-        "executorRole": {
-          "enum": ["development-assistant", "test-strategist", "guardrail-reviewer", "human"]
+        "verificationId": {
+          "type": "string",
+          "pattern": "^V-[0-9]{3,6}$"
         },
-        "passCriteria": { "$ref": "#/$defs/text" },
+        "acIds": {
+          "$ref": "#/$defs/refList"
+        },
+        "decisionRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "assertion": {
+          "$ref": "#/$defs/text"
+        },
+        "method": {
+          "$ref": "#/$defs/shortText"
+        },
+        "stage": {
+          "enum": [
+            "pre-development",
+            "development",
+            "pre-review",
+            "post-deployment"
+          ]
+        },
+        "executorRole": {
+          "enum": [
+            "development-assistant",
+            "test-strategist",
+            "guardrail-reviewer",
+            "human"
+          ]
+        },
+        "passCriteria": {
+          "$ref": "#/$defs/text"
+        },
         "expectedEvidenceType": {
           "enum": [
             "verification-execution",
@@ -780,36 +1521,106 @@
             "human-attestation"
           ]
         },
-        "recheckProbeRefs": { "$ref": "#/$defs/refList" },
-        "linkedTestCaseRefs": { "$ref": "#/$defs/refList" }
+        "recheckProbeRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "linkedTestCaseRefs": {
+          "$ref": "#/$defs/refList"
+        }
       }
     },
     "ruleVerdict": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["ruleId", "tier", "severity", "verdict", "definitionDigest"],
+      "required": [
+        "ruleId",
+        "tier",
+        "severity",
+        "verdict",
+        "definitionDigest"
+      ],
       "properties": {
-        "ruleId": { "type": "string", "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$" },
-        "tier": { "enum": ["kernel", "tier-1", "tier-2", "tier-3"] },
-        "severity": { "enum": ["blocking", "advisory"] },
-        "verdict": { "enum": ["honored", "tension", "violated", "not-applicable"] },
-        "mitigation": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }] },
+        "ruleId": {
+          "type": "string",
+          "pattern": "^(SAFE|MP|ORG|SF)-[A-Z0-9-]+$"
+        },
+        "tier": {
+          "enum": [
+            "kernel",
+            "tier-1",
+            "tier-2",
+            "tier-3"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "blocking",
+            "advisory"
+          ]
+        },
+        "verdict": {
+          "enum": [
+            "honored",
+            "tension",
+            "violated",
+            "not-applicable"
+          ]
+        },
+        "mitigation": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
+        },
         "notApplicableReason": {
-          "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/text" }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/text"
+            }
+          ]
         },
-        "decisionRefs": { "$ref": "#/$defs/refList" },
+        "decisionRefs": {
+          "$ref": "#/$defs/refList"
+        },
         "humanReceiptRef": {
-          "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 200 }]
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          ]
         },
-        "definitionDigest": { "$ref": "#/$defs/digest" }
+        "definitionDigest": {
+          "$ref": "#/$defs/digest"
+        }
       }
     },
     "limitation": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["limitationId", "class", "summary", "affectedRefs", "impact"],
+      "required": [
+        "limitationId",
+        "class",
+        "summary",
+        "affectedRefs",
+        "impact"
+      ],
       "properties": {
-        "limitationId": { "type": "string", "pattern": "^LIM-[A-Za-z0-9._-]+$" },
+        "limitationId": {
+          "type": "string",
+          "pattern": "^LIM-[A-Za-z0-9._-]+$"
+        },
         "class": {
           "enum": [
             "component-limitation",
@@ -819,15 +1630,50 @@
             "operational-limitation"
           ]
         },
-        "summary": { "$ref": "#/$defs/text" },
-        "affectedRefs": { "$ref": "#/$defs/refList" },
-        "impact": { "$ref": "#/$defs/text" },
-        "mitigationRef": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/shortText" }] },
-        "acceptedRiskReceiptRef": {
-          "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "maxLength": 200 }]
+        "summary": {
+          "$ref": "#/$defs/text"
         },
-        "verificationRefs": { "$ref": "#/$defs/refList" },
-        "sourceAuthority": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/authority" }] }
+        "affectedRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "impact": {
+          "$ref": "#/$defs/text"
+        },
+        "mitigationRef": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/shortText"
+            }
+          ]
+        },
+        "acceptedRiskReceiptRef": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          ]
+        },
+        "verificationRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "sourceAuthority": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/authority"
+            }
+          ]
+        }
       }
     },
     "evidenceRef": {
@@ -849,10 +1695,21 @@
         "probeRefs"
       ],
       "properties": {
-        "receiptId": { "type": "string", "pattern": "^EV-[A-Za-z0-9._-]+$" },
-        "path": { "type": "string", "minLength": 1, "maxLength": 400 },
-        "sha256": { "$ref": "#/$defs/digest" },
-        "sourceType": { "$ref": "#/$defs/authority" },
+        "receiptId": {
+          "type": "string",
+          "pattern": "^EV-[A-Za-z0-9._-]+$"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "sourceType": {
+          "$ref": "#/$defs/authority"
+        },
         "assurance": {
           "enum": [
             "source-exact",
@@ -862,7 +1719,12 @@
             "vendor-documented"
           ]
         },
-        "validationPurpose": { "enum": ["design-evidence", "transport-mechanics"] },
+        "validationPurpose": {
+          "enum": [
+            "design-evidence",
+            "transport-mechanics"
+          ]
+        },
         "environmentFitness": {
           "enum": [
             "scope-matched-non-production",
@@ -870,34 +1732,92 @@
             "not-environment-bound"
           ]
         },
-        "observedAt": { "$ref": "#/$defs/timestamp" },
-        "expiresAt": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/timestamp" }] },
-        "completeness": { "enum": ["complete", "partial", "slice-bounded", "incomplete"] },
-        "status": { "enum": ["current", "stale", "superseded", "contested"] },
-        "questionRefs": { "$ref": "#/$defs/refList" },
-        "probeRefs": { "$ref": "#/$defs/refList" }
+        "observedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "expiresAt": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/timestamp"
+            }
+          ]
+        },
+        "completeness": {
+          "enum": [
+            "complete",
+            "partial",
+            "slice-bounded",
+            "incomplete"
+          ]
+        },
+        "status": {
+          "enum": [
+            "current",
+            "stale",
+            "superseded",
+            "contested"
+          ]
+        },
+        "questionRefs": {
+          "$ref": "#/$defs/refList"
+        },
+        "probeRefs": {
+          "$ref": "#/$defs/refList"
+        }
       }
     },
     "knowledgeCandidate": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["subject", "reason"],
+      "required": [
+        "subject",
+        "reason"
+      ],
       "properties": {
-        "subject": { "$ref": "#/$defs/shortText" },
-        "reason": { "$ref": "#/$defs/text" }
+        "subject": {
+          "$ref": "#/$defs/shortText"
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        }
       }
     },
     "activeCandidateRef": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["candidateId", "candidateDigest", "createdAt", "submittedFromCaseVersion", "status"],
+      "required": [
+        "candidateId",
+        "candidateDigest",
+        "createdAt",
+        "submittedFromCaseVersion",
+        "status"
+      ],
       "properties": {
-        "candidateId": { "type": "string", "pattern": "^CND-[A-Za-z0-9._-]+$" },
-        "candidateDigest": { "$ref": "#/$defs/digest" },
-        "createdAt": { "$ref": "#/$defs/timestamp" },
-        "submittedFromCaseVersion": { "type": "string", "pattern": "^cv1_[0-9a-f]{64}$" },
+        "candidateId": {
+          "type": "string",
+          "pattern": "^CND-[A-Za-z0-9._-]+$"
+        },
+        "candidateDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "createdAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "submittedFromCaseVersion": {
+          "type": "string",
+          "pattern": "^cv1_[0-9a-f]{64}$"
+        },
         "status": {
-          "enum": ["candidate", "in-design-review", "awaiting-human", "accepted", "superseded"]
+          "enum": [
+            "candidate",
+            "in-design-review",
+            "awaiting-human",
+            "accepted",
+            "superseded"
+          ]
         }
       }
     }

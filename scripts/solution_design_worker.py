@@ -47,6 +47,21 @@ CASE_ID = re.compile(
 )
 
 
+class _Namespace:
+    """Minimal argparse-namespace stand-in for reused work_record/knowledge_store commands."""
+
+    def __init__(self, **values: Any) -> None:
+        for key, value in values.items():
+            setattr(self, key, value)
+
+
+def _prefixed(digest: str | None) -> str:
+    """Knowledge digests are bare hex; Design Case receipts carry the algorithm prefix."""
+    if not digest:
+        return "sha256:" + "0" * 64
+    return digest if digest.startswith("sha256:") else f"sha256:{digest}"
+
+
 class WorkerError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -235,6 +250,9 @@ class Worker:
             "result": report["result"],
             "openObligations": report["gaps"],
             "applicableConcerns": report["applicableConcerns"],
+            # Seeded obligations must be visible in the response that seeded them, or the
+            # designer only meets them at submit — which is the surprise the loop removes.
+            "concernCoverage": state["concernCoverage"],
             "riskClassification": report["riskClassification"],
             "activeCandidateRef": state["activeCandidateRef"],
         }
@@ -248,6 +266,7 @@ class Worker:
         lease: gs.Lease,
         expected_design_digest: str,
     ) -> tuple[dict[str, Any], str]:
+        record["solutionDesign"] = core.seed_obligations(record["solutionDesign"])
         rendered = core.render_generated_sections(design, record["solutionDesign"])
         record["solutionDesign"]["nextFocus"] = self._evaluate(record, rendered)["nextFocus"]
         record["design"]["sha256"] = core.text_digest(rendered).split(":", 1)[1]
@@ -339,7 +358,6 @@ class Worker:
             # the change record, not in the Design Case state, so surface it explicitly rather
             # than letting the wrapper guess.
             summary["workItemProject"] = (record.get("workItem") or {}).get("project")
-        summary["concernCoverage"] = state["concernCoverage"]
         return summary
 
     def op_check(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -482,6 +500,165 @@ class Worker:
         summary["workingTreeDrift"] = facts["workingTreeDrift"]
         return summary
 
+    # -- op: knowledge reference -----------------------------------------------------
+
+    def op_import_knowledge_reference(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Bind an approved-current, groundable Knowledge Entry as source evidence.
+
+        The §8.1 groundability rule (source-exact assurance, full coverage, positive presence
+        only) already has exactly one implementation in `work_record.py`. Reuse beats a second
+        copy here: a divergent reimplementation would eventually ground a design on a
+        regex-derived Apex fact, which is the failure that rule exists to prevent.
+        """
+        identity = params.get("identity")
+        if not isinstance(identity, str) or not identity:
+            raise WorkerError("INVALID_INPUT", "identity is required")
+        case_id = params["caseId"]
+        try:
+            import work_record as wr  # local import: only this operation needs it
+        except ModuleNotFoundError:
+            from scripts import work_record as wr
+
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            self._require_writer(record, params.get("writerId"))
+            self._require_version(record, design, params.get("expectedCaseVersion"))
+
+            store = wr._knowledge_store()
+            lanes = [
+                lane
+                for lane in store.command_entry_status(
+                    _Namespace(identity=identity)
+                )["entries"]
+                if lane["identity"] == identity
+            ]
+            if not lanes:
+                raise WorkerError(
+                    "NO_ENTRY",
+                    f"no Knowledge entry for {identity}. NO_ENTRY means no entry exists, never "
+                    f"that the artifact does not — record it as a Knowledge gap and ground the "
+                    f"claim on a repository receipt or a human authority instead",
+                )
+            lane = lanes[0]
+            if lane.get("lane") != "approved-current":
+                raise WorkerError(
+                    "ENTRY_NOT_CURRENT",
+                    f"{identity} is in lane {lane.get('lane')}; only approved-current grounds a "
+                    f"source claim",
+                )
+            try:
+                wr._assert_entry_is_groundable(self.store.root, identity)
+            except wr.WorkRecordError as exc:
+                raise WorkerError("ENTRY_NOT_GROUNDABLE", str(exc)) from exc
+
+            entry_path = wr.entry_relative_path(self.store.root, identity)
+            frontmatter, _body = store.split_entry(
+                (self.store.root / entry_path).read_text(encoding="utf-8")
+            )
+            receipt_id = identifier("EV")
+            at = utc_now()
+            receipt = {
+                "schemaVersion": 1,
+                "receiptId": receipt_id,
+                "caseId": case_id,
+                "questionId": params.get("questionId"),
+                "probeId": None,
+                "sourceType": "knowledge-entry",
+                "assurance": "source-exact",
+                "validationPurpose": "design-evidence",
+                "environmentFitness": "not-environment-bound",
+                "org": None,
+                "package": None,
+                "query": None,
+                "source": {
+                    "kind": "knowledge-entry",
+                    "identity": identity,
+                    "revision": lane.get("profile"),
+                    "path": entry_path,
+                    "blobOid": None,
+                    "range": None,
+                    "contentDigest": _prefixed(lane.get("reviewedContentDigest")),
+                    "coverage": "full",
+                    "workingTreeDrift": False,
+                },
+                "human": None,
+                "observedAt": at,
+                "expiresAt": None,
+                "result": {
+                    "kind": "knowledge-entry",
+                    "completeness": "complete",
+                    "derivedFacts": {
+                        "lane": lane["lane"],
+                        "sourceTreeDigest": lane.get("sourceTreeDigest"),
+                        "profile": lane.get("profile"),
+                    },
+                },
+                "transform": {
+                    "version": EVIDENCE_TRANSFORM_VERSION,
+                    "policyDigest": core.sd_digest({"transform": "knowledge-entry", "version": 1}),
+                },
+                "rawResultDigest": None,
+                "sensitivityClass": "non-sensitive",
+                "limitations": [str(item)[:400] for item in (frontmatter.get("limitations") or [])][:50],
+                "sha256": "sha256:" + "0" * 64,
+            }
+            receipt["sha256"] = core.sd_digest(
+                {key: value for key, value in receipt.items() if key != "sha256"}
+            )
+            core.validate_against(receipt, core.EVIDENCE_SCHEMA, "knowledge evidence receipt")
+            self.store.write_json(case_id, f"evidence/{receipt_id}.json", receipt)
+            reference = {
+                "receiptId": receipt_id,
+                "path": f"evidence/{receipt_id}.json",
+                "sha256": receipt["sha256"],
+                "sourceType": "knowledge-entry",
+                "assurance": "source-exact",
+                "validationPurpose": "design-evidence",
+                "environmentFitness": "not-environment-bound",
+                "observedAt": at,
+                "expiresAt": None,
+                "completeness": "complete",
+                "status": "current",
+                "questionRefs": [params["questionId"]] if params.get("questionId") else [],
+                "probeRefs": [],
+            }
+            operations: list[dict[str, Any]] = [
+                {
+                    "kind": "knowledge-reference-import",
+                    "executorAuthored": True,
+                    "payload": {"evidenceRef": reference},
+                }
+            ]
+            # A limitation recorded on an entry is bounded by that entry's source, coverage and
+            # assurance. It is imported as an evidence limitation, never as a vendor guarantee.
+            for index, text in enumerate(receipt["limitations"], start=1):
+                operations.append(
+                    {
+                        "kind": "limitation-link",
+                        "payload": {
+                            "limitationId": f"LIM-{receipt_id[3:]}-{index:02d}",
+                            "class": "evidence-limitation",
+                            "summary": text,
+                            "affectedRefs": [identity],
+                            "impact": "Bounded by the Knowledge entry's source, coverage and assurance; not a vendor guarantee.",
+                            "mitigationRef": None,
+                            "acceptedRiskReceiptRef": None,
+                            "verificationRefs": [],
+                            "sourceAuthority": "knowledge-entry",
+                        },
+                    }
+                )
+            record["solutionDesign"] = core.apply_operations(
+                record["solutionDesign"], operations
+            )
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["receiptId"] = receipt_id
+        summary["importedLimitations"] = len(receipt["limitations"])
+        return summary
+
     # -- op: requirement snapshot ----------------------------------------------------
 
     def op_set_requirement_snapshot(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -558,6 +735,11 @@ class Worker:
                     state["requirementSnapshot"]["unresolvedContradictions"] = sorted(
                         set(state["requirementSnapshot"]["unresolvedContradictions"]) | set(drift)
                     )[:50]
+            # Seed before evaluating, not after: an obligation the scope implies must be visible
+            # to the gate that decides READY, or a candidate could be created and a later
+            # ordinary edit would seed an open concern into an already-approved design.
+            state = core.seed_obligations(state)
+            record["solutionDesign"] = state
             # Render every generated section in memory first, so the candidate and the working
             # copy are hashed from identical final bytes.
             rendered = core.render_generated_sections(design, state)
@@ -1018,6 +1200,7 @@ OPERATIONS = {
     "submit": "op_submit",
     "import-repository-receipt": "op_import_repository_receipt",
     "set-requirement-snapshot": "op_set_requirement_snapshot",
+    "import-knowledge-reference": "op_import_knowledge_reference",
     "record-human-input": "op_record_human_input",
     "confirm-candidate": "op_confirm_candidate",
     "request-candidate-revision": "op_request_candidate_revision",

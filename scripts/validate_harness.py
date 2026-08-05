@@ -87,6 +87,7 @@ ALLOWED_TOOLS = {
     "solution-design/design_check",
     "solution-design/design_apply",
     "solution-design/design_import_repository_receipt",
+    "solution-design/design_import_knowledge_reference",
     "solution-design/design_submit",
     "solution-design/design_request_human_input",
     "solution-design/design_request_candidate_decision",
