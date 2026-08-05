@@ -1004,3 +1004,40 @@ directly. Each lands as its own commit with the full gate.
   not asserted.
 - Verification: validate_harness green (2683 checks), full unit suite green, 37/37 safety evals,
   eslint and node --check clean, plus the live devmp run above.
+
+## 2026-08-05 — P6/P7/P8: challenge, implementation loop, and what qualification can and cannot say
+
+- P6 gave the high-risk lane something to enter it. A candidate classified high risk moved to
+  `awaiting_design_review` and stayed there — no operation could record a verdict, so the one
+  control that catches a design whose evidence does not support it was unreachable.
+  `design_review_candidate` records PASS / REVISE_GROUNDING / REVISE_DESIGN /
+  BLOCKED_NEEDS_HUMAN, cannot edit the design or close an author obligation, and refuses a
+  reviewer who is the case writer. The human decision surface refuses an unchallenged high-risk
+  candidate. Artefact coverage became a gate; CI now proves candidate digests recompute, the
+  active candidate is the one the record points at, and no two candidates share a parent version.
+- P7 replaced the narrative implementation duty with five typed operations. Divergence classifies
+  what implementation found and, when material, supersedes the approval and handoff and reopens
+  only dependent obligations. Recheck records a **match** as well as a drift, because a re-run
+  that leaves no receipt is indistinguishable from never having run. Verification executions bind
+  to their contract entry; review is refused until every entry passes; the final verdict is
+  independent and bound to the accepted candidate.
+- Two defects the tests caught before they shipped, both worth remembering:
+  - the latest-execution lookup ordered receipts by filename, and the identifier carries a
+    per-second timestamp plus random hex — so an earlier failure could permanently shadow the
+    re-run that fixed it. Receipts now carry the monotonic case state sequence;
+  - `apply_operations` validated the operations but not the resulting state, so a payload missing
+    an optional field passed and blew up later inside a renderer as a `KeyError` — a crash at the
+    wrong layer with a message naming nothing the caller could fix. The result is now validated.
+- P6 also reintroduced the C6 defect the 2026-08-04 deep test had fixed: a function-level
+  `from scripts import ...` in `validate_harness.py`, which resolves only when the repo root is
+  on `sys.path` and breaks the CI invocation. The pin caught it. Recorded rather than amended
+  away, because the lesson is that the pin works and the commit gate must be read, not chained
+  behind a grep that succeeds on failure output.
+- P8 qualification: `validate_harness` 2695 checks, full unit suite green, 37/37 evals, eslint
+  and node checks clean, repo map clean, and 196 new tests with no skips in the new suites.
+  Twenty-five of the twenty-seven Definition-of-Done conditions are met.
+- **Not met, and deliberately not claimed**: the native Windows run (WIN-01, LOCK-03) and VS Code
+  Policy Diagnostics for the anti-auto-approval policy. Neither is a code change; both are the
+  gate between this state and a release. The live behavioural baseline from P0 was never captured
+  either, so the before/after comparison is structural and says so. Full report in
+  `sf/workspace-context/p8-2026-08-05-solution-design-qualification.md`.
