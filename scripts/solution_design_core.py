@@ -1613,6 +1613,10 @@ def apply_operations(
             raise SolutionDesignError(f"operation {index} ({kind}): {exc}") from exc
 
     working["stateSequence"] = state["stateSequence"] + 1
+    # Validate the RESULT, not just the operations. Without this a payload missing an optional
+    # field passed here and blew up later inside a renderer as a KeyError — a crash at the
+    # wrong layer, with a message that named nothing the caller could fix.
+    validate_against(working, STATE_SCHEMA, "solution design state after apply")
     return working
 
 
@@ -1869,11 +1873,11 @@ def render_section(name: str, state: dict[str, Any]) -> str:
             rows.append(
                 [
                     question["question"],
-                    question["answer"] if question["status"] == "closed" else f"[{question['status']}]",
-                    question["closureAuthority"] or question["requiredAuthority"],
-                    question["evidenceRefs"],
+                    question.get("answer") if question["status"] == "closed" else f"[{question['status']}]",
+                    question.get("closureAuthority") or question["requiredAuthority"],
+                    question.get("evidenceRefs"),
                     (first or {}).get("status"),
-                    question["limitations"],
+                    question.get("limitations"),
                 ]
             )
         return _table(
