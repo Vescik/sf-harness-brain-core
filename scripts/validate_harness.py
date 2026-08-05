@@ -94,6 +94,7 @@ ALLOWED_TOOLS = {
     "solution-design/design_request_candidate_decision",
     "solution-design/design_request_writer_transfer",
     "solution-design/design_start_development",
+    "solution-design/design_review_candidate",
 }
 # Internal runtime operations that are never model-facing tools. Granting one of these — or a
 # `solution-design/*` wildcard that would reach them — is a contract failure, not a convenience.
@@ -1439,6 +1440,90 @@ def check_dependency_admissions(audit: Audit, root: Path = ROOT) -> None:
             )
 
 
+def check_design_cases(audit: Audit, root: Path = ROOT) -> None:
+    """Tracked Design Cases must hold their own bindings (§19.5).
+
+    Three invariants CI can prove without touching an org: a candidate digest recomputes from
+    its own inputs, exactly one candidate is active per case and it is the one the record points
+    at, and no two candidates descend from the same parent case version. That last one is how a
+    second checkout's sibling candidate is caught before integration rather than after — the
+    filesystem lease coordinates one checkout, never two clones.
+    """
+    cases_root = root / ".ai" / "change-records"
+    if not cases_root.is_dir():
+        return
+    directories = [path for path in sorted(cases_root.iterdir()) if (path / "record.json").is_file()]
+    if not directories:
+        return
+    try:
+        import solution_design_core as core
+    except ModuleNotFoundError:  # imported as scripts.validate_harness by unit tests
+        try:
+            from scripts import solution_design_core as core
+        except ModuleNotFoundError:  # pragma: no cover - degrade to a named error, never crash
+            audit.require(False, "solution design core is not importable; Design Case checks skipped")
+            return
+    for case_directory in directories:
+        record_path = case_directory / "record.json"
+        record = load_json(record_path, audit)
+        if not isinstance(record, dict) or "solutionDesign" not in record:
+            continue
+        state = record["solutionDesign"]
+        try:
+            core.validate_against(state, core.STATE_SCHEMA, "solution design state")
+        except core.SolutionDesignError as exc:
+            audit.require(False, f"{relative(record_path)}: {exc}")
+            continue
+        active = state.get("activeCandidateRef") or {}
+        parents: dict[str, list[str]] = {}
+        for bundle_path in sorted((case_directory / "candidates").glob("*/bundle.json")):
+            bundle = load_json(bundle_path, audit)
+            if not isinstance(bundle, dict):
+                continue
+            try:
+                recomputed = core.candidate_digest(bundle["candidateDigestInput"])
+            except (KeyError, core.SolutionDesignError) as exc:
+                audit.require(False, f"{relative(bundle_path)}: candidate digest cannot be recomputed ({exc})")
+                continue
+            audit.require(
+                bundle.get("candidateDigest") == recomputed,
+                f"{relative(bundle_path)}: candidate digest does not recompute from its own inputs",
+            )
+            parent = bundle["candidateDigestInput"].get("submittedFromCaseVersion")
+            parents.setdefault(parent, []).append(bundle["candidateId"])
+        for parent, siblings in sorted(parents.items()):
+            audit.require(
+                len(siblings) == 1,
+                f"{relative(case_directory)}: {len(siblings)} candidates descend from the same "
+                f"parent case version {parent} ({', '.join(sorted(siblings))}); one of them came "
+                f"from an unsynchronized clone",
+            )
+        if active:
+            bundle_path = case_directory / "candidates" / active["candidateId"] / "bundle.json"
+            audit.require(
+                bundle_path.is_file(),
+                f"{relative(case_directory)}: the active candidate {active['candidateId']} has no bundle",
+            )
+            if bundle_path.is_file():
+                bundle = load_json(bundle_path, audit)
+                audit.require(
+                    isinstance(bundle, dict)
+                    and bundle.get("candidateDigest") == active.get("candidateDigest"),
+                    f"{relative(case_directory)}: record.json points at a candidate digest the "
+                    f"bundle does not carry",
+                )
+        for approval_path in sorted((case_directory / "approvals").glob("AP-*.json")):
+            approval = load_json(approval_path, audit)
+            if not isinstance(approval, dict) or approval.get("kind") != "candidate-approval":
+                continue
+            audit.require(
+                approval.get("candidateDigest") == active.get("candidateDigest")
+                or state.get("status") not in ("accepted", "development", "review", "complete"),
+                f"{relative(approval_path)}: an approval binds a digest that is no longer the "
+                f"active candidate, but the case advanced anyway",
+            )
+
+
 def check_retired_surfaces(audit: Audit, root: Path = ROOT) -> None:
     """A replacement phase removes its predecessor; this proves the old name is unreachable.
 
@@ -1629,6 +1714,7 @@ def main() -> int:
             check_knowledge_consumer_sets,
             check_org_usage,
             check_retired_surfaces,
+            check_design_cases,
             check_dependency_admissions,
         ),
     )

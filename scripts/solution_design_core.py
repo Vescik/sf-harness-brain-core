@@ -1135,6 +1135,39 @@ def gate_g9(state: dict[str, Any], design_text: str | None) -> list[dict[str, st
                     f"decision anchor {decision['designAnchor']} is not present in the narrative",
                 )
             )
+
+    # Every implementation target must be visible in a table. The tables are projections, so
+    # this checks the ENTITIES that feed them — an out-of-scope disposition on a component the
+    # design still mutates would silently drop it from Solution Artefacts.
+    rendered_components = {
+        component["componentId"]
+        for component in _components(state)
+        if component.get("disposition") != "out-of-scope"
+    }
+    for component in _components(state):
+        if component.get("action") in MUTATING_ACTIONS and component["componentId"] not in rendered_components:
+            gaps.append(
+                _gap(
+                    "SD-G9",
+                    component["componentId"],
+                    "artefact-coverage",
+                    "design",
+                    "a component the design creates, modifies or deletes is marked out-of-scope, "
+                    "so it would never appear in Solution Artefacts",
+                )
+            )
+    for artefact in state.get("configurationArtefacts", []):
+        if artefact["action"] in MUTATING_CONFIG_ACTIONS and not artefact.get("description"):
+            gaps.append(
+                _gap(
+                    "SD-G9",
+                    artefact["configurationArtefactId"],
+                    "artefact-coverage",
+                    "design",
+                    "a record change with no description renders an empty Configuration "
+                    "Artefacts row, which tells a human nothing",
+                )
+            )
     return gaps
 
 
