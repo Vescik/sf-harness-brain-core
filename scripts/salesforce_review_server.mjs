@@ -20,7 +20,7 @@
 
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,7 +45,9 @@ const EXPECTED_QUERIES = Object.freeze({
   orgIdentity: "SELECT Id, IsSandbox FROM Organization LIMIT 1",
   installedPackages: "SELECT SubscriberPackage.NamespacePrefix, SubscriberPackage.Name, SubscriberPackageVersion.Name, SubscriberPackageVersion.MajorVersion, SubscriberPackageVersion.MinorVersion, SubscriberPackageVersion.PatchVersion, SubscriberPackageVersion.BuildNumber FROM InstalledSubscriberPackage WHERE SubscriberPackage.NamespacePrefix IN (${PACKAGE_NAMESPACES}) ORDER BY SubscriberPackage.NamespacePrefix, SubscriberPackage.Name LIMIT 500",
   objectEntity: "SELECT QualifiedApiName FROM EntityDefinition WHERE QualifiedApiName = '${OBJECT_API_NAME}' LIMIT 2",
-  objectFields: "SELECT QualifiedApiName, DataType FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName = '${OBJECT_API_NAME}' ORDER BY QualifiedApiName LIMIT 501",
+  // Column set verified live on 2026-08-05: IsUnique, IsCreatable and IsUpdatable do NOT exist
+  // on FieldDefinition, which is why they stay CLI-only single-source traits below.
+  objectFields: "SELECT QualifiedApiName, DataType, IsNillable, IsCalculated, RelationshipName, ReferenceTo, Length, Precision, Scale, IsIndexed FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName = '${OBJECT_API_NAME}' ORDER BY QualifiedApiName LIMIT 501",
 });
 
 const TOOL_DEFINITIONS = Object.freeze([
@@ -372,7 +374,19 @@ function testExecutable(name, fallback) {
 const SPAWN_PATH = process.platform === "win32"
   ? process.env.PATH
   : [process.env.PATH, "/usr/local/bin", "/opt/homebrew/bin"].filter(Boolean).join(":");
-const SPAWN_ENV = { ...process.env, PATH: SPAWN_PATH };
+// Colour is neutralised for every child. Both the CLI and the MCP child are parsed as JSON,
+// and a developer profile that sets FORCE_COLOR makes `sf ... --json` emit ANSI escapes into
+// that JSON — which surfaced as a misleading CLI_SCHEMA_MISMATCH / BLOCKED review rather than
+// as "your terminal forced colour". Observed live on 2026-08-05 against a correctly configured
+// org whose id and host both matched.
+const SPAWN_ENV = {
+  ...process.env,
+  PATH: SPAWN_PATH,
+  FORCE_COLOR: "0",
+  NO_COLOR: "1",
+  CLICOLOR: "0",
+  CLICOLOR_FORCE: "0",
+};
 
 function runJsonProcess(command, args, runtime, failureCode) {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -814,7 +828,12 @@ function mcpTypeFamily(value) {
   const raw = safeString(value, 160).trim().toLowerCase();
   if (/^(text|long text area|rich text|html|encrypted text|email|phone|url|auto number)/.test(raw)) return "text";
   if (/^(number|currency|percent|formula \((number|currency|percent))/.test(raw)) return "number";
-  if (/^(lookup|master-detail|hierarchy relationship|external lookup|indirect lookup)/.test(raw)) return "reference";
+  // `Lookup()` with empty parentheses is how Tooling describes the record Id itself — it points
+  // at nothing, so it is an id, not a reference. Measured on Account.Id, 2026-08-05.
+  if (/^lookup\(\s*\)$/.test(raw)) return "id";
+  if (/^(lookup|master-detail|hierarchy|external lookup|indirect lookup)/.test(raw)) return "reference";
+  // Tooling names the standard Name field `Name`; the describe calls it `string`.
+  if (/^name$/.test(raw)) return "text";
   if (/^multi-select picklist/.test(raw)) return "multipicklist";
   if (/^picklist/.test(raw)) return "picklist";
   if (/^(checkbox|formula \(checkbox)/.test(raw)) return "boolean";
@@ -828,6 +847,43 @@ function mcpTypeFamily(value) {
   return `other:${raw.replace(/\s+/g, "-")}`;
 }
 
+// Traits both transports report. Only these are reconciled; a mismatch on one of them is a
+// real disagreement about the schema. Everything else is single-source by construction and is
+// preserved with its source rather than deleted or forced into a whole-object MISMATCH (§16.3).
+const DUAL_SOURCE_TRAITS = Object.freeze([
+  "nillable",
+  "calculated",
+  "relationshipName",
+  "referenceTo",
+  "length",
+  "precision",
+  "scale",
+]);
+
+function boolOrNull(value) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function intOrNull(value) {
+  return Number.isFinite(value) ? Number(value) : null;
+}
+
+function referenceList(value) {
+  const raw = Array.isArray(value) ? value : (value?.referenceTo ?? null);
+  if (!Array.isArray(raw)) return null;
+  const targets = raw.map((item) => safeString(item, 80)).filter(Boolean).sort();
+  // The describe reports `[]` for a non-reference field; Tooling reports nothing at all. They
+  // mean the same thing, and treating them as different marked every scalar field on Account
+  // as contested (measured live, 2026-08-05). Absent and empty normalize to the same null.
+  return targets.length ? targets : null;
+}
+
+function dualTraits(source) {
+  const traits = {};
+  for (const key of DUAL_SOURCE_TRAITS) traits[key] = source[key] ?? null;
+  return traits;
+}
+
 function normalizeCliObject(runtime, requested, result) {
   if (!result || result.name !== requested || !Array.isArray(result.fields)) {
     throw new ReviewError("CLI_SCHEMA_MISMATCH", "INCOMPLETE");
@@ -838,6 +894,25 @@ function normalizeCliObject(runtime, requested, result) {
   const fields = result.fields.map((field) => ({
     name: safeString(field?.name, 80),
     typeFamily: cliTypeFamily(field?.type),
+    traits: dualTraits({
+      nillable: boolOrNull(field?.nillable),
+      calculated: boolOrNull(field?.calculated),
+      relationshipName: field?.relationshipName ? safeString(field.relationshipName, 80) : null,
+      referenceTo: referenceList(field?.referenceTo),
+      length: intOrNull(field?.length),
+      precision: intOrNull(field?.precision),
+      scale: intOrNull(field?.scale),
+    }),
+    // FieldDefinition has no IsUnique / IsCreatable / IsUpdatable column (verified live), so
+    // these can only ever come from the describe. They are facts, not noise — losing them is
+    // what made deterministic required/unique/externalId seeding impossible before.
+    only: {
+      unique: boolOrNull(field?.unique),
+      externalId: boolOrNull(field?.externalId),
+      createable: boolOrNull(field?.createable),
+      updateable: boolOrNull(field?.updateable),
+      dataType: safeString(field?.type, 80) || null,
+    },
   })).sort((left, right) => left.name.localeCompare(right.name));
   return { objectApiName: requested, exists: true, fields };
 }
@@ -857,8 +932,93 @@ function normalizeMcpObject(runtime, requested, entity, fieldPayload) {
   const fields = fieldPayload.records.map((field) => ({
     name: safeString(field?.QualifiedApiName, 80),
     typeFamily: mcpTypeFamily(field?.DataType),
+    traits: dualTraits({
+      nillable: boolOrNull(field?.IsNillable),
+      calculated: boolOrNull(field?.IsCalculated),
+      relationshipName: field?.RelationshipName ? safeString(field.RelationshipName, 80) : null,
+      referenceTo: referenceList(field?.ReferenceTo),
+      length: intOrNull(field?.Length),
+      precision: intOrNull(field?.Precision),
+      scale: intOrNull(field?.Scale),
+    }),
+    only: {
+      indexed: boolOrNull(field?.IsIndexed),
+      dataType: safeString(field?.DataType, 160) || null,
+    },
   })).sort((left, right) => left.name.localeCompare(right.name));
   return { objectApiName: requested, exists: true, fields };
+}
+
+/**
+ * The reconciled view: shared fields compared, single-source fields preserved with coverage.
+ *
+ * Measured on a live org (2026-08-05, Account): the describe returns 70 fields and Tooling
+ * `FieldDefinition` returns 64 — compound address components exist only in the describe, and a
+ * few fields appear only in Tooling. Every trait agreed on every shared field. So a whole-object
+ * equality check reports MISMATCH for a difference in *visibility*, not in the schema, and §16.3
+ * forbids exactly that: a single-source property is preserved with its coverage rather than
+ * collapsing the object.
+ *
+ * MISMATCH is therefore reserved for a real disagreement — a field both transports report whose
+ * compared trait differs. That is the only case where the org is telling us two different things.
+ */
+function reconcileObject(requested, cliObject, mcpObject) {
+  const cliByName = new Map(cliObject.fields.map((field) => [field.name, field]));
+  const mcpByName = new Map(mcpObject.fields.map((field) => [field.name, field]));
+  const names = [...new Set([...cliByName.keys(), ...mcpByName.keys()])].sort();
+  const contested = [];
+  const fields = names.map((name) => {
+    const cli = cliByName.get(name);
+    const mcp = mcpByName.get(name);
+    const traits = {};
+    for (const key of DUAL_SOURCE_TRAITS) {
+      const left = cli?.traits?.[key] ?? null;
+      const right = mcp?.traits?.[key] ?? null;
+      if (cli && mcp && JSON.stringify(left) !== JSON.stringify(right)) {
+        contested.push(`${name}.${key}`);
+        // A contested trait is reported as contested, never silently resolved to one side.
+        traits[key] = null;
+      } else {
+        traits[key] = cli ? left : right;
+      }
+    }
+    const typeFamily = cli?.typeFamily ?? mcp?.typeFamily ?? "other:unknown";
+    if (cli && mcp && cli.typeFamily !== mcp.typeFamily) contested.push(`${name}.typeFamily`);
+    return {
+      name,
+      typeFamily,
+      ...traits,
+      sourceExclusive: { cli: cli?.only ?? {}, mcp: mcp?.only ?? {} },
+      sourceCoverage: {
+        cli: cli ? "available" : "missing",
+        mcp: mcp ? "available" : "missing",
+      },
+    };
+  });
+  const namespace = requested.includes("__") && requested.split("__").length > 2
+    ? requested.split("__")[0]
+    : null;
+  const object = {
+    objectApiName: requested,
+    namespace,
+    exists: cliObject.exists || mcpObject.exists,
+    fields,
+    fieldCount: fields.length,
+    truncated: false,
+    dualSourceTraits: [...DUAL_SOURCE_TRAITS],
+    singleSourceTraits: {
+      cli: ["unique", "externalId", "createable", "updateable", "dataType"],
+      mcp: ["indexed", "dataType"],
+    },
+    contestedProperties: [...new Set(contested)].sort().slice(0, 100),
+  };
+  object.schemaDigest = `sha256:${createHash("sha256")
+    .update(
+      JSON.stringify(fields.map((field) => ({ name: field.name, typeFamily: field.typeFamily }))),
+      "utf8",
+    )
+    .digest("hex")}`;
+  return { matches: contested.length === 0 && cliObject.exists === mcpObject.exists, object };
 }
 
 async function captureSource(kind, version, operation) {
@@ -1103,24 +1263,72 @@ async function reviewObject(runtime, input) {
   if (!cliCapture.ok || !mcpCapture.ok) {
     return failedEnvelope(runtime, "object-contract", cliCapture, mcpCapture, target);
   }
-  const matches = JSON.stringify(cliCapture.value.object) === JSON.stringify(mcpCapture.value.object);
+  const { matches, object: reconciled } = reconcileObject(
+    objectApiName,
+    cliCapture.value.object,
+    mcpCapture.value.object,
+  );
   return makeEnvelope({
     runtime,
     reviewType: "object-contract",
     status: matches ? "VERIFIED" : "MISMATCH",
     target,
     sources: { cli: cliCapture.value.source, mcp: mcpCapture.value.source },
-    facts: matches
-      ? { object: cliCapture.value.object }
-      : {
-          objectApiName,
-          observedExists: { cli: cliCapture.value.object.exists, mcp: mcpCapture.value.object.exists },
-          fieldCounts: { cli: cliCapture.value.object.fields.length, mcp: mcpCapture.value.object.fields.length },
-        },
+    // Even on MISMATCH the reconciled object is returned. Returning counts alone produced an
+    // empty seed set a later gate could not distinguish from "nothing to ask about" (§16.3);
+    // the contested properties are named instead, so they become grounding obligations.
+    facts: { object: reconciled },
     reconciliation: { status: matches ? "MATCH" : "MISMATCH", comparisons: [comparison("object-contract", matches)] },
     completeness: { complete: matches, dualSource: true, truncated: false },
     warnings: matches ? [] : ["EVIDENCE_MISMATCH"],
   });
+}
+
+const REVIEW_CACHE_DIRECTORY = "salesforce-review";
+const REVIEW_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Content-addressed ref over the query result itself.
+ *
+ * Deliberately NOT the digest of the finished envelope: the envelope's own `sha256` must cover
+ * the ref, and hashing the envelope to produce a field inside it is circular. Addressing the
+ * result keeps the ref stable and lets the digest chain stay honest.
+ */
+function transientReceiptRef(payload) {
+  return createHash("sha256").update(JSON.stringify(payload), "utf8").digest("hex");
+}
+
+/**
+ * Persist a VERIFIED envelope under the ignored cache at its ref.
+ *
+ * The ref is the whole point: the design runtime imports evidence by reference and derives its
+ * own sanitized receipt, so raw rows never travel through the model on their way into durable
+ * state. The envelope itself expires; the durable receipt does not, which is why the receipt
+ * carries a replay spec rather than a pointer into this cache.
+ */
+function persistTransientEnvelope(runtime, envelope, ref) {
+  try {
+    const directory = resolve(REPO_ROOT, ".cache", REVIEW_CACHE_DIRECTORY);
+    mkdirSync(directory, { recursive: true });
+    const now = Date.now();
+    for (const name of readdirSync(directory)) {
+      const path = resolve(directory, name);
+      try {
+        if (now - statSync(path).mtimeMs > REVIEW_CACHE_TTL_MS) rmSync(path, { force: true });
+      } catch {
+        // A cache entry that cannot be stat'ed or removed is not worth failing a review over.
+      }
+    }
+    writeFileSync(resolve(directory, `${ref}.json`), JSON.stringify(envelope), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    return true;
+  } catch {
+    // Losing the cache must never turn a successful review into a failure: the in-band result
+    // is still returned, and the importer simply has nothing to import.
+    return false;
+  }
 }
 
 function stripSoqlLiterals(query) {
@@ -1215,7 +1423,7 @@ async function reviewSoqlQuery(runtime, input) {
     return failedEnvelope(runtime, "soql-query", cliCapture, mcpCapture, target);
   }
   const records = stripAttributes(mcpCapture.value.payload.records);
-  return makeEnvelope({
+  const envelope = makeEnvelope({
     runtime,
     reviewType: "soql-query",
     status: "VERIFIED",
@@ -1230,6 +1438,11 @@ async function reviewSoqlQuery(runtime, input) {
         useToolingApi: description.useToolingApi,
         matched: records.length,
         records,
+        receiptRef: transientReceiptRef({
+          queryDigest: createHash("sha256").update(input.query, "utf8").digest("hex"),
+          useToolingApi: description.useToolingApi,
+          records,
+        }),
       },
     },
     reconciliation: {
@@ -1240,6 +1453,10 @@ async function reviewSoqlQuery(runtime, input) {
     warnings: [],
     sensitiveGateExempt: true,
   });
+  // Additive: every existing consumer keeps reading facts.soqlQuery exactly as before, and the
+  // envelope's own sha256 already covers the ref because the ref was computed before hashing.
+  persistTransientEnvelope(runtime, envelope, envelope.facts.soqlQuery.receiptRef);
+  return envelope;
 }
 
 function validateToolInput(name, input) {
@@ -1325,7 +1542,7 @@ async function handleProtocolMessage(runtime, message) {
         protocolVersion: runtime.policy.mcpProtocolVersion,
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: "sf-harness-salesforce-review", version: "1.0.0" },
-        instructions: "Use only normalized reconciliation evidence. MISMATCH, INCOMPLETE, and BLOCKED are never confirmed facts. review_soql_query values are single-source sandbox observations — sanitized, bounded, and timestamped; cite them with the org context and observation time, never as production truth.",
+        instructions: "Use only normalized reconciliation evidence. MISMATCH, INCOMPLETE, and BLOCKED are never confirmed facts. review_soql_query returns single-source sandbox rows UNREDACTED and UNSANITIZED so unusual configuration can be understood — they are bounded and timestamped, nothing more. Never paste them into a design, an entry or an ADO artifact: import the result by its receiptRef so the executor derives the sanitized durable fact. Cite any number with its org context and observation time, never as production truth.",
       };
     } else if (message.method === "ping") {
       result = {};

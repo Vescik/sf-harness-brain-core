@@ -1371,5 +1371,253 @@ class KnowledgeReferenceTests(WorkspaceCase):
         self.assertIn("import-knowledge-reference", worker_module.OPERATIONS)
 
 
+class SamplingDeriverTests(unittest.TestCase):
+    """One implementation of each observed fact, and raw values leave in exactly one place."""
+
+    derivers = _module("sampling_derivers")
+
+    ROWS = [
+        {
+            "attributes": {"type": "ns__Rule__c"},
+            "Id": "a01000000000001AAA",
+            "ns__Type__c": "Routing",
+            "ns__Start__c": "2026-01-01",
+            "ns__End__c": None,
+            "ns__Parent__c": "a02000000000001AAA",
+            "Password__c": "hunter2",
+        },
+        {
+            "attributes": {"type": "ns__Rule__c"},
+            "Id": "a01000000000002AAA",
+            "ns__Type__c": "Routing",
+            "ns__Start__c": "2027-01-01",
+            "ns__End__c": "2027-06-01",
+            "ns__Parent__c": "a02000000000001AAA",
+            "Password__c": "x",
+        },
+        {
+            "attributes": {"type": "ns__Rule__c"},
+            "Id": "a01000000000003AAA",
+            "ns__Type__c": "Escalation",
+            "ns__Start__c": None,
+            "ns__End__c": None,
+            "ns__Parent__c": None,
+            "Password__c": None,
+        },
+    ]
+
+    def test_aggregates_carry_counts_not_values(self) -> None:
+        distribution = self.derivers.categorical_distribution(self.ROWS, "ns__Type__c")
+        self.assertEqual(
+            distribution["groups"],
+            [{"value": "Routing", "count": 2}, {"value": "Escalation", "count": 1}],
+        )
+        fill = self.derivers.field_fill(self.ROWS, ["ns__Parent__c"])
+        self.assertEqual(fill["fields"]["ns__Parent__c"], {"filled": 2, "total": 3})
+        shape = self.derivers.relationship_shape(self.ROWS, "ns__Parent__c")
+        self.assertEqual(shape["distinctParents"], 1)
+        self.assertNotIn("a02000000000001AAA", json.dumps(shape))
+
+    def test_effectivity_buckets_and_overlap(self) -> None:
+        result = self.derivers.config_effectivity(
+            self.ROWS, start_field="ns__Start__c", end_field="ns__End__c", at="2026-08-05"
+        )
+        self.assertEqual(result["buckets"]["active"], 1)
+        self.assertEqual(result["buckets"]["future"], 1)
+        self.assertEqual(result["buckets"]["unbounded"], 1)
+
+    def test_sample_shape_describes_structure_without_values(self) -> None:
+        shape = self.derivers.sample_shape(self.ROWS)
+        self.assertEqual(shape["fields"]["Id"], [{"shape": "salesforce-id", "count": 3}])
+        serialized = json.dumps(shape)
+        self.assertNotIn("hunter2", serialized)
+        self.assertNotIn("a01000000000001AAA", serialized)
+
+    def test_config_snapshot_withholds_ids_audit_and_sensitive_fields(self) -> None:
+        snapshot = self.derivers.safe_config_snapshot(
+            self.ROWS, ["ns__Type__c", "Id", "Password__c", "ns__Parent__c"]
+        )
+        self.assertEqual(snapshot["refusedFields"], ["Id"])
+        first = snapshot["records"][0]
+        self.assertEqual(first["ns__Type__c"], "Routing")
+        self.assertEqual(first["Password__c"]["withheld"], "sensitive-field")
+        self.assertEqual(first["ns__Parent__c"]["withheld"], "salesforce-id")
+        self.assertNotIn("hunter2", json.dumps(snapshot))
+
+    def test_an_unknown_kind_fails_closed_rather_than_persisting_rows(self) -> None:
+        with self.assertRaises(self.derivers.DeriverError):
+            self.derivers.derive("invented-kind", self.ROWS)
+
+    def test_the_policy_digest_moves_when_the_contract_moves(self) -> None:
+        baseline = self.derivers.transform_policy_digest()
+        original = dict(self.derivers.DERIVERS)
+        try:
+            self.derivers.DERIVERS["extra"] = lambda rows: {}
+            self.assertNotEqual(baseline, self.derivers.transform_policy_digest())
+        finally:
+            self.derivers.DERIVERS.clear()
+            self.derivers.DERIVERS.update(original)
+
+
+class EnvelopeImportTests(WorkspaceCase):
+    """Rows reach durable state only through the executor's derivation, never through the model."""
+
+    def envelope(self, *, status: str = "VERIFIED", truncated: bool = False, environment: str = "sandbox") -> str:
+        import hashlib
+
+        records = [
+            {"ns__Type__c": "Routing", "ns__Active__c": True},
+            {"ns__Type__c": "Routing", "ns__Active__c": False},
+            {"ns__Type__c": "Escalation", "ns__Active__c": True},
+        ]
+        query_digest = hashlib.sha256(b"SELECT ns__Type__c FROM ns__Rule__c").hexdigest()
+        ref = hashlib.sha256(
+            json.dumps(
+                {"queryDigest": query_digest, "useToolingApi": False, "records": records},
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        body = {
+            "schemaVersion": 1,
+            "runId": "00000000-0000-4000-8000-000000000000",
+            "generatedAt": "2026-08-05T10:00:00Z",
+            "reviewType": "soql-query",
+            "status": status,
+            "target": {"environment": environment, "isSandbox": environment == "sandbox"},
+            "sources": {},
+            "facts": {
+                "soqlQuery": {
+                    "queryDigest": query_digest,
+                    "fromObjects": ["ns__Rule__c"],
+                    "useToolingApi": False,
+                    "matched": len(records),
+                    "records": records,
+                    "receiptRef": ref,
+                }
+            },
+            "reconciliation": {"status": "IDENTITY_MATCH_ONLY", "comparisons": []},
+            "completeness": {"complete": not truncated, "dualSource": False, "truncated": truncated},
+            "warnings": [],
+        }
+        try:
+            import work_record as wr
+        except ModuleNotFoundError:
+            from scripts import work_record as wr
+        body["sha256"] = wr.canonical_embedded_digest(body)
+        cache = self.root / ".cache" / "salesforce-review"
+        cache.mkdir(parents=True, exist_ok=True)
+        (cache / f"{ref}.json").write_text(json.dumps(body), encoding="utf-8")
+        return ref
+
+    def test_a_verified_envelope_becomes_a_sanitized_receipt(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        ref = self.envelope()
+        result = self.ok(
+            "import-soql-envelope",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            receiptRef=ref,
+            kind="categorical-distribution",
+            options={"field": "ns__Type__c"},
+        )
+        self.assertEqual(result["environmentFitness"], "scope-matched-non-production")
+        receipt = json.loads(
+            (
+                self.root / ".ai/change-records" / CASE / "evidence" / f"{result['receiptId']}.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(receipt["sourceType"], "org-soql-sample")
+        self.assertEqual(
+            receipt["result"]["derivedFacts"]["groups"],
+            [{"value": "Routing", "count": 2}, {"value": "Escalation", "count": 1}],
+        )
+        # The raw rows stay in the ignored cache. The receipt carries counts and digests.
+        self.assertNotIn("ns__Active__c", json.dumps(receipt["result"]["derivedFacts"]))
+        self.assertTrue(receipt["rawResultDigest"].startswith("sha256:"))
+
+    def test_developer_edition_evidence_is_marked_non_representative(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        ref = self.envelope(environment="development")
+        result = self.ok(
+            "import-soql-envelope",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            receiptRef=ref,
+            kind="categorical-distribution",
+            options={"field": "ns__Type__c"},
+        )
+        self.assertEqual(result["environmentFitness"], "non-representative-devmp")
+        # And such a receipt cannot close a design obligation.
+        record = json.loads(
+            (self.root / ".ai/change-records" / CASE / "record.json").read_text(encoding="utf-8")
+        )
+        reference = record["solutionDesign"]["evidenceRefs"][0]
+        eligible, reason = core.evidence_eligible(reference, authorities=["org-soql-sample"])
+        self.assertFalse(eligible)
+        self.assertEqual(reason, "non-representative-devmp")
+
+    def test_mismatch_incomplete_and_truncated_envelopes_are_refused(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        for status, truncated in (("MISMATCH", False), ("INCOMPLETE", False), ("VERIFIED", True)):
+            with self.subTest(status=status, truncated=truncated):
+                ref = self.envelope(status=status, truncated=truncated)
+                code = self.fail(
+                    "import-soql-envelope",
+                    caseId=CASE,
+                    writerId="writer-one",
+                    expectedCaseVersion=opened["caseVersion"],
+                    receiptRef=ref,
+                    kind="categorical-distribution",
+                    options={"field": "ns__Type__c"},
+                )
+                self.assertEqual(code, "EVIDENCE_NOT_CONFIRMING")
+
+    def test_a_tampered_envelope_is_refused(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        ref = self.envelope()
+        path = self.root / ".cache" / "salesforce-review" / f"{ref}.json"
+        body = json.loads(path.read_text(encoding="utf-8"))
+        body["facts"]["soqlQuery"]["records"].append({"ns__Type__c": "Injected"})
+        path.write_text(json.dumps(body), encoding="utf-8")
+        code = self.fail(
+            "import-soql-envelope",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            receiptRef=ref,
+            kind="categorical-distribution",
+            options={"field": "ns__Type__c"},
+        )
+        self.assertEqual(code, "ENVELOPE_TAMPERED")
+
+    def test_an_expired_reference_says_so_instead_of_guessing(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        code = self.fail(
+            "import-soql-envelope",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            receiptRef="0" * 64,
+            kind="object-baseline",
+        )
+        self.assertEqual(code, "ENVELOPE_EXPIRED")
+
+    def test_a_config_snapshot_requires_an_explicit_allowlist(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        ref = self.envelope()
+        code = self.fail(
+            "import-soql-envelope",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            receiptRef=ref,
+            persistenceMode="config-snapshot",
+            options={},
+        )
+        self.assertEqual(code, "INVALID_INPUT")
+
+
 if __name__ == "__main__":
     unittest.main()

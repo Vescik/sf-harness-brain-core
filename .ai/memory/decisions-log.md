@@ -953,3 +953,54 @@ directly. Each lands as its own commit with the full gate.
   normalization and the Python reconciliation are covered by tests.
 - Verification: validate_harness green (2676 checks), full unit suite green (45 runtime tests),
   37/37 safety evals, eslint clean, node --check clean, offline `npm ci` install verified.
+
+## 2026-08-05 — P4: rich object contract, transient evidence envelopes, shared derivations
+
+- Decision: make org evidence trustworthy before anything samples adaptively. Three parts —
+  field traits the design engine can actually use, a reference-based import path so rows never
+  travel through the model into durable state, and one implementation of each observed fact.
+- **Field traits, measured not guessed.** The Tooling column set was probed against a live org
+  before the query profile moved: `IsNillable`, `IsCalculated`, `RelationshipName`, `ReferenceTo`,
+  `Length`, `Precision`, `Scale` and `IsIndexed` exist; `IsUnique`, `IsCreatable` and
+  `IsUpdatable` do **not**, which is exactly why those stay CLI-only single-source traits.
+- **Reconciliation stopped collapsing the object.** On a live Account the describe returns 70
+  fields and Tooling returns 64 — compound address components exist only in the describe, and a
+  few fields only in Tooling. A whole-object equality check called that MISMATCH, i.e. reported a
+  difference in *visibility* as a disagreement about the schema. The reconciler now takes the
+  union, carries per-field `sourceCoverage`, and reserves MISMATCH for a field both transports
+  report whose compared trait actually differs. A MISMATCH still returns the reconciled object:
+  returning counts alone produced an empty seed set a later gate could not tell apart from
+  "nothing to ask about" (§16.3).
+- **Two normalization defects the live probe caught, that would otherwise have shipped.** The
+  describe reports `referenceTo: []` for a scalar field while Tooling reports nothing — treating
+  those as different marked 46 of 84 Account fields contested. And `mcpTypeFamily` did not know
+  the real vocabulary: `Name`, `Hierarchy` and `Lookup()` (which is how Tooling describes the
+  record Id — it points at nothing, so it is an id, not a reference). After the fixes the live
+  contract reports exactly ONE contested property, `JigsawCompanyId.typeFamily`, where the
+  describe says text and Tooling says External Lookup. That one is a real finding.
+- **Transient envelope + receiptRef.** `review_soql_query` persists the VERIFIED envelope under
+  the ignored cache and returns a content-addressed reference. The ref is computed over the
+  query result *before* the envelope is hashed, because hashing the envelope to produce a field
+  inside it is circular and the envelope's own `sha256` must cover the ref. The Design Case
+  runtime imports by reference, re-verifies the embedded digest, and derives its own sanitized
+  receipt — so raw rows never pass through the model on their way into durable state. MISMATCH,
+  INCOMPLETE, truncated and tampered envelopes are all refused.
+- **`scripts/sampling_derivers.py`** is the single implementation of count, fill, cardinality,
+  distribution, key integrity, relationship shape, effectivity and sample shape. Raw values leave
+  it in exactly one place — `config-snapshot`, which requires an explicit safe-field allowlist and
+  still withholds ids, audit columns, non-scalars and sensitive-looking fields with their digest.
+- **SF-EVID-002 rewritten.** It claimed org review was "sanitized" at the transport. It is not:
+  composed SOQL returns rows unredacted by the 2026-08-04 owner decision. Read and persistence
+  are now stated as separate policies, and the server's own tool instructions were carrying the
+  same false claim — corrected in the same slice.
+- **A real product fragility, found by the live smoke.** The facade spawns `sf ... --json` and
+  parses stdout. A developer profile that sets `FORCE_COLOR` makes the CLI emit ANSI escapes into
+  that JSON, and the facade reported a misleading `CLI_SCHEMA_MISMATCH` / BLOCKED review against a
+  correctly configured org. Colour is now neutralised for every child process.
+- **P0-OPEN-4 closed with live evidence.** Against `devmp`: identity VERIFIED and nonProduction
+  true, composed SOQL VERIFIED with a receiptRef, the envelope imported through the real executor,
+  derived facts that are counts rather than rows, and the receipt marked
+  `non-representative-devmp` and mechanically refused for target-package closure. D-19 proven,
+  not asserted.
+- Verification: validate_harness green (2683 checks), full unit suite green, 37/37 safety evals,
+  eslint and node --check clean, plus the live devmp run above.

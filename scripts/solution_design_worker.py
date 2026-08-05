@@ -29,10 +29,12 @@ from typing import Any
 
 try:
     import governed_state as gs
+    import sampling_derivers as derivers
     import solution_design_core as core
     from repository_evidence_adapter import RepositoryEvidenceError, capture
 except ModuleNotFoundError:  # imported as scripts.solution_design_worker by unit tests
     from scripts import governed_state as gs
+    from scripts import sampling_derivers as derivers
     from scripts import solution_design_core as core
     from scripts.repository_evidence_adapter import RepositoryEvidenceError, capture
 
@@ -498,6 +500,207 @@ class Worker:
         summary = self._summary(case_id, record, design)
         summary["receiptId"] = receipt_id
         summary["workingTreeDrift"] = facts["workingTreeDrift"]
+        return summary
+
+    # -- op: Salesforce envelope import ----------------------------------------------
+
+    def op_import_soql_envelope(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Import a transient review envelope by reference and derive the durable receipt.
+
+        The model never carries rows into durable state. It runs the query through the facade,
+        gets back a content-addressed reference, and names that reference here; the executor
+        reads the envelope, re-verifies its embedded digest, derives the sanitized facts through
+        the shared library, and writes the receipt. Raw rows stay in the ignored cache and
+        expire; the receipt keeps a replay spec instead of a pointer into that cache.
+        """
+        case_id = params["caseId"]
+        probe_id = params.get("probeId")
+        receipt_ref = params.get("receiptRef")
+        if not isinstance(receipt_ref, str) or not re.fullmatch(r"[0-9a-f]{64}", receipt_ref):
+            raise WorkerError("INVALID_INPUT", "receiptRef must be the 64-hex reference the facade returned")
+        envelope_path = gs.contained_path(
+            self.store.root, f".cache/salesforce-review/{receipt_ref}.json"
+        )
+        if not envelope_path.is_file():
+            raise WorkerError(
+                "ENVELOPE_EXPIRED",
+                "no transient envelope at that reference; the cache has a bounded lifetime — "
+                "re-run the query and import promptly",
+            )
+        envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+        try:
+            import work_record as wr
+        except ModuleNotFoundError:
+            from scripts import work_record as wr
+        if envelope.get("sha256") != wr.canonical_embedded_digest(envelope):
+            raise WorkerError("ENVELOPE_TAMPERED", "the transient envelope digest does not recompute")
+        if envelope.get("status") != "VERIFIED":
+            raise WorkerError(
+                "EVIDENCE_NOT_CONFIRMING",
+                f"an envelope with status {envelope.get('status')} cannot be imported as "
+                f"confirming evidence",
+            )
+        facts = (envelope.get("facts") or {}).get("soqlQuery") or {}
+        if facts.get("receiptRef") != receipt_ref:
+            raise WorkerError("ENVELOPE_TAMPERED", "the envelope does not carry the requested reference")
+        completeness = envelope.get("completeness") or {}
+        if completeness.get("truncated"):
+            raise WorkerError(
+                "EVIDENCE_NOT_CONFIRMING", "a truncated result cannot support a design claim"
+            )
+
+        kind = params.get("kind")
+        options = params.get("options") or {}
+        if not isinstance(options, dict):
+            raise WorkerError("INVALID_INPUT", "options must be an object")
+        persistence = params.get("persistenceMode", "aggregate")
+        if persistence not in derivers.PERSISTENCE_MODES:
+            raise WorkerError("INVALID_INPUT", f"unknown persistence mode {persistence!r}")
+        rows = facts.get("records") or []
+        try:
+            if persistence == "config-snapshot":
+                allowed = options.get("allowedFields")
+                if not isinstance(allowed, list) or not allowed:
+                    raise WorkerError(
+                        "INVALID_INPUT",
+                        "a config snapshot needs an explicit safe-field allowlist; it is the one "
+                        "governed exception that persists record values",
+                    )
+                derived = derivers.safe_config_snapshot(rows, allowed)
+            else:
+                derived = derivers.derive(kind, rows, **options)
+        except derivers.DeriverError as exc:
+            raise WorkerError("DERIVATION_REJECTED", str(exc)) from exc
+
+        target = envelope.get("target") or {}
+        # A Developer Edition is not the target managed package and never will be. Its receipts
+        # prove that the transport works; they can never close a target-package question.
+        developer_edition = target.get("environment") == "development" or target.get("isSandbox") is False
+        fitness = "non-representative-devmp" if developer_edition else "scope-matched-non-production"
+
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            self._require_writer(record, params.get("writerId"))
+            self._require_version(record, design, params.get("expectedCaseVersion"))
+            receipt_id = identifier("EV")
+            at = utc_now()
+            replay = params.get("replaySpec")
+            receipt = {
+                "schemaVersion": 1,
+                "receiptId": receipt_id,
+                "caseId": case_id,
+                "questionId": params.get("questionId"),
+                "probeId": probe_id,
+                "sourceType": "org-soql-sample",
+                "assurance": "org-observed",
+                "validationPurpose": params.get("validationPurpose", "design-evidence"),
+                "environmentFitness": fitness,
+                "org": {
+                    "environment": target.get("environment", "development"),
+                    "orgIdDigest": core.sd_digest({"orgProof": target}),
+                    "fullCopy": False,
+                },
+                "package": None,
+                "query": {
+                    "queryDigest": _prefixed(facts.get("queryDigest")),
+                    "fromObjects": list(facts.get("fromObjects") or [])[:20],
+                    "replaySpec": replay
+                    if isinstance(replay, dict)
+                    else {
+                        "kind": "manual-only",
+                        "canonicalTemplate": None,
+                        "parameters": [],
+                        "apiMode": "tooling" if facts.get("useToolingApi") else "data",
+                        "replayable": False,
+                    },
+                    "replaySpecDigest": core.sd_digest(
+                        replay
+                        if isinstance(replay, dict)
+                        else {"kind": "manual-only", "apiMode": "data"}
+                    ),
+                },
+                "source": None,
+                "human": None,
+                "observedAt": envelope.get("generatedAt") or at,
+                "expiresAt": params.get("expiresAt"),
+                "result": {
+                    "kind": kind or persistence,
+                    "completeness": "complete" if completeness.get("complete") else "partial",
+                    "derivedFacts": derived,
+                },
+                "transform": {
+                    "version": derivers.DERIVER_VERSION,
+                    "policyDigest": derivers.transform_policy_digest(),
+                },
+                "rawResultDigest": core.sd_digest(rows),
+                "sensitivityClass": "internal-config-snapshot"
+                if persistence == "config-snapshot"
+                else "internal-sanitized",
+                "limitations": [
+                    "Sandbox observation at a point in time; not production volume and not "
+                    "business meaning."
+                ]
+                + (
+                    [
+                        "Developer Edition evidence: transport mechanics only, ineligible for "
+                        "target-package closure."
+                    ]
+                    if developer_edition
+                    else []
+                ),
+                "sha256": "sha256:" + "0" * 64,
+            }
+            receipt["sha256"] = core.sd_digest(
+                {key: value for key, value in receipt.items() if key != "sha256"}
+            )
+            core.validate_against(receipt, core.EVIDENCE_SCHEMA, "org evidence receipt")
+            self.store.write_json(case_id, f"evidence/{receipt_id}.json", receipt)
+            reference = {
+                "receiptId": receipt_id,
+                "path": f"evidence/{receipt_id}.json",
+                "sha256": receipt["sha256"],
+                "sourceType": "org-soql-sample",
+                "assurance": "org-observed",
+                "validationPurpose": receipt["validationPurpose"],
+                "environmentFitness": fitness,
+                "observedAt": receipt["observedAt"],
+                "expiresAt": receipt["expiresAt"],
+                "completeness": receipt["result"]["completeness"],
+                "status": "current",
+                "questionRefs": [params["questionId"]] if params.get("questionId") else [],
+                "probeRefs": [probe_id] if probe_id else [],
+            }
+            operations: list[dict[str, Any]] = []
+            if probe_id:
+                operations.append(
+                    {
+                        "kind": "probe-import-receipt",
+                        "executorAuthored": True,
+                        "payload": {
+                            "probeId": probe_id,
+                            "evidenceRef": reference,
+                            "replaySpec": replay if isinstance(replay, dict) else None,
+                            "queryDigest": _prefixed(facts.get("queryDigest")),
+                        },
+                    }
+                )
+            else:
+                operations.append(
+                    {
+                        "kind": "knowledge-reference-import",
+                        "executorAuthored": True,
+                        "payload": {"evidenceRef": reference},
+                    }
+                )
+            record["solutionDesign"] = core.apply_operations(
+                record["solutionDesign"], operations
+            )
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["receiptId"] = receipt_id
+        summary["environmentFitness"] = fitness
         return summary
 
     # -- op: knowledge reference -----------------------------------------------------
@@ -1201,6 +1404,7 @@ OPERATIONS = {
     "import-repository-receipt": "op_import_repository_receipt",
     "set-requirement-snapshot": "op_set_requirement_snapshot",
     "import-knowledge-reference": "op_import_knowledge_reference",
+    "import-soql-envelope": "op_import_soql_envelope",
     "record-human-input": "op_record_human_input",
     "confirm-candidate": "op_confirm_candidate",
     "request-candidate-revision": "op_request_candidate_revision",

@@ -31,9 +31,18 @@ These rules apply only when they do not conflict with Tier 1 or Tier 2.
 - **SF-EVID-001 — intended and deployed state are distinct.** Treat the source-controlled metadata
   commit as intended customer-owned state and the allowlisted org as deployed state at an observed
   time. Report drift; do not declare either universally authoritative.
-- **SF-EVID-002 — read the minimum surface.** Org review uses schema-first, bounded, allowlisted
-  component reads with explicit API version, row/field caps, permission limitations, pagination,
-  and sanitization. Do not retrieve broad business records to answer a metadata question.
+- **SF-EVID-002 — read the minimum surface, and persist less than you read.** Org review uses
+  schema-first, bounded, allowlisted reads with an explicit API version, row/field caps, stated
+  permission limitations and pagination. Read and persistence are separate policies and must not
+  be conflated: a composed `review_soql_query` result returns record rows **unredacted and
+  unsanitized** in band (owner decision 2026-08-04) so an unusual configuration can actually be
+  understood. Sanitization happens on the way to *durable* state — the Design Case runtime
+  imports the result by its content-addressed reference and derives counts, distributions,
+  shapes and digests through the shared derivation library. Persisting record values is the one
+  governed exception (`config-snapshot`) and requires an explicit safe-field allowlist; ids,
+  audit columns, non-scalars and sensitive-looking fields are withheld with their digest even
+  then. Do not retrieve broad business records to answer a metadata question, and never paste
+  raw rows into a design, an entry or an ADO artifact.
 - **SF-EVID-003 — absence needs completeness.** A claim that a field, automation, dependency, or
   record does not exist requires complete enumeration within the proven permission and API scope.
   Empty or inaccessible results remain `UNRESOLVED`.
