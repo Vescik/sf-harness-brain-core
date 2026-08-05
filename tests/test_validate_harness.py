@@ -10,6 +10,7 @@ import ast
 import io
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -188,6 +189,92 @@ class TestPlaceholdersBinaryFile(TempRootBase):
         )
         audit = self.run_audit(validate_harness.check_placeholders, root=self.root)
         self.assertEqual(audit.errors, [])
+
+
+class TestRetiredSurfaceScan(TempRootBase):
+    """A retired surface must be unreachable, and the scan must prove it rather than pass idly."""
+
+    MANIFEST = {
+        "schemaVersion": 1,
+        "retired": [
+            {
+                "name": "ghost-lane",
+                "retiredIn": "P1",
+                "retiredOn": "2026-08-05",
+                "replacement": "the replacement lane",
+                "tokens": ["ghost-lane"],
+                "historicalAllowlist": ["docs/history.md"],
+            }
+        ],
+    }
+
+    def seed(self, files: dict[str, str]) -> None:
+        (self.root / "config").mkdir(parents=True, exist_ok=True)
+        (self.root / "config" / "retired-surfaces.json").write_text(
+            json.dumps(self.MANIFEST), encoding="utf-8"
+        )
+        for relative, text in files.items():
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=self.root, check=True)
+
+    def test_live_reference_to_a_retired_surface_fails(self) -> None:
+        self.seed({".github/prompts/live.md": "Run ghost-lane first.\n"})
+        audit = self.run_audit(validate_harness.check_retired_surfaces, root=self.root)
+        self.assertTrue(audit.errors)
+        self.assertIn("ghost-lane", audit.errors[0])
+        self.assertIn(".github/prompts/live.md", audit.errors[0])
+
+    def test_historical_document_may_keep_describing_it(self) -> None:
+        self.seed({"docs/history.md": "The ghost-lane skill was retired in P1.\n"})
+        audit = self.run_audit(validate_harness.check_retired_surfaces, root=self.root)
+        self.assertEqual(audit.errors, [])
+        self.assertEqual(audit.checks, 1)
+
+    def test_missing_manifest_is_an_audit_error_not_a_crash(self) -> None:
+        subprocess.run(["git", "init", "-q"], cwd=self.root, check=True)
+        audit = self.run_audit(validate_harness.check_retired_surfaces, root=self.root)
+        self.assertTrue(audit.errors)
+
+
+class TestDependencyAdmission(unittest.TestCase):
+    """DEP-01 must be able to fail. A gate that cannot see a real import proves nothing."""
+
+    def test_live_tree_admits_every_third_party_python_import(self) -> None:
+        audit = validate_harness.Audit()
+        validate_harness.check_dependency_admissions(audit)
+        self.assertEqual(audit.errors, [])
+        self.assertGreater(audit.checks, 0)
+
+    def test_extension_modules_are_not_mistaken_for_third_party(self) -> None:
+        detected = set(validate_harness.third_party_python_imports(ROOT))
+        self.assertIn("jsonschema", detected)
+        self.assertIn("yaml", detected)
+        for stdlib_extension in ("math", "unicodedata", "hashlib"):
+            self.assertNotIn(stdlib_extension, detected)
+
+    def test_admission_records_are_schema_valid_and_named_by_digest(self) -> None:
+        import hashlib as _hashlib
+
+        from jsonschema import Draft202012Validator
+
+        schema = json.loads(
+            (ROOT / "schemas/dependency-admission.schema.json").read_text(encoding="utf-8")
+        )
+        records = sorted((ROOT / "config/dependency-admissions").glob("*/*.json"))
+        self.assertTrue(records, "the rebuild admits at least one pre-existing exception")
+        for path in records:
+            record = json.loads(path.read_text(encoding="utf-8"))
+            errors = list(Draft202012Validator(schema).iter_errors(record))
+            self.assertEqual(errors, [], f"{path.name}: {[e.message for e in errors][:3]}")
+            canonical = f"{record['ecosystem']}:{record['packageName'].lower()}"
+            self.assertEqual(
+                record["nameDigest12"],
+                _hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12],
+            )
+            self.assertEqual(path.name, f"{record['safeSlug']}--{record['nameDigest12']}.json")
 
 
 if __name__ == "__main__":

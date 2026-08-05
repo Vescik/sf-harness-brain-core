@@ -130,7 +130,12 @@ class AgentCommandSurfaceTests(unittest.TestCase):
         implemented = self.subcommands(work_record.build_parser())
         agent_allowed = set().union(*role_guard.WORK_RECORD_COMMANDS.values())
         self.assertEqual(agent_allowed - implemented, set())
-        self.assertEqual(implemented - agent_allowed, {"approve"})
+        # `approve` is human-terminal-only. `init`, `resolve-question` and `bind-entry` became
+        # agent-unreachable with the Solution Design rebuild (P2): their only caller was the
+        # Solution Designer, whose workflow state moved to the solution-design MCP runtime.
+        self.assertEqual(
+            implemented - agent_allowed, {"approve", "init", "resolve-question", "bind-entry"}
+        )
         for role in role_guard.WORK_RECORD_COMMANDS:
             with self.subTest(role=role):
                 self.assertFalse(

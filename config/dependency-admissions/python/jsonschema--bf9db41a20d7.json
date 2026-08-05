@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "ecosystem": "python",
+  "packageName": "jsonschema",
+  "safeSlug": "jsonschema",
+  "nameDigest12": "bf9db41a20d7",
+  "version": "4.25.1",
+  "purpose": "Draft 2020-12 schema validation for the closed Design Case state, evidence, candidate, transition-receipt and rule-map schemas, and for every pre-existing governed schema in this workspace. The Solution Design core is otherwise Python standard library only.",
+  "rejectedAlternatives": [
+    {
+      "alternative": "hand-written validators in the Solution Design core",
+      "whyInsufficient": "The rebuild ships eight closed schemas with nested $defs, conditional allOf branches and format checks. Hand-rolled validation would be a second, weaker definition of the same contract and would drift from the committed schema files, which is exactly the failure the typed-state design exists to prevent."
+    },
+    {
+      "alternative": "no schema validation, rely on the runtime's own type checks",
+      "whyInsufficient": "Closed additionalProperties:false semantics are a hard safety boundary here: an unknown field in an executor-authored receipt or candidate bundle must fail, not pass silently."
+    }
+  ],
+  "integrity": {
+    "lockfile": "requirements-dev.lock",
+    "mechanism": "pip-hash-locked",
+    "artifactDigests": [
+      "sha256:3fba0169e345c7175110351d456342c364814cfcf3b964ba4587f22915230a63",
+      "sha256:e4a9655ce0da0c0b67a085847e00a3a51449e1157f4f75e9fb5aa545e122eb85"
+    ]
+  },
+  "provenance": {
+    "sourceRepository": "https://github.com/python-jsonschema/jsonschema",
+    "sourceCommit": null,
+    "maintainerNote": "Long-standing, single-maintainer-led project with a continuous release history; already the workspace's only third-party Python runtime dependency before this rebuild.",
+    "checkedAt": "2026-08-05T00:00:00Z",
+    "note": "Provenance is evidence of origin, not proof of benign content. This record admits a pre-existing, already hash-locked dependency; it neither adds nor upgrades a package."
+  },
+  "advisoryCheck": {
+    "sources": [
+      "https://github.com/advisories (GitHub Advisory Database)",
+      "https://security.snyk.io/package/pip/jsonschema"
+    ],
+    "checkedAt": "2026-08-05T00:00:00Z",
+    "outcome": "no-known-advisory",
+    "detail": "Targeted advisory lookup for jsonschema 4.25.1 on 2026-08-05 returned no advisory affecting this version; the Snyk package index reports the latest non-vulnerable version as 4.26.0, i.e. no vulnerable range covering 4.25.1. This was a targeted lookup of the two named indexes, not an exhaustive audit of every advisory source, and it is not a claim about the transitive tree beyond the pinned hashes. P1 deliberately does not upgrade to 4.26.0: the admission records the exception that already exists."
+  },
+  "transitiveDeltaDigest": "sha256:913ccbc8a67b029480f700b7ec327f8172eecad975688823957277bfaf44d02c",
+  "lifecycleScripts": {
+    "disabled": true,
+    "note": "Installed from the hash-locked requirements file; pip executes no lifecycle scripts for wheels, and the lock pins wheel and sdist hashes so a substituted artifact fails installation."
+  },
+  "license": "MIT",
+  "supportedPlatforms": [
+    "windows",
+    "macos",
+    "linux"
+  ],
+  "cooldown": {
+    "applied": true,
+    "reason": "No new or upgraded release is being admitted. 4.25.1 has been in this workspace's lock since before the rebuild, which exceeds the three-day non-security cooldown by a wide margin."
+  },
+  "owner": "workspace owner (sf-harness-brain-core)",
+  "reviewBy": "2027-02-05",
+  "rollbackCriterion": "Remove the exception if an advisory affecting 4.25.1 appears, if the transitive delta digest changes without a fresh admission, or if the Solution Design core stops needing closed-schema validation. Removal means replacing schema validation, not silently downgrading it.",
+  "importNames": [
+    "jsonschema"
+  ]
+}

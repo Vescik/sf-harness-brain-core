@@ -40,6 +40,14 @@
       "args": [
         "scripts/knowledge_mcp_server.mjs"
       ]
+    },
+    "solution-design": {
+      "type": "stdio",
+      "command": "node",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "scripts/solution_design_mcp_server.mjs"
+      ]
     }
   }
 }

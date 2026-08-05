@@ -707,8 +707,21 @@ class RoleGuardTests(unittest.TestCase):
             with self.subTest(role=role):
                 self.assertFalse(role_guard.allowed_role_command(command, ROOT, role))
 
-    def test_designer_can_write_solution_design_drafts(self) -> None:
+    def test_designer_writes_the_design_case_narrative_and_not_a_second_lane(self) -> None:
         allowed = run_hook(
+            "copilot_role_guard.py",
+            {
+                "cwd": str(ROOT),
+                "tool_name": "edit/editFiles",
+                "tool_input": {"path": ".ai/change-records/SD-2026-08-05-routing/design.md"},
+            },
+            "--role",
+            "solution-designer",
+        )
+        self.assertEqual(hook_decision(allowed), "continue")
+        # The record-free lane was retired with the Design Case rebuild (P2). A second
+        # creation path is a second truth, so it must no longer be a free write.
+        retired = run_hook(
             "copilot_role_guard.py",
             {
                 "cwd": str(ROOT),
@@ -718,7 +731,7 @@ class RoleGuardTests(unittest.TestCase):
             "--role",
             "solution-designer",
         )
-        self.assertEqual(hook_decision(allowed), "continue")
+        self.assertNotEqual(hook_decision(retired), "continue")
         denied = run_hook(
             "copilot_role_guard.py",
             {
@@ -1193,12 +1206,18 @@ class SafetyClassificationTests(unittest.TestCase):
     def test_work_record_commands_are_role_bound_and_approval_is_never_allowed(self) -> None:
         from scripts import copilot_role_guard as role_guard
 
-        self.assertTrue(
-            role_guard.work_record_command_allowed(
-                ["context", "--record-id", "WR-1", "--role", "solution-designer"],
-                "solution-designer",
-            )
-        )
+        # The Solution Designer holds no work-record grant at all since the rebuild (P2): its
+        # workflow state lives in the Design Case runtime, reached only through MCP tools. An
+        # empty grant set must deny every subcommand, including the previously allowed reads.
+        self.assertEqual(role_guard.WORK_RECORD_COMMANDS["solution-designer"], set())
+        for subcommand in ("context", "init", "transition", "create-handoff"):
+            with self.subTest(subcommand=subcommand):
+                self.assertFalse(
+                    role_guard.work_record_command_allowed(
+                        [subcommand, "--record-id", "WR-1", "--role", "solution-designer"],
+                        "solution-designer",
+                    )
+                )
         self.assertFalse(
             role_guard.work_record_command_allowed(
                 ["context", "--record-id", "WR-1", "--role", "development-assistant"],
@@ -1238,8 +1257,9 @@ class SafetyClassificationTests(unittest.TestCase):
             )
         )
         # Evidence-producing roles mint sha256 receipts for append-evidence --artifact-sha256.
+        # The Solution Designer is deliberately absent since the rebuild (P2): the Design Case
+        # runtime authors its receipts, so the designer needs no digest verb at all.
         for evidence_role in (
-            "solution-designer",
             "config-investigator",
             "development-assistant",
             "test-strategist",

@@ -59,9 +59,9 @@ class RepoMapRenderTests(unittest.TestCase):
         self.assertEqual(committed["wordCount"], word_count(md))
         # Coverage: every agent, skill, prompt, instruction, and contract is indexed.
         self.assertEqual(6, len(first["agents"]))
-        self.assertEqual(18, len(first["skills"]))
-        self.assertEqual(18, len(first["prompts"]))
-        self.assertEqual(4, len(first["contracts"]))
+        self.assertEqual(17, len(first["skills"]))
+        self.assertEqual(17, len(first["prompts"]))
+        self.assertEqual(5, len(first["contracts"]))
 
     def test_word_budget_is_enforced(self) -> None:
         with mock.patch.object(render_repo_map, "WORD_BUDGET", 50):
@@ -146,11 +146,11 @@ class KnowledgeConsumerSetTests(unittest.TestCase):
         return root
 
     def test_plan_still_names_set_a_in_the_parsed_shape(self) -> None:
-        # 10 since 2026-08-04 (MCP-only definitions): investigate-object and
-        # suggest-test-cases joined the counted set when the step-1 lookup moved to the
-        # knowledge_context tool.
+        # 10 since 2026-08-04 (MCP-only definitions), 9 since 2026-08-05: the Solution
+        # Design rebuild (P1) retired suggest-test-cases, so the counted set lost one
+        # surface. investigate-object remains from the 2026-08-04 revision.
         (declared_a, set_a), _retired = self.sets()
-        self.assertEqual(10, declared_a, "§7 declares Set A as 10 surfaces")
+        self.assertEqual(9, declared_a, "§7 declares Set A as 9 surfaces")
         self.assertEqual(declared_a, len(set_a))
         self.assertNotIn("search-knowledge", set_a, "the menu owner is never a Set A consumer")
 

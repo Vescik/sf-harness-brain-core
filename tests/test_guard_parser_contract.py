@@ -24,6 +24,14 @@ INTENTIONALLY_UNGUARDED = {
         "denial layers are the global safety hook and the in-process work_record backstop "
         "(owner decision 2026-08-04: settings.json deny entry and the guard's explicit "
         "special-case were removed as redundant third/fourth layers)",
+        "init": "no agent creates a governed record from a terminal any more: the Solution "
+        "Design rebuild (P2) moved case creation to design_open on the solution-design MCP "
+        "runtime and removed the Solution Designer's work-record grants",
+        "resolve-question": "the Design Case runtime closes questions through design_apply "
+        "with an eligible receipt; the terminal verb had only the Solution Designer as a "
+        "caller and was removed with its grants (rebuild P2)",
+        "bind-entry": "Knowledge references are bound through the Design Case runtime; the "
+        "terminal verb had only the Solution Designer as a caller (rebuild P2)",
     },
 }
 
