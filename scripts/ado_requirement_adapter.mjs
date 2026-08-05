@@ -192,17 +192,26 @@ function fields(item) {
   return item?.fields ?? item?.Fields ?? {};
 }
 
-function relationChildIds(item) {
+function relationIds(item, wanted) {
   const relations = item?.relations ?? item?.Relations ?? [];
   const ids = [];
   for (const relation of relations) {
     const kind = relation?.rel ?? relation?.Rel ?? "";
-    if (kind !== "System.LinkTypes.Hierarchy-Forward") continue;
+    if (kind !== wanted) continue;
     const url = relation?.url ?? relation?.URL ?? "";
     const match = /\/(\d+)\s*$/.exec(String(url));
     if (match) ids.push(Number(match[1]));
   }
   return ids.slice(0, MAX_CHILDREN);
+}
+
+function relationChildIds(item) {
+  return relationIds(item, "System.LinkTypes.Hierarchy-Forward");
+}
+
+/** Formally related Test Cases, read as CONTEXT. Never a ranking and never the plan. */
+export function linkedTestCaseIds(item) {
+  return relationIds(item, "Microsoft.VSTS.Common.TestedBy-Forward");
 }
 
 /**
@@ -295,8 +304,8 @@ export async function fetchRequirement({
     };
     if (includeLinkedTestCases) {
       // Context only: formally related Test Cases are never the canonical verification plan,
-      // and nothing here ranks or suggests them.
-      snapshot.linkedTestCases = relationChildIds(root).length ? [] : [];
+      // and nothing here ranks or suggests them. The Verification Contract stays the plan.
+      snapshot.linkedTestCases = linkedTestCaseIds(root);
     }
     return snapshot;
   } finally {

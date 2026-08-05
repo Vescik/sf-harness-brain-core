@@ -165,6 +165,25 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "design_import_knowledge_reference",
+    description:
+      "Bind an approved-current, groundable Knowledge Entry as source evidence, importing its " +
+      "recorded limitations as evidence limitations. NO_ENTRY means no entry exists, never that " +
+      "the artifact does not; a drifted or heuristic entry is refused rather than downgraded.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["caseId", "writerId", "expectedCaseVersion", "identity"],
+      properties: {
+        caseId: CASE_ID,
+        writerId: { type: "string" },
+        expectedCaseVersion: CASE_VERSION,
+        identity: { type: "string", description: "Knowledge entry identity" },
+        questionId: { type: "string" },
+      },
+    },
+  },
+  {
     name: "design_submit",
     description:
       "The only design completeness gate. OPEN leaves the draft editable and returns routed " +
@@ -265,6 +284,7 @@ const DIRECT_OPERATIONS = {
   design_check: "check",
   design_apply: "apply",
   design_import_repository_receipt: "import-repository-receipt",
+  design_import_knowledge_reference: "import-knowledge-reference",
   design_submit: "submit",
   design_start_development: "start-development",
 };

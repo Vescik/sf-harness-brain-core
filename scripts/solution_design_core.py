@@ -1420,6 +1420,7 @@ EMPTY_REQUIREMENT = {
     "completeness": "absent",
     "attestationRef": None,
     "unresolvedContradictions": [],
+    "linkedTestCaseIds": [],
 }
 
 
@@ -2172,6 +2173,7 @@ def requirement_snapshot_from_adapter(
         else ("partial" if criteria else "absent"),
         "attestationRef": previous.get("attestationRef"),
         "unresolvedContradictions": sorted(set(contradictions))[:50],
+        "linkedTestCaseIds": sorted(set(snapshot.get("linkedTestCases") or []))[:200],
     }
 
 
@@ -2197,3 +2199,75 @@ def requirement_drift(
         if observed is not None and observed != revision:
             drifted.append(f"child work item {item_id} moved from revision {revision} to {observed}")
     return drifted
+
+
+# --------------------------------------------------------------------------------------
+# Obligation seeding (§11.1 step 4, §11.3)
+# --------------------------------------------------------------------------------------
+
+PACKAGE_QUESTION_ID = "Q-PKG-BOUNDARY"
+PACKAGE_QUESTION = (
+    "Which supported extension point covers this change on the package-owned or "
+    "ownership-unknown surface, and what existing package automation runs in the same "
+    "transaction?"
+)
+
+
+def seed_obligations(state: dict[str, Any]) -> dict[str, Any]:
+    """Add the obligations the scope implies but nobody authored yet.
+
+    Strictly additive. Seeding never overwrites a disposition the designer recorded, because
+    that would let the runtime silently undo a human judgement; it only makes a computed
+    obligation visible before the designer trips over it at submit.
+    """
+    computed = concern_applicability(state)
+    declared = {item["profileId"] for item in state.get("concernCoverage", [])}
+    for profile, verdict in computed.items():
+        if not verdict["applicable"] or profile in declared:
+            continue
+        state["concernCoverage"].append(
+            {
+                "concernId": "COV-" + profile.upper(),
+                "profileId": profile,
+                "applicability": "applicable",
+                "status": "open",
+                "triggerRefs": list(verdict["triggers"])[:20],
+                "treatmentRefs": [],
+                "questionRefs": [],
+                "riskRefs": [],
+                "verificationRefs": [],
+                "notApplicableReason": None,
+            }
+        )
+
+    # A package boundary is the one question this workspace exists to stop people skipping.
+    package_facing = [
+        component["componentId"]
+        for component in _in_scope_components(state)
+        if component.get("action") in MUTATING_ACTIONS
+        and (
+            component.get("componentOwnership") in ("package-owned", "unknown")
+            or component.get("hostObjectOwnership") in ("package-owned", "unknown")
+        )
+    ]
+    existing = {question["questionId"] for question in state.get("questions", [])}
+    if package_facing and PACKAGE_QUESTION_ID not in existing:
+        state["questions"].append(
+            {
+                "questionId": PACKAGE_QUESTION_ID,
+                "question": PACKAGE_QUESTION,
+                "materiality": "blocking",
+                "requiredAuthority": [
+                    "vendor-documentation",
+                    "knowledge-entry",
+                    "human-sme-attestation",
+                ],
+                "status": "open",
+                "answer": None,
+                "closureAuthority": None,
+                "evidenceRefs": [],
+                "limitations": [],
+                "route": "grounding",
+            }
+        )
+    return state

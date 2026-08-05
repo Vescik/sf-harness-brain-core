@@ -1235,5 +1235,141 @@ class AdoAdapterNodeTests(unittest.TestCase):
         self.assertNotIn("npx", json.dumps(mcp))
 
 
+class ObligationSeedingTests(WorkspaceCase):
+    """The runtime seeds what the scope implies; it never overwrites a designer disposition."""
+
+    PACKAGE_COMPONENT = {
+        "componentId": "CMP-PKG",
+        "objectApiName": "ns__Rule__c",
+        "artefactType": "Flow",
+        "apiName": "ns__Rule_Before_Save",
+        "action": "create",
+        "disposition": "in-scope",
+        "dispositionReason": None,
+        "description": "New automation on a package-owned object.",
+        "componentOwnership": "subscriber-owned",
+        "hostObjectOwnership": "package-owned",
+        "packageBoundaryRefs": ["ns__Rule__c"],
+        "extensionPointStatus": "unknown",
+        "sourceState": "absent",
+        "targetState": "proposed",
+        "evidenceRefs": [],
+        "decisionRefs": [],
+        "acIds": [],
+    }
+
+    def seeded(self) -> dict:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        return self.ok(
+            "apply",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            operations=[{"kind": "scope-component-upsert", "payload": self.PACKAGE_COMPONENT}],
+        )
+
+    def test_a_package_boundary_seeds_its_material_question(self) -> None:
+        self.seeded()
+        record = json.loads(
+            (self.root / ".ai/change-records" / CASE / "record.json").read_text(encoding="utf-8")
+        )
+        questions = record["solutionDesign"]["questions"]
+        self.assertTrue(any(item["questionId"] == core.PACKAGE_QUESTION_ID for item in questions))
+        seeded = next(item for item in questions if item["questionId"] == core.PACKAGE_QUESTION_ID)
+        self.assertEqual(seeded["materiality"], "blocking")
+        self.assertEqual(seeded["route"], "grounding")
+
+    def test_applicable_concerns_are_seeded_as_open(self) -> None:
+        result = self.seeded()
+        profiles = {item["profileId"] for item in result["concernCoverage"]}
+        self.assertIn("transaction-and-automation", profiles)
+        self.assertIn("package-boundaries-and-upgrade", profiles)
+        self.assertTrue(all(item["status"] == "open" for item in result["concernCoverage"]))
+
+    def test_seeding_never_overwrites_a_recorded_disposition(self) -> None:
+        result = self.seeded()
+        applied = self.ok(
+            "apply",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=result["caseVersion"],
+            operations=[
+                {
+                    "kind": "concern-disposition",
+                    "payload": {
+                        "profileId": "transaction-and-automation",
+                        "concernId": "COV-TRANSACTION-AND-AUTOMATION",
+                        "applicability": "applicable",
+                        "status": "addressed",
+                        "treatmentRefs": ["#D-001"],
+                    },
+                }
+            ],
+        )
+        entry = next(
+            item
+            for item in applied["concernCoverage"]
+            if item["profileId"] == "transaction-and-automation"
+        )
+        self.assertEqual(entry["status"], "addressed")
+        self.assertEqual(entry["treatmentRefs"], ["#D-001"])
+
+    def test_a_subscriber_only_change_seeds_no_package_question(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        component = json.loads(json.dumps(self.PACKAGE_COMPONENT))
+        component.update(
+            {
+                "componentId": "CMP-OWN",
+                "objectApiName": "Case",
+                "artefactType": "CustomField",
+                "hostObjectOwnership": "subscriber-owned",
+                "packageBoundaryRefs": [],
+                "extensionPointStatus": "not-applicable",
+            }
+        )
+        result = self.ok(
+            "apply",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            operations=[{"kind": "scope-component-upsert", "payload": component}],
+        )
+        record = json.loads(
+            (self.root / ".ai/change-records" / CASE / "record.json").read_text(encoding="utf-8")
+        )
+        self.assertFalse(
+            any(
+                item["questionId"] == core.PACKAGE_QUESTION_ID
+                for item in record["solutionDesign"]["questions"]
+            )
+        )
+        self.assertEqual(result["result"], "OPEN")
+
+
+class KnowledgeReferenceTests(WorkspaceCase):
+    """A missing entry is a Knowledge gap, never a licence to infer."""
+
+    def test_no_entry_is_refused_with_the_gap_wording(self) -> None:
+        opened = self.ok("open", caseId=CASE, writerId="writer-one", title="t")
+        response = self.call(
+            "import-knowledge-reference",
+            caseId=CASE,
+            writerId="writer-one",
+            expectedCaseVersion=opened["caseVersion"],
+            identity="CustomObject:Nonexistent__c",
+        )
+        self.assertFalse(response["ok"])
+        self.assertIn(response["error"]["code"], {"NO_ENTRY", "REJECTED"})
+
+    def test_the_tool_is_granted_and_maps_to_the_internal_operation(self) -> None:
+        prompt = (ROOT / ".github/prompts/solution-design.prompt.md").read_text(encoding="utf-8")
+        agent = (ROOT / ".github/agents/solution-designer.agent.md").read_text(encoding="utf-8")
+        for text in (prompt, agent):
+            self.assertIn("solution-design/design_import_knowledge_reference", text)
+        server = (ROOT / "scripts/solution_design_mcp_server.mjs").read_text(encoding="utf-8")
+        self.assertIn('design_import_knowledge_reference: "import-knowledge-reference"', server)
+        self.assertIn("import-knowledge-reference", worker_module.OPERATIONS)
+
+
 if __name__ == "__main__":
     unittest.main()

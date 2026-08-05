@@ -1112,6 +1112,11 @@ class PinnedSalesforceMcpCompatibilityTests(unittest.TestCase):
         self.assertEqual(provider["version"], "0.9.8")
 
     def test_pinned_server_still_supports_the_bounded_startup_flags(self) -> None:
+        # Colour is neutralised explicitly. oclif underlines `<value>` with ANSI codes when
+        # colour is forced, so on any machine whose profile sets FORCE_COLOR this assertion
+        # failed on the escape sequence rather than on a missing flag — a false red that says
+        # nothing about the pinned server's surface.
+        environment = {**os.environ, "FORCE_COLOR": "0", "NO_COLOR": "1"}
         completed = subprocess.run(
             ["node", str(self.MCP_ROOT / "bin" / "run.js"), "--help"],
             cwd=ROOT,
@@ -1119,6 +1124,7 @@ class PinnedSalesforceMcpCompatibilityTests(unittest.TestCase):
             capture_output=True,
             timeout=30,
             check=False,
+            env=environment,
         )
         output = completed.stdout + completed.stderr
         self.assertEqual(completed.returncode, 0, output)

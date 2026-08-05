@@ -3,7 +3,7 @@ name: solution-design
 description: Open or continue a Design Case — an executed evidence loop over one canonical, versioned design whose readiness is computed, not announced.
 argument-hint: "itemId=<ADO ID> | caseId=<Design Case ID> | or a written requirement"
 agent: solution-designer
-tools: ['read', 'search', 'edit/editFiles', 'vscode/askQuestions', 'agent', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query', 'solution-design/design_open', 'solution-design/design_context', 'solution-design/design_check', 'solution-design/design_apply', 'solution-design/design_import_repository_receipt', 'solution-design/design_submit', 'solution-design/design_request_human_input', 'solution-design/design_request_candidate_decision', 'solution-design/design_request_writer_transfer']
+tools: ['read', 'search', 'edit/editFiles', 'vscode/askQuestions', 'agent', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query', 'solution-design/design_open', 'solution-design/design_context', 'solution-design/design_check', 'solution-design/design_apply', 'solution-design/design_import_repository_receipt', 'solution-design/design_import_knowledge_reference', 'solution-design/design_submit', 'solution-design/design_request_human_input', 'solution-design/design_request_candidate_decision', 'solution-design/design_request_writer_transfer']
 ---
 
 Use the [solution-design skill](../skills/solution-design/SKILL.md).
