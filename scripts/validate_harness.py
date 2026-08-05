@@ -100,6 +100,11 @@ ALLOWED_TOOLS = {
     "solution-design/design_request_writer_transfer",
     "solution-design/design_start_development",
     "solution-design/design_review_candidate",
+    "solution-design/design_report_divergence",
+    "solution-design/design_record_recheck",
+    "solution-design/design_record_verification",
+    "solution-design/design_request_implementation_review",
+    "solution-design/design_review_implementation",
 }
 # Internal runtime operations that are never model-facing tools. Granting one of these — or a
 # `solution-design/*` wildcard that would reach them — is a contract failure, not a convenience.

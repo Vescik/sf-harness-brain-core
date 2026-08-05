@@ -334,6 +334,95 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "design_report_divergence",
+    description:
+      "Record what implementation actually found. A design-material, requirement-change or " +
+      "evidence-drift divergence supersedes the approval and handoff and reopens only the " +
+      "design obligations that depend on it; implementation-local stays with Development.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["caseId", "observation", "classification"],
+      properties: {
+        caseId: CASE_ID,
+        observation: { type: "string" },
+        classification: {
+          enum: ["implementation-local", "design-material", "requirement-change", "evidence-drift"],
+        },
+        affectedRefs: { type: "array", items: { type: "string" } },
+        recordedBy: { enum: ["development-assistant", "guardrail-reviewer"] },
+      },
+    },
+  },
+  {
+    name: "design_record_recheck",
+    description:
+      "Replay a critical probe against its baseline and record match, drift or not-replayable. " +
+      "A positive match is recorded too: a re-run that leaves no receipt is indistinguishable " +
+      "from never having run.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["caseId", "probeId", "outcome"],
+      properties: {
+        caseId: CASE_ID,
+        probeId: { type: "string" },
+        outcome: { enum: ["match", "drift", "not-replayable"] },
+        observedDigest: { type: "string" },
+        diff: { type: "object" },
+        recordedBy: { enum: ["development-assistant", "guardrail-reviewer"] },
+      },
+    },
+  },
+  {
+    name: "design_record_verification",
+    description:
+      "Record one Verification Contract execution, bound to its contract entry. A label is not " +
+      "an execution: the outcome and its evidence summary are required.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["caseId", "verificationId", "outcome", "evidenceSummary"],
+      properties: {
+        caseId: CASE_ID,
+        verificationId: { type: "string" },
+        outcome: { enum: ["pass", "fail", "blocked"] },
+        evidenceSummary: { type: "string" },
+        artifactDigest: { type: "string" },
+        recordedBy: { enum: ["development-assistant", "test-strategist"] },
+      },
+    },
+  },
+  {
+    name: "design_request_implementation_review",
+    description:
+      "Move to review. Refused until every Verification Contract entry has a passing execution " +
+      "receipt — an unexecuted contract entry is an unproven change.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["caseId"],
+      properties: { caseId: CASE_ID },
+    },
+  },
+  {
+    name: "design_review_implementation",
+    description:
+      "Final independent verdict, bound to the accepted candidate. PASS completes the case, " +
+      "NEEDS_FIXES returns it to Development, DESIGN_INVALID reopens the design.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["caseId", "reviewerId", "verdict"],
+      properties: {
+        caseId: CASE_ID,
+        reviewerId: { type: "string" },
+        verdict: { enum: ["PASS", "NEEDS_FIXES", "DESIGN_INVALID"] },
+        observation: { type: "string" },
+      },
+    },
+  },
+  {
     name: "design_start_development",
     description:
       "Move an accepted candidate into Development and emit the handoff automatically. No hash " +
@@ -361,6 +450,11 @@ const DIRECT_OPERATIONS = {
   design_submit: "submit",
   design_start_development: "start-development",
   design_review_candidate: "review-candidate",
+  design_report_divergence: "report-divergence",
+  design_record_recheck: "record-recheck",
+  design_record_verification: "record-verification",
+  design_request_implementation_review: "request-implementation-review",
+  design_review_implementation: "review-implementation",
 };
 
 const HUMAN_BOUND_TOOLS = new Set([
