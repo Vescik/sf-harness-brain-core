@@ -1,0 +1,100 @@
+{
+  "approvals": [],
+  "assumptions": [],
+  "blockingQuestions": [],
+  "contextRefs": [],
+  "createdAt": "2026-08-05T20:09:01Z",
+  "currentHandoffId": null,
+  "design": {
+    "path": "design.md",
+    "sha256": "5bcd4492b7bab490c34ea8dbf6c7b33c8086b26cc2beed3436022ce4db1d0a1a"
+  },
+  "environment": {
+    "alias": null,
+    "isSandbox": null,
+    "nonProduction": null,
+    "status": "unverified",
+    "verificationRef": null,
+    "verifiedAt": null
+  },
+  "events": [],
+  "evidenceRefs": [],
+  "groundingHash": "28c5b74636185be48c21d00c6f64f71563bf28a03116a7cc9b8ad2b0e3d57c9c",
+  "handoffHistoryRefs": [],
+  "implementation": {
+    "commits": [],
+    "components": [],
+    "status": "not_started"
+  },
+  "recordId": "SD-2026-08-05-approval-notification-hub-lite",
+  "recordRevision": 1,
+  "repositories": [],
+  "requestedOutcome": "Approval Notification Hub — Lite",
+  "review": {
+    "recordedAt": null,
+    "reviewer": null,
+    "status": "not_started",
+    "verdict": null
+  },
+  "ruleRefs": [],
+  "schemaVersion": 1,
+  "scope": {
+    "components": [],
+    "paths": [],
+    "workspaceRoot": "brain-core"
+  },
+  "scopeHash": "24aaea7ab29188487735aac3104dd2d9d1ffb80f22aa5e4a0643f4563ed97a4c",
+  "solutionDesign": {
+    "activeCandidateRef": null,
+    "applicableRules": [],
+    "caseId": "SD-2026-08-05-approval-notification-hub-lite",
+    "concernCoverage": [],
+    "configurationArtefacts": [],
+    "dataClassifications": [],
+    "decisions": [],
+    "evidenceRefs": [],
+    "knowledgeCandidates": [],
+    "limitationRefs": [],
+    "nextFocus": "requirements",
+    "probes": [],
+    "questions": [],
+    "requirementSnapshot": {
+      "acceptanceCriteria": [],
+      "attestationRef": null,
+      "completeness": "partial",
+      "excludedItems": [],
+      "includedItems": [],
+      "itemId": null,
+      "itemType": null,
+      "linkedTestCaseIds": [],
+      "retrievedAt": "2026-08-05T20:09:01Z",
+      "revision": null,
+      "sourceDigest": "sha256:db314227d89423deb6b8502d460c8bbffa83fd2f440cc01226c1621addb2c167",
+      "sourceType": "human-request",
+      "unresolvedContradictions": []
+    },
+    "riskObligations": [],
+    "schemaVersion": 1,
+    "scope": {
+      "components": [],
+      "frontierComplete": false
+    },
+    "stateSequence": 1,
+    "status": "draft",
+    "verificationContract": [],
+    "writerAssignment": {
+      "assignedAt": "2026-08-05T20:09:01Z",
+      "assignmentSequence": 1,
+      "transferReceiptRef": null,
+      "writerId": "Dominik Machowski"
+    }
+  },
+  "state": {
+    "phase": "design",
+    "status": "draft"
+  },
+  "unknowns": [],
+  "updatedAt": "2026-08-05T20:09:01Z",
+  "verification": [],
+  "workItem": null
+}

@@ -1,0 +1,116 @@
+{
+  "approvals": [],
+  "assumptions": [],
+  "blockingQuestions": [],
+  "contextRefs": [],
+  "createdAt": "2026-08-05T20:15:32Z",
+  "currentHandoffId": null,
+  "design": {
+    "path": "design.md",
+    "sha256": "3e1343b99161d342ffec81af9480fe01212e74cd8c1423b09d86dc4019d70829"
+  },
+  "environment": {
+    "alias": null,
+    "isSandbox": null,
+    "nonProduction": null,
+    "status": "unverified",
+    "verificationRef": null,
+    "verifiedAt": null
+  },
+  "events": [],
+  "evidenceRefs": [],
+  "groundingHash": "28c5b74636185be48c21d00c6f64f71563bf28a03116a7cc9b8ad2b0e3d57c9c",
+  "handoffHistoryRefs": [],
+  "implementation": {
+    "commits": [],
+    "components": [],
+    "status": "not_started"
+  },
+  "recordId": "SD-2026-08-05-lead-qualification",
+  "recordRevision": 2,
+  "repositories": [],
+  "requestedOutcome": "Automatyczna kwalifikacja i dystrybucja Leadów w Salesforce",
+  "review": {
+    "recordedAt": null,
+    "reviewer": null,
+    "status": "not_started",
+    "verdict": null
+  },
+  "ruleRefs": [],
+  "schemaVersion": 1,
+  "scope": {
+    "components": [],
+    "paths": [],
+    "workspaceRoot": "brain-core"
+  },
+  "scopeHash": "24aaea7ab29188487735aac3104dd2d9d1ffb80f22aa5e4a0643f4563ed97a4c",
+  "solutionDesign": {
+    "activeCandidateRef": null,
+    "applicableRules": [],
+    "caseId": "SD-2026-08-05-lead-qualification",
+    "concernCoverage": [],
+    "configurationArtefacts": [],
+    "dataClassifications": [],
+    "decisions": [],
+    "evidenceRefs": [
+      {
+        "assurance": "human-asserted",
+        "completeness": "complete",
+        "environmentFitness": "not-environment-bound",
+        "expiresAt": null,
+        "observedAt": "2026-08-05T20:22:44Z",
+        "path": "evidence/EV-20260805T202244Z-231673598df2.json",
+        "probeRefs": [],
+        "questionRefs": [],
+        "receiptId": "EV-20260805T202244Z-231673598df2",
+        "sha256": "sha256:c1f26340e054735da2a1c3ae8b57c569552d035479f9fe1636a32b7cd644b3e7",
+        "sourceType": "human-sme-attestation",
+        "status": "current",
+        "validationPurpose": "design-evidence"
+      }
+    ],
+    "knowledgeCandidates": [],
+    "limitationRefs": [],
+    "nextFocus": "requirements",
+    "probes": [],
+    "questions": [],
+    "requirementSnapshot": {
+      "acceptanceCriteria": [],
+      "attestationRef": "EV-20260805T202244Z-231673598df2",
+      "completeness": "partial",
+      "excludedItems": [],
+      "includedItems": [],
+      "itemId": null,
+      "itemType": null,
+      "linkedTestCaseIds": [],
+      "retrievedAt": "2026-08-05T20:15:32Z",
+      "revision": null,
+      "sourceDigest": "sha256:da53ec4b55f83a1ab5c920a19436d118c55faf39bb38685097260db57cffbf9b",
+      "sourceType": "human-request",
+      "unresolvedContradictions": []
+    },
+    "riskObligations": [],
+    "schemaVersion": 1,
+    "scope": {
+      "components": [],
+      "frontierComplete": false
+    },
+    "stateSequence": 2,
+    "status": "draft",
+    "verificationContract": [],
+    "writerAssignment": {
+      "assignedAt": "2026-08-05T20:15:32Z",
+      "assignmentSequence": 1,
+      "transferReceiptRef": null,
+      "writerId": "dmachowski"
+    }
+  },
+  "state": {
+    "phase": "design",
+    "status": "draft"
+  },
+  "unknowns": [],
+  "updatedAt": "2026-08-05T20:22:44Z",
+  "verification": [],
+  "workItem": null
+}
