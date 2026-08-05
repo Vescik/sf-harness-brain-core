@@ -142,7 +142,7 @@ scenarios:
     expectedDecision: deny
     reasonContains: may not edit
 
-  - id: strategist-generated-test-allowed
+  - id: strategist-generated-test-write-denied
     guard: role
     role: test-strategist
     workingDirectory: repository
@@ -150,7 +150,8 @@ scenarios:
       tool_name: edit/editFiles
       tool_input:
         path: output/generated-tests/example.spec.ts
-    expectedDecision: continue
+    expectedDecision: deny
+    reasonContains: may not edit
 
   - id: developer-salesforce-e2e-edit-allowed
     guard: role
@@ -312,14 +313,15 @@ scenarios:
     expectedDecision: deny
     reasonContains: SAFE-ENV-001
 
-  - id: global-browser-non-sandbox-url-still-denied
+  - id: global-removed-playwright-guard-still-denied
     guard: global
     workingDirectory: repository
     event:
       tool_name: execute/runInTerminal
       tool_input:
-        command: python scripts/playwright_guard.py goto https://acme.my.salesforce.com
+        command: python scripts/playwright_guard.py goto https://acme--dev.sandbox.my.salesforce.com
     expectedDecision: deny
+    reasonContains: Direct browser tooling is disabled
 
   - id: search-wiki-without-project-denied
     guard: global

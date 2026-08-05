@@ -41,7 +41,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 6, "prompts": 19, "skills": 19, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 18, "skills": 18, "instructions": 3}
 # Budget for each grounding subprocess below. entry-check parses and validates every entry at
 # roughly 4.5 ms per entry (measured at 9 000), so a corpus in the low tens of thousands is the
 # constraint here, not the code. Raise this deliberately from a measurement — never to silence a
@@ -187,7 +187,6 @@ def check_required_files(audit: Audit) -> None:
         "AGENTS.md",
         "README.md",
         "SETUP.md",
-        "IMPLEMENTATION_HANDOFF.md",
         "sf-harness.code-workspace",
         ".github/copilot-instructions.md",
         ".github/hooks/safety.json",
@@ -200,7 +199,6 @@ def check_required_files(audit: Audit) -> None:
         "config/harness.example.json",
         "schemas/harness-config.schema.json",
         "requirements-dev.lock",
-        "scripts/playwright_guard.py",
         "scripts/verify_salesforce_org.py",
         "scripts/salesforce_review_server.mjs",
         "scripts/work_record.py",
@@ -282,7 +280,6 @@ def check_required_files(audit: Audit) -> None:
         ".prettierignore",
         ".prettierrc",
         "eslint.config.js",
-        "jest.config.js",
     )
     for name in required:
         audit.require((ROOT / name).is_file(), f"required file is missing: {name}")
@@ -348,10 +345,10 @@ def check_salesforce_project(audit: Audit, root: Path = ROOT) -> None:
     package = load_json(salesforce_root / "package.json", audit)
     package_lock = load_json(salesforce_root / "package-lock.json", audit)
     audit.require(package.get("private") is True, "package.json must remain private")
-    required_scripts = {"lint", "test:unit:ci", "prettier:verify"}
+    required_scripts = {"lint", "prettier:verify"}
     audit.require(
         required_scripts.issubset(package.get("scripts", {})),
-        "package.json must expose root Salesforce lint, unit-test, and formatting checks",
+        "package.json must expose the root lint and formatting checks",
     )
     audit.require(
         package_lock.get("packages", {}).get("", {}).get("name") == package.get("name"),
@@ -665,7 +662,6 @@ def check_settings_and_mcp(audit: Audit) -> None:
     required_salesforce_tasks = {
         "Salesforce: Format Check",
         "Salesforce: Lint",
-        "Salesforce: Unit Tests",
         "Salesforce: Check",
     }
     audit.require(
@@ -754,8 +750,7 @@ def check_ci(audit: Audit) -> None:
     audit.require("ubuntu-latest" in serialized and "windows-latest" in serialized, "CI must cover Linux and Windows")
     audit.require("requirements-dev.lock" in serialized, "CI must install the resolved dependency lock")
     audit.require("npm run prettier:verify" in serialized, "CI must run the root Salesforce formatting gate")
-    audit.require("npm run lint" in serialized, "CI must run the root Salesforce lint gate")
-    audit.require("npm run test:unit:ci" in serialized, "CI must run the root LWC unit gate")
+    audit.require("npm run lint" in serialized, "CI must run the root lint gate")
     codeowners = required_text(ROOT / ".github/CODEOWNERS", audit)
     for owned_path in ("/sfdx-project.json", "/force-app/", "/manifest/", "/tests/e2e/"):
         audit.require(owned_path in codeowners, f"CODEOWNERS is missing root Salesforce path: {owned_path}")
@@ -912,7 +907,7 @@ def check_skill_commands(audit: Audit) -> None:
     first command. Fail closed here so the skill text and the guard can never drift apart again.
     """
 
-    guarded = "preflight|work_record|force_app_knowledge|validate_handover_output|playwright_guard"
+    guarded = "preflight|work_record|force_app_knowledge|validate_handover_output"
     bare = re.compile(r"`\s*scripts/(?:" + guarded + r")\.py(?:\s|`)")
     backslash = re.compile(r"`[^`]*(?:scripts\\|\.venv\\)")
     for skill in sorted((ROOT / ".github/skills").glob("*/SKILL.md")):
@@ -1081,9 +1076,9 @@ def check_grounding_contracts(audit: Audit) -> None:
         source_ids.update(re.findall(r"\*\*((?:SAFE|MP|ORG|SF)-[A-Z0-9-]+)\s+—", required_text(path, audit)))
 
     # Owner decision 2026-08-04: the rule-registry.yaml re-encoding of these sources was
-    # retired. The invariant that keeps `work_record attach-rule` resolution unambiguous is
-    # that every rule ID is DECLARED EXACTLY ONCE across the Principle sources — the tier is
-    # a property of which file declares it (work_record.RULE_SOURCE_TIERS).
+    # retired. The invariant that keeps `work_record init --rule-id` resolution unambiguous
+    # is that every rule ID is DECLARED EXACTLY ONCE across the Principle sources — the tier
+    # is a property of which file declares it (work_record.RULE_SOURCE_TIERS).
     declarations: list[str] = []
     for path in principle_paths:
         declarations.extend(

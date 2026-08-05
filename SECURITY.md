@@ -21,18 +21,20 @@ not sufficient containment by itself.
 
 ## Dependency vulnerability posture
 
-The pinned Node dependency tree carries 24 known non-critical advisories, all transitive to
-vendor-pinned Salesforce tooling. They were investigated on 2026-07-13, are not resolvable on
-stable release channels, and are formally accepted with mitigations (install with
-`--ignore-scripts`, local-workstation-only execution, Dependabot monitoring, CI failing on
-`critical`). See the 2026-07-13 entry in `.ai/memory/decisions-log.md` for evidence and
-re-evaluation triggers. Do not run `npm audit fix --force` or adopt prerelease packages to clear
-the count; both were evaluated and rejected.
+The pinned Node dependency tree carries a small number of moderate advisories (12 as of
+2026-08-05, zero high/critical), all transitive to the vendor-pinned `@salesforce/mcp` runtime.
+The 2026-08-04 deps-hygiene pass cleared every high advisory in-range and tightened the CI gate
+from `critical` to `high` (`npm audit --omit=dev --audit-level=high`); remaining moderates are
+accepted with mitigations (install with `--ignore-scripts`, local-workstation-only execution,
+Dependabot monitoring). See the 2026-07-13 and 2026-08-04 entries in
+`.ai/memory/decisions-log.md` for evidence and re-evaluation triggers. Do not run
+`npm audit fix --force` or adopt prerelease packages to clear the count; both were evaluated
+and rejected.
 
 ## Pilot threat model
 
 The controlled-pilot threat model requires a dedicated OS account, VM, or container whose agent
-process can access only approved sandbox CLI authorizations and a sandbox-only browser profile.
+process can access only approved sandbox CLI authorizations.
 Built-in/default Agent mode and arbitrary terminal workflows are not supported for external work;
 hooks cannot secure dynamically constructed shell programs. Any production credential/session or
 reachable production path in that pilot environment is a release-blocking security defect.

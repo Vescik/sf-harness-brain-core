@@ -537,7 +537,7 @@ async function collectCliIdentity(runtime) {
   };
 }
 
-function mcpProcess(runtime) {
+function mcpProcess() {
   if (TEST_MODE && process.env.SF_HARNESS_MCP_COMMAND) {
     let baseArgs = [];
     try {
@@ -568,7 +568,7 @@ class McpJsonLineClient {
   }
 
   async connect() {
-    const processConfig = mcpProcess(this.runtime);
+    const processConfig = mcpProcess();
     const args = [
       ...processConfig.baseArgs,
       "--orgs",

@@ -9,7 +9,7 @@ Describe the harness behavior being changed and the developer/user outcome.
 - Human-owned assumptions or unresolved facts:
 - Security or production-safety impact:
 - Work `recordId` / handoff IDs when governed:
-- Rule, claim, evidence, and human review references:
+- Rule, Knowledge entry, and human review references:
 - Knowledge freshness or source/org drift:
 
 ## Validation
@@ -18,12 +18,12 @@ Describe the harness behavior being changed and the developer/user outcome.
 - [ ] `python3 -m unittest discover -s tests -v`
 - [ ] `python3 scripts/run_evals.py`
 - [ ] `npm ci --ignore-scripts`
-- [ ] `npm run prettier:verify && npm run lint && npm run test:unit:ci`
+- [ ] `npm run prettier:verify && npm run lint`
 - [ ] `python3 scripts/preflight.py --capability base` with a local, non-production config
 - [ ] VS Code **Chat: Run Customization Diagnostics** has no errors
 - [ ] Handoffs and named tools were smoke-tested in the canonical workspace when affected
-- [ ] Every material system/package fact has a schema-valid claim/evidence reference
-- [ ] No unreviewed, stale, contested, or scope-mismatched claim is presented as trusted Knowledge
+- [ ] Every material system/package fact is grounded in an approved-current Knowledge entry
+- [ ] No draft, superseded, or scope-mismatched entry is presented as trusted Knowledge
 - [ ] Approval and handoff references match the current record revision and scope/design hashes
 - [ ] Salesforce reads used only the governed facade/wrapper; no raw CLI, raw vendor MCP tool, or alias was exposed
 - [ ] No credential, customer data, cache, generated output, or local config is included

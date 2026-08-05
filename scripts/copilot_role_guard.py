@@ -36,7 +36,6 @@ ALLOWED_PREFIXES = {
     ),
     "test-strategist": (
         ".ai/qa/",
-        "output/generated-tests/",
         "output/feature-health/",
         "output/handover/",
         ".cache/ado-items/",
@@ -65,7 +64,6 @@ PREFLIGHT_CAPABILITIES = frozenset(
         "release",
         "metadata",
         "salesforce-review",
-        "playwright",
     }
 )
 
@@ -78,7 +76,6 @@ WORK_RECORD_COMMANDS = {
         "accept-handoff",
         "append-evidence",
         "digest",
-        "attach-rule",
         "add-question",
         "resolve-question",
         "capture-repository",
@@ -407,7 +404,6 @@ def work_record_command_allowed(parts: list[str], role: str) -> bool:
         "append-evidence",
         "accept-handoff",
         "append-review",
-        "attach-rule",
         "bind-entry",
         "add-question",
         "resolve-question",
@@ -600,7 +596,6 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         script = root / script
     script = script.resolve(strict=False)
     preflight = (root / "scripts/preflight.py").resolve()
-    browser_guard = (root / "scripts/playwright_guard.py").resolve()
     work_record = (root / "scripts/work_record.py").resolve()
     force_app_knowledge = (root / "scripts/force_app_knowledge.py").resolve()
     validate_harness = (root / "scripts/validate_harness.py").resolve()
@@ -653,7 +648,7 @@ def allowed_role_command(command: str, root: Path, role: str) -> bool:
         # --template is deliberately NOT accepted here: guarded agents may only check a draft
         # against the canonical committed template; the flag exists for humans, tests, and CI.
         return len(remainder) == 1 and handover_draft_path_allowed(remainder[0], root)
-    return role == "test-strategist" and script == browser_guard and bool(remainder)
+    return False
 
 
 def resolve_candidate(raw: str, resolution_root: Path) -> Path | None:
@@ -678,24 +673,6 @@ def development_edit_allowed(raw: str, resolution_root: Path) -> bool:
     if is_governed_record_path(brain_relative):
         return False
     return allowed(brain_relative, ALLOWED_PREFIXES["development-assistant"])
-
-
-def guarded_browser_subcommand(command: str) -> str | None:
-    try:
-        parts = shlex.split(command)
-    except ValueError:
-        return None
-    for index, part in enumerate(parts):
-        if Path(part).name == "playwright_guard.py":
-            remainder = parts[index + 1 :]
-            cursor = 0
-            while cursor < len(remainder) and remainder[cursor].startswith("--"):
-                if remainder[cursor] == "--session":
-                    cursor += 2
-                else:
-                    cursor += 1
-            return remainder[cursor] if cursor < len(remainder) else None
-    return None
 
 
 def collect_paths(value: Any, parent_key: str = "") -> Iterable[str]:
@@ -813,25 +790,6 @@ def main() -> int:
                         "(ls/cat/grep/type/Get-Content), and tool --version checks — all plain, "
                         "single commands with no ; & | < > ` $ chaining. Do not retry variants "
                         "of a denied command; use one of these instead.",
-                    )
-                )
-            )
-            return 0
-        if args.role == "test-strategist" and guarded_browser_subcommand(command) in {
-            "click",
-            "dblclick",
-            "fill",
-            "type",
-            "select",
-            "check",
-            "uncheck",
-            "press",
-        }:
-            print(
-                json.dumps(
-                    response(
-                        "ask",
-                        "SAFE-HUMAN-001 requires confirmation before a state-changing browser action.",
                     )
                 )
             )

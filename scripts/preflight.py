@@ -18,7 +18,6 @@ from urllib.parse import urlparse
 from jsonschema import Draft202012Validator
 
 try:
-    from copilot_safety_hook import is_salesforce_sandbox_origin
     from schema_format import FORMAT_CHECKER
     from verify_salesforce_org import (
         ORG_ID,
@@ -27,7 +26,6 @@ try:
         verify_is_sandbox,
     )
 except ModuleNotFoundError:  # imported as scripts.preflight by unit tests
-    from scripts.copilot_safety_hook import is_salesforce_sandbox_origin
     from scripts.schema_format import FORMAT_CHECKER
     from scripts.verify_salesforce_org import (
         ORG_ID,
@@ -44,12 +42,6 @@ REVIEW_POLICY_PATH = ROOT / "config" / "salesforce-review-policy.json"
 REVIEW_POLICY_SCHEMA_PATH = ROOT / "schemas" / "salesforce-review-policy.schema.json"
 SALESFORCE_MCP_BIN = ROOT / "node_modules" / "@salesforce" / "mcp" / "bin" / "run.js"
 PLACEHOLDER = re.compile(r"<[^>]+>")
-PLAYWRIGHT_CLI_VERSION = "0.1.17"
-
-
-def playwright_version_matches(stdout: str) -> bool:
-    match = re.search(r"(?<![0-9.])(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?![0-9.])", stdout)
-    return match is not None and match.group(1) == PLAYWRIGHT_CLI_VERSION
 
 
 def error(message: str) -> None:
@@ -89,10 +81,6 @@ def validate_origins(values: list[str], label: str) -> list[str]:
             failures.append(f"{label} production-like origin is forbidden: {value}")
         if value.rstrip("/") == "https://login.salesforce.com":
             failures.append("Salesforce production login origin is forbidden")
-        if label == "Browser" and not is_salesforce_sandbox_origin(value):
-            failures.append(
-                f"Browser origin must be an explicit Salesforce sandbox or scratch host: {value}"
-            )
         if label == "ADO":
             parts = [part for part in parsed.path.split("/") if part]
             if parsed.hostname != "dev.azure.com" or len(parts) != 1:
@@ -154,9 +142,6 @@ def validate_config(config: dict) -> list[str]:
         safety.get("sharedSandboxApprovalRef", "")
     ).strip():
         failures.append("shared-sandbox write approval requires a non-empty approval reference")
-    failures.extend(
-        validate_origins(config.get("browser", {}).get("allowedOrigins", []), "Browser")
-    )
     failures.extend(
         validate_origins(config.get("ado", {}).get("allowedHttpsOrigins", []), "ADO")
     )
@@ -229,14 +214,6 @@ def validate_metadata(config: dict) -> list[str]:
         manifest = contained_workspace_path(
             root, config["workspace"]["manifestPath"], "workspace.manifestPath"
         )
-        # promotedTestsPath is optional (browser workflows are macOS/Linux-only and many
-        # deployments never use them); validate it only when configured.
-        if config["workspace"].get("promotedTestsPath"):
-            contained_workspace_path(
-                root,
-                config["workspace"]["promotedTestsPath"],
-                "workspace.promotedTestsPath",
-            )
     except ValueError as exc:
         failures.append(str(exc))
         return failures
@@ -251,7 +228,7 @@ def validate_metadata(config: dict) -> list[str]:
 
 def validate_capability(config: dict, capability: str) -> list[str]:
     failures: list[str] = []
-    if capability in {"metadata", "playwright"}:
+    if capability == "metadata":
         failures.extend(validate_metadata(config))
     if capability in {"ado", "release"}:
         configured_org = str(config.get("ado", {}).get("organization", ""))
@@ -306,38 +283,6 @@ def validate_capability(config: dict, capability: str) -> list[str]:
                     failures.append("Salesforce CLI major version 2 is required for org review")
             except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
                 failures.append("Salesforce CLI version check failed")
-    if capability == "playwright":
-        if shutil.which("playwright-cli") is None:
-            failures.append("playwright-cli is not installed")
-        else:
-            try:
-                version = subprocess.run(
-                    ["playwright-cli", "--version"],
-                    text=True,
-                    capture_output=True,
-                    timeout=10,
-                    check=False,
-                )
-                if version.returncode != 0 or not playwright_version_matches(version.stdout):
-                    failures.append(
-                        f"playwright-cli must be pinned to {PLAYWRIGHT_CLI_VERSION}"
-                    )
-            except (OSError, subprocess.SubprocessError):
-                failures.append("playwright-cli version check failed")
-        if "browser" not in config:
-            failures.append(
-                "playwright capability requires an optional `browser` section "
-                "(allowedOrigins, profileDirectory) in config/harness.local.json — add it only "
-                "on macOS/Linux where guarded browser execution is supported"
-            )
-        else:
-            profile = Path(config["browser"]["profileDirectory"]).expanduser()
-            if not profile.is_absolute() or not profile.is_dir():
-                failures.append(f"browser profile directory is missing or not absolute: {profile}")
-        if not config["workspace"].get("promotedTestsPath"):
-            failures.append(
-                "playwright capability requires workspace.promotedTestsPath for reviewed test promotion"
-            )
     if capability == "release":
         query_id = str(config.get("ado", {}).get("releaseQueryId", "")).strip()
         if not query_id or re.fullmatch(r"<.*>", query_id):
@@ -409,7 +354,6 @@ def main() -> int:
             "ado",
             "metadata",
             "salesforce-review",
-            "playwright",
             "release",
         ),
     )

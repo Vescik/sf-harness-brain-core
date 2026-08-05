@@ -97,18 +97,6 @@
                   "production"
                 ]
               },
-              "allowAgentRead": {
-                "description": "Retired 2026-08-04 (read-anywhere convention); tolerated in existing configs, read by nothing.",
-                "type": "boolean"
-              },
-              "allowAgentWrite": {
-                "description": "Retired 2026-08-04 with the development/write lane; tolerated in existing configs, read by nothing.",
-                "type": "boolean"
-              },
-              "allowAgentReview": {
-                "description": "Retired 2026-08-04 (read-anywhere convention); tolerated in existing configs, read by nothing.",
-                "type": "boolean"
-              },
               "expectedInstanceHost": {
                 "type": "string",
                 "pattern": "^(?:[A-Za-z0-9][A-Za-z0-9-]*--[A-Za-z0-9][A-Za-z0-9-]*\\.sandbox\\.my\\.salesforce\\.com|[A-Za-z0-9][A-Za-z0-9-]*\\.scratch\\.my\\.salesforce\\.com|[A-Za-z0-9][A-Za-z0-9-]*\\.develop\\.my\\.salesforce\\.com)$"
@@ -171,10 +159,6 @@
             "enabled": {
               "type": "boolean"
             },
-            "allowAnyNonProduction": {
-              "description": "Retired 2026-08-04: any alias proving a non-production identity is admitted unconditionally; tolerated in existing configs, read by nothing. deniedOrganizationIds is the remaining org-level brake.",
-              "type": "boolean"
-            },
             "deniedOrganizationIds": {
               "description": "Owner decision 2026-08-04: organization IDs (00D…, 15 or 18 characters) that agents must never read, whatever alias resolves to them. Enforced at live identity proof time in the review facade (both transport legs) and by verify_salesforce_org.py. The org-level complement of the developer's-responsibility read-anywhere convention.",
               "type": "array",
@@ -211,12 +195,6 @@
                 "type": "string",
                 "pattern": "^(\\*|[A-Za-z][A-Za-z0-9_]{0,79})$"
               }
-            },
-            "maxObjectsPerCall": {
-              "description": "Retired 2026-08-04 with scripts/salesforce_read.py; tolerated in existing configs, read by nothing.",
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 10
             },
             "maxFieldsPerObject": {
               "type": "integer",
@@ -277,20 +255,12 @@
         "sharedSandboxApprovalRef": {
           "type": "string"
         },
-        "browserSessionApproval": {
-          "description": "One human confirmation covers further state-changing browser actions in the same guarded session on the same origin (receipt-bounded, TTL). Default off.",
-          "type": "boolean"
-        },
         "autoApproveRetrieveWithReceipt": {
           "description": "Skip the per-invocation confirmation for `sf project retrieve start` against a read-allowed sandbox while a fresh metadata preflight PASS receipt exists and force-app is clean. Default off.",
           "type": "boolean"
         },
         "allowScopedEnumeration": {
           "description": "Expose the review_configured_orgs facade listing ONLY the orgs configured in this file. Foreign enumeration tools stay denied. Default off.",
-          "type": "boolean"
-        },
-        "batchDevToolApproval": {
-          "description": "Retired 2026-08-04 with the dev-tool batch pipeline; tolerated in existing configs, read by nothing — every dev-tool call asks per invocation.",
           "type": "boolean"
         }
       },
@@ -316,29 +286,6 @@
         }
       ]
     },
-    "browser": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "allowedOrigins",
-        "profileDirectory"
-      ],
-      "properties": {
-        "allowedOrigins": {
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "type": "string",
-            "pattern": "^https://(?:[A-Za-z0-9-]+--[A-Za-z0-9-]+\\.sandbox\\.(?:my\\.salesforce\\.com|lightning\\.force\\.com|my\\.site\\.com)|[A-Za-z0-9][A-Za-z0-9-]*\\.scratch\\.my\\.salesforce\\.com)/?$"
-          }
-        },
-        "profileDirectory": {
-          "type": "string",
-          "minLength": 1
-        }
-      }
-    },
     "workspace": {
       "type": "object",
       "additionalProperties": false,
@@ -353,10 +300,6 @@
         "manifestPath": {
           "type": "string",
           "minLength": 1
-        },
-        "promotedTestsPath": {
-          "type": "string",
-          "minLength": 1
         }
       }
     },
@@ -364,19 +307,9 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "adoItemMaxAgeMinutes",
-        "testCaseMaxAgeMinutes",
         "onStaleDefault"
       ],
       "properties": {
-        "adoItemMaxAgeMinutes": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "testCaseMaxAgeMinutes": {
-          "type": "integer",
-          "minimum": 1
-        },
         "wikiPageMaxAgeMinutes": {
           "description": "Freshness window for cached wiki pages under .cache/ado-wiki/ (owner-set; onStaleDefault governs behavior past it).",
           "type": "integer",

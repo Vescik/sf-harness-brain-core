@@ -15,7 +15,7 @@ fail closed. Nothing here contains credentials; you authorize everything locally
 **Scope (important).** The MCP surface is **read-only on every platform**: repository work, ADO
 reads, and read-only Salesforce org access all work; agents never deploy to the org. The only raw
 Salesforce CLI an agent may request is `sf project retrieve start`, and it always stops for your
-approval. Guarded browser (Playwright) execution remains macOS/Linux-only (see
+approval. Browser automation tooling is not available in this harness (see
 `docs/compatibility.md`).
 
 ---
@@ -165,7 +165,6 @@ team lead / harness maintainer:
 | `salesforce.orgs[].expectedInstanceHost` | The org's My Domain host (optional pin; set together with the org id) | filled in Part 7 |
 | `salesforce.orgs[].expectedOrganizationId` | The org id (optional pin; set together with the host) | filled in Part 7 |
 | `salesforce.review.allowedObjectApiNames` | Objects the agent may read via the review facade | team lead (keep narrow) |
-| `browser` section + `workspace.promotedTestsPath` | Guarded Playwright settings | **omit entirely** — optional, needed only for browser testing on macOS/Linux |
 
 There is no write mode: agents only read, and org changes ship through the human-run release
 process (the write lane was retired 2026-08-04).

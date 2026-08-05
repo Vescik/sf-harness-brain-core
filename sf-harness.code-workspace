@@ -27,10 +27,6 @@
         "approve": true,
         "matchCommandLine": true
       },
-      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]knowledge_registry\\.py\\s+(?!(?:promote|review|approve-claim)\\b)[^\\n\\r;&|<>`$()]*$/": {
-        "approve": true,
-        "matchCommandLine": true
-      },
       "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]knowledge_store\\.py\\s+(?!(?:entry|feature)-(?:approve|revoke)\\b)[^\\n\\r;&|<>`$()]*$/": {
         "approve": true,
         "matchCommandLine": true
@@ -40,10 +36,6 @@
         "matchCommandLine": true
       },
       "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]force_app_knowledge\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
-        "approve": true,
-        "matchCommandLine": true
-      },
-      "/^(?:\\S*[\\\\/])?(?:python3?|py)(?:\\.exe)?(?:\\s+-3)?\\s+(?:\\S*[\\\\/])?scripts[\\\\/]playwright_guard\\.py(?:\\s+[^\\n\\r;&|<>`$()]*)?$/": {
         "approve": true,
         "matchCommandLine": true
       },
@@ -70,7 +62,8 @@
       "**/.sf": true,
       ".cache/**": true,
       "output/**": true
-    }
+    },
+    "xml.preferences.showSchemaDocumentationType": "none"
   },
   "extensions": {
     "recommendations": [
@@ -78,7 +71,6 @@
       "github.copilot-chat",
       "ms-python.python",
       "salesforce.salesforcedx-vscode-expanded",
-      "ms-playwright.playwright",
       "redhat.vscode-yaml",
       "redhat.vscode-xml",
       "dbaeumer.vscode-eslint",

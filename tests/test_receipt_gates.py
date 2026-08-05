@@ -1,23 +1,16 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts import copilot_role_guard as role_guard
 from scripts import copilot_safety_hook as safety
-from scripts import playwright_guard
 
 
 ORIGIN = "https://acme--dev.sandbox.my.salesforce.com"
-
-
-def now_iso(offset_minutes: int = 0) -> str:
-    return (datetime.now(timezone.utc) + timedelta(minutes=offset_minutes)).isoformat()
 
 
 def base_config(**safety_flags: bool) -> dict:
@@ -27,7 +20,6 @@ def base_config(**safety_flags: bool) -> dict:
             "sharedSandboxApprovalRef": "MPS-1",
             **safety_flags,
         },
-        "browser": {"allowedOrigins": [ORIGIN], "profileDirectory": "/tmp/profile"},
         "salesforce": {
             "review": {
                 "enabled": True,
@@ -41,9 +33,6 @@ def base_config(**safety_flags: bool) -> dict:
                 {
                     "alias": "dev-sbx",
                     "environment": "development",
-                    "allowAgentRead": True,
-                    "allowAgentReview": True,
-                    "allowAgentWrite": False,
                 }
             ],
         },
@@ -69,73 +58,24 @@ def run_hook(tool_name: str, tool_input: dict, config: dict | None) -> tuple[str
     return decision(json.loads(stdout.getvalue()))
 
 
-class BrowserSessionApprovalTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory(prefix="receipts-")
-        self.receipts = Path(self.temporary.name)
-        self.addCleanup(self.temporary.cleanup)
+class BrowserLaneRetirementTests(unittest.TestCase):
+    """The browser automation lane is gone (2026-08-05); its receipt machinery must stay gone.
 
-    def write_receipt(self, session: str = "sf-harness", origin: str = ORIGIN, **extra) -> None:
-        payload = {
-            "kind": "browser-session-approval",
-            "session": session,
-            "origin": origin,
-            "issuedAt": now_iso(),
-            **extra,
-        }
-        (self.receipts / f"browser-session-{session}.json").write_text(
-            json.dumps(payload), encoding="utf-8"
-        )
+    A re-added session-receipt bypass would soften SAFE-HUMAN-001 without any surviving
+    executor to write receipts, so the absence itself is the contract.
+    """
 
-    def click(self, config: dict, session: str = "sf-harness") -> tuple[str, str]:
-        command = f"python scripts/playwright_guard.py --session {session} click role=button"
-        with patch.object(safety, "RECEIPTS_DIR", self.receipts):
-            return run_hook("execute/runInTerminal", {"command": command}, config)
+    def test_browser_session_receipt_machinery_is_gone(self) -> None:
+        self.assertFalse(hasattr(safety, "browser_session_approved"))
+        self.assertFalse(hasattr(safety, "playwright_session_name"))
+        self.assertFalse(hasattr(safety, "STATE_CHANGING_BROWSER"))
+        self.assertFalse((Path(safety.__file__).resolve().parents[1] / "scripts/playwright_guard.py").exists())
 
-    def test_state_change_asks_without_a_receipt(self) -> None:
-        result, reason = self.click(base_config(browserSessionApproval=True))
-        self.assertEqual("ask", result)
-        self.assertIn("SAFE-HUMAN-001", reason)
-
-    def test_fresh_same_session_receipt_allows(self) -> None:
-        self.write_receipt()
-        result, _ = self.click(base_config(browserSessionApproval=True))
-        self.assertEqual("continue", result)
-
-    def test_receipt_is_ignored_when_the_toggle_is_off(self) -> None:
-        self.write_receipt()
-        result, _ = self.click(base_config(browserSessionApproval=False))
-        self.assertEqual("ask", result)
-
-    def test_expired_wrong_session_or_foreign_origin_receipts_re_ask(self) -> None:
-        config = base_config(browserSessionApproval=True)
-        self.write_receipt(issuedAt=now_iso(-safety.BROWSER_SESSION_TTL_MINUTES - 5))
-        self.assertEqual("ask", self.click(config)[0])
-        self.write_receipt(session="other")
-        self.assertEqual("ask", self.click(config)[0])
-        self.write_receipt(origin="https://evil.example.test")
-        self.assertEqual("ask", self.click(config)[0])
-
-    def test_navigation_commands_do_not_consult_receipts(self) -> None:
-        self.write_receipt(origin="https://evil.example.test")
-        command = f"python scripts/playwright_guard.py goto {ORIGIN}"
-        with patch.object(safety, "RECEIPTS_DIR", self.receipts):
-            result, _ = run_hook(
-                "execute/runInTerminal",
-                {"command": command},
-                base_config(browserSessionApproval=True),
-            )
-        self.assertEqual("continue", result)
-
-    def test_guard_writes_and_drops_session_receipts(self) -> None:
-        with patch.object(playwright_guard, "RECEIPTS_DIR", self.receipts):
-            playwright_guard.write_session_receipt("s1", ORIGIN)
-            path = playwright_guard.session_receipt_path("s1")
-            saved = json.loads(path.read_text(encoding="utf-8"))
-            self.assertEqual(ORIGIN, saved["origin"])
-            self.assertEqual("s1", saved["session"])
-            playwright_guard.drop_session_receipt("s1")
-            self.assertFalse(path.exists())
+    def test_guard_invocation_is_denied_not_asked(self) -> None:
+        command = "python scripts/playwright_guard.py --session sf-harness click role=button"
+        result, reason = run_hook("execute/runInTerminal", {"command": command}, base_config())
+        self.assertEqual("deny", result)
+        self.assertIn("Direct browser tooling is disabled", reason)
 
 
 class RetrieveAutoApproveTests(unittest.TestCase):

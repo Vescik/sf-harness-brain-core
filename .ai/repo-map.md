@@ -12,16 +12,15 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 | `.ai/knowledge` | One-file Knowledge Entries + approval ledgers, feature entries, keyword taxonomy |
 | `.ai/change-records` | Durable work records; record.json is authoritative state |
 | `.ai/memory` | Human-curated decisions-log.md |
-| `.ai/qa` | QA keyword map and cached test cases |
+| `.ai/qa` | QA test-case index synced from Azure Test Plans |
 | `.ai/templates` | Document templates |
 | `.cache` | Ignored transient caches, drafts, receipts |
 | `.github` | Copilot surface: kernel, agents, prompts, skills, hooks, CI |
 | `.github/agents` | Six role agents with tools, handoffs, role-guard hooks |
-| `.github/instructions` | Tiered principles + rule-registry.yaml |
+| `.github/instructions` | Tiered Principle instruction files, loaded per role |
 | `.github/prompts` | Public slash commands, each linking its skill |
 | `.github/skills` | Internal skill procedures (SKILL.md per folder) |
 | `.vscode` | Workspace settings and MCP server definitions |
-| `audit` | Audit records |
 | `config` | Harness config (harness.local.json), policies, seed |
 | `docs` | Setup, architecture, compatibility docs |
 | `evals` | Safety scenarios, agent scenarios, schema fixtures |
@@ -30,7 +29,7 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 | `output` | Reviewed deliverables: docs, designs, tests, handover |
 | `schemas` | JSON Schemas for every governed artifact |
 | `scripts` | Guarded scripts: safety hook, role guard, registries, wrappers |
-| `tests` | Harness unit tests + tests/e2e Playwright |
+| `tests` | Harness unit tests + promoted tests/e2e |
 
 ## Roles (`.github/agents/`)
 
@@ -49,7 +48,6 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `check-feature-coverage` — Compare a current Azure DevOps …
 - `fetch-ado-item` — Fetch and normalize one Azure …
 - `fetch-test-case` — Fetch and normalize one Azure …
-- `generate-playwright-test` — Explore a guarded Salesforce sandbox …
 - `generate-release-handover` — Compose a current, sourced monthly …
 - `generate-technical-documentation` — Generate a sourced technical-documentation draft …
 - `inventory-force-app` — Inventory the repository-root Salesforce force-app …
@@ -72,7 +70,6 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 - `/document-metadata-change` → development-assistant
 - `/feature-health` → test-strategist
 - `/fetch-ado-item` → solution-designer
-- `/generate-playwright-test` → test-strategist
 - `/inventory-force-app` → config-investigator
 - `/investigate-config-records` → config-investigator
 - `/investigate-object` → config-investigator
@@ -102,6 +99,6 @@ the deep directory tree lives in `docs/workspace-topology.md`.
 
 - Resume work from the persisted record: `python scripts/work_record.py` with explicit recordId/handoffId — chat is never workflow truth.
 - Knowledge coverage: `python scripts/force_app_knowledge.py inventory` then `entry-readiness` (derived, cannot drift).
-- Decisions: `.ai/memory/decisions-log.md`; QA keywords: `.ai/qa/`.
+- Decisions: `.ai/memory/decisions-log.md`; QA test-case index: `.ai/qa/test-cases/`.
 - Search Knowledge first: the `knowledge_context` / `knowledge_search` MCP tools over the entry index (`knowledge_resolve` maps names/paths to identities); terminal fallback lives in the search-knowledge skill's command menu.
 - Deep tree: `docs/workspace-topology.md`; setup: `docs/setup-zero-to-first-prompt.md`.

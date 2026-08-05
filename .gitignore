@@ -1,6 +1,7 @@
 # ─── Brain-core harness .gitignore ───────────────────────────────────────────
-# This repository versions the complete developer workspace: the harness at the
-# repository root and the Salesforce DX project under salesforce/.
+# This repository versions the complete developer workspace: the harness and the
+# Salesforce DX project share the single repository root (the nested salesforce/
+# layout was retired; the validator rejects it).
 
 # ── Raw fetched data ──
 # Gitignored by design (blueprint §13 and §17). The folder structure itself stays
@@ -11,12 +12,12 @@
 
 # ── Generated AI artifacts ──
 # output/ holds AI-generated content for human review / manual promotion (docs to the
-# wiki, DOCX/PDF export, Playwright scripts moved to tests/ after review) — not curated
+# wiki, DOCX/PDF export) — not curated
 # brain. PROVISIONAL: blueprint §13 says output/ git policy "depends on the subfolder"
 # and does not resolve which subfolders are committed. Until that is decided, ignore the
 # generated CONTENT but keep the folder structure (same pattern as .cache/). Without this,
 # the SETUP.md §4 sync ritual (git add -A) would silently commit every generated artifact.
-# Revisit per §13 — see BUILD_REPORT.md flag 24 (design history, git tag design-history).
+# Revisit per §13 (design-history record: flag 24, reachable via the design-history git tag).
 output/**
 !output/**/
 !output/**/.gitkeep
@@ -53,7 +54,6 @@ config/harness.local.json
 # A stray config/harness.json invites name-confusion and could leak org values if committed.
 config/harness.json
 .env
-.playwright/
 *.local.code-workspace
 .venv/
 __pycache__/

@@ -7,7 +7,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from scripts import playwright_guard
 from scripts import verify_salesforce_org as verifier
 from jsonschema import Draft202012Validator
 
@@ -374,54 +373,6 @@ class SalesforceProofTests(unittest.TestCase):
                 runner=runner,
             )
         self.assertFalse(ok)
-
-
-class PlaywrightRequestTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.allowed = {"https://acme--dev.sandbox.my.salesforce.com"}
-
-    def test_safe_snapshot_is_allowed(self) -> None:
-        self.assertIsNone(
-            playwright_guard.validate_request("snapshot", [], self.allowed)
-        )
-
-    def test_cookie_command_is_denied(self) -> None:
-        self.assertIsNotNone(
-            playwright_guard.validate_request("cookie-list", [], self.allowed)
-        )
-
-    def test_production_navigation_is_denied(self) -> None:
-        self.assertIsNotNone(
-            playwright_guard.validate_request(
-                "goto", ["https://acme.my.salesforce.com"], self.allowed
-            )
-        )
-
-    def test_profile_override_is_denied(self) -> None:
-        self.assertIsNotNone(
-            playwright_guard.validate_request(
-                "open",
-                ["https://acme--dev.sandbox.my.salesforce.com", "--profile=/tmp/other"],
-                self.allowed,
-            )
-        )
-
-    def test_javascript_navigation_is_denied(self) -> None:
-        self.assertIsNotNone(
-            playwright_guard.validate_request(
-                "open", ["javascript:alert(1)"], self.allowed
-            )
-        )
-
-    def test_open_without_url_is_denied(self) -> None:
-        self.assertIsNotNone(
-            playwright_guard.validate_request("open", [], self.allowed)
-        )
-
-    def test_cli_version_match_is_exact(self) -> None:
-        self.assertTrue(playwright_guard.version_matches("Version 0.1.17\n"))
-        self.assertFalse(playwright_guard.version_matches("Version 0.1.170\n"))
-        self.assertFalse(playwright_guard.version_matches("Version 0.1.17-beta\n"))
 
 
 class ContractConsistencyTests(unittest.TestCase):

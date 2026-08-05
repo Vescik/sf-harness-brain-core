@@ -67,15 +67,14 @@ LEXICAL_CANDIDATE_CAP = 2000
 # One vocabulary, per-command values. A single shared depth cannot serve both: reverse impact
 # saturates fast, while a feature tree needs trigger -> handler -> queueable -> event.
 DEPTH_LIMITS = {"impact": 2, "context": 1, "tree": 4, "drift": 4}
-# §9's last open item, and the one place in this file whose numbers were never derived from
-# anything: 2000/500 were chosen constants and there was no clock among them, so a pathological
-# walk could only ever terminate on a node count. The benchmark now measures the two regimes
-# (`traversalObserved` in knowledge_benchmark.run) and the numbers below come from it —
-# knowledge_benchmark.TRAVERSAL_LIMIT_BASIS carries the measurement and the arithmetic, next to
-# the fixture that produced it rather than here where it would drift away from it.
+# §9's last open item: a pathological walk must terminate on more than a node count, so a
+# wall-clock limit sits alongside the node/fanout caps. The values are adopted constants:
+# they were originally derived from knowledge_benchmark measurements on a synthetic corpus,
+# and kept as-is when that benchmark was retired (2026-08-05, decisions log) — the corpus was
+# still near-empty, so the measurement added no information a smoke bound would not.
 #
 # Depth is deliberately NOT here: R7 fixes depth per command as a SEMANTIC requirement
-# (DEPTH_LIMITS above), and a benchmark has no standing to move it.
+# (DEPTH_LIMITS above), and no measurement has standing to move it.
 TRAVERSAL_LIMITS = {"maxNodes": 5000, "maxFanout": 2000, "maxSeconds": 2.0}
 
 # The plan's own list, verbatim from §9: "node/fanout/row/time traversal limits". Named here so a

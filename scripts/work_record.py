@@ -1691,33 +1691,6 @@ def command_append_evidence(args: argparse.Namespace) -> dict[str, Any]:
     return persist_record(root, record)
 
 
-def command_attach_rule(args: argparse.Namespace) -> dict[str, Any]:
-    root = data_root(args.root)
-    if args.role != "solution-designer":
-        raise WorkRecordError("only solution-designer may attach applicable Principle rules")
-    record = load_record(root, args.record_id)
-    check_expected(record, args.expected_revision, args.expected_record_hash)
-    if record["currentHandoffId"]:
-        raise WorkRecordError("consume the pending handoff before changing grounding")
-    reference = resolved_rule_ref(root, args.rule_id)
-    by_id = {item["ruleId"]: item for item in record["ruleRefs"]}
-    by_id[args.rule_id] = reference
-    record["ruleRefs"] = sorted(by_id.values(), key=lambda item: item["ruleId"])
-    before = deepcopy(record["state"])
-    timestamp = utc_now()
-    record["groundingHash"] = grounding_hash(record)
-    append_event(
-        record,
-        action="attach-rule",
-        role=args.role,
-        from_state=before,
-        note=f"Attached active Principle {args.rule_id}.",
-        at=timestamp,
-    )
-    bump(record, timestamp)
-    return persist_record(root, record)
-
-
 def command_bind_entry(args: argparse.Namespace) -> dict[str, Any]:
     root = data_root(args.root)
     if args.role != "solution-designer":
@@ -2509,14 +2482,6 @@ def build_parser() -> argparse.ArgumentParser:
     evidence.add_argument("--artifact-path", required=True)
     evidence.add_argument("--artifact-sha256", required=True)
     evidence.set_defaults(func=command_append_evidence)
-
-    attach_rule = subparsers.add_parser("attach-rule", help="bind an active canonical Principle rule")
-    attach_rule.add_argument("--record-id", required=True)
-    attach_rule.add_argument("--expected-revision", required=True, type=int)
-    attach_rule.add_argument("--expected-record-hash", required=True)
-    attach_rule.add_argument("--role", required=True, choices=sorted(AGENT_ROLES))
-    attach_rule.add_argument("--rule-id", required=True)
-    attach_rule.set_defaults(func=command_attach_rule)
 
     bind_entry = subparsers.add_parser(
         "bind-entry",

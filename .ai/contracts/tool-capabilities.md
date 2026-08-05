@@ -12,7 +12,6 @@ upgrade.
 | Scoped enumeration of configured org aliases (requires `safety.allowScopedEnumeration`) | `salesforce-readonly/review_configured_orgs` | investigator |
 | Composed read-only SOQL incl. record reads (verbatim, Salesforce MCP transport only, unredacted single-source rows) | `salesforce-readonly/review_soql_query` | investigator, design, development, knowledge curation |
 | Salesforce non-production source retrieve into the project (per-invocation human confirmation; the only direct `sf` command not denied) | `sf project retrieve start` guarded terminal command | development only |
-| Browser exploration/test generation | pinned `playwright-cli` through guarded terminal execution | Test Strategist only |
 | Interactive human confirmation | `vscode/askQuestions` | prompts and approval gates |
 | Subagent delegation | `agent` plus explicit `agents` allowlist | Designer, Developer |
 

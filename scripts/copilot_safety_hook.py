@@ -36,7 +36,6 @@ SENSITIVE_TOOL_TOKENS = (
     "web",
     "fetch",
     "browser",
-    "playwright",
     "salesforce",
     "deploy",
     "mcp",
@@ -101,11 +100,28 @@ SALESFORCE_REVIEW_TOOLS = {
 # a confirmation the human already gave through a governed executor; it never unlocks an operation
 # class that is denied outright (production, destructive, org writes, self-approval).
 RECEIPTS_DIR = HARNESS_ROOT / ".cache" / "receipts"
-STATE_CHANGING_BROWSER = frozenset(
-    {"click", "dblclick", "fill", "type", "select", "check", "uncheck", "press"}
-)
-BROWSER_SESSION_TTL_MINUTES = 120
 RETRIEVE_RECEIPT_MAX_AGE_MINUTES = 60
+# The browser automation lane was removed (2026-08-05): no guard script, no origin allowlist,
+# no session receipts. Browser-automation-shaped tools and commands are denied outright so the
+# old hard deny can never degrade into the fail-closed "ask" backstop (MCP names) or into
+# terminal passthrough (commands).
+BROWSER_TOOL_NAME_TOKENS = (
+    "playwright",
+    "puppeteer",
+    "chromium",
+    "chromedriver",
+    "selenium",
+    "webdriver",
+    "browser",
+)
+# VS Code's built-in render-only preview pane. It carries "browser" in its name but has no
+# automation back-channel, and its URL payload is still screened by the production and
+# non-sandbox Salesforce URL checks. Exact-name carve-out, not substring.
+SIMPLE_BROWSER_PREVIEW_NAMES = frozenset({"opensimplebrowser", "open_simple_browser"})
+BROWSER_COMMAND_PATTERN = re.compile(
+    r"playwright|puppeteer|chromedriver|headless[-_]?shell|--headless\b|chromium",
+    re.IGNORECASE,
+)
 def safety_toggle(config: dict[str, Any] | None, name: str) -> bool:
     if not isinstance(config, dict):
         return False
@@ -129,34 +145,6 @@ def receipt_is_fresh(receipt: dict[str, Any], ttl_minutes: int, key: str) -> boo
         return False
     age = datetime.now(timezone.utc) - issued
     return timedelta() <= age <= timedelta(minutes=ttl_minutes)
-
-
-def playwright_session_name(command: str) -> str:
-    try:
-        parts = shlex.split(command)
-    except ValueError:
-        return "sf-harness"
-    for index, part in enumerate(parts):
-        if part == "--session" and index + 1 < len(parts):
-            return parts[index + 1]
-        if part.startswith("--session="):
-            return part.split("=", 1)[1]
-    return "sf-harness"
-
-
-def browser_session_approved(config: dict[str, Any], command: str, allowed: set[str]) -> bool:
-    """A fresh same-session receipt written by playwright_guard after a human-confirmed
-    state-changing action stands in for further per-click confirmations on that origin."""
-
-    if not safety_toggle(config, "browserSessionApproval"):
-        return False
-    session = playwright_session_name(command)
-    receipt = load_json_receipt(RECEIPTS_DIR / f"browser-session-{session}.json")
-    if receipt is None or receipt.get("session") != session:
-        return False
-    if not receipt_is_fresh(receipt, BROWSER_SESSION_TTL_MINUTES, "issuedAt"):
-        return False
-    return receipt.get("origin") in allowed
 
 
 def force_app_is_clean() -> bool:
@@ -203,8 +191,9 @@ SALESFORCE_DEV_TOOL_TOKENS = frozenset({
     "get_username", "deploy", "retrieve",
 })
 # Built-in editor/agent tools that are safe to pass through (edits are governed by the role guard;
-# terminal/sf/browser are handled by the dedicated checks below). VS Code's built-ins are
-# snake_case (list_dir, read_file, grep_search, …), so this set uses their real names.
+# terminal/sf commands and browser-automation shapes are handled by the dedicated checks below).
+# VS Code's built-ins are snake_case (list_dir, read_file, grep_search, …), so this set uses
+# their real names.
 BUILTIN_TOOL_NAMES = frozenset({
     # camel/slash and short forms
     "read", "search", "codebase", "usages", "edit", "editfiles", "createfile",
@@ -345,8 +334,8 @@ def load_config(root: Path) -> dict[str, Any] | None:
 def is_non_production_salesforce_origin(origin: str) -> bool:
     """Sandbox, scratch org, or Developer Edition — every shape that is provably not production.
 
-    Deliberately wider than is_salesforce_sandbox_origin(), which stays strict for the
-    browser allowlist. This one guards mentions of an org URL in a tool call, where a
+    Deliberately wider than is_salesforce_sandbox_origin(), which stays strict for
+    config-declared origins. This one guards mentions of an org URL in a tool call, where a
     Developer Edition is a legitimate target under the read-anywhere convention
     (owner 2026-08-04); denying it there blocked org reads the read facade itself permits.
     """
@@ -374,16 +363,6 @@ def _origin_matches(origin: str, host_patterns: tuple) -> bool:
 
 def is_salesforce_sandbox_origin(origin: str) -> bool:
     return _origin_matches(origin, (SANDBOX_HOST, SCRATCH_HOST))
-
-
-def allowed_origins(config: dict[str, Any]) -> set[str]:
-    return {
-        str(origin).rstrip("/")
-        for origin in config.get("browser", {}).get("allowedOrigins", [])
-        if isinstance(origin, str)
-        and "<" not in origin
-        and is_salesforce_sandbox_origin(origin)
-    }
 
 
 def sandbox_write_approved(config: dict[str, Any]) -> bool:
@@ -684,33 +663,6 @@ def within_salesforce_source(raw: str, root: Path) -> bool:
     )
 
 
-def guarded_playwright_subcommand(command: str) -> str | None:
-    if re.search(r"[;&|`$<>\n\r]", command):
-        return None
-    try:
-        parts = shlex.split(command)
-    except ValueError:
-        return None
-    expected = (HARNESS_ROOT / "scripts/playwright_guard.py").resolve()
-    for index, part in enumerate(parts):
-        if Path(part).name != "playwright_guard.py":
-            continue
-        script = Path(part)
-        if not script.is_absolute():
-            script = HARNESS_ROOT / script
-        if script.resolve(strict=False) != expected:
-            return None
-        remainder = parts[index + 1 :]
-        cursor = 0
-        while cursor < len(remainder) and remainder[cursor].startswith("--"):
-            if remainder[cursor] == "--session":
-                cursor += 2
-            else:
-                cursor += 1
-        return remainder[cursor] if cursor < len(remainder) else None
-    return None
-
-
 def main() -> int:
     try:
         event = json.load(sys.stdin)
@@ -870,30 +822,21 @@ def main() -> int:
         print(json.dumps(hook_response("deny", "An unguarded Salesforce runtime/default target is forbidden.")))
         return 0
 
-    if "playwright" in lowered_name or "playwright-cli" in command:
-        print(json.dumps(hook_response("deny", "Direct browser tooling is disabled; use scripts/playwright_guard.py.")))
+    is_browser_named = (
+        any(token in lowered_name for token in BROWSER_TOOL_NAME_TOKENS)
+        and bare_tool not in SIMPLE_BROWSER_PREVIEW_NAMES
+        and lowered_name not in SIMPLE_BROWSER_PREVIEW_NAMES
+    )
+    if is_browser_named or BROWSER_COMMAND_PATTERN.search(dequote(command)):
+        print(
+            json.dumps(
+                hook_response(
+                    "deny",
+                    "Direct browser tooling is disabled; the browser automation lane was removed from this harness.",
+                )
+            )
+        )
         return 0
-    if "playwright_guard.py" in command:
-        browser_subcommand = guarded_playwright_subcommand(command)
-        if browser_subcommand is None:
-            print(json.dumps(hook_response("deny", "Guarded browser command is wrapped, malformed, or outside the harness.")))
-            return 0
-        if config is None:
-            print(json.dumps(hook_response("deny", "Browser operation blocked: config/harness.local.json is missing or invalid.")))
-            return 0
-        allowed = allowed_origins(config)
-        for raw_url in extract_urls(text):
-            parsed = urlparse(raw_url.rstrip(".,);]"))
-            origin = f"{parsed.scheme}://{parsed.netloc}"
-            if origin not in allowed:
-                print(json.dumps(hook_response("deny", f"Browser origin '{origin}' is not allowlisted.")))
-                return 0
-        if browser_subcommand in STATE_CHANGING_BROWSER:
-            if browser_session_approved(config, command, allowed):
-                print(json.dumps(hook_response()))
-                return 0
-            print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation before a state-changing browser action.")))
-            return 0
 
     # Fail-closed backstop: an MCP-shaped tool the hook did not positively classify (a new server
     # tool, or a bare name the guards above did not recognize) must not silently auto-run.

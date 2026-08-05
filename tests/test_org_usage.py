@@ -140,7 +140,6 @@ class OrgUsageBase(unittest.TestCase):
                 "allowedOriginRemotes": list(allowlist),
                 "maxOrgUsageAgeDays": max_age_days,
                 "maxSampleColumns": 20,
-                "sampleRows": 25,
                 "sampleRowsMax": 50,
                 "usageGroupSuppressionFloor": 5,
             }
@@ -159,9 +158,6 @@ class OrgUsageBase(unittest.TestCase):
         org = {
             "alias": alias,
             "environment": environment,
-            "allowAgentRead": True,
-            "allowAgentWrite": False,
-            "allowAgentReview": True,
             "expectedOrganizationId": org_id,
             "fullCopy": False,
         }

@@ -34,8 +34,8 @@ Schemas:                schemas/knowledge-entry.schema.json, knowledge-feature-e
                         nine integration types, ApexPage/ApexComponent)
                         [was "9 schemas / 10 types"; all-type expansion 2026-08-04]
 Prior architecture docs: docs/knowledge-facts-overlay-architecture.md = SHELVED fallback;
-                        docs/force-app-knowledge-architecture.md = v1 pilot description,
-                        updated at cutover.
+                        the v1 pilot description (force-app-knowledge-architecture.md) was
+                        archived outside the repository on 2026-08-05.
 ```
 
 ## 1. Scope of supersession and claim-type home assignment
@@ -157,8 +157,8 @@ itself is visible in the transcript and receipt only; what persists are counts
 (`record-sample.results.fieldFill`) and `recordStructure` shape rows. Aggregates are
 authoritative for counts and fill; sample-derived ratios are rendered sample-anecdotal.
 
-**Sampling defaults (D-5).** Explicit `LIMIT 25` (band 10–50; policy `orgUsage.sampleRows` /
-`sampleRowsMax`), `ORDER BY CreatedDate DESC`, at most `maxSampleColumns` contract-derived
+**Sampling defaults (D-5).** Explicit `LIMIT 25` (band 10–50; ceiling: policy
+`orgUsage.sampleRowsMax`), `ORDER BY CreatedDate DESC`, at most `maxSampleColumns` contract-derived
 columns. Email-type fields and forbidden-key-token fields are never sampled by value — their
 fill is still measured by the aggregate field-fill probe (counts without values). Sandbox
 numbers answer shape and presence, never production volume (mandatory limitation; `fullCopy`

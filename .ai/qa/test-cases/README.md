@@ -2,7 +2,8 @@
 
 Lightweight, committed index of Test Cases synced from Azure Test Plans. Written and
 overwritten by the `sync-test-cases` skill — treat these files as machine-generated: do NOT
-hand-edit them (hand-curated data belongs in `../keywords-map.md`, which sync never touches).
+hand-edit them (hand-curated vocabulary belongs in `.ai/knowledge/keyword-taxonomy.md`,
+which sync never touches).
 
 **Naming convention**: one file per Test Suite, named `<suiteId>-<name>.md` — the suite is a
 natural boundary from day one, so the split is per-suite immediately, not threshold-based like

@@ -4,7 +4,6 @@
     "allowedOriginRemotes": [],
     "maxOrgUsageAgeDays": 90,
     "maxSampleColumns": 20,
-    "sampleRows": 25,
     "sampleRowsMax": 50,
     "usageGroupSuppressionFloor": 5
   }

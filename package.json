@@ -5,13 +5,7 @@
   "license": "MIT",
   "description": "Single-root Salesforce DX project and governed GitHub Copilot harness.",
   "scripts": {
-    "lint": "eslint --no-error-on-unmatched-pattern \"force-app/main/default/{aura,lwc}/**/*.js\"",
-    "test": "npm run test:unit",
-    "test:unit": "sfdx-lwc-jest",
-    "test:unit:watch": "sfdx-lwc-jest --watch",
-    "test:unit:debug": "sfdx-lwc-jest --debug",
-    "test:unit:coverage": "sfdx-lwc-jest --coverage",
-    "test:unit:ci": "sfdx-lwc-jest -- --passWithNoTests",
+    "lint": "eslint \"scripts/**/*.mjs\"",
     "prettier": "prettier --write --no-error-on-unmatched-pattern \"force-app/**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}\" \"manifest/**/*.xml\" \"sfdx-project.json\" \"config/project-scratch-def.json\"",
     "prettier:verify": "prettier --check --no-error-on-unmatched-pattern \"force-app/**/*.{cls,cmp,component,css,html,js,json,md,page,trigger,xml,yaml,yml}\" \"manifest/**/*.xml\" \"sfdx-project.json\" \"config/project-scratch-def.json\""
   },
@@ -33,17 +27,9 @@
     "@emnapi/core": "1.11.3",
     "@emnapi/runtime": "1.11.3",
     "@eslint/js": "^9.29.0",
-    "@lwc/eslint-plugin-lwc": "^3.1.0",
     "@prettier/plugin-xml": "^3.4.1",
-    "@salesforce/eslint-config-lwc": "^4.0.0",
-    "@salesforce/eslint-plugin-aura": "^3.0.0",
-    "@salesforce/eslint-plugin-lightning": "^2.0.0",
-    "@salesforce/sfdx-lwc-jest": "^7.0.2",
     "eslint": "^9.39.5",
-    "eslint-plugin-import": "^2.31.0",
-    "eslint-plugin-jest": "^28.14.0",
     "globals": "^15.14.0",
-    "prettier": "^3.9.6",
-    "prettier-plugin-apex": "^2.2.6"
+    "prettier": "^3.9.6"
   }
 }

@@ -158,8 +158,6 @@ def collect_instructions() -> list[dict[str, Any]]:
             "description": str(data.get("description", "")),
             "path": path.relative_to(ROOT).as_posix(),
         }
-        if data.get("applyTo"):
-            record["applyTo"] = str(data["applyTo"])
         records.append(record)
     return records
 
@@ -251,8 +249,7 @@ def render_md(model: dict[str, Any]) -> str:
         lines.append(f"- `{contract['name']}` — {one_liner(contract['summary'])}")
     lines.extend(["", "## Instructions (`.github/instructions/`)", ""])
     for instruction in model["instructions"]:
-        apply_to = f" (applyTo: `{instruction['applyTo']}`)" if "applyTo" in instruction else ""
-        lines.append(f"- `{instruction['name']}` — {one_liner(instruction['description'])}{apply_to}")
+        lines.append(f"- `{instruction['name']}` — {one_liner(instruction['description'])}")
     lines.extend(["", "## Resume here", ""])
     for line in model["resumeHere"]:
         lines.append(f"- {line}")

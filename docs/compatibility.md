@@ -8,7 +8,7 @@ Last verified against vendor documentation: 2026-07-10
 
 | Component | Supported baseline | Notes |
 |---|---|---|
-| VS Code | 1.112+; certify current stable before rollout | Windows is the primary platform. The configured MCP surface is read-only on every platform; guarded browser workflows remain macOS/Linux-only. |
+| VS Code | 1.112+; certify current stable before rollout | Windows is the primary platform. The configured MCP surface is read-only on every platform. |
 | GitHub Copilot | Consolidated `GitHub.copilot` extension bundled/supported by the chosen VS Code release | The old separate Copilot Chat prerequisite is not used. |
 | Python | 3.11+ | Runs preflight, validation, safety hooks, and tests using the standard library plus the dev requirement below. |
 | PyYAML | `>=6,<7`; CI uses the lock file | Frontmatter and evaluation validation. |
@@ -16,7 +16,6 @@ Last verified against vendor documentation: 2026-07-10
 | Node.js | 22+ (`.nvmrc` pins 24) | The pinned `@salesforce/mcp` requires Node ≥22.19; CI installs the `.nvmrc` version. |
 | Azure DevOps MCP | Local stdio `@azure-devops/mcp@2.8.1` (pinned in `.vscode/mcp.json`), domains work-items/wiki/test-plans/search | Switched from the hosted endpoint 2026-07-14: its toolset header was not honored, while local `-d` domain args are. No server-side read-only — read-only is harness policy (hooks); requires `az login`. |
 | Salesforce DX MCP | `@salesforce/mcp@0.30.15` | Pinned to the version verified on 2026-07-10; update deliberately. |
-| Playwright CLI | `@playwright/cli@0.1.17` | Use executable `playwright-cli` only through `scripts/playwright_guard.py`. |
 
 ## Required Copilot capabilities
 
@@ -34,7 +33,8 @@ Static validation in CI proves file shape and policy invariants. It does not pro
 installed VS Code build exposes every tool. Before a developer pilot, open **Chat: Open
 Customizations** and **Chat Diagnostics** on each supported platform and record:
 
-- exactly five agents, twelve public prompts, sixteen internal skills, and three Principle files;
+- exactly six agents, eighteen public prompts, eighteen internal skills, and three Principle files
+  (the counts `scripts/validate_harness.py` pins in `EXPECTED_COUNTS`);
 - no unresolved tool, handoff, frontmatter, hook, or MCP diagnostic;
 - one successful harmless read call through each configured external server.
 
@@ -47,9 +47,9 @@ the governed facade's `review_soql_query` tool (Salesforce MCP transport only, s
 blockade removed); raw CLI and raw vendor MCP stay denied.
 Agents may request `sf project retrieve start` against a configured alias; the safety hook stops
 each invocation for human confirmation. Deploys ship through the human-run release process
-outside Copilot. Guarded browser execution remains macOS/Linux-only.
+outside Copilot. Browser automation tooling is denied outright (lane removed 2026-08-05).
 
-The certified external-work surface is limited to the five repository custom agents in a dedicated
+The certified external-work surface is limited to the six repository custom agents in a dedicated
 pilot environment with no production authorization or browser session. Built-in/default Agent and
 arbitrary terminal modes are not certified; hooks are not a general shell sandbox.
 
