@@ -31,11 +31,13 @@ try:
     import governed_state as gs
     import sampling_derivers as derivers
     import solution_design_core as core
+    import work_record as wr
     from repository_evidence_adapter import RepositoryEvidenceError, capture
 except ModuleNotFoundError:  # imported as scripts.solution_design_worker by unit tests
     from scripts import governed_state as gs
     from scripts import sampling_derivers as derivers
     from scripts import solution_design_core as core
+    from scripts import work_record as wr
     from scripts.repository_evidence_adapter import RepositoryEvidenceError, capture
 
 
@@ -533,10 +535,6 @@ class Worker:
                 "re-run the query and import promptly",
             )
         envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
-        try:
-            import work_record as wr
-        except ModuleNotFoundError:
-            from scripts import work_record as wr
         if envelope.get("sha256") != wr.canonical_embedded_digest(envelope):
             raise WorkerError("ENVELOPE_TAMPERED", "the transient envelope digest does not recompute")
         if envelope.get("status") != "VERIFIED":
@@ -722,10 +720,6 @@ class Worker:
         if not isinstance(identity, str) or not identity:
             raise WorkerError("INVALID_INPUT", "identity is required")
         case_id = params["caseId"]
-        try:
-            import work_record as wr  # local import: only this operation needs it
-        except ModuleNotFoundError:
-            from scripts import work_record as wr
 
         with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
             record, design = self.store.load(case_id)
