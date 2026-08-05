@@ -335,3 +335,77 @@ def transform_policy_digest() -> str:
             "maxGroups": MAX_GROUPS,
         }
     )
+
+
+def churn_profile(
+    rows: Sequence[dict[str, Any]],
+    *,
+    created_field: str = "CreatedDate",
+    modified_field: str = "LastModifiedDate",
+    window_days: int = 90,
+    at: str | None = None,
+) -> dict[str, Any]:
+    """How often records change. Says nothing about *why* they changed.
+
+    Churn is the signal that separates a configuration table an admin maintains from one the
+    package seeds and nobody touches — which row count never could.
+    """
+    rows = _rows(list(rows))
+    moment = at or datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    cutoff = (
+        datetime.fromisoformat(moment.replace("Z", "+00:00")) - _days(window_days)
+    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+    created = sum(1 for row in rows if str(row.get(created_field) or "") >= cutoff)
+    modified = sum(1 for row in rows if str(row.get(modified_field) or "") >= cutoff)
+    return {
+        "windowDays": window_days,
+        "evaluatedAt": moment,
+        "observedRows": len(rows),
+        "createdInWindow": created,
+        "modifiedInWindow": modified,
+        "authorityNote": "change frequency only; the reason for a change needs another source",
+    }
+
+
+def _days(count: int):
+    from datetime import timedelta
+
+    return timedelta(days=count)
+
+
+def precedence_collision(
+    rows: Sequence[dict[str, Any]],
+    *,
+    scope_fields: Sequence[str],
+    order_field: str | None = None,
+) -> dict[str, Any]:
+    """Competing configuration records within one scope, and whether their order is decidable.
+
+    Reports collisions; it never names the winner. Which record actually wins needs the source
+    that reads them or a human who owns the rule.
+    """
+    rows = _rows(list(rows))
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        key = "␟".join(str(row.get(field)) for field in scope_fields)
+        groups.setdefault(key, []).append(row)
+    competing = {key: members for key, members in groups.items() if len(members) > 1}
+    undecidable = 0
+    if order_field:
+        for members in competing.values():
+            orders = [member.get(order_field) for member in members]
+            if len(set(map(str, orders))) < len(orders):
+                undecidable += 1
+    return {
+        "scopeFields": list(scope_fields),
+        "orderField": order_field,
+        "groups": len(groups),
+        "collidingGroups": len(competing),
+        "collidingRows": sum(len(members) for members in competing.values()),
+        "undecidableGroups": undecidable if order_field else None,
+        "authorityNote": "collisions only; the intended winner needs source or human evidence",
+    }
+
+
+DERIVERS["churn-profile"] = churn_profile
+DERIVERS["precedence-collision"] = precedence_collision

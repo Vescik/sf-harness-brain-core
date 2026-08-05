@@ -1619,5 +1619,238 @@ class EnvelopeImportTests(WorkspaceCase):
         self.assertEqual(code, "INVALID_INPUT")
 
 
+class AdaptiveSamplingTests(unittest.TestCase):
+    """Probes come from what the design is deciding, never from enumerating fields."""
+
+    def base_state(self) -> dict:
+        state = core.new_case_state("SD-2026-08-05-sampling", "writer-one", at="2026-08-05T09:00:00Z")
+        state["dataClassifications"] = [
+            {
+                "classificationId": "CLS-001",
+                "objectApiName": "ns__Rule__c",
+                "slice": None,
+                "schemaOwnership": "package-owned",
+                "dataStewardship": "admin-maintained",
+                "dataRole": "configuration",
+                "assurance": "unknown",
+                "evidenceRefs": [],
+                "limitations": [],
+            }
+        ]
+        state["configurationArtefacts"] = [
+            {
+                "configurationArtefactId": "CFG-001",
+                "objectApiName": "ns__Rule__c",
+                "classificationRef": "CLS-001",
+                "naturalKeyFields": ["ns__DeveloperName__c"],
+                "sliceRef": "CLS-001",
+                "action": "modify-records",
+                "description": "Adds routing rules.",
+                "evidenceRefs": [],
+                "decisionRefs": [],
+                "acIds": [],
+                "migrationRefs": [],
+                "rollbackRef": None,
+                "verificationRefs": [],
+            }
+        ]
+        return state
+
+    def test_a_wide_object_does_not_produce_a_probe_per_field(self) -> None:
+        state = self.base_state()
+        # 300 fields on the object changes nothing: candidates come from the design, not the schema.
+        candidates = core.probe_candidates(state)
+        self.assertLessEqual(len(candidates), 6, [item["kind"] for item in candidates])
+        kinds = {item["kind"] for item in candidates}
+        self.assertIn("object-baseline", kinds)
+        self.assertIn("key-integrity", kinds)
+
+    def test_unproven_configuration_earns_baseline_and_churn_not_row_count_judgement(self) -> None:
+        candidates = core.probe_candidates(self.base_state())
+        kinds = {item["kind"] for item in candidates}
+        self.assertIn("churn-profile", kinds)
+        rationale = next(item for item in candidates if item["kind"] == "churn-profile")["rationale"]
+        self.assertIn("row count", rationale)
+
+    def test_effectivity_and_precedence_are_offered_for_mutated_configuration(self) -> None:
+        kinds = {item["kind"] for item in core.probe_candidates(self.base_state())}
+        self.assertIn("config-effectivity", kinds)
+        self.assertIn("precedence-collision", kinds)
+
+    def test_reuse_only_configuration_does_not_earn_hard_probes(self) -> None:
+        state = self.base_state()
+        state["configurationArtefacts"][0]["action"] = "reuse"
+        hard = [
+            item
+            for item in core.probe_candidates(state)
+            if item["suggestedRequiredness"] == "hard"
+        ]
+        self.assertEqual(hard, [])
+
+    def test_an_already_planned_probe_is_not_offered_twice(self) -> None:
+        state = self.base_state()
+        state["probes"] = [
+            {
+                "probeId": "P-001",
+                "questionId": "Q-001",
+                "origin": "concern",
+                "kind": "object-baseline",
+                "target": {"objectApiName": "ns__Rule__c", "slice": None},
+                "queryDigest": None,
+                "suggestedSoql": None,
+                "replaySpec": None,
+                "expectedResultShape": "aggregate",
+                "completenessCriterion": "row count",
+                "requiredness": "hard",
+                "conditionalPredicate": None,
+                "notApplicableReason": None,
+                "persistenceMode": "aggregate",
+                "freshnessClass": "volume-observation",
+                "stopCondition": "size known",
+                "status": "planned",
+                "receiptRef": None,
+                "fitnessVerdict": None,
+                "decisionImpact": None,
+                "recheckPlan": "never",
+            }
+        ]
+        kinds = [item["kind"] for item in core.probe_candidates(state)]
+        self.assertNotIn("object-baseline", kinds)
+
+    def test_repeated_inconclusive_sampling_becomes_a_human_obligation(self) -> None:
+        state = self.base_state()
+        state["questions"] = [
+            {
+                "questionId": "Q-001",
+                "question": "Which rule wins when two are active?",
+                "materiality": "blocking",
+                "requiredAuthority": ["org-soql-sample"],
+                "status": "observed",
+                "answer": None,
+                "closureAuthority": None,
+                "evidenceRefs": [],
+                "limitations": [],
+                "route": "grounding",
+            }
+        ]
+        probe = {
+            "probeId": "P-001",
+            "questionId": "Q-001",
+            "origin": "question",
+            "kind": "precedence-collision",
+            "target": {"objectApiName": "ns__Rule__c", "slice": None},
+            "queryDigest": None,
+            "suggestedSoql": None,
+            "replaySpec": None,
+            "expectedResultShape": "aggregate",
+            "completenessCriterion": "collisions",
+            "requiredness": "hard",
+            "conditionalPredicate": None,
+            "notApplicableReason": None,
+            "persistenceMode": "aggregate",
+            "freshnessClass": "config-observation",
+            "stopCondition": "winner known",
+            "status": "interpreted",
+            "receiptRef": None,
+            "fitnessVerdict": "inconclusive",
+            "decisionImpact": "no-material-impact",
+            "recheckPlan": "never",
+        }
+        second = dict(probe, probeId="P-002")
+        state["probes"] = [probe, second]
+        stalled = core.no_progress_questions(state)
+        self.assertEqual(len(stalled), 1)
+        self.assertEqual(stalled[0]["questionId"], "Q-001")
+        report = core.evaluate(state, design_text="# design\n")
+        self.assertTrue(
+            any(
+                gap["requiredClosure"] == "no-progress" and gap["route"] == "human-input"
+                for gap in report["gaps"]
+            )
+        )
+
+    def test_one_useful_probe_is_not_treated_as_no_progress(self) -> None:
+        state = self.base_state()
+        state["questions"] = [
+            {
+                "questionId": "Q-001",
+                "question": "Which rule wins?",
+                "materiality": "blocking",
+                "requiredAuthority": ["org-soql-sample"],
+                "status": "observed",
+                "answer": None,
+                "closureAuthority": None,
+                "evidenceRefs": [],
+                "limitations": [],
+                "route": "grounding",
+            }
+        ]
+        state["probes"] = [
+            {
+                "probeId": "P-001",
+                "questionId": "Q-001",
+                "origin": "question",
+                "kind": "precedence-collision",
+                "target": {"objectApiName": "ns__Rule__c", "slice": None},
+                "queryDigest": None,
+                "suggestedSoql": None,
+                "replaySpec": None,
+                "expectedResultShape": "aggregate",
+                "completenessCriterion": "collisions",
+                "requiredness": "advisory",
+                "conditionalPredicate": None,
+                "notApplicableReason": None,
+                "persistenceMode": "aggregate",
+                "freshnessClass": "config-observation",
+                "stopCondition": "winner known",
+                "status": "interpreted",
+                "receiptRef": None,
+                "fitnessVerdict": "inconclusive",
+                "decisionImpact": "no-material-impact",
+                "recheckPlan": "never",
+            },
+            {
+                "probeId": "P-002",
+                "questionId": "Q-001",
+                "origin": "question",
+                "kind": "config-effectivity",
+                "target": {"objectApiName": "ns__Rule__c", "slice": None},
+                "queryDigest": None,
+                "suggestedSoql": None,
+                "replaySpec": None,
+                "expectedResultShape": "aggregate",
+                "completenessCriterion": "windows",
+                "requiredness": "advisory",
+                "conditionalPredicate": None,
+                "notApplicableReason": None,
+                "persistenceMode": "aggregate",
+                "freshnessClass": "config-observation",
+                "stopCondition": "windows known",
+                "status": "closed",
+                "receiptRef": None,
+                "fitnessVerdict": "fit",
+                "decisionImpact": "changed-option",
+                "recheckPlan": "never",
+            },
+        ]
+        self.assertEqual(core.no_progress_questions(state), [])
+
+
+class ConfigRecordSkillTests(unittest.TestCase):
+    """The row-count heuristic is retired, not softened."""
+
+    SKILL = (ROOT / ".github/skills/investigate-config-records/SKILL.md").read_text(encoding="utf-8")
+
+    def test_no_row_count_classification_remains(self) -> None:
+        self.assertNotIn("200-row", self.SKILL)
+        self.assertNotIn("LIMIT 200", self.SKILL)
+        self.assertNotIn("transactional-sized", self.SKILL)
+
+    def test_the_replacement_semantics_are_stated(self) -> None:
+        self.assertIn("Row count is not a classification", self.SKILL)
+        self.assertIn("keyset", self.SKILL)
+        self.assertIn("slice-bounded", self.SKILL)
+
+
 if __name__ == "__main__":
     unittest.main()
