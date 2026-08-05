@@ -65,8 +65,9 @@ if (args[0] === "version") {
     name: "ExampleManagedObject__c",
     label: "Sensitive label is discarded",
     fields: [
-      {name: "Amount__c", type: "double", label: "Amount"},
-      {name: "Name", type: "string", label: "Name", picklistValues: [{value: "private"}]}
+      {name: "Amount__c", type: "double", label: "Amount", nillable: true, calculated: false, unique: false, externalId: false, createable: true, updateable: true, referenceTo: [], precision: 18, scale: 2},
+      {name: "Name", type: "string", label: "Name", picklistValues: [{value: "private"}], nillable: false, calculated: false, unique: false, externalId: false, createable: true, updateable: true, referenceTo: [], length: 80},
+      {name: "OnlyInDescribe__c", type: "string", label: "Compound-like", nillable: true, calculated: false, unique: false, externalId: false, createable: true, updateable: true, referenceTo: []}
     ]
   }});
 } else {
@@ -114,9 +115,10 @@ lines.on("line", (line) => {
       {attributes: {url: "/private"}, QualifiedApiName: "ExampleManagedObject__c"}
     ]};
   } else if (input.query.includes("FROM FieldDefinition")) {
-    payload = {done: true, totalSize: 2, records: [
-      {attributes: {url: "/private"}, QualifiedApiName: "Name", DataType: "Text(80)"},
-      {attributes: {url: "/private"}, QualifiedApiName: "Amount__c", DataType: "Number(18, 2)"}
+    payload = {done: true, totalSize: 3, records: [
+      {attributes: {url: "/private"}, QualifiedApiName: "Name", DataType: "Text(80)", IsNillable: false, IsCalculated: false, RelationshipName: null, ReferenceTo: null, Length: 80, Precision: null, Scale: null, IsIndexed: true},
+      {attributes: {url: "/private"}, QualifiedApiName: "Amount__c", DataType: "Number(18, 2)", IsNillable: true, IsCalculated: false, RelationshipName: null, ReferenceTo: null, Length: null, Precision: 18, Scale: 2, IsIndexed: false},
+      {attributes: {url: "/private"}, QualifiedApiName: "OnlyInTooling__c", DataType: "Hierarchy", IsNillable: true, IsCalculated: false, RelationshipName: "OnlyInTooling__r", ReferenceTo: {referenceTo: ["ExampleManagedObject__c"]}, Length: null, Precision: null, Scale: null, IsIndexed: true}
     ]};
   } else if (input.query.includes("COUNT(Id)")) {
     payload = {done: true, totalSize: 1, records: [
@@ -527,13 +529,59 @@ class SalesforceReviewFacadeTests(unittest.TestCase):
                 self.assertNotIn("otherpkg", package_text)
                 self.assertNotIn("Unrelated Package", package_text)
                 self.assertNotIn("packageCount", packages["facts"])
+                # The reconciled contract carries the dual-source traits at top level and keeps
+                # each transport's exclusive traits with their source (§16.3). The fake CLI and
+                # fake MCP report only name/type, so every trait is legitimately null here —
+                # what this pins is the SHAPE and the fact that nothing is silently dropped.
+                fields = object_contract["facts"]["object"]["fields"]
+                # The union of both transports, not the intersection: a field only one side can
+                # see is preserved with its coverage, never dropped (§16.3).
                 self.assertEqual(
-                    object_contract["facts"]["object"]["fields"],
-                    [
-                        {"name": "Amount__c", "typeFamily": "number"},
-                        {"name": "Name", "typeFamily": "text"},
-                    ],
+                    [field["name"] for field in fields],
+                    ["Amount__c", "Name", "OnlyInDescribe__c", "OnlyInTooling__c"],
                 )
+                self.assertEqual(
+                    [field["typeFamily"] for field in fields],
+                    ["number", "text", "text", "reference"],
+                )
+                by_name = {field["name"]: field for field in fields}
+                for trait in (
+                    "nillable",
+                    "calculated",
+                    "relationshipName",
+                    "referenceTo",
+                    "length",
+                    "precision",
+                    "scale",
+                ):
+                    self.assertIn(trait, by_name["Name"])
+                self.assertEqual(
+                    by_name["Name"]["sourceCoverage"], {"cli": "available", "mcp": "available"}
+                )
+                self.assertEqual(
+                    by_name["OnlyInDescribe__c"]["sourceCoverage"],
+                    {"cli": "available", "mcp": "missing"},
+                )
+                self.assertEqual(
+                    by_name["OnlyInTooling__c"]["sourceCoverage"],
+                    {"cli": "missing", "mcp": "available"},
+                )
+                self.assertEqual(by_name["Name"]["sourceExclusive"]["cli"]["unique"], False)
+                self.assertEqual(by_name["Name"]["sourceExclusive"]["mcp"]["indexed"], True)
+                # An empty describe referenceTo and an absent Tooling ReferenceTo mean the same
+                # thing. Treating them as different marked every scalar field contested on a
+                # live org (measured 2026-08-05); both normalize to null.
+                self.assertIsNone(by_name["Name"]["referenceTo"])
+                self.assertEqual(
+                    by_name["OnlyInTooling__c"]["referenceTo"], ["ExampleManagedObject__c"]
+                )
+                contract_object = object_contract["facts"]["object"]
+                self.assertEqual(contract_object["fieldCount"], 4)
+                self.assertRegex(contract_object["schemaDigest"], r"^sha256:[0-9a-f]{64}$")
+                self.assertEqual(contract_object["namespace"], None)
+                # A difference in visibility is not a disagreement about the schema.
+                self.assertEqual(contract_object["contestedProperties"], [])
+                self.assertEqual(object_contract["status"], "VERIFIED")
             finally:
                 facade.close()
 
@@ -1112,6 +1160,15 @@ class PinnedSalesforceMcpCompatibilityTests(unittest.TestCase):
         self.assertEqual(provider["version"], "0.9.8")
 
     def test_pinned_server_still_supports_the_bounded_startup_flags(self) -> None:
+        # Colour is neutralised only when something is actually forcing it. oclif underlines
+        # `<value>` with ANSI codes under FORCE_COLOR, so on a developer machine whose profile
+        # sets it this assertion failed on an escape sequence rather than on a missing flag.
+        # Passing an explicit env dict on a CI runner that forces nothing changes the spawn for
+        # no benefit, so the override stays out of the way there.
+        forced = any(os.environ.get(name) for name in ("FORCE_COLOR", "CLICOLOR_FORCE"))
+        environment = (
+            {**os.environ, "FORCE_COLOR": "0", "NO_COLOR": "1"} if forced else None
+        )
         completed = subprocess.run(
             ["node", str(self.MCP_ROOT / "bin" / "run.js"), "--help"],
             cwd=ROOT,
@@ -1119,6 +1176,7 @@ class PinnedSalesforceMcpCompatibilityTests(unittest.TestCase):
             capture_output=True,
             timeout=30,
             check=False,
+            env=environment,
         )
         output = completed.stdout + completed.stderr
         self.assertEqual(completed.returncode, 0, output)

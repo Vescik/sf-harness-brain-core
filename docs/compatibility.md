@@ -14,7 +14,7 @@ Last verified against vendor documentation: 2026-07-10
 | PyYAML | `>=6,<7`; CI uses the lock file | Frontmatter and evaluation validation. |
 | jsonschema | `>=4,<5`; CI uses the lock file | Draft 2020-12 configuration/cache/output validation. |
 | Node.js | 22+ (`.nvmrc` pins 24) | The pinned `@salesforce/mcp` requires Node ≥22.19; CI installs the `.nvmrc` version. |
-| Azure DevOps MCP | Local stdio `@azure-devops/mcp@2.8.1` (pinned in `.vscode/mcp.json`), domains work-items/wiki/test-plans/search | Switched from the hosted endpoint 2026-07-14: its toolset header was not honored, while local `-d` domain args are. No server-side read-only — read-only is harness policy (hooks); requires `az login`. |
+| Azure DevOps MCP | Local stdio `@azure-devops/mcp` 2.8.1, installed from `package-lock.json` and started as `node node_modules/@azure-devops/mcp/dist/index.js`; domains work-items/wiki/test-plans/search | Switched from the hosted endpoint 2026-07-14: its toolset header was not honored, while local `-d` domain args are. Moved off runtime `npx -y` on 2026-08-05 (rebuild P3) — a pinned version never pinned the fetch; the package carries a dependency admission record and the workspace starts after `npm ci --ignore-scripts` with no network. No server-side read-only — read-only is harness policy (hooks); requires `az login`. |
 | Salesforce DX MCP | `@salesforce/mcp@0.30.15` | Pinned to the version verified on 2026-07-10; update deliberately. |
 
 ## Required Copilot capabilities

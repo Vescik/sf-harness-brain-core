@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "manifestVersion": "sd-cap-p7",
+  "gateEvaluatorVersion": "sd-gate-v1",
+  "materialSince": "sd-cap-p7",
+  "concernProfiles": [
+    "data-model-and-configuration-integrity",
+    "security-and-execution-context",
+    "transaction-and-automation",
+    "volume-and-performance",
+    "integrations-and-contracts",
+    "user-journey-and-accessibility",
+    "errors-and-observability",
+    "package-boundaries-and-upgrade",
+    "migration-rollout-rollback",
+    "verification-feasibility"
+  ],
+  "probeKinds": [
+    "object-baseline",
+    "churn-profile",
+    "field-fill",
+    "field-cardinality",
+    "categorical-distribution",
+    "key-integrity",
+    "relationship-shape",
+    "config-effectivity",
+    "precedence-collision",
+    "config-snapshot",
+    "sample-shape"
+  ],
+  "evidenceSourceTypes": [
+    "knowledge-entry",
+    "repository-receipt",
+    "org-object-contract",
+    "org-soql-sample",
+    "human-sme-attestation",
+    "vendor-documentation",
+    "ado-approved-artifact"
+  ],
+  "configurationActions": [
+    "create-records",
+    "modify-records",
+    "delete-records",
+    "reuse",
+    "retire",
+    "dependency-only"
+  ],
+  "componentActions": [
+    "use",
+    "create",
+    "modify",
+    "delete",
+    "retire",
+    "dependency-only"
+  ],
+  "adapters": {
+    "adoRequirement": true,
+    "repositoryEvidence": true,
+    "salesforceEnvelope": true,
+    "knowledgeReference": true
+  },
+  "riskPolicies": [
+    "standard-risk-seed",
+    "high-risk-independent-challenge"
+  ],
+  "transitions": [
+    "accepted->development",
+    "accepted->draft",
+    "awaiting_design_review->awaiting_human",
+    "awaiting_design_review->awaiting_human_input",
+    "awaiting_design_review->draft",
+    "awaiting_human->accepted",
+    "awaiting_human->draft",
+    "awaiting_human_input->draft",
+    "candidate->awaiting_design_review",
+    "candidate->awaiting_human",
+    "candidate->draft",
+    "development->draft",
+    "development->review",
+    "draft->awaiting_human_input",
+    "draft->candidate",
+    "draft->draft",
+    "review->complete",
+    "review->development",
+    "review->draft"
+  ],
+  "generatedSections": [
+    "ACCEPTANCE-CRITERIA",
+    "CURRENT-STATE-GROUNDING",
+    "DATA-CLASSIFICATIONS",
+    "CONCERN-COVERAGE",
+    "SOLUTION-ARTEFACTS",
+    "CONFIGURATION-ARTEFACTS",
+    "DECISIONS",
+    "RISKS-LIMITATIONS",
+    "VERIFICATION-CONTRACT",
+    "EVIDENCE-APPENDIX"
+  ]
+}

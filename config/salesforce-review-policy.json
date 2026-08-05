@@ -26,7 +26,7 @@
     },
     "objectFields": {
       "useToolingApi": true,
-      "query": "SELECT QualifiedApiName, DataType FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName = '${OBJECT_API_NAME}' ORDER BY QualifiedApiName LIMIT 501"
+      "query": "SELECT QualifiedApiName, DataType, IsNillable, IsCalculated, RelationshipName, ReferenceTo, Length, Precision, Scale, IsIndexed FROM FieldDefinition WHERE EntityDefinition.QualifiedApiName = '${OBJECT_API_NAME}' ORDER BY QualifiedApiName LIMIT 501"
     }
   }
 }

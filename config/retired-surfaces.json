@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "description": "Surfaces removed by a replacement phase. The validator proves each retired name is unreachable outside the explicitly allowlisted historical documents. Later phases extend this manifest; entries are never deleted, because the negative scan is the proof the old behaviour cannot come back.",
+  "retired": [
+    {
+      "name": "suggest-test-cases",
+      "retiredIn": "P1",
+      "retiredOn": "2026-08-05",
+      "replacement": "Verification Contract projected by generate-technical-documentation, plus formally linked ADO Test Cases",
+      "tokens": [
+        "suggest-test-cases",
+        "suggest_test_cases",
+        "Suggested Test Cases"
+      ],
+      "historicalAllowlist": [
+        ".ai/memory/decisions-log.md",
+        "docs/evidence-analysis-2026-07-24.md",
+        "docs/evidence-to-analyse.md",
+        "docs/knowledge-master-plan-2026-07-25.md",
+        "docs/knowledge-one-file-impact-map.md",
+        "tests/test_repo_map.py"
+      ]
+    }
+  ]
+}

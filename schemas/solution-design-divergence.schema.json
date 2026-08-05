@@ -1,0 +1,339 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:solution-design-divergence.schema.json",
+  "title": "Implementation-time divergence, recheck and verification receipts",
+  "description": "Executor-authored receipts for the implementation loop, stored under .ai/change-records/<case-id>/divergences/. A prose duty to re-run a probe is not a loop; these are the typed facts that make one.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "receiptId",
+    "kind",
+    "caseId",
+    "candidateId",
+    "candidateDigest",
+    "recordedAt",
+    "recordedBy",
+    "sha256",
+    "sequence"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "receiptId": {
+      "type": "string",
+      "pattern": "^DV-[A-Za-z0-9._-]+$"
+    },
+    "kind": {
+      "enum": [
+        "divergence",
+        "recheck",
+        "verification-execution",
+        "implementation-review"
+      ]
+    },
+    "caseId": {
+      "type": "string",
+      "pattern": "^(ADO-[a-z0-9][a-z0-9-]{0,62}-[1-9][0-9]*|SD-[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9][a-z0-9-]{0,40})$"
+    },
+    "candidateId": {
+      "type": "string",
+      "pattern": "^CND-[A-Za-z0-9._-]+$"
+    },
+    "candidateDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "recordedAt": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "recordedBy": {
+      "enum": [
+        "development-assistant",
+        "test-strategist",
+        "guardrail-reviewer"
+      ]
+    },
+    "observation": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "maxLength": 4000
+        }
+      ]
+    },
+    "classification": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "enum": [
+            "implementation-local",
+            "design-material",
+            "requirement-change",
+            "evidence-drift"
+          ]
+        }
+      ]
+    },
+    "affectedRefs": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    },
+    "reopenedObligations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "questions": {
+          "$ref": "#/$defs/refs"
+        },
+        "probes": {
+          "$ref": "#/$defs/refs"
+        },
+        "decisions": {
+          "$ref": "#/$defs/refs"
+        },
+        "acceptanceCriteria": {
+          "$ref": "#/$defs/refs"
+        },
+        "risks": {
+          "$ref": "#/$defs/refs"
+        }
+      }
+    },
+    "recheck": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "probeId",
+            "trigger",
+            "outcome",
+            "baselineDigest",
+            "observedDigest"
+          ],
+          "properties": {
+            "probeId": {
+              "type": "string",
+              "pattern": "^P-[A-Za-z0-9._-]+$"
+            },
+            "trigger": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "outcome": {
+              "enum": [
+                "match",
+                "drift",
+                "not-replayable"
+              ]
+            },
+            "baselineDigest": {
+              "$ref": "#/$defs/digest"
+            },
+            "observedDigest": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/digest"
+                }
+              ]
+            },
+            "diff": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "verification": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "verificationId",
+            "outcome",
+            "evidenceSummary"
+          ],
+          "properties": {
+            "verificationId": {
+              "type": "string",
+              "pattern": "^V-[0-9]{3,6}$"
+            },
+            "outcome": {
+              "enum": [
+                "pass",
+                "fail",
+                "blocked"
+              ]
+            },
+            "evidenceSummary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            "artifactDigest": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/digest"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "verdict": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "enum": [
+            "PASS",
+            "NEEDS_FIXES",
+            "DESIGN_INVALID"
+          ]
+        }
+      ]
+    },
+    "supersedes": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "maxLength": 200
+        }
+      ]
+    },
+    "sha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The case state sequence at the moment this receipt was written. Two executions of the same Verification Contract entry can share a timestamp; only a monotonic sequence decides which one is the latest, and a re-run that fixed a failure must not be shadowed by the failure it fixed."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "divergence"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "observation",
+          "classification"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "recheck"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "recheck"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "verification-execution"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "verification"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "implementation-review"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "verdict"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "refs": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      }
+    }
+  }
+}

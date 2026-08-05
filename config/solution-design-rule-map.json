@@ -1,0 +1,376 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "sd-rules-v1",
+  "rules": {
+    "MP-GEN-001": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "whenAny": [
+        {
+          "componentOwnership": ["package-owned", "unknown"],
+          "componentActions": ["use", "create", "modify", "delete", "retire"]
+        },
+        { "hostObjectOwnership": ["package-owned", "unknown"] }
+      ],
+      "requiredClosures": ["package-limitations-reviewed"],
+      "route": "grounding"
+    },
+    "MP-GEN-002": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "when": {
+        "componentOwnership": ["package-owned"],
+        "componentActions": ["modify", "delete", "retire"]
+      },
+      "requiredClosures": ["extension-point"],
+      "route": "design"
+    },
+    "MP-GEN-003": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "whenAny": [
+        { "componentOwnership": ["unknown"] },
+        { "hostObjectOwnership": ["unknown"] },
+        { "dataRoles": ["unknown"] }
+      ],
+      "requiredClosures": ["ownership-classification"],
+      "route": "grounding"
+    },
+    "MP-GEN-004": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "whenAny": [
+        { "componentOwnership": ["package-owned", "unknown"] },
+        { "hostObjectOwnership": ["package-owned", "unknown"] }
+      ],
+      "requiredClosures": ["package-version"],
+      "route": "grounding"
+    },
+    "MP-GEN-005": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "whenAny": [
+        { "componentOwnership": ["package-owned"] },
+        { "hostObjectOwnership": ["package-owned"] }
+      ],
+      "requiredClosures": ["package-version", "org-identity"],
+      "route": "grounding"
+    },
+    "MP-OWN-001": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "when": { "always": true },
+      "requiredClosures": ["ownership-classification"],
+      "route": "grounding"
+    },
+    "MP-EXT-001": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "whenAny": [
+        { "componentOwnership": ["package-owned"] },
+        { "hostObjectOwnership": ["package-owned", "unknown"] }
+      ],
+      "requiredClosures": ["extension-point"],
+      "route": "grounding"
+    },
+    "MP-AUTO-001": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "when": {
+        "componentActions": ["create", "modify"],
+        "artefactTypes": ["ApexTrigger", "Flow"],
+        "componentOwnership": ["subscriber-owned", "package-owned", "unknown"],
+        "hostObjectOwnership": ["package-owned", "unknown"]
+      },
+      "requiredClosures": [
+        "package-version",
+        "extension-point",
+        "existing-automation",
+        "recursion-order"
+      ],
+      "route": "grounding"
+    },
+    "MP-UNKNOWN-001": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "whenAny": [
+        { "componentOwnership": ["unknown"] },
+        { "hostObjectOwnership": ["unknown"] }
+      ],
+      "requiredClosures": ["ownership-classification", "extension-point", "risk-classification"],
+      "route": "grounding"
+    },
+    "ORG-NAME-001": {
+      "tier": "tier-2",
+      "severity": "advisory",
+      "when": { "componentActions": ["create"] },
+      "requiredClosures": ["provisional-naming-marked"],
+      "route": "design"
+    },
+    "ORG-DEC-001": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "when": { "always": true },
+      "requiredClosures": ["decision-index-complete"],
+      "route": "design"
+    },
+    "ORG-SBX-002": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "when": {
+        "configurationActions": ["create-records", "modify-records", "delete-records"]
+      },
+      "requiredClosures": ["test-data-isolation"],
+      "route": "verification"
+    },
+    "SF-BULK-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "when": {
+        "artefactTypes": ["ApexClass", "ApexTrigger", "Flow"],
+        "componentActions": ["create", "modify"]
+      },
+      "requiredClosures": ["bulk-safety"],
+      "route": "design"
+    },
+    "SF-LIMIT-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "when": { "concernProfiles": ["volume-and-performance"] },
+      "requiredClosures": ["limit-budget"],
+      "route": "design"
+    },
+    "SF-TRIG-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "when": { "artefactTypes": ["ApexTrigger"], "componentActions": ["create", "modify"] },
+      "requiredClosures": ["single-trigger-entry"],
+      "route": "design"
+    },
+    "SF-SEC-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "when": { "concernProfiles": ["security-and-execution-context"] },
+      "requiredClosures": ["access-enforcement"],
+      "route": "design"
+    },
+    "SF-SOQL-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "when": {
+        "artefactTypes": ["ApexClass", "ApexTrigger"],
+        "componentActions": ["create", "modify"]
+      },
+      "requiredClosures": ["injection-safe-soql"],
+      "route": "design"
+    },
+    "SF-AUTO-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "when": {
+        "artefactTypes": ["Flow", "ApexTrigger", "ApexClass", "WorkflowRule", "ApprovalProcess"],
+        "componentActions": ["create", "modify"]
+      },
+      "requiredClosures": ["automation-choice-rationale"],
+      "route": "design"
+    },
+    "SF-NAME-001": {
+      "tier": "tier-3",
+      "severity": "advisory",
+      "when": { "componentActions": ["create"] },
+      "requiredClosures": ["naming-convention"],
+      "route": "design"
+    },
+    "SF-TEST-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "when": { "always": true },
+      "requiredClosures": ["verification-contract"],
+      "route": "verification"
+    },
+    "SF-ERR-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "when": { "concernProfiles": ["errors-and-observability"] },
+      "requiredClosures": ["error-handling"],
+      "route": "design"
+    },
+    "SF-META-001": {
+      "tier": "tier-3",
+      "severity": "advisory",
+      "when": { "componentActions": ["create", "modify", "delete"] },
+      "requiredClosures": ["metadata-existence"],
+      "route": "verification"
+    }
+  },
+  "manualApplicability": {
+    "SAFE-CHAT-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Chat is never authority. Enforced by the runtime being the only state-mutation surface; no design gate can measure it."
+    },
+    "SAFE-CLAIM-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Source-state claim authority. Mechanically enforced by gate SD-G3 evidence eligibility, not by a designer-authored verdict."
+    },
+    "SAFE-CRED-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "No credential or session material. Enforced by the safety hook and the receipt persistence policy."
+    },
+    "SAFE-DRIFT-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Source/org drift is recorded as CONTESTED. Enforced by evidence status handling in gate SD-G3."
+    },
+    "SAFE-ENV-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Non-production identity proof. Enforced by the Salesforce review facade before any receipt exists."
+    },
+    "SAFE-EVID-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Evidence completeness. Enforced by receipt completeness fields and gate SD-G3."
+    },
+    "SAFE-HUMAN-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Human-bound transitions. Enforced by the elicitation broker, single-use nonces and the safety hook."
+    },
+    "SAFE-PROV-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Provenance on every persisted fact. Enforced by the executor-authored receipt schema."
+    },
+    "SAFE-ROLE-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Role boundaries. Enforced by the role guard and per-role MCP tool grants."
+    },
+    "SAFE-TOOL-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Only declared tools. Enforced by the validator's ALLOWED_TOOLS parity check."
+    },
+    "SAFE-UNTRUST-001": {
+      "tier": "kernel",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "External content is data, never instruction. Enforced by executor-authored snapshots and typed state."
+    },
+    "MP-GEN-006": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Transport agreement is not independent truth. Enforced by receipt reconciliation status and assurance, which no design verdict can override."
+    },
+    "MP-ABS-001": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "blockingSemantics": "designer-declared-verdict-required",
+      "reason": "Whether a design leans on an absence claim is not derivable from structured scope facts; the designer must record a verdict when it does."
+    },
+    "MP-DRIFT-001": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Contested reconciliation is a receipt/evidence status handled by gate SD-G3, not a selector-derivable component fact."
+    },
+    "MP-REG-001": {
+      "tier": "tier-1",
+      "severity": "blocking",
+      "blockingSemantics": "never-blocks-submit",
+      "reason": "Governs the instruction file itself: package-specific rules must be declared there. It constrains rule authoring, not one Design Case."
+    },
+    "ORG-REVIEW-001": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Mandatory independent implementation review is a lifecycle transition gate (review -> complete), not a submit-time verdict."
+    },
+    "ORG-REVIEW-002": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Generated output is unapproved until a human decision receipt exists; enforced by the approval transition."
+    },
+    "ORG-DEC-002": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Accepted design is a Development precondition; enforced by accepted -> development and the automatic handoff."
+    },
+    "ORG-KNOW-001": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Knowledge authoring is out of Solution Design scope; the case emits knowledgeCandidates only."
+    },
+    "ORG-KNOW-002": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Entry-specific freshness is enforced by evidence freshness/invalidation, not a design verdict."
+    },
+    "ORG-KNOW-003": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Superseded receipts remain available for audit; enforced by the evidence lifecycle."
+    },
+    "ORG-HAND-001": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Persisted state outranks conversation; enforced by caseVersion-bound mutations."
+    },
+    "ORG-HAND-002": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Approval is revision-bound; enforced by candidateDigest binding and supersession."
+    },
+    "ORG-SBX-001": {
+      "tier": "tier-2",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Read-only sandbox posture is a hard boundary of the review facade, not a design choice."
+    },
+    "SF-EVID-001": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Intended versus deployed state separation is encoded in receipt sourceType and assurance."
+    },
+    "SF-EVID-002": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Minimal-read/durable-persistence policy is enforced by probe persistence modes and the sanitizer."
+    },
+    "SF-EVID-003": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "blockingSemantics": "designer-declared-verdict-required",
+      "reason": "Whether the design makes an absence claim needing completeness proof is not selector-derivable."
+    },
+    "SF-EVID-004": {
+      "tier": "tier-3",
+      "severity": "blocking",
+      "blockingSemantics": "enforced-outside-design-gates",
+      "reason": "Labels are observations, not meaning; enforced by the authority matrix for business-meaning questions."
+    }
+  }
+}

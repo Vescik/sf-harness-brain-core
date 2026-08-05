@@ -15,10 +15,12 @@ from typing import Any, Iterable
 
 
 ALLOWED_PREFIXES = {
+    # The Solution Designer writes exactly two things: the ignored ADO cache and the Design
+    # Case narrative (allowed by role_path_allowed). The record-free `output/solution-design/`
+    # lane was retired with the Design Case rebuild — a second creation path is a second truth.
     "solution-designer": (
         ".cache/ado-items/",
         ".cache/ado-wiki/",
-        "output/solution-design/",
     ),
     "config-investigator": (
         ".cache/knowledge-proposals/",
@@ -68,21 +70,11 @@ PREFLIGHT_CAPABILITIES = frozenset(
 )
 
 WORK_RECORD_COMMANDS = {
-    "solution-designer": {
-        "init",
-        "validate",
-        "context",
-        "transition",
-        "accept-handoff",
-        "append-evidence",
-        "digest",
-        "add-question",
-        "resolve-question",
-        "capture-repository",
-        "capture-org-review",
-        "create-handoff",
-        "bind-entry",
-    },
+    # The Solution Designer has NO work-record command grant. Its workflow state lives in the
+    # Design Case runtime, reached only through the solution-design MCP tools; the agent no
+    # longer holds execute/runInTerminal for workflow at all. An empty set here is the point:
+    # `command not in WORK_RECORD_COMMANDS.get(role, set())` denies every subcommand.
+    "solution-designer": set(),
     "config-investigator": {
         "validate",
         "context",
@@ -738,6 +730,13 @@ def is_governed_record_path(relative_path: str) -> bool:
         re.fullmatch(r"\.ai/change-records/[^/]+/record\.json", relative_path)
         or re.fullmatch(r"\.ai/change-records/[^/]+/handoffs/[^/]+\.json", relative_path)
         or re.fullmatch(r"\.ai/change-records/[^/]+/evidence/[^/]+\.json", relative_path)
+        # Design Case authority written only by the Solution Design runtime. Without these arms
+        # an agent could edit a candidate bundle or an approval receipt through the ordinary
+        # write path, and the digest binding would never see it.
+        or re.fullmatch(r"\.ai/change-records/[^/]+/candidates/[^/]+/[^/]+", relative_path)
+        or re.fullmatch(r"\.ai/change-records/[^/]+/approvals/[^/]+\.json", relative_path)
+        or re.fullmatch(r"\.ai/change-records/[^/]+/reviews/[^/]+\.json", relative_path)
+        or re.fullmatch(r"\.ai/change-records/[^/]+/divergences/[^/]+\.json", relative_path)
         or re.fullmatch(r"\.ai/knowledge/artifacts/.+\.md", lowered)
         or lowered == ".ai/knowledge/artifacts-ledger.jsonl"
         # Feature Entries and their ledger. The FILE needs its own arm, not just the ledger:

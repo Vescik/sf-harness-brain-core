@@ -9,10 +9,10 @@
   "servers": {
     "ado-readonly": {
       "type": "stdio",
-      "command": "npx",
+      "command": "node",
+      "cwd": "${workspaceFolder}",
       "args": [
-        "-y",
-        "@azure-devops/mcp@2.8.1",
+        "node_modules/@azure-devops/mcp/dist/index.js",
         "${env:ADO_ORGANIZATION}",
         "-d",
         "work-items",
@@ -39,6 +39,14 @@
       "cwd": "${workspaceFolder}",
       "args": [
         "scripts/knowledge_mcp_server.mjs"
+      ]
+    },
+    "solution-design": {
+      "type": "stdio",
+      "command": "node",
+      "cwd": "${workspaceFolder}",
+      "args": [
+        "scripts/solution_design_mcp_server.mjs"
       ]
     }
   }

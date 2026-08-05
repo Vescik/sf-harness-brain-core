@@ -93,8 +93,16 @@ class PreflightValidationTests(unittest.TestCase):
         # server-side read-only mode, so ADO read-only is harness policy, not construction
         # (owner decision 2026-07-14).
         mcp = json.loads((ROOT / ".vscode/mcp.json").read_text(encoding="utf-8"))
+        # solution-design joined on 2026-08-05 (Design Case rebuild P2). It binds no org, takes
+        # no inputs, and its only side effect is the governed case tree — read-only towards
+        # Salesforce by construction, like knowledge.
         self.assertEqual(
-            set(mcp["servers"]), {"ado-readonly", "salesforce-readonly", "knowledge"}
+            set(mcp["servers"]),
+            {"ado-readonly", "salesforce-readonly", "knowledge", "solution-design"},
+        )
+        self.assertEqual(
+            ["scripts/solution_design_mcp_server.mjs"],
+            mcp["servers"]["solution-design"]["args"],
         )
         knowledge = mcp["servers"]["knowledge"]
         self.assertEqual(["scripts/knowledge_mcp_server.mjs"], knowledge["args"])
@@ -103,7 +111,14 @@ class PreflightValidationTests(unittest.TestCase):
         self.assertEqual(readonly_args[readonly_args.index("--mode") + 1], "review")
         ado = mcp["servers"]["ado-readonly"]
         self.assertEqual("stdio", ado["type"])
-        self.assertIn("@azure-devops/mcp@2.8.1", ado["args"])
+        # 2026-08-05 (rebuild P3): the launcher moved off `npx -y` to the lockfile-resolved
+        # local entrypoint. A pinned version never pinned the fetch; the package now carries a
+        # dependency admission record and the workspace starts offline.
+        self.assertEqual("node", ado["command"])
+        self.assertIn("node_modules/@azure-devops/mcp/dist/index.js", ado["args"])
+        self.assertNotIn("npx", json.dumps(mcp))
+        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual("2.8.1", package["dependencies"]["@azure-devops/mcp"])
         self.assertEqual(
             ["work-items", "wiki", "test-plans", "search"],
             ado["args"][ado["args"].index("-d") + 1 :],

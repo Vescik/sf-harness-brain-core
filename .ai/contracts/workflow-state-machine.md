@@ -3,6 +3,14 @@
 Status: normative
 Schema version: 1
 
+> **Solution Design moved.** Since the 2026-08-05 rebuild, a Design Case owns its own state
+> machine, versioning, gates, human approval and handoff — see
+> [`solution-design-runtime.md`](solution-design-runtime.md). The `(phase, status)` pairs below
+> still govern the work-record lane used by Development, QA and Review, and a Design Case keeps a
+> schema-valid `record.json` so those consumers continue to resolve; but the Design Case's
+> authority is `record.json.solutionDesign`, its transitions are the runtime's, and `approve` is
+> not its approval path. Do not read design readiness from the table below.
+
 This contract defines durable workflow state for governed Salesforce work. Chat history, handoff
 button text, ignored cache, and generated output are navigation aids only. The authoritative state is
 the validated `.ai/change-records/<record-id>/record.json` file and its referenced handoff envelopes.
