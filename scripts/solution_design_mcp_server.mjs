@@ -20,6 +20,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
+import { fetchRequirement, fetchRevisions } from "./ado_requirement_adapter.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -69,6 +70,16 @@ export const TOOL_DEFINITIONS = [
         caseId: CASE_ID,
         writerId: { type: "string", description: "Configured user id acting as the case writer" },
         title: { type: "string" },
+        itemId: { type: "integer", minimum: 1, description: "ADO work item id" },
+        organization: { type: "string" },
+        project: { type: "string" },
+        includeHierarchy: { type: "boolean", default: true },
+        includeLinkedTestCases: {
+          type: "boolean",
+          description:
+            "Read formally related Test Cases as context only. Never a ranking, never the " +
+            "canonical verification plan.",
+        },
         orRequirement: {
           type: "string",
           description:
@@ -601,6 +612,57 @@ export async function callDesignTool(bridge, queue, name, input) {
     if (name === "design_request_writer_transfer") return callWriterTransfer(bridge, input);
     if (HUMAN_BOUND_TOOLS.has(name)) throw new ServerError(`UNROUTED_HUMAN_TOOL: ${name}`);
     const operation = DIRECT_OPERATIONS[name];
+
+    if (name === "design_open" && input.itemId !== undefined) {
+      const { itemId, organization, project, includeHierarchy, includeLinkedTestCases, ...rest } =
+        input;
+      const opened = unwrap(await bridge.call(operation, rest));
+      // The executor fetches the hierarchy itself. A snapshot the model transcribed from a
+      // tool result is model output, and model output is never evidence.
+      const snapshot = await fetchRequirement({
+        organization: organization ?? process.env.ADO_ORGANIZATION,
+        project,
+        itemId,
+        includeHierarchy: includeHierarchy !== false,
+        includeLinkedTestCases: Boolean(includeLinkedTestCases),
+      });
+      return unwrap(
+        await bridge.call("set-requirement-snapshot", {
+          caseId: input.caseId,
+          writerId: input.writerId,
+          expectedCaseVersion: opened.caseVersion,
+          executorAuthored: true,
+          adapterSnapshot: { ...snapshot, organization: organization ?? process.env.ADO_ORGANIZATION, project },
+        }),
+      );
+    }
+
+    if (name === "design_submit") {
+      // Cheap independent source-revision recheck immediately before candidate creation.
+      const context = unwrap(await bridge.call("context", { caseId: input.caseId, view: "verification" }));
+      const requirement = context.requirementSnapshot ?? {};
+      if (requirement.sourceType === "ado" && requirement.itemId) {
+        try {
+          const childIds = (requirement.acceptanceCriteria ?? [])
+            .filter((item) => item.sourceLocalKey === "work-item" && item.sourceItemId)
+            .map((item) => item.sourceItemId);
+          const observedRevisions = await fetchRevisions({
+            organization: process.env.ADO_ORGANIZATION,
+            project: context.workItemProject,
+            itemId: requirement.itemId,
+            childIds,
+          });
+          return unwrap(await bridge.call(operation, { ...input, observedRevisions }));
+        } catch (error) {
+          // A drift check that cannot run is reported, never silently skipped: submitting
+          // without it would hide exactly the staleness the check exists to catch.
+          throw new ServerError(
+            `REQUIREMENT_DRIFT_CHECK_FAILED: ${error instanceof Error ? error.message : "unknown"}`,
+          );
+        }
+      }
+    }
+
     return unwrap(await bridge.call(operation, input));
   });
 }

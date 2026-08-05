@@ -13,6 +13,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@azure-devops/mcp": "2.8.1",
     "@salesforce/mcp": "0.30.15"
   },
   "overrides": {

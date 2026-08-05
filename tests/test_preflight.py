@@ -111,7 +111,14 @@ class PreflightValidationTests(unittest.TestCase):
         self.assertEqual(readonly_args[readonly_args.index("--mode") + 1], "review")
         ado = mcp["servers"]["ado-readonly"]
         self.assertEqual("stdio", ado["type"])
-        self.assertIn("@azure-devops/mcp@2.8.1", ado["args"])
+        # 2026-08-05 (rebuild P3): the launcher moved off `npx -y` to the lockfile-resolved
+        # local entrypoint. A pinned version never pinned the fetch; the package now carries a
+        # dependency admission record and the workspace starts offline.
+        self.assertEqual("node", ado["command"])
+        self.assertIn("node_modules/@azure-devops/mcp/dist/index.js", ado["args"])
+        self.assertNotIn("npx", json.dumps(mcp))
+        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual("2.8.1", package["dependencies"]["@azure-devops/mcp"])
         self.assertEqual(
             ["work-items", "wiki", "test-plans", "search"],
             ado["args"][ado["args"].index("-d") + 1 :],
