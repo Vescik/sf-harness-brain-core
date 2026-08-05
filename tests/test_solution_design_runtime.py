@@ -2077,5 +2077,240 @@ class ArtefactCoverageTests(unittest.TestCase):
         )
 
 
+class ImplementationLoopTests(VerticalSliceTests):
+    """A prose duty to re-run a probe is not a loop. These are the typed facts that make one."""
+
+    def in_development(self) -> tuple[str, dict]:
+        case, version = self.build_ready_case()
+        submitted = self.ok("submit", caseId=case, writerId="writer-one", expectedCaseVersion=version)
+        self.assertEqual(submitted["submitResult"], "READY", submitted.get("gaps"))
+        self.ok(
+            "confirm-candidate",
+            caseId=case,
+            candidateId=submitted["candidateId"],
+            candidateDigest=submitted["candidateDigest"],
+            elicitation={"identity": "approver", "nonceDigest": "sha256:" + "a" * 64},
+        )
+        handed = self.ok("start-development", caseId=case)
+        self.assertEqual(handed["status"], "development")
+        return case, submitted
+
+    def test_an_implementation_local_defect_does_not_reopen_the_design(self) -> None:
+        case, submitted = self.in_development()
+        reported = self.ok(
+            "report-divergence",
+            caseId=case,
+            observation="The test fixture built the wrong record; the decision still holds.",
+            classification="implementation-local",
+        )
+        self.assertEqual(reported["status"], "development")
+        self.assertEqual(reported["activeCandidateRef"]["candidateId"], submitted["candidateId"])
+        receipt = json.loads(
+            (self.root / ".ai/change-records" / case / "divergences" / f"{reported['receiptId']}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIsNone(receipt["supersedes"])
+        self.assertEqual(receipt["reopenedObligations"], {})
+
+    def test_a_material_divergence_supersedes_the_approval_and_reopens_only_dependents(self) -> None:
+        case, submitted = self.in_development()
+        record = json.loads(
+            (self.root / ".ai/change-records" / case / "record.json").read_text(encoding="utf-8")
+        )
+        evidence_id = record["solutionDesign"]["evidenceRefs"][0]["receiptId"]
+        reported = self.ok(
+            "report-divergence",
+            caseId=case,
+            observation="The field already exists on the object under a different name.",
+            classification="design-material",
+            affectedRefs=[evidence_id],
+        )
+        self.assertEqual(reported["status"], "draft")
+        self.assertIsNone(reported["activeCandidateRef"])
+        self.assertEqual(reported["reopenedObligations"]["questions"], ["Q-001"])
+        self.assertEqual(reported["reopenedObligations"]["decisions"], ["D-001"])
+        receipt = json.loads(
+            (self.root / ".ai/change-records" / case / "divergences" / f"{reported['receiptId']}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(receipt["supersedes"], submitted["candidateId"])
+
+    def test_a_positive_recheck_leaves_a_receipt_too(self) -> None:
+        case, _submitted = self.in_development()
+        current = self.ok("context", caseId=case)
+        record = json.loads(
+            (self.root / ".ai/change-records" / case / "record.json").read_text(encoding="utf-8")
+        )
+        # Give the case a probe to replay.
+        record["solutionDesign"]["probes"] = [
+            {
+                "probeId": "P-001",
+                "questionId": "Q-001",
+                "origin": "question",
+                "kind": "object-baseline",
+                "target": {"objectApiName": "Case", "slice": None},
+                "queryDigest": None,
+                "suggestedSoql": None,
+                "replaySpec": None,
+                "expectedResultShape": "aggregate",
+                "completenessCriterion": "row count",
+                "requiredness": "advisory",
+                "conditionalPredicate": None,
+                "notApplicableReason": None,
+                "persistenceMode": "aggregate",
+                "freshnessClass": "volume-observation",
+                "stopCondition": "size known",
+                "status": "closed",
+                "receiptRef": record["solutionDesign"]["evidenceRefs"][0]["receiptId"],
+                "fitnessVerdict": "fit",
+                "decisionImpact": "confirmed-premise",
+                "recheckPlan": "before-review",
+            }
+        ]
+        (self.root / ".ai/change-records" / case / "record.json").write_text(
+            json.dumps(record, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        matched = self.ok("record-recheck", caseId=case, probeId="P-001", outcome="match")
+        self.assertEqual(matched["outcome"], "match")
+        receipt = json.loads(
+            (self.root / ".ai/change-records" / case / "divergences" / f"{matched['receiptId']}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(receipt["recheck"]["outcome"], "match")
+        self.assertEqual(receipt["recheck"]["trigger"], "before-review")
+
+    def test_drift_marks_the_receipt_stale_and_reopens_its_dependents(self) -> None:
+        case, _submitted = self.in_development()
+        record_path = self.root / ".ai/change-records" / case / "record.json"
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        evidence_id = record["solutionDesign"]["evidenceRefs"][0]["receiptId"]
+        record["solutionDesign"]["probes"] = [
+            {
+                "probeId": "P-001",
+                "questionId": "Q-001",
+                "origin": "question",
+                "kind": "object-baseline",
+                "target": {"objectApiName": "Case", "slice": None},
+                "queryDigest": None,
+                "suggestedSoql": None,
+                "replaySpec": None,
+                "expectedResultShape": "aggregate",
+                "completenessCriterion": "row count",
+                "requiredness": "advisory",
+                "conditionalPredicate": None,
+                "notApplicableReason": None,
+                "persistenceMode": "aggregate",
+                "freshnessClass": "volume-observation",
+                "stopCondition": "size known",
+                "status": "closed",
+                "receiptRef": evidence_id,
+                "fitnessVerdict": "fit",
+                "decisionImpact": "confirmed-premise",
+                "recheckPlan": "before-review",
+            }
+        ]
+        record_path.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+        drifted = self.ok("record-recheck", caseId=case, probeId="P-001", outcome="drift")
+        self.assertEqual(drifted["outcome"], "drift")
+        after = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(after["solutionDesign"]["evidenceRefs"][0]["status"], "stale")
+
+    def test_review_is_refused_until_every_contract_entry_has_a_passing_execution(self) -> None:
+        case, _submitted = self.in_development()
+        self.assertEqual(
+            self.fail("request-implementation-review", caseId=case), "VERIFICATION_INCOMPLETE"
+        )
+        self.assertEqual(
+            self.fail(
+                "record-verification",
+                caseId=case,
+                verificationId="V-404",
+                outcome="pass",
+                evidenceSummary="x",
+            ),
+            "UNKNOWN_VERIFICATION",
+        )
+        self.ok(
+            "record-verification",
+            caseId=case,
+            verificationId="V-001",
+            outcome="fail",
+            evidenceSummary="The bulk case assigned the wrong queue.",
+        )
+        self.assertEqual(
+            self.fail("request-implementation-review", caseId=case), "VERIFICATION_FAILED"
+        )
+        self.ok(
+            "record-verification",
+            caseId=case,
+            verificationId="V-001",
+            outcome="pass",
+            evidenceSummary="Positive, negative and bulk cases store the expected value.",
+        )
+        moved = self.ok("request-implementation-review", caseId=case)
+        self.assertEqual(moved["status"], "review")
+
+    def test_the_final_verdict_is_independent_and_bound_to_the_candidate(self) -> None:
+        case, submitted = self.in_development()
+        self.ok(
+            "record-verification",
+            caseId=case,
+            verificationId="V-001",
+            outcome="pass",
+            evidenceSummary="All three cases pass.",
+        )
+        self.ok("request-implementation-review", caseId=case)
+        self.assertEqual(
+            self.fail("review-implementation", caseId=case, reviewerId="writer-one", verdict="PASS"),
+            "SELF_REVIEW_DENIED",
+        )
+        needs_fixes = self.ok(
+            "review-implementation", caseId=case, reviewerId="reviewer-one", verdict="NEEDS_FIXES"
+        )
+        self.assertEqual(needs_fixes["status"], "development")
+        self.ok("request-implementation-review", caseId=case)
+        completed = self.ok(
+            "review-implementation", caseId=case, reviewerId="reviewer-one", verdict="PASS"
+        )
+        self.assertEqual(completed["status"], "complete")
+        receipt = json.loads(
+            (self.root / ".ai/change-records" / case / "divergences" / f"{completed['receiptId']}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(receipt["candidateDigest"], submitted["candidateDigest"])
+
+    def test_a_design_invalid_verdict_reopens_the_design(self) -> None:
+        case, _submitted = self.in_development()
+        self.ok(
+            "record-verification",
+            caseId=case,
+            verificationId="V-001",
+            outcome="pass",
+            evidenceSummary="Passes, but on a premise that turned out wrong.",
+        )
+        self.ok("request-implementation-review", caseId=case)
+        invalid = self.ok(
+            "review-implementation", caseId=case, reviewerId="reviewer-one", verdict="DESIGN_INVALID"
+        )
+        self.assertEqual(invalid["status"], "draft")
+        self.assertIsNone(invalid["activeCandidateRef"])
+
+    def test_divergence_is_refused_outside_the_delivery_states(self) -> None:
+        case, version = self.build_ready_case()
+        self.assertEqual(
+            self.fail(
+                "report-divergence",
+                caseId=case,
+                observation="too early",
+                classification="design-material",
+            ),
+            "INVALID_TRANSITION",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

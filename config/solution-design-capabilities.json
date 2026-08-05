@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "manifestVersion": "sd-cap-p5",
+  "manifestVersion": "sd-cap-p7",
   "gateEvaluatorVersion": "sd-gate-v1",
-  "materialSince": "sd-cap-p5",
+  "materialSince": "sd-cap-p7",
   "concernProfiles": [
     "data-model-and-configuration-integrity",
     "security-and-execution-context",
@@ -75,7 +75,12 @@
     "candidate->awaiting_design_review",
     "awaiting_design_review->awaiting_human",
     "awaiting_design_review->draft",
-    "awaiting_design_review->awaiting_human_input"
+    "awaiting_design_review->awaiting_human_input",
+    "development->draft",
+    "development->review",
+    "review->development",
+    "review->draft",
+    "review->complete"
   ],
   "generatedSections": [
     "ACCEPTANCE-CRITERIA",

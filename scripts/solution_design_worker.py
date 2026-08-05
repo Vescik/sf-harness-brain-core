@@ -1487,6 +1487,339 @@ class Worker:
         return summary
 
 
+    # -- implementation loop (P7) ------------------------------------------------------
+
+    def _accepted_candidate(self, state: dict[str, Any], case_id: str) -> dict[str, Any]:
+        active = state.get("activeCandidateRef")
+        if not active:
+            raise WorkerError("NO_CANDIDATE", "this case has no accepted candidate")
+        return active
+
+    def _write_divergence(
+        self, case_id: str, receipt: dict[str, Any], *, sequence: int
+    ) -> dict[str, Any]:
+        receipt["sequence"] = sequence
+        receipt["sha256"] = core.sd_digest(
+            {key: value for key, value in receipt.items() if key != "sha256"}
+        )
+        core.validate_against(receipt, core.DIVERGENCE_SCHEMA, "implementation receipt")
+        self.store.write_json(case_id, f"divergences/{receipt['receiptId']}.json", receipt)
+        return receipt
+
+    def op_report_divergence(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Record what implementation actually found, and reopen only what depends on it.
+
+        A material divergence pauses the whole delivery lane for this case and supersedes the
+        approval and the handoff. Targeted invalidation limits which design obligations must be
+        revisited; it never produces a partial approval or a half-valid handoff.
+        """
+        case_id = params["caseId"]
+        classification = params.get("classification")
+        if classification not in (
+            "implementation-local",
+            "design-material",
+            "requirement-change",
+            "evidence-drift",
+        ):
+            raise WorkerError("INVALID_INPUT", f"unknown divergence class {classification!r}")
+        observation = params.get("observation")
+        if not observation:
+            raise WorkerError("INVALID_INPUT", "an observation is required")
+        role = params.get("recordedBy", "development-assistant")
+        if role not in ("development-assistant", "guardrail-reviewer"):
+            raise WorkerError("ROLE_DENIED", "only Development or the Reviewer reports a divergence")
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            state = record["solutionDesign"]
+            if state["status"] not in ("development", "review"):
+                raise WorkerError(
+                    "INVALID_TRANSITION",
+                    f"a divergence is reported from development or review, not {state['status']}",
+                )
+            active = self._accepted_candidate(state, case_id)
+            affected = [str(ref)[:200] for ref in (params.get("affectedRefs") or [])][:100]
+            reopened = core.targeted_invalidation(state, affected)
+            receipt = {
+                "schemaVersion": 1,
+                "receiptId": identifier("DV"),
+                "kind": "divergence",
+                "caseId": case_id,
+                "candidateId": active["candidateId"],
+                "candidateDigest": active["candidateDigest"],
+                "recordedAt": utc_now(),
+                "recordedBy": role,
+                "observation": str(observation)[:4000],
+                "classification": classification,
+                "affectedRefs": affected,
+                "reopenedObligations": reopened if classification != "implementation-local" else {},
+                "recheck": None,
+                "verification": None,
+                "verdict": None,
+                "supersedes": None
+                if classification == "implementation-local"
+                else active["candidateId"],
+                "sha256": "sha256:" + "0" * 64,
+            }
+            self._write_divergence(case_id, receipt, sequence=state["stateSequence"])
+            if classification != "implementation-local":
+                # Material: the approved candidate no longer describes the change being built.
+                state["activeCandidateRef"] = None
+                state["status"] = "draft"
+                record["state"] = {"phase": "design", "status": "draft"}
+                record["currentHandoffId"] = None
+            state["stateSequence"] += 1
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["receiptId"] = receipt["receiptId"]
+        summary["classification"] = classification
+        summary["reopenedObligations"] = receipt["reopenedObligations"]
+        return summary
+
+    def op_record_recheck(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Replay a critical probe against its baseline and record match or drift.
+
+        A positive match is recorded too. "I re-ran it and it was fine" that leaves no receipt
+        is indistinguishable from never having re-run it.
+        """
+        case_id = params["caseId"]
+        probe_id = params.get("probeId")
+        outcome = params.get("outcome")
+        if outcome not in ("match", "drift", "not-replayable"):
+            raise WorkerError("INVALID_INPUT", f"unknown recheck outcome {outcome!r}")
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            state = record["solutionDesign"]
+            active = self._accepted_candidate(state, case_id)
+            probe = next(
+                (item for item in state["probes"] if item["probeId"] == probe_id), None
+            )
+            if probe is None:
+                raise WorkerError("UNKNOWN_PROBE", f"no probe {probe_id} in this case")
+            receipt = {
+                "schemaVersion": 1,
+                "receiptId": identifier("DV"),
+                "kind": "recheck",
+                "caseId": case_id,
+                "candidateId": active["candidateId"],
+                "candidateDigest": active["candidateDigest"],
+                "recordedAt": utc_now(),
+                "recordedBy": params.get("recordedBy", "development-assistant"),
+                "observation": None,
+                "classification": "evidence-drift" if outcome == "drift" else None,
+                "affectedRefs": [probe_id],
+                "reopenedObligations": {},
+                "recheck": {
+                    "probeId": probe_id,
+                    "trigger": probe["recheckPlan"],
+                    "outcome": outcome,
+                    "baselineDigest": core.sd_digest(
+                        {"probeId": probe_id, "receiptRef": probe.get("receiptRef")}
+                    ),
+                    "observedDigest": params.get("observedDigest"),
+                    "diff": params.get("diff"),
+                },
+                "verification": None,
+                "verdict": None,
+                "supersedes": None,
+                "sha256": "sha256:" + "0" * 64,
+            }
+            if outcome == "drift":
+                receipt["reopenedObligations"] = core.targeted_invalidation(
+                    state, [probe.get("receiptRef")] if probe.get("receiptRef") else []
+                )
+                for reference in state["evidenceRefs"]:
+                    if reference["receiptId"] == probe.get("receiptRef"):
+                        reference["status"] = "stale"
+            self._write_divergence(case_id, receipt, sequence=state["stateSequence"])
+            state["stateSequence"] += 1
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["receiptId"] = receipt["receiptId"]
+        summary["outcome"] = outcome
+        return summary
+
+    def op_record_verification(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Record one Verification Contract execution, bound to its contract entry."""
+        case_id = params["caseId"]
+        verification_id = params.get("verificationId")
+        outcome = params.get("outcome")
+        if outcome not in ("pass", "fail", "blocked"):
+            raise WorkerError("INVALID_INPUT", f"unknown verification outcome {outcome!r}")
+        summary_text = params.get("evidenceSummary")
+        if not summary_text:
+            raise WorkerError("INVALID_INPUT", "an evidence summary is required")
+        role = params.get("recordedBy", "development-assistant")
+        if role not in ("development-assistant", "test-strategist"):
+            raise WorkerError("ROLE_DENIED", "verification is executed by Development or QA")
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            state = record["solutionDesign"]
+            if state["status"] != "development":
+                raise WorkerError(
+                    "INVALID_TRANSITION", "verification executions belong to the development state"
+                )
+            active = self._accepted_candidate(state, case_id)
+            if not any(
+                entry["verificationId"] == verification_id
+                for entry in state["verificationContract"]
+            ):
+                raise WorkerError(
+                    "UNKNOWN_VERIFICATION",
+                    f"{verification_id} is not in the accepted Verification Contract",
+                )
+            receipt = {
+                "schemaVersion": 1,
+                "receiptId": identifier("DV"),
+                "kind": "verification-execution",
+                "caseId": case_id,
+                "candidateId": active["candidateId"],
+                "candidateDigest": active["candidateDigest"],
+                "recordedAt": utc_now(),
+                "recordedBy": role,
+                "observation": None,
+                "classification": None,
+                "affectedRefs": [verification_id],
+                "reopenedObligations": {},
+                "recheck": None,
+                "verification": {
+                    "verificationId": verification_id,
+                    "outcome": outcome,
+                    "evidenceSummary": str(summary_text)[:2000],
+                    "artifactDigest": params.get("artifactDigest"),
+                },
+                "verdict": None,
+                "supersedes": None,
+                "sha256": "sha256:" + "0" * 64,
+            }
+            self._write_divergence(case_id, receipt, sequence=state["stateSequence"])
+            state["stateSequence"] += 1
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["receiptId"] = receipt["receiptId"]
+        return summary
+
+    def _executed_verifications(self, case_id: str) -> dict[str, str]:
+        """The LATEST outcome per contract entry, ordered by the monotonic sequence.
+
+        Filename order is not chronological — the identifier carries a per-second timestamp and
+        random hex — so sorting by name let an earlier failure shadow the re-run that fixed it.
+        """
+        latest: dict[str, tuple[int, str]] = {}
+        directory = self.store.directory(case_id) / "divergences"
+        if not directory.is_dir():
+            return {}
+        for path in sorted(directory.glob("DV-*.json")):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if payload.get("kind") != "verification-execution":
+                continue
+            verification = payload["verification"]
+            sequence = int(payload.get("sequence", 0))
+            key = verification["verificationId"]
+            if key not in latest or sequence >= latest[key][0]:
+                latest[key] = (sequence, verification["outcome"])
+        return {key: outcome for key, (_sequence, outcome) in latest.items()}
+
+    def op_request_implementation_review(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Move to review once every required Verification Contract entry has an execution."""
+        case_id = params["caseId"]
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            state = record["solutionDesign"]
+            if state["status"] != "development":
+                raise WorkerError("INVALID_TRANSITION", f"cannot request review from {state['status']}")
+            self._accepted_candidate(state, case_id)
+            executed = self._executed_verifications(case_id)
+            missing = sorted(
+                entry["verificationId"]
+                for entry in state["verificationContract"]
+                if entry["verificationId"] not in executed
+            )
+            if missing:
+                raise WorkerError(
+                    "VERIFICATION_INCOMPLETE",
+                    f"the Verification Contract has no execution receipt for {', '.join(missing)}",
+                )
+            failed = sorted(key for key, outcome in executed.items() if outcome != "pass")
+            if failed:
+                raise WorkerError(
+                    "VERIFICATION_FAILED",
+                    f"{', '.join(failed)} did not pass; fix the implementation before review",
+                )
+            state["status"] = "review"
+            state["stateSequence"] += 1
+            record["state"] = {"phase": "review", "status": "ready"}
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["executedVerifications"] = sorted(executed)
+        return summary
+
+    def op_review_implementation(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Final independent verdict. Completion is bound to the accepted candidate."""
+        case_id = params["caseId"]
+        verdict = params.get("verdict")
+        if verdict not in ("PASS", "NEEDS_FIXES", "DESIGN_INVALID"):
+            raise WorkerError("INVALID_INPUT", f"unknown implementation verdict {verdict!r}")
+        reviewer = params.get("reviewerId")
+        if not reviewer:
+            raise WorkerError("INVALID_INPUT", "reviewerId is required")
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            state = record["solutionDesign"]
+            if state["status"] != "review":
+                raise WorkerError("INVALID_TRANSITION", f"cannot review from {state['status']}")
+            if reviewer == state["writerAssignment"]["writerId"]:
+                raise WorkerError(
+                    "SELF_REVIEW_DENIED", "the case writer cannot provide the final verdict"
+                )
+            active = self._accepted_candidate(state, case_id)
+            receipt = {
+                "schemaVersion": 1,
+                "receiptId": identifier("DV"),
+                "kind": "implementation-review",
+                "caseId": case_id,
+                "candidateId": active["candidateId"],
+                "candidateDigest": active["candidateDigest"],
+                "recordedAt": utc_now(),
+                "recordedBy": "guardrail-reviewer",
+                "observation": params.get("observation"),
+                "classification": None,
+                "affectedRefs": [],
+                "reopenedObligations": {},
+                "recheck": None,
+                "verification": None,
+                "verdict": verdict,
+                "supersedes": None,
+                "sha256": "sha256:" + "0" * 64,
+            }
+            self._write_divergence(case_id, receipt, sequence=state["stateSequence"])
+            if verdict == "PASS":
+                state["status"] = "complete"
+                record["state"] = {"phase": "complete", "status": "complete"}
+            elif verdict == "NEEDS_FIXES":
+                state["status"] = "development"
+                record["state"] = {"phase": "development", "status": "in_progress"}
+            else:
+                state["activeCandidateRef"] = None
+                state["status"] = "draft"
+                record["state"] = {"phase": "design", "status": "draft"}
+            state["stateSequence"] += 1
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["verdict"] = verdict
+        summary["receiptId"] = receipt["receiptId"]
+        return summary
+
+
 OPERATIONS = {
     "open": "op_open",
     "context": "op_context",
@@ -1498,6 +1831,11 @@ OPERATIONS = {
     "import-knowledge-reference": "op_import_knowledge_reference",
     "import-soql-envelope": "op_import_soql_envelope",
     "review-candidate": "op_review_candidate",
+    "report-divergence": "op_report_divergence",
+    "record-recheck": "op_record_recheck",
+    "record-verification": "op_record_verification",
+    "request-implementation-review": "op_request_implementation_review",
+    "review-implementation": "op_review_implementation",
     "record-human-input": "op_record_human_input",
     "confirm-candidate": "op_confirm_candidate",
     "request-candidate-revision": "op_request_candidate_revision",

@@ -3,7 +3,7 @@ name: test-strategist
 description: Assess QA inventory freshness and coverage sufficiency, select the appropriate QA skills, and produce a sourced coverage decision or reviewed test draft.
 argument-hint: "work item, feature, or functional area"
 target: vscode
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'vscode/askQuestions', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'vscode/askQuestions', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'solution-design/design_context', 'solution-design/design_record_verification']
 handoffs:
   - label: Coverage Work Needed
     agent: development-assistant
@@ -69,3 +69,11 @@ selected for the current record.
 
 Return `SUFFICIENT`, `GAPS — ACTION REQUIRED`, or `INCOMPLETE — NEEDS HUMAN`, with evidence.
 Also return `recordId`, record revision, evidence IDs, and the next persisted `handoffId` when used.
+
+## Verification Contract
+
+The Verification Contract on the accepted Design Case candidate is the canonical plan of required
+verification — read it with `design_context`. It is not a suggestion list and it was never
+model-ranked. Record an execution with `design_record_verification`: the contract entry it
+discharges, the outcome, and the evidence behind it. Formally linked ADO Test Cases are
+downstream implementation evidence, not the plan.
