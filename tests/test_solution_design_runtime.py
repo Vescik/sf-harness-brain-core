@@ -1852,5 +1852,230 @@ class ConfigRecordSkillTests(unittest.TestCase):
         self.assertIn("slice-bounded", self.SKILL)
 
 
+class DesignChallengeTests(VerticalSliceTests):
+    """A high-risk candidate must survive an independent challenge before a human sees it."""
+
+    # Rules the package-facing trigger makes applicable on top of the standard-risk set.
+    HIGH_RISK_RULES = [
+        "MP-GEN-001",
+        "MP-GEN-004",
+        "MP-GEN-005",
+        "MP-EXT-001",
+        "MP-AUTO-001",
+        "SF-BULK-001",
+        "SF-TRIG-001",
+        "SF-SOQL-001",
+        "SF-AUTO-001",
+        "SF-SEC-001",
+        "SF-LIMIT-001",
+        "SF-ERR-001",
+    ]
+    HIGH_RISK_CONCERNS = [
+        "security-and-execution-context",
+        "transaction-and-automation",
+        "volume-and-performance",
+        "errors-and-observability",
+        "package-boundaries-and-upgrade",
+        "integrations-and-contracts",
+    ]
+
+    def high_risk_case(self) -> tuple[str, str, str]:
+        """A genuinely READY high-risk candidate — not a skipped test dressed as coverage.
+
+        Turning the field into a trigger on a package-owned object legitimately pulls in the
+        managed-package and Apex rule set and six more concerns. Discharging them here is the
+        point: the challenge lane is only proven if a high-risk case can actually reach it.
+        """
+        case, version = self.build_ready_case()
+        record_path = self.root / ".ai/change-records" / case / "record.json"
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        component = record["solutionDesign"]["scope"]["components"][0]
+        component["artefactType"] = "ApexTrigger"
+        component["apiName"] = "CaseRoutingTrigger"
+        component["hostObjectOwnership"] = "package-owned"
+        component["packageBoundaryRefs"] = ["Case"]
+        component["extensionPointStatus"] = "available"
+        record_path.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
+
+        current = self.ok("context", caseId=case)
+        operations = [
+            {"kind": "rule-verdict", "payload": rule_verdict(rule_id)}
+            for rule_id in self.HIGH_RISK_RULES
+        ] + [
+            {
+                "kind": "concern-disposition",
+                "payload": {
+                    "profileId": profile,
+                    "concernId": "COV-" + profile.upper(),
+                    "applicability": "applicable",
+                    "status": "addressed",
+                    "triggerRefs": [component["componentId"]],
+                    "treatmentRefs": ["#D-001"],
+                    "verificationRefs": ["V-001"],
+                },
+            }
+            for profile in self.HIGH_RISK_CONCERNS
+        ]
+        applied = self.ok(
+            "apply",
+            caseId=case,
+            writerId="writer-one",
+            expectedCaseVersion=current["caseVersion"],
+            operations=operations,
+        )
+        # The runtime seeds the package-boundary question the moment the scope touches a
+        # package-owned surface. Answering it with a named human authority is part of what
+        # makes this case high-risk-but-ready; leaving it open would just prove seeding works.
+        answered = self.ok(
+            "record-human-input",
+            caseId=case,
+            expectedCaseVersion=applied["caseVersion"],
+            answer=(
+                "The vendor documents a before-save trigger extension point on this object for "
+                "the installed version, and no package automation runs in the same transaction."
+            ),
+            authorityRole="package-vendor",
+            target={"kind": "question", "id": core.PACKAGE_QUESTION_ID},
+            elicitation={"identity": "package-sme", "nonceDigest": "sha256:" + "d" * 64},
+        )
+        return case, answered["caseVersion"], component["componentId"]
+
+    def test_a_high_risk_candidate_cannot_reach_a_human_without_the_challenge(self) -> None:
+        case, version, _component = self.high_risk_case()
+        submitted = self.ok("submit", caseId=case, writerId="writer-one", expectedCaseVersion=version)
+        self.assertEqual(submitted["submitResult"], "READY", submitted.get("gaps"))
+        self.assertEqual(submitted["status"], "awaiting_design_review")
+        self.assertEqual(submitted["riskClassification"]["tier"], "high")
+        # The human decision surface refuses a candidate that has not been challenged.
+        self.assertEqual(
+            self.fail(
+                "confirm-candidate",
+                caseId=case,
+                candidateId=submitted["candidateId"],
+                candidateDigest=submitted["candidateDigest"],
+                elicitation={"identity": "approver", "nonceDigest": "sha256:" + "a" * 64},
+            ),
+            "INVALID_TRANSITION",
+        )
+
+    def test_the_author_cannot_review_their_own_design(self) -> None:
+        case, version, _component = self.high_risk_case()
+        submitted = self.ok("submit", caseId=case, writerId="writer-one", expectedCaseVersion=version)
+        self.assertEqual(submitted["submitResult"], "READY", submitted.get("gaps"))
+        self.assertEqual(
+            self.fail(
+                "review-candidate",
+                caseId=case,
+                candidateId=submitted["candidateId"],
+                candidateDigest=submitted["candidateDigest"],
+                reviewerId="writer-one",
+                verdict="PASS",
+            ),
+            "SELF_REVIEW_DENIED",
+        )
+
+    def test_pass_moves_the_candidate_to_the_human_decision(self) -> None:
+        case, version, _component = self.high_risk_case()
+        submitted = self.ok("submit", caseId=case, writerId="writer-one", expectedCaseVersion=version)
+        self.assertEqual(submitted["submitResult"], "READY", submitted.get("gaps"))
+        reviewed = self.ok(
+            "review-candidate",
+            caseId=case,
+            candidateId=submitted["candidateId"],
+            candidateDigest=submitted["candidateDigest"],
+            reviewerId="reviewer-one",
+            verdict="PASS",
+        )
+        self.assertEqual(reviewed["status"], "awaiting_human")
+        receipt = json.loads(
+            (self.root / ".ai/change-records" / case / "reviews" / f"{reviewed['receiptId']}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(receipt["verdict"], "PASS")
+        self.assertEqual(receipt["reviewerRole"], "guardrail-reviewer")
+
+    def test_a_revision_verdict_supersedes_the_candidate_and_names_what_must_change(self) -> None:
+        case, version, component = self.high_risk_case()
+        submitted = self.ok("submit", caseId=case, writerId="writer-one", expectedCaseVersion=version)
+        self.assertEqual(submitted["submitResult"], "READY", submitted.get("gaps"))
+        self.assertEqual(
+            self.fail(
+                "review-candidate",
+                caseId=case,
+                candidateId=submitted["candidateId"],
+                candidateDigest=submitted["candidateDigest"],
+                reviewerId="reviewer-one",
+                verdict="REVISE_GROUNDING",
+            ),
+            "INVALID_INPUT",
+        )
+        reviewed = self.ok(
+            "review-candidate",
+            caseId=case,
+            candidateId=submitted["candidateId"],
+            candidateDigest=submitted["candidateDigest"],
+            reviewerId="reviewer-one",
+            verdict="REVISE_GROUNDING",
+            findings=[
+                {
+                    "summary": "The extension point is asserted, not evidenced.",
+                    "route": "grounding",
+                    "affectedRefs": [component],
+                }
+            ],
+        )
+        self.assertEqual(reviewed["status"], "draft")
+        self.assertIsNone(reviewed["activeCandidateRef"])
+        receipt = json.loads(
+            (self.root / ".ai/change-records" / case / "reviews" / f"{reviewed['receiptId']}.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(receipt["supersedes"], submitted["candidateId"])
+        self.assertTrue(receipt["openedObligations"])
+
+    def test_blocked_needs_human_routes_to_the_pre_candidate_human_lane(self) -> None:
+        case, version, component = self.high_risk_case()
+        submitted = self.ok("submit", caseId=case, writerId="writer-one", expectedCaseVersion=version)
+        self.assertEqual(submitted["submitResult"], "READY", submitted.get("gaps"))
+        reviewed = self.ok(
+            "review-candidate",
+            caseId=case,
+            candidateId=submitted["candidateId"],
+            candidateDigest=submitted["candidateDigest"],
+            reviewerId="reviewer-one",
+            verdict="BLOCKED_NEEDS_HUMAN",
+            findings=[
+                {
+                    "summary": "Only the vendor can confirm this surface is extensible.",
+                    "route": "human-input",
+                    "affectedRefs": [component],
+                }
+            ],
+        )
+        self.assertEqual(reviewed["status"], "awaiting_human_input")
+        self.assertNotIn("blocked", core.STATES)
+
+
+class ArtefactCoverageTests(unittest.TestCase):
+    """Every implementation target must be visible in a table a human reads."""
+
+    def test_a_mutating_component_marked_out_of_scope_blocks(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "sdcore_tests", ROOT / "tests" / "test_solution_design_core.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        state = module.ready_state()
+        state["scope"]["components"][0]["disposition"] = "out-of-scope"
+        state["scope"]["components"][0]["dispositionReason"] = "changed my mind"
+        report = core.evaluate(state, design_text=module.DESIGN_TEXT)
+        self.assertTrue(
+            any(gap["requiredClosure"] == "artefact-coverage" for gap in report["gaps"]),
+            report["gaps"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

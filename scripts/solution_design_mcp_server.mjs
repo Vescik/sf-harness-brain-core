@@ -233,6 +233,41 @@ export const TOOL_DEFINITIONS = [
     },
   },
   {
+    name: "design_review_candidate",
+    description:
+      "Independent design challenge of a high-risk candidate. Reviewer-only: it records a " +
+      "verdict and findings, and it can neither edit the design nor close an author obligation. " +
+      "A revision verdict supersedes the candidate and reopens a targeted draft.",
+    inputSchema: {
+      type: "object",
+      additionalProperties: false,
+      required: ["caseId", "candidateId", "candidateDigest", "reviewerId", "verdict"],
+      properties: {
+        caseId: CASE_ID,
+        candidateId: { type: "string" },
+        candidateDigest: { type: "string" },
+        reviewerId: { type: "string" },
+        verdict: { enum: ["PASS", "REVISE_GROUNDING", "REVISE_DESIGN", "BLOCKED_NEEDS_HUMAN"] },
+        reason: { type: "string" },
+        findings: {
+          type: "array",
+          maxItems: 100,
+          items: {
+            type: "object",
+            required: ["summary", "route"],
+            properties: {
+              summary: { type: "string" },
+              route: {
+                enum: ["requirements", "grounding", "design", "verification", "human-input"],
+              },
+              affectedRefs: { type: "array", items: { type: "string" } },
+            },
+          },
+        },
+      },
+    },
+  },
+  {
     name: "design_request_human_input",
     description:
       "Ask the named human, through VS Code, for a material answer or risk acceptance. This " +
@@ -325,6 +360,7 @@ const DIRECT_OPERATIONS = {
   design_import_soql_envelope: "import-soql-envelope",
   design_submit: "submit",
   design_start_development: "start-development",
+  design_review_candidate: "review-candidate",
 };
 
 const HUMAN_BOUND_TOOLS = new Set([

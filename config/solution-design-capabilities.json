@@ -60,7 +60,8 @@
     "knowledgeReference": true
   },
   "riskPolicies": [
-    "standard-risk-seed"
+    "standard-risk-seed",
+    "high-risk-independent-challenge"
   ],
   "transitions": [
     "draft->draft",
@@ -70,7 +71,11 @@
     "candidate->awaiting_human",
     "awaiting_human->accepted",
     "awaiting_human->draft",
-    "accepted->development"
+    "accepted->development",
+    "candidate->awaiting_design_review",
+    "awaiting_design_review->awaiting_human",
+    "awaiting_design_review->draft",
+    "awaiting_design_review->awaiting_human_input"
   ],
   "generatedSections": [
     "ACCEPTANCE-CRITERIA",

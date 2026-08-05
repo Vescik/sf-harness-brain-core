@@ -1061,6 +1061,99 @@ class Worker:
         summary["candidateDigest"] = bundle["candidateDigest"]
         return summary
 
+    # -- op: independent design challenge ---------------------------------------------
+
+    def op_review_candidate(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Guardrail Reviewer challenge of a high-risk candidate.
+
+        The reviewer never edits the design and never closes an author's obligation — a reviewer
+        who can fix what they found is not an independent check. A revision verdict creates
+        explicit obligations and a new draft; BLOCKED_NEEDS_HUMAN supersedes the candidate and
+        routes to the pre-candidate human lane rather than inventing a terminal blocked state.
+        """
+        case_id = params["caseId"]
+        verdict = params.get("verdict")
+        if verdict not in ("PASS", "REVISE_GROUNDING", "REVISE_DESIGN", "BLOCKED_NEEDS_HUMAN"):
+            raise WorkerError("INVALID_INPUT", f"unknown review verdict {verdict!r}")
+        findings = params.get("findings") or []
+        if verdict != "PASS" and not findings:
+            raise WorkerError(
+                "INVALID_INPUT", "a revision or block verdict must name what has to change"
+            )
+        with gs.Lease.acquire(self.store.runtime_root, self.store.directory(case_id)) as lease:
+            record, design = self.store.load(case_id)
+            state = record["solutionDesign"]
+            active = state.get("activeCandidateRef")
+            if not active:
+                raise WorkerError("NO_CANDIDATE", "this case has no candidate to review")
+            if state["status"] != "awaiting_design_review":
+                raise WorkerError(
+                    "INVALID_TRANSITION",
+                    f"a candidate in {state['status']} is not awaiting an independent challenge",
+                )
+            if params.get("candidateId") != active["candidateId"] or params.get(
+                "candidateDigest"
+            ) != active["candidateDigest"]:
+                raise WorkerError(
+                    "CANDIDATE_MISMATCH", "the review names a different candidate identity or digest"
+                )
+            reviewer = params.get("reviewerId")
+            if not reviewer:
+                raise WorkerError("INVALID_INPUT", "reviewerId is required")
+            if reviewer == state["writerAssignment"]["writerId"]:
+                raise WorkerError(
+                    "SELF_REVIEW_DENIED",
+                    "the case writer cannot provide the independent challenge of their own design",
+                )
+            receipt = {
+                "schemaVersion": 1,
+                "receiptId": identifier("DR"),
+                "kind": "design-review",
+                "caseId": case_id,
+                "recordedAt": utc_now(),
+                "caseVersionAtCommit": self.store.case_version(record, design),
+                "candidateId": active["candidateId"],
+                "candidateDigest": active["candidateDigest"],
+                "human": None,
+                "reason": params.get("reason"),
+                "verdict": verdict,
+                "reviewerRole": "guardrail-reviewer",
+                "findings": [
+                    {
+                        "summary": str(item.get("summary", ""))[:1000],
+                        "route": item.get("route", "design"),
+                        "affectedRefs": [str(ref)[:200] for ref in (item.get("affectedRefs") or [])][:50],
+                    }
+                    for item in findings
+                ][:100],
+                "writerTransfer": None,
+                "handoff": None,
+                "supersedes": None if verdict == "PASS" else active["candidateId"],
+                "openedObligations": [
+                    f"{item.get('route', 'design')}:{str(item.get('summary', ''))[:120]}"
+                    for item in findings
+                ][:100],
+                "sha256": "sha256:" + "0" * 64,
+            }
+            self._write_receipt(case_id, receipt)
+            if verdict == "PASS":
+                state["status"] = "awaiting_human"
+                active["status"] = "awaiting-human"
+            else:
+                state["activeCandidateRef"] = None
+                state["status"] = (
+                    "awaiting_human_input" if verdict == "BLOCKED_NEEDS_HUMAN" else "draft"
+                )
+                record["state"] = {"phase": "design", "status": "draft"}
+            state["stateSequence"] += 1
+            record, design = self._render_and_commit(
+                case_id, record, design, lease=lease, expected_design_digest=core.text_digest(design)
+            )
+        summary = self._summary(case_id, record, design)
+        summary["verdict"] = verdict
+        summary["receiptId"] = receipt["receiptId"]
+        return summary
+
     # -- human-bound operations ------------------------------------------------------
 
     def _human_block(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -1410,6 +1503,7 @@ OPERATIONS = {
     "set-requirement-snapshot": "op_set_requirement_snapshot",
     "import-knowledge-reference": "op_import_knowledge_reference",
     "import-soql-envelope": "op_import_soql_envelope",
+    "review-candidate": "op_review_candidate",
     "record-human-input": "op_record_human_input",
     "confirm-candidate": "op_confirm_candidate",
     "request-candidate-revision": "op_request_candidate_revision",
