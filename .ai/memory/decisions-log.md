@@ -1068,3 +1068,16 @@ there was no migration.
   `test_receipt_gates.test_fresh_receipt_and_clean_tree_allow` fails in full-suite order and
   passes alone on the unmodified baseline — pre-existing order-dependent pollution worth its
   own small fix.
+
+## 2026-08-06 — F-3 decided: entry-check treats draft sentinels as outstanding work
+
+Owner decision (option B of three presented): an unfilled `<AGENT_…>` sentinel in a
+draft-lane entry no longer fails `entry-check` — it is counted and disclosed as
+`awaitingDescription`. Rationale: a freshly mass-drafted corpus is the normal state of
+incremental documentation, and failing the whole gate on it (observed live on the 527-entry
+KM-16D corpus) both contradicted compute_lane's stated lane philosophy and would teach the
+team to ignore a permanently red gate. Unchanged and pinned by negative tests: the sentinel
+outside the draft lane is corruption and still fails the check; entry-approve and
+entry-describe reject the sentinel unconditionally. Rejected alternatives: status quo
+(gate red for the whole documentation period) and a --strict dual mode (two semantics for
+one command invite guard/parser-style drift). Commit 8426155.
