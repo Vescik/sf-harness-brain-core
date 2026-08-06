@@ -115,6 +115,7 @@ ALL_LANES = (
 
 GLOBAL_FACETS = {
     "metadataType": "string",
+    "family": "string",
     "fullName": "string",
     "namespace": "string",
     "packageVersionId": "string",
@@ -922,6 +923,13 @@ def project_entry(path: Path, lane: dict[str, Any]) -> dict[str, Any]:
         "effectiveState": lane["lane"],
         "extractionCoverage.typeFacts": front.get("extractionCoverage", {}).get("typeFacts"),
     }
+    # `.get`, never `[]`: an entry whose type has no family (hand-authored, unknown type)
+    # is already lane not-effective — projection must not crash the index build on it.
+    # Owner decision O-2 (2026-08-06): family is a hard facet only, never BM25 text —
+    # navigation, not semantics.
+    family = store.FAMILY_BY_TYPE.get(subject["metadataType"])
+    if family:
+        facets["family"] = family
     projector = PROFILE_PROJECTORS.get(subject["metadataType"])
     if projector:
         facets.update({k: v for k, v in projector(front).items() if v is not None})
@@ -1457,6 +1465,12 @@ def build_index(check: bool = False, full: bool = False) -> dict[str, Any]:
                 1 for item in projections if item["facets"]["metadataType"] == metadata_type
             )
             for metadata_type in sorted({item["facets"]["metadataType"] for item in projections})
+        },
+        "familyCounts": {
+            family: sum(1 for item in projections if item["facets"].get("family") == family)
+            for family in sorted(
+                {item["facets"]["family"] for item in projections if "family" in item["facets"]}
+            )
         },
         "corpusFingerprint": corpus_fingerprint(),
         "codeFingerprint": code_fingerprint(),
