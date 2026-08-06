@@ -21,7 +21,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -388,18 +388,91 @@ const SPAWN_ENV = {
   CLICOLOR_FORCE: "0",
 };
 
-function runJsonProcess(command, args, runtime, failureCode) {
+// Windows `sf` installs are `sf.cmd` (npm) or `sf.exe` (installer); Node >=18.20.2 refuses to
+// spawn .cmd/.bat without a shell (CVE-2024-27980) and on Node 24 throws EINVAL synchronously
+// (confirmed live on the team machine, 2026-08-06). Resolution follows where.exe semantics —
+// PATH directory order first, PATHEXT order within a directory — so a machine with both
+// installs behaves exactly like the terminal. `.ps1` is skipped deliberately: PowerShell is
+// blocked on team machines, so selecting it would trade CLI_UNAVAILABLE for a worse failure.
+const DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD";
+const SHELL_EXTENSIONS = new Set([".cmd", ".bat"]);
+
+export function scanPathForSf(pathValue, pathextValue) {
+  const extensions = String(pathextValue || DEFAULT_PATHEXT)
+    .split(";")
+    .map((ext) => ext.trim().toLowerCase())
+    .filter((ext) => ext.startsWith(".") && ext !== ".ps1");
+  for (const dir of String(pathValue || "").split(";")) {
+    if (!dir) continue;
+    for (const ext of extensions) {
+      // Lowercased on purpose: Windows filesystems match case-insensitively, and the
+      // unit tests exercise this scan on case-sensitive Linux/macOS filesystems too.
+      const candidate = join(dir, `sf${ext}`);
+      if (existsSync(candidate)) {
+        return { path: candidate, needsShell: SHELL_EXTENSIONS.has(ext) };
+      }
+    }
+  }
+  return null;
+}
+
+let cachedSfResolution;
+export function resolveSfExecutable() {
+  if (process.platform !== "win32") return { path: "sf", needsShell: false };
+  if (cachedSfResolution === undefined) {
+    cachedSfResolution = scanPathForSf(SPAWN_ENV.PATH, process.env.PATHEXT);
+    process.stderr.write(
+      cachedSfResolution
+        ? `sf resolution: path=${cachedSfResolution.path} needsShell=${cachedSfResolution.needsShell}\n`
+        : "sf resolution: not found on PATH\n",
+    );
+  }
+  return cachedSfResolution;
+}
+
+// Fail-closed on quoting, on every platform: no argument may contain a double quote, a
+// newline, or a control character. Today none can (alias/object regexes, pinned query
+// profiles), so this rejects nothing — it exists so a future profile change cannot open a
+// silent cmd.exe quoting hole.
+export function assertPlainCliArgument(value) {
+  if (/["\u0000-\u001f\u007f]/.test(value)) {
+    throw new ReviewError("CLI_SCHEMA_MISMATCH", "INCOMPLETE");
+  }
+  return value;
+}
+
+export function buildComSpecInvocation(executablePath, args) {
+  const quoted = [executablePath, ...args]
+    .map((item) => `"${assertPlainCliArgument(item)}"`)
+    .join(" ");
+  return {
+    command: process.env.ComSpec || "cmd.exe",
+    // /s strips the outer quotes and preserves every inner pair verbatim.
+    args: ["/d", "/s", "/c", `"${quoted}"`],
+  };
+}
+
+function runJsonProcess(command, args, runtime, failureCode, spawnOptions = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
     let settled = false;
     let stdout = "";
     let stderrBytes = 0;
     const maxBytes = runtime.policy.maxVendorPayloadBytes;
-    const child = spawn(command, args, {
-      cwd: REPO_ROOT,
-      env: SPAWN_ENV,
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    let child;
+    try {
+      child = spawn(command, args, {
+        cwd: REPO_ROOT,
+        env: SPAWN_ENV,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+        ...spawnOptions,
+      });
+    } catch (error) {
+      // Node 24 throws EINVAL synchronously instead of emitting "error".
+      process.stderr.write(`sf spawn failed: ${error?.code || "unknown"}\n`);
+      rejectPromise(new ReviewError(failureCode, "INCOMPLETE"));
+      return;
+    }
     const finishError = (error) => {
       if (settled) return;
       settled = true;
@@ -440,12 +513,10 @@ function runJsonProcess(command, args, runtime, failureCode) {
 }
 
 async function cli(runtime, args, failureCode = "CLI_UNAVAILABLE") {
-  const executable = testExecutable(
-    "SF_HARNESS_SF_EXECUTABLE",
-    process.platform === "win32" ? "sf.cmd" : "sf",
-  );
-  let baseArgs = [];
   if (TEST_MODE) {
+    // Injected executable, resolver deliberately bypassed (tests pin this).
+    const executable = testExecutable("SF_HARNESS_SF_EXECUTABLE", "sf");
+    let baseArgs = [];
     try {
       baseArgs = JSON.parse(process.env.SF_HARNESS_SF_ARGS_JSON || "[]");
     } catch {
@@ -454,8 +525,18 @@ async function cli(runtime, args, failureCode = "CLI_UNAVAILABLE") {
     if (!Array.isArray(baseArgs) || baseArgs.some((item) => typeof item !== "string")) {
       throw new ReviewError("CLI_UNAVAILABLE", "INCOMPLETE");
     }
+    return runJsonProcess(executable, [...baseArgs, ...args], runtime, failureCode);
   }
-  return runJsonProcess(executable, [...baseArgs, ...args], runtime, failureCode);
+  for (const arg of args) assertPlainCliArgument(arg);
+  const resolved = resolveSfExecutable();
+  if (!resolved) throw new ReviewError(failureCode, "INCOMPLETE");
+  if (!resolved.needsShell) {
+    return runJsonProcess(resolved.path, args, runtime, failureCode);
+  }
+  const invocation = buildComSpecInvocation(resolved.path, args);
+  return runJsonProcess(invocation.command, invocation.args, runtime, failureCode, {
+    windowsVerbatimArguments: true,
+  });
 }
 
 function requireSuccessfulCli(payload) {
@@ -1609,8 +1690,16 @@ async function main() {
   });
 }
 
-main().catch((error) => {
-  const code = error instanceof ReviewError ? error.code : "INTERNAL_ERROR";
-  process.stderr.write(`Salesforce review facade blocked: ${code}\n`);
-  process.exit(2);
-});
+const entryPath = process.argv[1] ? resolve(process.argv[1]) : "";
+const selfPath = fileURLToPath(import.meta.url);
+const invokedDirectly =
+  process.platform === "win32"
+    ? entryPath.toLowerCase() === selfPath.toLowerCase()
+    : entryPath === selfPath;
+if (invokedDirectly) {
+  main().catch((error) => {
+    const code = error instanceof ReviewError ? error.code : "INTERNAL_ERROR";
+    process.stderr.write(`Salesforce review facade blocked: ${code}\n`);
+    process.exit(2);
+  });
+}

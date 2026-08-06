@@ -1225,5 +1225,137 @@ class PinnedSalesforceMcpCompatibilityTests(unittest.TestCase):
         )
 
 
+class WindowsSfResolutionTests(unittest.TestCase):
+    """Pin the Windows sf resolver and the ComSpec invocation builder.
+
+    Node >=18.20.2 refuses to spawn .cmd/.bat without a shell (CVE-2024-27980); the resolver
+    plus the ComSpec branch is the fix. These tests import the exported functions directly,
+    so the scan logic runs on every platform; the real ComSpec round-trip is Windows-only.
+    """
+
+    SERVER_URI = (ROOT / "scripts" / "salesforce_review_server.mjs").as_uri()
+
+    def _eval_node(self, body: str, env: dict[str, str] | None = None) -> str:
+        script = f"import * as facade from {json.dumps(self.SERVER_URI)};\n{body}"
+        merged = {**os.environ, **(env or {})}
+        completed = subprocess.run(
+            ["node", "--input-type=module", "--eval", script],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+            env=merged,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        return completed.stdout.strip()
+
+    def _scan(self, path_value: str, pathext_value: str) -> Any:
+        out = self._eval_node(
+            "process.stdout.write(JSON.stringify(facade.scanPathForSf("
+            f"{json.dumps(path_value)}, {json.dumps(pathext_value)})));"
+        )
+        return json.loads(out)
+
+    def test_scan_flags_shell_for_cmd_and_bat_but_not_exe(self) -> None:
+        for name, needs_shell in (("sf.cmd", True), ("sf.bat", True), ("sf.exe", False)):
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    (Path(tmp) / name).write_text("", encoding="utf-8")
+                    result = self._scan(tmp, ".COM;.EXE;.BAT;.CMD")
+                    self.assertIsNotNone(result)
+                    self.assertEqual(result["needsShell"], needs_shell)
+
+    def test_scan_respects_pathext_order_within_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "sf.exe").write_text("", encoding="utf-8")
+            (Path(tmp) / "sf.cmd").write_text("", encoding="utf-8")
+            result = self._scan(tmp, ".COM;.EXE;.BAT;.CMD")
+            self.assertTrue(result["path"].endswith("sf.exe"))
+            self.assertFalse(result["needsShell"])
+
+    def test_scan_directory_order_beats_extension_preference(self) -> None:
+        # Pins the where.exe semantics: an earlier PATH directory with sf.cmd wins over a
+        # later one with sf.exe — nobody gets to "improve" this into preferring .exe.
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            (Path(first) / "sf.cmd").write_text("", encoding="utf-8")
+            (Path(second) / "sf.exe").write_text("", encoding="utf-8")
+            result = self._scan(f"{first};{second}", ".COM;.EXE;.BAT;.CMD")
+            self.assertTrue(result["path"].endswith("sf.cmd"))
+            self.assertTrue(result["needsShell"])
+
+    def test_scan_never_selects_ps1_even_when_listed_in_pathext(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "sf.ps1").write_text("", encoding="utf-8")
+            self.assertIsNone(self._scan(tmp, ".COM;.EXE;.BAT;.CMD;.PS1"))
+
+    def test_scan_returns_null_when_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(self._scan(tmp, ".COM;.EXE;.BAT;.CMD"))
+
+    def test_resolver_on_non_windows_is_bare_sf_without_shell(self) -> None:
+        if os.name == "nt":
+            self.skipTest("non-Windows branch")
+        out = self._eval_node(
+            "process.stdout.write(JSON.stringify(facade.resolveSfExecutable()));"
+        )
+        self.assertEqual(json.loads(out), {"path": "sf", "needsShell": False})
+
+    def test_comspec_invocation_quotes_arguments_in_order(self) -> None:
+        out = self._eval_node(
+            "process.stdout.write(JSON.stringify("
+            "facade.buildComSpecInvocation('C:/tools/sf.cmd', ['org', 'display', '--target-org', 'dev sbx'])));"
+        )
+        invocation = json.loads(out)
+        self.assertEqual(invocation["args"][:3], ["/d", "/s", "/c"])
+        self.assertEqual(
+            invocation["args"][3],
+            '""C:/tools/sf.cmd" "org" "display" "--target-org" "dev sbx""',
+        )
+
+    def test_arguments_with_quote_newline_or_control_chars_are_rejected(self) -> None:
+        # Fail-closed instead of escaping: a future profile change must not be able to open
+        # a silent cmd.exe quoting hole. Applies on every platform, not only Windows.
+        for bad in ('a"b', "a\nb", "a\rb", "a\x00b", "a\x1fb", "a\x7fb"):
+            with self.subTest(bad=repr(bad)):
+                out = self._eval_node(
+                    "try { facade.assertPlainCliArgument(JSON.parse(process.env.BAD_ARG_JSON));"
+                    " process.stdout.write('ACCEPTED'); }"
+                    " catch (error) { process.stdout.write(String(error.code)); }",
+                    env={"BAD_ARG_JSON": json.dumps(bad)},
+                )
+                self.assertEqual(out, "CLI_SCHEMA_MISMATCH")
+        out = self._eval_node(
+            "facade.assertPlainCliArgument('SELECT Id, IsSandbox FROM Organization LIMIT 1');"
+            "process.stdout.write('ACCEPTED');"
+        )
+        self.assertEqual(out, "ACCEPTED")
+
+    @unittest.skipUnless(os.name == "nt", "real cmd.exe round-trip")
+    def test_comspec_round_trip_preserves_spaced_arguments_on_windows(self) -> None:
+        # Executes the built invocation through the real cmd.exe with
+        # windowsVerbatimArguments, the exact spawn shape the server uses.
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp) / "probe.cmd"
+            probe.write_text(
+                "@echo off\r\necho {\"first\": \"%~1\", \"second\": \"%~2\"}\r\n",
+                encoding="utf-8",
+            )
+            out = self._eval_node(
+                "const { spawn } = await import('node:child_process');\n"
+                "const inv = facade.buildComSpecInvocation(process.env.PROBE_CMD, ['a b', '--json']);\n"
+                "const child = spawn(inv.command, inv.args, { shell: false, windowsVerbatimArguments: true });\n"
+                "let out = '';\n"
+                "child.stdout.on('data', (chunk) => { out += chunk; });\n"
+                "child.on('close', (code) => { process.stdout.write(JSON.stringify({ code, out: out.trim() })); });",
+                env={"PROBE_CMD": str(probe)},
+            )
+            result = json.loads(out)
+            self.assertEqual(result["code"], 0)
+            self.assertEqual(
+                json.loads(result["out"]), {"first": "a b", "second": "--json"}
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

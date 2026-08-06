@@ -7,6 +7,8 @@
   MCP server exists).
 - Consolidated GitHub Copilot extension and the recommendations in `.vscode/extensions.json`.
 - Git, Python 3.11+, Node.js 22+ (the pinned `@salesforce/mcp` requires ≥22.19), and Salesforce CLI.
+  On Windows both install flavors are supported — npm (`sf.cmd`) and the installer (`sf.exe`);
+  the review server resolves whichever `where.exe sf` would find first.
 - Local Salesforce CLI authorization for approved non-production aliases. Authenticate manually;
   never give credentials or session material to an agent.
 
