@@ -51,7 +51,8 @@ so it is written after the facts exist and from the artifact's actual source:
    rendered artifact is the review surface.
 4. On their go-ahead, run the returned command verbatim. The safety hook answers `ask`; their
    click is recorded as mechanism `copilot-chat-entry-confirmation` with the reviewer identity
-   from local `knowledge.chatReviewer`. Report a missing/placeholder reviewer configuration and
+   from `knowledge.chatReviewer` in `config/harness.local.json` (a JSON config file — never
+   probe it via `git config`). Report a missing/placeholder reviewer configuration and
    stop rather than improvising one.
 5. Never edit an entry between review and approval. Any change invalidates the pin and the
    executor rejects the whole chunk — re-render instead of retrying with fresh digests.

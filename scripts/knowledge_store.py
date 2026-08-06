@@ -351,6 +351,85 @@ PROFILES = {
     },
 }
 
+# Storage families group the artifacts tree for navigation; a family is never evidence and
+# never creates a graph relation. ApexClass always lives under code/ even when it serves as
+# a UI controller. Lives here next to PROFILES so the one pin test and every future consumer
+# (Feature v2 layer names, family-aware search) import the same dict instead of copying it.
+FAMILY_BY_TYPE = {
+    "CustomObject": "objects",
+    "CustomField": "objects",
+    "ValidationRule": "objects",
+    "RecordType": "objects",
+    "BusinessProcess": "objects",
+    "DuplicateRule": "objects",
+    "MatchingRule": "objects",
+    "ApexComponent": "ui",
+    "ApexPage": "ui",
+    "AuraDefinitionBundle": "ui",
+    "CompactLayout": "ui",
+    "CustomApplication": "ui",
+    "CustomTab": "ui",
+    "FieldSet": "ui",
+    "FlexiPage": "ui",
+    "Layout": "ui",
+    "LightningComponentBundle": "ui",
+    "ListView": "ui",
+    "PathAssistant": "ui",
+    "QuickAction": "ui",
+    "WebLink": "ui",
+    "DelegateGroup": "access",
+    "MutingPermissionSet": "access",
+    "PermissionSet": "access",
+    "PermissionSetGroup": "access",
+    "Profile": "access",
+    "Queue": "access",
+    "Role": "access",
+    "SharingRules": "access",
+    "ApprovalProcess": "automation",
+    "AssignmentRules": "automation",
+    "AutoResponseRules": "automation",
+    "EscalationRules": "automation",
+    "Flow": "automation",
+    "FlowDefinition": "automation",
+    "Workflow": "automation",
+    "ApexClass": "code",
+    "ApexTrigger": "code",
+    "AuthProvider": "integration",
+    "ConnectedApp": "integration",
+    "CorsWhitelistOrigin": "integration",
+    "CspTrustedSite": "integration",
+    "ExternalCredential": "integration",
+    "ExternalDataSource": "integration",
+    "ExternalServiceRegistration": "integration",
+    "NamedCredential": "integration",
+    "PlatformEventChannel": "integration",
+    "PlatformEventChannelMember": "integration",
+    "RemoteSiteSetting": "integration",
+    "CustomMetadata": "configuration",
+    "GlobalValueSet": "configuration",
+    "StandardValueSet": "configuration",
+    "Dashboard": "reporting",
+    "Report": "reporting",
+    "ReportType": "reporting",
+    "CustomLabel": "shared",
+    "EmailTemplate": "shared",
+    "StaticResource": "shared",
+}
+
+# Member types of the objects family route into a per-object subdirectory; their full name
+# is Object.Member (contract §: CustomField ships as Object.Field, and namespace prefixes
+# use __, never a dot, so the first dot is always the object/member split).
+OBJECT_MEMBER_DIRS = {
+    "CustomField": "fields",
+    "ValidationRule": "validation-rules",
+    "RecordType": "record-types",
+    "BusinessProcess": "business-processes",
+    "DuplicateRule": "duplicate-rules",
+    "MatchingRule": "matching-rules",
+}
+
+OBJECT_TYPE_BY_MEMBER_DIR = {directory: name for name, directory in OBJECT_MEMBER_DIRS.items()}
+
 
 class StoreError(RuntimeError):
     """Fail-closed executor error; message is the actionable reason."""
@@ -487,7 +566,29 @@ def relative_path(path: Path) -> str:
 
 def entry_path(metadata_type: str, namespace: str | None, full_name: str) -> Path:
     identity = identity_of(metadata_type, namespace, full_name)
-    path = ARTIFACTS_ROOT / metadata_type / (namespace or "c") / f"{safe_name(full_name, identity)}.md"
+    family = FAMILY_BY_TYPE.get(metadata_type)
+    if family is None:
+        raise StoreError(f"no storage family registered for metadata type {metadata_type!r}")
+    segment = namespace or "c"
+    if family == "objects" and metadata_type != "CustomObject":
+        object_name, dot, member = full_name.partition(".")
+        if not dot or not object_name or not member:
+            raise StoreError(
+                f"{metadata_type} full name must be Object.Member, got {full_name!r} for {identity}"
+            )
+        # The object directory is shared with the CustomObject leaf and every sibling member,
+        # so its safe_name is keyed to the object's own identity — keying it to this member's
+        # identity would give the same object a different digest-suffixed directory per member
+        # whenever safe_name has to escape or truncate.
+        object_dir = safe_name(object_name, identity_of("CustomObject", namespace, object_name))
+        path = (
+            ARTIFACTS_ROOT / "objects" / segment / object_dir
+            / OBJECT_MEMBER_DIRS[metadata_type] / f"{safe_name(member, identity)}.md"
+        )
+    elif family == "objects":
+        path = ARTIFACTS_ROOT / "objects" / segment / safe_name(full_name, identity) / "object.md"
+    else:
+        path = ARTIFACTS_ROOT / family / metadata_type / segment / f"{safe_name(full_name, identity)}.md"
     if len(relative_path(path)) > PATH_BUDGET:
         raise StoreError(f"derived path exceeds {PATH_BUDGET}-char budget for {identity}")
     return path
@@ -662,8 +763,15 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any
     frontmatter, body = split_entry(text)
     subject = frontmatter["subject"]
     identity = identity_of(subject["metadataType"], subject.get("namespace"), subject["fullName"])
-    expected = entry_path(subject["metadataType"], subject.get("namespace"), subject["fullName"])
     result = {"identity": identity, "path": relative_path(path), "problems": validate_entry(frontmatter, body)}
+    try:
+        expected = entry_path(subject["metadataType"], subject.get("namespace"), subject["fullName"])
+    except StoreError as exc:
+        # An unroutable subject (unregistered type, objects-family name without its dot) is
+        # this one entry's integrity failure, not grounds to crash the sweep over the corpus.
+        result["lane"] = "not-effective"
+        result["problems"].append(f"path/identity round-trip failed ({exc})")
+        return result
     if path.resolve() != expected.resolve():
         result["lane"] = "not-effective"
         result["problems"].append(f"path/identity round-trip failed (expected {expected.relative_to(ROOT)})")
@@ -1124,6 +1232,25 @@ def assert_no_casefold_collision(path: Path) -> None:
             raise StoreError(f"case-fold path collision: {sibling.name} vs {path.name} (contract §3)")
 
 
+def project_source_api_version() -> str:
+    """The project's own sourceApiVersion, fail-closed — never a hardcoded stand-in.
+
+    The previous CLI default was the literal "64.0" while the project declared 67.0, so
+    every draft made without the flag silently recorded a version nothing else used (F-5,
+    live pass 2026-08-06)."""
+
+    project_path = ROOT / "sfdx-project.json"
+    try:
+        version = json.loads(project_path.read_text(encoding="utf-8")).get("sourceApiVersion")
+    except (OSError, json.JSONDecodeError) as exc:
+        raise StoreError(f"cannot read sourceApiVersion from sfdx-project.json: {exc}") from exc
+    if not isinstance(version, str) or not version:
+        raise StoreError(
+            "sfdx-project.json has no sourceApiVersion; pass --source-api-version explicitly"
+        )
+    return version
+
+
 def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
     if args.namespace == "c":
         raise StoreError("namespace literal 'c' is reserved (contract §2.1)")
@@ -1170,7 +1297,7 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
             "digest": canonical_digest(load_schema(profile["schema"])),
         },
         "scope": {
-            "sourceApiVersion": args.source_api_version,
+            "sourceApiVersion": args.source_api_version or project_source_api_version(),
             "sourceTreeDigest": canonical_digest(sorted((f["path"], f["sourceDigest"]) for f in fragments)),
             "packageVersionId": None,
             # Dates a factsDigest move for a future auditor; lives in scope so a collector
@@ -1726,10 +1853,29 @@ def identity_from_entry_path(path: Path) -> str | None:
         parts = path.relative_to(ARTIFACTS_ROOT).parts
     except ValueError:
         return None
-    if len(parts) != 3 or not parts[2].endswith(".md"):
-        return None
-    metadata_type, namespace, full_name = parts[0], parts[1], parts[2][:-3]
-    if not PLAIN_SAFE_NAME_RE.fullmatch(full_name):
+    if parts and parts[0] == "objects":
+        if len(parts) == 4 and parts[3] == "object.md":
+            namespace, object_name = parts[1], parts[2]
+            if not PLAIN_SAFE_NAME_RE.fullmatch(object_name):
+                return None
+            metadata_type, full_name = "CustomObject", object_name
+        elif len(parts) == 5 and parts[4].endswith(".md"):
+            namespace, object_name, member_dir = parts[1], parts[2], parts[3]
+            member = parts[4][:-3]
+            metadata_type = OBJECT_TYPE_BY_MEMBER_DIR.get(member_dir)
+            # The reconstructed full name is Object.Member — validated per segment, because
+            # the dot the grammar itself inserts must never loosen the plain-name check.
+            if metadata_type is None or not PLAIN_SAFE_NAME_RE.fullmatch(object_name) \
+                    or not PLAIN_SAFE_NAME_RE.fullmatch(member):
+                return None
+            full_name = f"{object_name}.{member}"
+        else:
+            return None
+    elif len(parts) == 4 and parts[3].endswith(".md"):
+        family, metadata_type, namespace, full_name = parts[0], parts[1], parts[2], parts[3][:-3]
+        if FAMILY_BY_TYPE.get(metadata_type) != family or not PLAIN_SAFE_NAME_RE.fullmatch(full_name):
+            return None
+    else:
         return None
     try:
         if entry_path(metadata_type, namespace, full_name) != path:
@@ -1805,6 +1951,7 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
     seen_identities: dict[str, str] = {}
     seen_casefold: dict[str, str] = {}
     skipped = 0
+    awaiting_description = 0
     for path in all_entry_paths(include_case_twins=True):
         relative = path.relative_to(ROOT).as_posix()
         identity = (
@@ -1817,7 +1964,16 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
         else:
             lane = compute_lane(path, latest)
             identity = lane["identity"]
-            problems.extend(f"{relative}: {problem}" for problem in lane["problems"])
+            for problem in lane["problems"]:
+                # Owner decision 2026-08-06 (F-3): an unfilled sentinel in a DRAFT entry is
+                # outstanding work, not an integrity failure — the same philosophy
+                # compute_lane already states for the draft lane. A freshly mass-drafted
+                # corpus must not turn the whole gate red. The sentinel stays a hard error
+                # in any other lane, and entry-approve/entry-describe still reject it.
+                if lane["lane"] == "draft" and problem.startswith("unfilled <AGENT_"):
+                    awaiting_description += 1
+                    continue
+                problems.append(f"{relative}: {problem}")
         if identity in seen_identities:
             problems.append(f"identity {identity} resolves to two files: {seen_identities[identity]} and {relative}")
         seen_identities[identity] = relative
@@ -1831,6 +1987,7 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
         "outcome": "PASS",
         "entries": len(seen_identities),
         "ledgerRecords": len(read_ledger()),
+        "awaitingDescription": awaiting_description,
     }
     # Advisory org-lane disclosure (contract §14.3): counts + non-fresh attention list. CI
     # never fails on expiry; the HARD tamper check (digest vs org ledger, containment) is
@@ -2623,7 +2780,12 @@ def build_parser() -> argparse.ArgumentParser:
     draft.add_argument("--full-name", required=True)
     draft.add_argument("--namespace", default=None)
     draft.add_argument("--purpose-file", default=None)
-    draft.add_argument("--source-api-version", default="64.0")
+    draft.add_argument(
+        "--source-api-version",
+        default=None,
+        help="defaults to sourceApiVersion from sfdx-project.json (F-5: a hardcoded default"
+             " silently drifted from the project's real version)",
+    )
     draft.add_argument("--candidate-keyword", action="append", default=None)
     draft.set_defaults(func=command_entry_draft)
 

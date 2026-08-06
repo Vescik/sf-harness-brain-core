@@ -38,12 +38,12 @@
   "assumptions": [],
   "warnings": [],
   "filesWritten": [
-    ".ai/knowledge/artifacts/Flow/c/DemoRouting.md"
+    ".ai/knowledge/artifacts/automation/Flow/c/DemoRouting.md"
   ],
   "verification": [
     "Validated the immutable human review and promoted claim revision."
   ],
-  "artifactPath": ".ai/knowledge/artifacts/Flow/c/DemoRouting.md",
+  "artifactPath": ".ai/knowledge/artifacts/automation/Flow/c/DemoRouting.md",
   "entryRefs": [
     {
       "entryId": "Flow:c:DemoRouting",

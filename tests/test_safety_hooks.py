@@ -413,7 +413,7 @@ class RoleGuardTests(unittest.TestCase):
                 "cwd": str(ROOT),
                 "tool_name": "edit/editFiles",
                 "tool_input": {
-                    "path": ".ai/knowledge/artifacts/Flow/c/Fake.md"
+                    "path": ".ai/knowledge/artifacts/automation/Flow/c/Fake.md"
                 },
             },
             "--role",
@@ -678,7 +678,7 @@ class RoleGuardTests(unittest.TestCase):
         # The artifacts path and ledger are governed: raw edits denied for every role,
         # including NTFS case variants (contract par 3).
         for path in (
-            ".ai/knowledge/artifacts/Flow/c/RouterX.md",
+            ".ai/knowledge/artifacts/automation/Flow/c/RouterX.md",
             ".ai/knowledge/Artifacts/Flow/c/RouterX.MD",
             ".ai/knowledge/artifacts-ledger.jsonl",
         ):

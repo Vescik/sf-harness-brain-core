@@ -56,7 +56,8 @@ Load the [source authority contract](../../.ai/contracts/source-authority.md),
 4. Describe only what the source shows (purpose, trigger, key steps, reads/changes); leave a
    gap visible rather than inventing intent.
 5. Every approval stops for the human's digest-pinned confirmation click (SAFE-HUMAN-001); if
-   `knowledge.chatReviewer` is missing, report that exact key and stop.
+   `knowledge.chatReviewer` is missing from `config/harness.local.json` (a JSON config
+   file — never probe it via `git config`), report that exact key and file and stop.
 6. Stop rules: dirty tree, partial inventory, executor refusal, or a description you cannot
    ground in source — pause and report, never improvise.
 

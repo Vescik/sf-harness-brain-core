@@ -91,8 +91,9 @@ Describe only what the source shows; a draft is not Knowledge until a human chat
 
 Described drafts are handed to `/approve-drafts-knowledge`, where the human confirms the
 digest-pinned `entry-approve` in chat (SAFE-HUMAN-001; mechanism
-`copilot-chat-entry-confirmation`, reviewer from `knowledge.chatReviewer`). If
-`knowledge.chatReviewer` is not configured, report that exact key and stop. A draft you wrote
+`copilot-chat-entry-confirmation`, reviewer from `knowledge.chatReviewer` in
+`config/harness.local.json` — a JSON config file, not a git setting). If that key is not
+configured there, report the exact key and file and stop. A draft you wrote
 is still only a draft until that confirmed approval lands.
 
 ## Return contract

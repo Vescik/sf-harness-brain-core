@@ -1041,3 +1041,43 @@ directly. Each lands as its own commit with the full gate.
   gate between this state and a release. The live behavioural baseline from P0 was never captured
   either, so the before/after comparison is structural and says so. Full report in
   `sf/workspace-context/p8-2026-08-05-solution-design-qualification.md`.
+
+## 2026-08-06 — Knowledge storage families: the artifacts tree groups by family, per-object for the objects family
+
+Owner-scoped change (plan `sf/workspace-context/plan-2026-08-06-canonical-knowledge-storage-narrowed.md`):
+only the way entries are laid out on disk changed. The authoring flow (clean tree → draft →
+describe → approve), identities, digests, ledgers, guards, and `knowledge_search.py` are
+untouched — approvals were path-independent by construction, and the corpus was empty, so
+there was no migration.
+
+- Every profiled type routes to exactly one storage family — `FAMILY_BY_TYPE` in
+  `knowledge_store.py`, next to `PROFILES`, pinned 1:1 by test. A family is navigation, never
+  evidence: `ApexClass` lives under `code/` even when it acts as a UI controller.
+- The `objects` family (7 types, owner decision D-1 includes DuplicateRule and MatchingRule)
+  groups per object: `objects/<ns|c>/<Object>/object.md` plus `fields/`, `validation-rules/`,
+  `record-types/`, `business-processes/`, `duplicate-rules/`, `matching-rules/`. Member full
+  names split on the first dot; a dotless member name fails closed. All other families are
+  `<family>/<Type>/<ns|c>/<name>.md`. The flat layout is retired and pinned negative.
+- Owner decision D-4: family as a search surface (facet/filter) is deferred to its own
+  document after this lands; nothing in this change promises it.
+- Live smoke in a scratch clone: draft→describe→approve on a CustomObject and a CustomField
+  landed under the object tree with `approved-current` lanes; `knowledge_resolve`,
+  `knowledge_entry_status`, and `knowledge_context` (object←field belongs-to chain) all
+  worked over MCP. The product store stays empty.
+- Known debt observed while gating, not caused by this change:
+  `test_receipt_gates.test_fresh_receipt_and_clean_tree_allow` fails in full-suite order and
+  passes alone on the unmodified baseline — pre-existing order-dependent pollution worth its
+  own small fix.
+
+## 2026-08-06 — F-3 decided: entry-check treats draft sentinels as outstanding work
+
+Owner decision (option B of three presented): an unfilled `<AGENT_…>` sentinel in a
+draft-lane entry no longer fails `entry-check` — it is counted and disclosed as
+`awaitingDescription`. Rationale: a freshly mass-drafted corpus is the normal state of
+incremental documentation, and failing the whole gate on it (observed live on the 527-entry
+KM-16D corpus) both contradicted compute_lane's stated lane philosophy and would teach the
+team to ignore a permanently red gate. Unchanged and pinned by negative tests: the sentinel
+outside the draft lane is corruption and still fails the check; entry-approve and
+entry-describe reject the sentinel unconditionally. Rejected alternatives: status quo
+(gate red for the whole documentation period) and a --strict dual mode (two semantics for
+one command invite guard/parser-style drift). Commit 8426155.

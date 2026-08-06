@@ -26,8 +26,9 @@ a whole metadata type per run, or the human re-pins a selection of at most 25.
    evidence binds to a commit, so the file you just wrote cannot be documented until it is
    committed.* This is the expected first failure for "document what I just built"; report it
    as the remedy, not as an error.
-3. Confirm `knowledge.chatReviewer` is configured; without it no approval can complete and the
-   lane should not start.
+3. Confirm `knowledge.chatReviewer` is configured in `config/harness.local.json` (a JSON
+   config file, not a git setting); without it no approval can complete and the lane should
+   not start.
 
 ## 2 — Resolve (mechanical, never by eye)
 

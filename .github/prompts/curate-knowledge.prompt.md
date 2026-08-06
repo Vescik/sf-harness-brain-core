@@ -19,7 +19,9 @@ without a profile has no Knowledge lane — report it as a profile gap, never im
   `entry-draft --metadata-type <Type> --full-name <Name>` per artifact. Drafts land holding
   `<AGENT_DESCRIPTION>` — facts extracted, analysis pending. Report the count; do not describe
   in the same pass unless the human asks.
-- `describe`: for each entry still holding the sentinel, `entry-context --identity <Identity>`
+- `describe`: `python scripts/force_app_knowledge.py entry-readiness` lists the worklist in
+  `describeNext` (drafted entries still holding the sentinel — distinct from `documentNext`,
+  which lists components with no entry at all); for each, `entry-context --identity <Identity>`
   then write 1-8 sentences from the source and the entries that use it, and store them with
   `entry-describe --identity <Identity> --purpose-file <file>`. State only what the source
   supports; leave a gap visible rather than inventing intent. Hand the described set to
@@ -35,8 +37,9 @@ without a profile has no Knowledge lane — report it as a profile gap, never im
   `python scripts/knowledge_search.py edge-health`; report counts, drifted entries, and a
   prioritized maintenance recommendation. Read-only — change nothing.
 
-Every approval requires the human's confirmation click; report any missing
-`knowledge.chatReviewer` configuration and stop rather than improvising.
+Every approval requires the human's confirmation click; the reviewer identity is
+`knowledge.chatReviewer` in `config/harness.local.json` (a JSON config file — never probe it
+via `git config`). Report it missing from that file and stop rather than improvising.
 
 Return the mode, health counts, selections executed, entry identities touched, skipped items
 with reasons, and outstanding approvals.
