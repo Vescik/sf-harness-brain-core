@@ -1932,6 +1932,7 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
     seen_identities: dict[str, str] = {}
     seen_casefold: dict[str, str] = {}
     skipped = 0
+    awaiting_description = 0
     for path in all_entry_paths(include_case_twins=True):
         relative = path.relative_to(ROOT).as_posix()
         identity = (
@@ -1944,7 +1945,16 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
         else:
             lane = compute_lane(path, latest)
             identity = lane["identity"]
-            problems.extend(f"{relative}: {problem}" for problem in lane["problems"])
+            for problem in lane["problems"]:
+                # Owner decision 2026-08-06 (F-3): an unfilled sentinel in a DRAFT entry is
+                # outstanding work, not an integrity failure — the same philosophy
+                # compute_lane already states for the draft lane. A freshly mass-drafted
+                # corpus must not turn the whole gate red. The sentinel stays a hard error
+                # in any other lane, and entry-approve/entry-describe still reject it.
+                if lane["lane"] == "draft" and problem.startswith("unfilled <AGENT_"):
+                    awaiting_description += 1
+                    continue
+                problems.append(f"{relative}: {problem}")
         if identity in seen_identities:
             problems.append(f"identity {identity} resolves to two files: {seen_identities[identity]} and {relative}")
         seen_identities[identity] = relative
@@ -1958,6 +1968,7 @@ def command_entry_check(args: argparse.Namespace) -> dict[str, Any]:
         "outcome": "PASS",
         "entries": len(seen_identities),
         "ledgerRecords": len(read_ledger()),
+        "awaitingDescription": awaiting_description,
     }
     # Advisory org-lane disclosure (contract §14.3): counts + non-fresh attention list. CI
     # never fails on expiry; the HARD tamper check (digest vs org ledger, containment) is

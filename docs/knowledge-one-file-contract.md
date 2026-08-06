@@ -449,7 +449,12 @@ the review surface.
    latest ledger-approved digest (drift re-approvals, sensitivity-unchanged). Initial
    approvals of prose-bearing entries can never ride the manifest path.
 5. Validation (schema, sentinel, keyword-taxonomy, sensitivity, path round-trip) is
-   all-or-nothing per chunk. **Stamping is per-file with a journaled resume point**
+   all-or-nothing per chunk. Check-time semantics of the sentinel (owner decision
+   2026-08-06): an unfilled `<AGENT_…>` sentinel in a **draft-lane** entry is outstanding
+   work — `entry-check` counts it as `awaitingDescription` and still passes, mirroring the
+   lane model ("a draft is never served, so its outstanding work is not an integrity
+   failure"). In any other lane the sentinel remains a hard check failure, and approval
+   rejects it unconditionally either way. **Stamping is per-file with a journaled resume point**
    (chunkId in the ledger): after a crash or a Windows `PermissionError`, entries whose
    stamp+ledger line completed are effective, the rest are not, and the executor reports a
    deterministic resume list (review R3-9 — §9.6 "atomic chunk" claim corrected).

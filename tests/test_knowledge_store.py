@@ -205,6 +205,31 @@ class KnowledgeStoreTests(unittest.TestCase):
         self.assertIn("Full body", artifact.read_text(encoding="utf-8"))
         self.assertEqual("PASS", store.command_entry_check(argparse.Namespace())["outcome"])
 
+    def test_entry_check_passes_over_undescribed_drafts_and_counts_them(self) -> None:
+        # Owner decision 2026-08-06 (F-3): a freshly drafted, undescribed corpus is
+        # outstanding work, not corruption — the gate must stay green and disclose the debt.
+        drafted = self.draft(purpose_file=None)
+        frontmatter, body = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertIn("<AGENT_DESCRIPTION>", body)
+        result = store.command_entry_check(argparse.Namespace())
+        self.assertEqual("PASS", result["outcome"])
+        self.assertEqual(1, result["awaitingDescription"])
+        # Approval must still reject the sentinel — the check-time relaxation never
+        # weakens the approval gate.
+        with self.assertRaises(store.StoreError):
+            self.approve([f"{drafted['identity']}:{drafted['reviewedContentDigest']}"])
+
+    def test_entry_check_still_fails_on_a_sentinel_outside_the_draft_lane(self) -> None:
+        # A non-draft entry carrying the sentinel is corruption (it cannot be produced by
+        # the executor), and the check-time relaxation must not swallow it.
+        drafted = self.draft(purpose_file=None)
+        path = self.temp / drafted["path"]
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace("state: draft", "state: approved"), encoding="utf-8")
+        with self.assertRaises(store.StoreError) as ctx:
+            store.command_entry_check(argparse.Namespace())
+        self.assertIn("sentinel", str(ctx.exception))
+
     def test_customfield_draft_is_supported(self) -> None:
         drafted = self.draft(metadata_type="CustomField", full_name="HarnessAlphaCase__c.Status__c")
         frontmatter, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
