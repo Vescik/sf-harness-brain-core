@@ -88,13 +88,20 @@ ALLOWED_TOOLS = {
     "salesforce-readonly/review_configured_orgs",
     "salesforce-readonly/review_soql_query",
     "solution-design/design_open",
-    "solution-design/design_context",
+    "solution-design/design_record",
     "solution-design/design_check",
+    "solution-design/design_submit",
+}
+# Internal runtime stages/retired tools that are never model-facing. Granting one of these —
+# or a `solution-design/*` wildcard — is a contract failure, not a convenience. The retired
+# 18-tool surface stays here so a stale agent file fails loudly instead of loading silently.
+FORBIDDEN_SOLUTION_DESIGN_GRANTS = {
+    "solution-design/*",
     "solution-design/design_apply",
+    "solution-design/design_context",
     "solution-design/design_import_repository_receipt",
     "solution-design/design_import_knowledge_reference",
     "solution-design/design_import_soql_envelope",
-    "solution-design/design_submit",
     "solution-design/design_request_human_input",
     "solution-design/design_request_candidate_decision",
     "solution-design/design_request_writer_transfer",
@@ -105,15 +112,6 @@ ALLOWED_TOOLS = {
     "solution-design/design_record_verification",
     "solution-design/design_request_implementation_review",
     "solution-design/design_review_implementation",
-}
-# Internal runtime operations that are never model-facing tools. Granting one of these — or a
-# `solution-design/*` wildcard that would reach them — is a contract failure, not a convenience.
-FORBIDDEN_SOLUTION_DESIGN_GRANTS = {
-    "solution-design/*",
-    "solution-design/record-human-input",
-    "solution-design/confirm-candidate",
-    "solution-design/request-candidate-revision",
-    "solution-design/transfer-case-writer",
 }
 LEGACY_TOOLS = {"readFile", "editFiles", "runInTerminal", "fetch", "codebase", "githubRepo"}
 REQUIRED_SETTINGS = (
@@ -1451,79 +1449,63 @@ def check_dependency_admissions(audit: Audit, root: Path = ROOT) -> None:
 
 
 def check_design_cases(audit: Audit, root: Path = ROOT) -> None:
-    """Tracked Design Cases must hold their own bindings (§19.5).
+    """Tracked Design Cases must hold their own bindings.
 
-    Three invariants CI can prove without touching an org: a candidate digest recomputes from
-    its own inputs, exactly one candidate is active per case and it is the one the record points
-    at, and no two candidates descend from the same parent case version. That last one is how a
-    second checkout's sibling candidate is caught before integration rather than after — the
-    filesystem lease coordinates one checkout, never two clones.
+    Loop-state invariants CI can prove without touching an org: the state validates against
+    the v2 schema; the candidate's narrative digest recomputes from the candidate document;
+    every approval receipt binds the digest the state points at; and a submitted case has an
+    approval receipt to show for it.
     """
     cases_root = root / ".ai" / "change-records"
     if not cases_root.is_dir():
         return
-    directories = [path for path in sorted(cases_root.iterdir()) if (path / "record.json").is_file()]
-    if not directories:
-        return
     core = solution_design_core
-    for case_directory in directories:
+    for case_directory in sorted(cases_root.iterdir()):
         record_path = case_directory / "record.json"
+        if not record_path.is_file():
+            continue
         record = load_json(record_path, audit)
         if not isinstance(record, dict) or "solutionDesign" not in record:
             continue
         state = record["solutionDesign"]
         try:
-            core.validate_against(state, core.STATE_SCHEMA, "solution design state")
-        except core.SolutionDesignError as exc:
-            audit.require(False, f"{relative(record_path)}: {exc}")
+            schema = json.loads(core.STATE_SCHEMA.read_text(encoding="utf-8"))
+            from jsonschema import Draft202012Validator
+
+            errors = [e.message for e in Draft202012Validator(schema).iter_errors(state)]
+            audit.require(not errors, f"{relative(record_path)}: state schema: {'; '.join(errors[:3])}")
+        except OSError as exc:
+            audit.require(False, f"{relative(record_path)}: cannot validate state ({exc})")
             continue
-        active = state.get("activeCandidateRef") or {}
-        parents: dict[str, list[str]] = {}
-        for bundle_path in sorted((case_directory / "candidates").glob("*/bundle.json")):
-            bundle = load_json(bundle_path, audit)
-            if not isinstance(bundle, dict):
-                continue
-            try:
-                recomputed = core.candidate_digest(bundle["candidateDigestInput"])
-            except (KeyError, core.SolutionDesignError) as exc:
-                audit.require(False, f"{relative(bundle_path)}: candidate digest cannot be recomputed ({exc})")
-                continue
+        candidate = state.get("candidate") or {}
+        if candidate:
+            candidate_dir = case_directory / "candidates" / str(candidate.get("id"))
+            document = candidate_dir / "design.md"
             audit.require(
-                bundle.get("candidateDigest") == recomputed,
-                f"{relative(bundle_path)}: candidate digest does not recompute from its own inputs",
+                document.is_file(),
+                f"{relative(case_directory)}: candidate {candidate.get('id')} has no document",
             )
-            parent = bundle["candidateDigestInput"].get("submittedFromCaseVersion")
-            parents.setdefault(parent, []).append(bundle["candidateId"])
-        for parent, siblings in sorted(parents.items()):
-            audit.require(
-                len(siblings) == 1,
-                f"{relative(case_directory)}: {len(siblings)} candidates descend from the same "
-                f"parent case version {parent} ({', '.join(sorted(siblings))}); one of them came "
-                f"from an unsynchronized clone",
-            )
-        if active:
-            bundle_path = case_directory / "candidates" / active["candidateId"] / "bundle.json"
-            audit.require(
-                bundle_path.is_file(),
-                f"{relative(case_directory)}: the active candidate {active['candidateId']} has no bundle",
-            )
-            if bundle_path.is_file():
-                bundle = load_json(bundle_path, audit)
+            if document.is_file():
+                recomputed = core.narrative_digest(document.read_text(encoding="utf-8"))
                 audit.require(
-                    isinstance(bundle, dict)
-                    and bundle.get("candidateDigest") == active.get("candidateDigest"),
-                    f"{relative(case_directory)}: record.json points at a candidate digest the "
-                    f"bundle does not carry",
+                    recomputed == candidate.get("narrativeDigest"),
+                    f"{relative(case_directory)}: candidate narrative digest does not recompute "
+                    f"from the candidate document",
                 )
-        for approval_path in sorted((case_directory / "approvals").glob("AP-*.json")):
+        approvals = sorted((case_directory / "approvals").glob("AP-*.json"))
+        for approval_path in approvals:
             approval = load_json(approval_path, audit)
-            if not isinstance(approval, dict) or approval.get("kind") != "candidate-approval":
+            if not isinstance(approval, dict):
                 continue
             audit.require(
-                approval.get("candidateDigest") == active.get("candidateDigest")
-                or state.get("status") not in ("accepted", "development", "review", "complete"),
-                f"{relative(approval_path)}: an approval binds a digest that is no longer the "
-                f"active candidate, but the case advanced anyway",
+                approval.get("narrativeDigest") == candidate.get("narrativeDigest"),
+                f"{relative(approval_path)}: approval binds a digest that is not the current "
+                f"candidate",
+            )
+        if state.get("status") == "submitted":
+            audit.require(
+                bool(approvals),
+                f"{relative(case_directory)}: submitted without an approval receipt",
             )
 
 
