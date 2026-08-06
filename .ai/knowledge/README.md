@@ -6,7 +6,7 @@ claim registry retired on 2026-08-03 (see `.ai/memory/decisions-log.md`).
 
 | Surface | Authority |
 |---|---|
-| `artifacts/<MetadataType>/<ns|c>/<FullName>.md` | One-file Knowledge Entries — executor-derived repository facts plus human-attested prose. Written only by `scripts/knowledge_store.py`; never hand-edited. |
+| `artifacts/<family>/<MetadataType>/<ns|c>/<FullName>.md` | One-file Knowledge Entries — executor-derived repository facts plus human-attested prose, grouped by storage family (`objects` — laid out per object with `object.md` + member subdirs, `ui`, `access`, `automation`, `code`, `integration`, `configuration`, `reporting`, `shared`; contract §2). Written only by `scripts/knowledge_store.py`; never hand-edited. |
 | `artifacts-ledger.jsonl` | Append-only approval ledger; approval binds to `reviewedContentDigest`, latest-wins. |
 | `artifacts-org-ledger.jsonl` | Append-only org-usage ledger (`entry-org-attach`/`detach`); entries carry expiring `orgUsage` blocks. |
 | `features/<slug>.md` + `features-ledger.jsonl` | Feature Entries — human-approved boundary rules and prose; never citable as `entryRef`. |

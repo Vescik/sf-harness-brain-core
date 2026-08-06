@@ -75,11 +75,33 @@ that wires the first executor (P1), never silently.
 
 ## 2. Entry file
 
-One canonical file per **logical** Salesforce artifact:
+One canonical file per **logical** Salesforce artifact. Every type belongs to exactly one
+**storage family** (`FAMILY_BY_TYPE` in `scripts/knowledge_store.py`) — a navigation grouping,
+never evidence and never a graph relation:
 
 ```text
-.ai/knowledge/artifacts/<MetadataType>/<ns|c>/<safe-name>.md
+.ai/knowledge/artifacts/<family>/<MetadataType>/<ns|c>/<safe-name>.md
 ```
+
+with families `ui`, `access`, `automation`, `code`, `integration`, `configuration`,
+`reporting`, `shared` — except the `objects` family (`CustomObject`, `CustomField`,
+`ValidationRule`, `RecordType`, `BusinessProcess`, `DuplicateRule`, `MatchingRule`), which
+groups per object:
+
+```text
+.ai/knowledge/artifacts/objects/<ns|c>/<Object>/object.md                       CustomObject
+.ai/knowledge/artifacts/objects/<ns|c>/<Object>/fields/<Member>.md              CustomField
+.ai/knowledge/artifacts/objects/<ns|c>/<Object>/validation-rules/<Member>.md    ValidationRule
+.ai/knowledge/artifacts/objects/<ns|c>/<Object>/record-types/<Member>.md        RecordType
+.ai/knowledge/artifacts/objects/<ns|c>/<Object>/business-processes/<Member>.md  BusinessProcess
+.ai/knowledge/artifacts/objects/<ns|c>/<Object>/duplicate-rules/<Member>.md     DuplicateRule
+.ai/knowledge/artifacts/objects/<ns|c>/<Object>/matching-rules/<Member>.md      MatchingRule
+```
+
+Member types split their full name on the first dot (`Object.Member` — §2.1 guarantees the
+form; namespace prefixes use `__`, never a dot); `safe-name` applies per segment. A member
+full name without a dot is rejected, never guessed. The old flat layout
+(`artifacts/<MetadataType>/<ns|c>/<name>.md`) is not supported.
 
 The namespace segment is part of the canonical path (review R2-1): namespaced and
 subscriber-owned twins are distinct files by construction.

@@ -73,7 +73,7 @@ class WorkRecordTests(unittest.TestCase):
             "sourceTreeDigest": "sha256:" + "c" * 64,
             "profile": "salesforce.custom-object@1",
         }
-        entry_path = self.root / ".ai" / "knowledge" / "artifacts" / "CustomObject" / "c" / "Account.md"
+        entry_path = self.root / ".ai" / "knowledge" / "artifacts" / "objects" / "c" / "Account" / "object.md"
         entry_path.parent.mkdir(parents=True, exist_ok=True)
         entry_path.write_text("fixture entry artifact for required-read hashing\n", encoding="utf-8")
         self.entry_path = entry_path

@@ -351,6 +351,85 @@ PROFILES = {
     },
 }
 
+# Storage families group the artifacts tree for navigation; a family is never evidence and
+# never creates a graph relation. ApexClass always lives under code/ even when it serves as
+# a UI controller. Lives here next to PROFILES so the one pin test and every future consumer
+# (Feature v2 layer names, family-aware search) import the same dict instead of copying it.
+FAMILY_BY_TYPE = {
+    "CustomObject": "objects",
+    "CustomField": "objects",
+    "ValidationRule": "objects",
+    "RecordType": "objects",
+    "BusinessProcess": "objects",
+    "DuplicateRule": "objects",
+    "MatchingRule": "objects",
+    "ApexComponent": "ui",
+    "ApexPage": "ui",
+    "AuraDefinitionBundle": "ui",
+    "CompactLayout": "ui",
+    "CustomApplication": "ui",
+    "CustomTab": "ui",
+    "FieldSet": "ui",
+    "FlexiPage": "ui",
+    "Layout": "ui",
+    "LightningComponentBundle": "ui",
+    "ListView": "ui",
+    "PathAssistant": "ui",
+    "QuickAction": "ui",
+    "WebLink": "ui",
+    "DelegateGroup": "access",
+    "MutingPermissionSet": "access",
+    "PermissionSet": "access",
+    "PermissionSetGroup": "access",
+    "Profile": "access",
+    "Queue": "access",
+    "Role": "access",
+    "SharingRules": "access",
+    "ApprovalProcess": "automation",
+    "AssignmentRules": "automation",
+    "AutoResponseRules": "automation",
+    "EscalationRules": "automation",
+    "Flow": "automation",
+    "FlowDefinition": "automation",
+    "Workflow": "automation",
+    "ApexClass": "code",
+    "ApexTrigger": "code",
+    "AuthProvider": "integration",
+    "ConnectedApp": "integration",
+    "CorsWhitelistOrigin": "integration",
+    "CspTrustedSite": "integration",
+    "ExternalCredential": "integration",
+    "ExternalDataSource": "integration",
+    "ExternalServiceRegistration": "integration",
+    "NamedCredential": "integration",
+    "PlatformEventChannel": "integration",
+    "PlatformEventChannelMember": "integration",
+    "RemoteSiteSetting": "integration",
+    "CustomMetadata": "configuration",
+    "GlobalValueSet": "configuration",
+    "StandardValueSet": "configuration",
+    "Dashboard": "reporting",
+    "Report": "reporting",
+    "ReportType": "reporting",
+    "CustomLabel": "shared",
+    "EmailTemplate": "shared",
+    "StaticResource": "shared",
+}
+
+# Member types of the objects family route into a per-object subdirectory; their full name
+# is Object.Member (contract §: CustomField ships as Object.Field, and namespace prefixes
+# use __, never a dot, so the first dot is always the object/member split).
+OBJECT_MEMBER_DIRS = {
+    "CustomField": "fields",
+    "ValidationRule": "validation-rules",
+    "RecordType": "record-types",
+    "BusinessProcess": "business-processes",
+    "DuplicateRule": "duplicate-rules",
+    "MatchingRule": "matching-rules",
+}
+
+OBJECT_TYPE_BY_MEMBER_DIR = {directory: name for name, directory in OBJECT_MEMBER_DIRS.items()}
+
 
 class StoreError(RuntimeError):
     """Fail-closed executor error; message is the actionable reason."""
@@ -487,7 +566,29 @@ def relative_path(path: Path) -> str:
 
 def entry_path(metadata_type: str, namespace: str | None, full_name: str) -> Path:
     identity = identity_of(metadata_type, namespace, full_name)
-    path = ARTIFACTS_ROOT / metadata_type / (namespace or "c") / f"{safe_name(full_name, identity)}.md"
+    family = FAMILY_BY_TYPE.get(metadata_type)
+    if family is None:
+        raise StoreError(f"no storage family registered for metadata type {metadata_type!r}")
+    segment = namespace or "c"
+    if family == "objects" and metadata_type != "CustomObject":
+        object_name, dot, member = full_name.partition(".")
+        if not dot or not object_name or not member:
+            raise StoreError(
+                f"{metadata_type} full name must be Object.Member, got {full_name!r} for {identity}"
+            )
+        # The object directory is shared with the CustomObject leaf and every sibling member,
+        # so its safe_name is keyed to the object's own identity — keying it to this member's
+        # identity would give the same object a different digest-suffixed directory per member
+        # whenever safe_name has to escape or truncate.
+        object_dir = safe_name(object_name, identity_of("CustomObject", namespace, object_name))
+        path = (
+            ARTIFACTS_ROOT / "objects" / segment / object_dir
+            / OBJECT_MEMBER_DIRS[metadata_type] / f"{safe_name(member, identity)}.md"
+        )
+    elif family == "objects":
+        path = ARTIFACTS_ROOT / "objects" / segment / safe_name(full_name, identity) / "object.md"
+    else:
+        path = ARTIFACTS_ROOT / family / metadata_type / segment / f"{safe_name(full_name, identity)}.md"
     if len(relative_path(path)) > PATH_BUDGET:
         raise StoreError(f"derived path exceeds {PATH_BUDGET}-char budget for {identity}")
     return path
@@ -662,8 +763,15 @@ def compute_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any
     frontmatter, body = split_entry(text)
     subject = frontmatter["subject"]
     identity = identity_of(subject["metadataType"], subject.get("namespace"), subject["fullName"])
-    expected = entry_path(subject["metadataType"], subject.get("namespace"), subject["fullName"])
     result = {"identity": identity, "path": relative_path(path), "problems": validate_entry(frontmatter, body)}
+    try:
+        expected = entry_path(subject["metadataType"], subject.get("namespace"), subject["fullName"])
+    except StoreError as exc:
+        # An unroutable subject (unregistered type, objects-family name without its dot) is
+        # this one entry's integrity failure, not grounds to crash the sweep over the corpus.
+        result["lane"] = "not-effective"
+        result["problems"].append(f"path/identity round-trip failed ({exc})")
+        return result
     if path.resolve() != expected.resolve():
         result["lane"] = "not-effective"
         result["problems"].append(f"path/identity round-trip failed (expected {expected.relative_to(ROOT)})")
@@ -1726,10 +1834,29 @@ def identity_from_entry_path(path: Path) -> str | None:
         parts = path.relative_to(ARTIFACTS_ROOT).parts
     except ValueError:
         return None
-    if len(parts) != 3 or not parts[2].endswith(".md"):
-        return None
-    metadata_type, namespace, full_name = parts[0], parts[1], parts[2][:-3]
-    if not PLAIN_SAFE_NAME_RE.fullmatch(full_name):
+    if parts and parts[0] == "objects":
+        if len(parts) == 4 and parts[3] == "object.md":
+            namespace, object_name = parts[1], parts[2]
+            if not PLAIN_SAFE_NAME_RE.fullmatch(object_name):
+                return None
+            metadata_type, full_name = "CustomObject", object_name
+        elif len(parts) == 5 and parts[4].endswith(".md"):
+            namespace, object_name, member_dir = parts[1], parts[2], parts[3]
+            member = parts[4][:-3]
+            metadata_type = OBJECT_TYPE_BY_MEMBER_DIR.get(member_dir)
+            # The reconstructed full name is Object.Member — validated per segment, because
+            # the dot the grammar itself inserts must never loosen the plain-name check.
+            if metadata_type is None or not PLAIN_SAFE_NAME_RE.fullmatch(object_name) \
+                    or not PLAIN_SAFE_NAME_RE.fullmatch(member):
+                return None
+            full_name = f"{object_name}.{member}"
+        else:
+            return None
+    elif len(parts) == 4 and parts[3].endswith(".md"):
+        family, metadata_type, namespace, full_name = parts[0], parts[1], parts[2], parts[3][:-3]
+        if FAMILY_BY_TYPE.get(metadata_type) != family or not PLAIN_SAFE_NAME_RE.fullmatch(full_name):
+            return None
+    else:
         return None
     try:
         if entry_path(metadata_type, namespace, full_name) != path:

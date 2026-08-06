@@ -3500,7 +3500,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         # `Account` is absent from force-app by nature. Reporting it would make the orphan
         # list unreadable — every lookup to a standard object would be permanent rot.
         self.approved_entry("HarnessEngagement__c.Account__c")
-        entry = self.root / ".ai/knowledge/artifacts/CustomField/c/HarnessEngagement__c%2EAccount__c.md"
+        entry = self.root / ".ai/knowledge/artifacts/objects/c/HarnessEngagement__c/fields/Account__c.md"
         # The edge is really stored — silence here is a decision, not an empty graph.
         self.assertIn("target: Account\n", entry.read_text(encoding="utf-8"))
         report = self.builder.entry_edge_report()
@@ -3528,7 +3528,7 @@ class EntryEdgeHealthTests(unittest.TestCase):
         """
 
         identity = self.approved_entry("HarnessEngagementService", "ApexClass")
-        entry = self.root / ".ai/knowledge/artifacts/ApexClass/c/HarnessEngagementService.md"
+        entry = self.root / ".ai/knowledge/artifacts/code/ApexClass/c/HarnessEngagementService.md"
         body = entry.read_text(encoding="utf-8")
         self.assertIn("target: Invoice__c\n", body, "fixture must store the bare-name edge")
         self.assertIn("kind: object-token", body)
