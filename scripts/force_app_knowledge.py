@@ -5316,12 +5316,13 @@ class ForceAppKnowledge:
         entries = self.entry_descriptions()
         by_type: dict[str, dict[str, Any]] = {}
         missing: list[dict[str, str]] = []
+        undescribed: list[dict[str, str]] = []
         for component in inventory.get("components", []):
             metadata_type = component["metadataType"]
             if metadata_type not in draftable:
                 continue
             bucket = by_type.setdefault(
-                metadata_type, {"components": 0, "byLane": Counter(), "noEntry": 0}
+                metadata_type, {"components": 0, "byLane": Counter(), "noEntry": 0, "undescribed": 0}
             )
             bucket["components"] += 1
             entry = entries.get(component["id"])
@@ -5332,7 +5333,18 @@ class ForceAppKnowledge:
                 )
             else:
                 bucket["byLane"][str(entry["lane"])] += 1
+                # A drafted entry whose Purpose is still the sentinel is a different debt
+                # than a missing entry — the remedy is `entry-describe`, not `entry-draft`.
+                # Measured live (KM-16D, 2026-08-06): reporting only `documentNext: 0` on a
+                # 527-draft store read as "nothing awaits description" to the very agent this
+                # report steers.
+                if not entry.get("purpose"):
+                    bucket["undescribed"] += 1
+                    undescribed.append(
+                        {"componentId": component["id"], "metadataType": metadata_type}
+                    )
         missing.sort(key=lambda row: (row["metadataType"], row["componentId"]))
+        undescribed.sort(key=lambda row: (row["metadataType"], row["componentId"]))
         return {
             "kind": "force-app-entry-readiness",
             "generatedAt": iso(utc_now()),
@@ -5342,6 +5354,7 @@ class ForceAppKnowledge:
                     "components": bucket["components"],
                     "byLane": dict(sorted(bucket["byLane"].items())),
                     "noEntry": bucket["noEntry"],
+                    "undescribed": bucket["undescribed"],
                 }
                 for name, bucket in sorted(by_type.items())
             },
@@ -5349,12 +5362,18 @@ class ForceAppKnowledge:
                 "components": sum(b["components"] for b in by_type.values()),
                 "withEntry": sum(sum(b["byLane"].values()) for b in by_type.values()),
                 "noEntry": sum(b["noEntry"] for b in by_type.values()),
+                "undescribed": sum(b["undescribed"] for b in by_type.values()),
             },
             "documentNext": missing[: self.ENTRY_READINESS_SAMPLE_CAP],
             "documentNextTruncated": max(0, len(missing) - self.ENTRY_READINESS_SAMPLE_CAP),
+            "describeNext": undescribed[: self.ENTRY_READINESS_SAMPLE_CAP],
+            "describeNextTruncated": max(0, len(undescribed) - self.ENTRY_READINESS_SAMPLE_CAP),
             "basis": (
                 "live entry-profiled force-app components against Knowledge Entry lanes; "
-                "`entry-edge-health` answers whether edge targets still exist in source."
+                "`documentNext` lists components with NO entry (remedy: entry-draft), "
+                "`describeNext` lists drafted entries still holding the description sentinel "
+                "(remedy: entry-describe); `entry-edge-health` answers whether edge targets "
+                "still exist in source."
             ),
         }
 
@@ -5715,6 +5734,8 @@ def main(argv: Iterable[str] | None = None) -> int:
                 "totals": result["totals"],
                 "documentNext": len(result["documentNext"]),
                 "documentNextTruncated": result["documentNextTruncated"],
+                "describeNext": len(result["describeNext"]),
+                "describeNextTruncated": result["describeNextTruncated"],
             }
         elif args.command == "entry-edge-health":
             result = builder.entry_edge_report()

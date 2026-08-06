@@ -550,6 +550,44 @@ class ForceAppKnowledgeTests(unittest.TestCase):
         self.assertIn("live entry-profiled force-app components", result["basis"])
         self.assertIn("entry-edge-health", result["basis"])
 
+    def test_entry_readiness_separates_undescribed_from_missing(self) -> None:
+        # KM-16D 2026-08-06: a 527-draft store answered `documentNext: 0` and the agent read
+        # it as "nothing awaits description". The two debts have different remedies and must
+        # never collapse into one number: no entry -> entry-draft, sentinel -> entry-describe.
+        self.builder.inventory()
+        entries = {
+            "CustomObject:HarnessEngagement__c": {"purpose": "", "lane": "draft"},
+        }
+        with unittest.mock.patch.object(
+            ForceAppKnowledge, "entry_descriptions", lambda self: entries
+        ):
+            result = self.builder.entry_readiness()
+        bucket = result["byMetadataType"]["CustomObject"]
+        self.assertEqual(1, bucket["undescribed"])
+        self.assertEqual(1, result["totals"]["undescribed"])
+        self.assertIn(
+            {"componentId": "CustomObject:HarnessEngagement__c", "metadataType": "CustomObject"},
+            result["describeNext"],
+        )
+        # The undescribed draft has an entry, so it must NOT appear in documentNext…
+        self.assertNotIn(
+            "CustomObject:HarnessEngagement__c",
+            {row["componentId"] for row in result["documentNext"]},
+        )
+        # …and a described entry contributes to neither worklist.
+        described = {
+            "CustomObject:HarnessEngagement__c": {"purpose": "Real.", "lane": "draft"},
+        }
+        with unittest.mock.patch.object(
+            ForceAppKnowledge, "entry_descriptions", lambda self: described
+        ):
+            result = self.builder.entry_readiness()
+        self.assertEqual(0, result["totals"]["undescribed"])
+        self.assertEqual([], result["describeNext"])
+        # The basis must teach the remedy split by name.
+        self.assertIn("describeNext", result["basis"])
+        self.assertIn("entry-describe", result["basis"])
+
     def test_resolve_maps_paths_and_names_onto_components(self) -> None:
         self.builder.inventory()
         result = self.builder.resolve(
