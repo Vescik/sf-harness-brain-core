@@ -435,8 +435,11 @@ export function resolveSfExecutable() {
 // profiles), so this rejects nothing — it exists so a future profile change cannot open a
 // silent cmd.exe quoting hole.
 export function assertPlainCliArgument(value) {
-  if (/["\u0000-\u001f\u007f]/.test(value)) {
-    throw new ReviewError("CLI_SCHEMA_MISMATCH", "INCOMPLETE");
+  for (const character of String(value)) {
+    const code = character.charCodeAt(0);
+    if (character === '"' || code < 0x20 || code === 0x7f) {
+      throw new ReviewError("CLI_SCHEMA_MISMATCH", "INCOMPLETE");
+    }
   }
   return value;
 }
