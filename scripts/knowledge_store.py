@@ -1232,6 +1232,25 @@ def assert_no_casefold_collision(path: Path) -> None:
             raise StoreError(f"case-fold path collision: {sibling.name} vs {path.name} (contract §3)")
 
 
+def project_source_api_version() -> str:
+    """The project's own sourceApiVersion, fail-closed — never a hardcoded stand-in.
+
+    The previous CLI default was the literal "64.0" while the project declared 67.0, so
+    every draft made without the flag silently recorded a version nothing else used (F-5,
+    live pass 2026-08-06)."""
+
+    project_path = ROOT / "sfdx-project.json"
+    try:
+        version = json.loads(project_path.read_text(encoding="utf-8")).get("sourceApiVersion")
+    except (OSError, json.JSONDecodeError) as exc:
+        raise StoreError(f"cannot read sourceApiVersion from sfdx-project.json: {exc}") from exc
+    if not isinstance(version, str) or not version:
+        raise StoreError(
+            "sfdx-project.json has no sourceApiVersion; pass --source-api-version explicitly"
+        )
+    return version
+
+
 def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
     if args.namespace == "c":
         raise StoreError("namespace literal 'c' is reserved (contract §2.1)")
@@ -1278,7 +1297,7 @@ def command_entry_draft(args: argparse.Namespace) -> dict[str, Any]:
             "digest": canonical_digest(load_schema(profile["schema"])),
         },
         "scope": {
-            "sourceApiVersion": args.source_api_version,
+            "sourceApiVersion": args.source_api_version or project_source_api_version(),
             "sourceTreeDigest": canonical_digest(sorted((f["path"], f["sourceDigest"]) for f in fragments)),
             "packageVersionId": None,
             # Dates a factsDigest move for a future auditor; lives in scope so a collector
@@ -2761,7 +2780,12 @@ def build_parser() -> argparse.ArgumentParser:
     draft.add_argument("--full-name", required=True)
     draft.add_argument("--namespace", default=None)
     draft.add_argument("--purpose-file", default=None)
-    draft.add_argument("--source-api-version", default="64.0")
+    draft.add_argument(
+        "--source-api-version",
+        default=None,
+        help="defaults to sourceApiVersion from sfdx-project.json (F-5: a hardcoded default"
+             " silently drifted from the project's real version)",
+    )
     draft.add_argument("--candidate-keyword", action="append", default=None)
     draft.set_defaults(func=command_entry_draft)
 

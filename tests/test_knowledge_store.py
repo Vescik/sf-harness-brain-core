@@ -131,6 +131,9 @@ class KnowledgeStoreTests(unittest.TestCase):
         (self.temp / "config/harness.local.json").write_text(
             json.dumps({"knowledge": {"chatReviewer": "Reviewer Person"}}), encoding="utf-8"
         )
+        (self.temp / "sfdx-project.json").write_text(
+            json.dumps({"sourceApiVersion": "63.0"}), encoding="utf-8"
+        )
         purpose = self.temp / "purpose.md"
         purpose.write_text("Routes alpha cases to the right queue.", encoding="utf-8")
         self.purpose = str(purpose)
@@ -229,6 +232,21 @@ class KnowledgeStoreTests(unittest.TestCase):
         with self.assertRaises(store.StoreError) as ctx:
             store.command_entry_check(argparse.Namespace())
         self.assertIn("sentinel", str(ctx.exception))
+
+    def test_draft_defaults_source_api_version_from_the_project_file(self) -> None:
+        # F-5: the old hardcoded "64.0" default silently drifted from the project's real
+        # version; the default must be the project's own declaration, fail-closed.
+        drafted = self.draft(purpose_file=None, source_api_version=None)
+        frontmatter, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual("63.0", frontmatter["scope"]["sourceApiVersion"])
+        # An explicit flag still wins…
+        drafted = self.draft(source_api_version="65.0")
+        frontmatter, _ = store.split_entry((self.temp / drafted["path"]).read_text(encoding="utf-8"))
+        self.assertEqual("65.0", frontmatter["scope"]["sourceApiVersion"])
+        # …and a project file without the key fails closed, never a stand-in literal.
+        (self.temp / "sfdx-project.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(store.StoreError):
+            self.draft(purpose_file=None, source_api_version=None)
 
     def test_customfield_draft_is_supported(self) -> None:
         drafted = self.draft(metadata_type="CustomField", full_name="HarnessAlphaCase__c.Status__c")
