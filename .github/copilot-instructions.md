@@ -84,8 +84,9 @@ Before a material recommendation, verdict, Knowledge promotion, handoff, or side
    runs verbatim over the pinned Salesforce MCP against the identity-proven non-production
    org, and rows return unredacted. SOQL never runs through the CLI: raw `sf`/`sfdx` data
    commands, raw vendor MCP tools, and unbound aliases stay forbidden. The only raw
-   Salesforce CLI agents may request is human-approved `sf project retrieve start`; agents
-   never deploy.
+   Salesforce CLI agents may run is `sf project retrieve start` against a configured
+   non-production alias (auto-approved on a clean force-app tree; a dirty tree asks first);
+   agents never deploy.
 6. Reconcile sources. Transport agreement between MCP and CLI is corroboration of delivery, not an
    independent vendor or business source.
 7. Stop on missing, stale, contested, or scope-mismatched evidence; do not guess.

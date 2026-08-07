@@ -100,7 +100,6 @@ SALESFORCE_REVIEW_TOOLS = {
 # a confirmation the human already gave through a governed executor; it never unlocks an operation
 # class that is denied outright (production, destructive, org writes, self-approval).
 RECEIPTS_DIR = HARNESS_ROOT / ".cache" / "receipts"
-RETRIEVE_RECEIPT_MAX_AGE_MINUTES = 60
 # The browser automation lane was removed (2026-08-05): no guard script, no origin allowlist,
 # no session receipts. Browser-automation-shaped tools and commands are denied outright so the
 # old hard deny can never degrade into the fail-closed "ask" backstop (MCP names) or into
@@ -159,21 +158,13 @@ def force_app_is_clean() -> bool:
 
 
 def retrieve_auto_approved(config: dict[str, Any] | None) -> bool:
-    """Retrieve is read-direction; with the toggle on it flows without a per-invocation ask
-    when the human recently proved this exact configuration (fresh metadata preflight PASS
-    receipt) and a retrieve cannot clobber uncommitted work (clean force-app tree)."""
+    """Retrieve is read-direction (org -> repository). Owner decision 2026-08-07: an
+    approved retrieve against a configured non-production alias flows WITHOUT a
+    per-invocation click — the receipt/toggle ceremony is retired. The one remaining
+    hold is a dirty force-app tree, because a retrieve over uncommitted work destroys
+    it silently; that case asks instead of denying."""
 
-    if not safety_toggle(config, "autoApproveRetrieveWithReceipt"):
-        return False
-    try:
-        from preflight import load_fresh_receipt
-    except ModuleNotFoundError:
-        try:
-            from scripts.preflight import load_fresh_receipt
-        except ModuleNotFoundError:
-            return False
-    receipt = load_fresh_receipt("metadata", RETRIEVE_RECEIPT_MAX_AGE_MINUTES)
-    return receipt is not None and force_app_is_clean()
+    return force_app_is_clean()
 
 
 # MCP tool classification. VS Code may hand the hook either a "server/tool" name or a BARE "tool"
@@ -521,9 +512,10 @@ def approved_retrieve_command(parts: list[str], config: dict[str, Any] | None) -
     """True when the direct CLI command is exactly `sf project retrieve start …` against one
     configured read-allowed non-production alias.
 
-    Retrieve is the only raw Salesforce CLI surface agents may request; it is read-direction
-    (org → repository) and still requires per-invocation human confirmation (SAFE-HUMAN-001).
-    Deploys, queries, logins, and every other raw subcommand stay denied.
+    Retrieve is the only raw Salesforce CLI surface agents may run; it is read-direction
+    (org → repository) and auto-approves against configured non-production aliases (owner
+    decision 2026-08-07). Deploys, queries, logins, and every other raw subcommand stay
+    denied; production aliases never auto-approve.
     """
 
     if [part.lower() for part in parts[1:4]] != ["project", "retrieve", "start"]:
@@ -813,7 +805,7 @@ def main() -> int:
             if retrieve_auto_approved(config):
                 print(json.dumps(hook_response()))
                 return 0
-            print(json.dumps(hook_response("ask", "SAFE-HUMAN-001 requires confirmation before retrieving org metadata into the project via Salesforce CLI.")))
+            print(json.dumps(hook_response("ask", "force-app has uncommitted changes a retrieve would clobber; commit or stash first (SAFE-HUMAN-001).")))
             return 0
         print(json.dumps(hook_response("deny", "Direct Salesforce CLI is disabled except human-approved `sf project retrieve start`; use the guarded read tools.")))
         return 0

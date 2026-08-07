@@ -84,8 +84,9 @@ If any check fails, stop and hand back to Solution Designer.
    (owner decisions 2026-07-30, 2026-08-04); compose any read-only SOQL through the governed
    `review_soql_query` facade tool, which runs it verbatim over the Salesforce MCP transport
    (never the CLI) and returns unredacted rows. To pull current org metadata
-   into the project, request `sf project retrieve start --target-org <configured-alias>` — the
-   safety hook stops it for per-invocation human confirmation. That retrieve is the only raw
+   into the project, run `sf project retrieve start --target-org <configured-alias>` — it
+   auto-approves against configured non-production aliases when force-app is clean (a dirty
+   tree asks first, protecting uncommitted work). That retrieve is the only raw
    Salesforce CLI surface available; deploys and every other raw subcommand are denied, and org
    deployment stays a human-run release step outside Copilot.
 5. Record files changed, commit/scope state, checks run, outcomes, remaining manual steps, and

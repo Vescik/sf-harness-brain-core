@@ -81,47 +81,24 @@ class BrowserLaneRetirementTests(unittest.TestCase):
 class RetrieveAutoApproveTests(unittest.TestCase):
     RETRIEVE = {"command": "sf project retrieve start --target-org dev-sbx"}
 
-    def test_asks_without_a_fresh_preflight_receipt(self) -> None:
-        config = base_config(autoApproveRetrieveWithReceipt=True)
-        with patch("scripts.preflight.load_fresh_receipt", lambda *args: None):
-            result, reason = run_hook("execute/runInTerminal", self.RETRIEVE, config)
-        self.assertEqual("ask", result)
-        self.assertIn("SAFE-HUMAN-001", reason)
-
-    def test_fresh_receipt_and_clean_tree_allow(self) -> None:
-        config = base_config(autoApproveRetrieveWithReceipt=True)
-        with (
-            patch("scripts.preflight.load_fresh_receipt", lambda *args: {"result": "PASS"}),
-            patch.object(safety, "force_app_is_clean", lambda: True),
-        ):
-            result, _ = run_hook("execute/runInTerminal", self.RETRIEVE, config)
+    def test_clean_tree_auto_approves_without_receipt_or_toggle(self) -> None:
+        # Owner decision 2026-08-07: retrieve against a configured non-production alias
+        # flows without a click — no preflight receipt, no config toggle.
+        with patch.object(safety, "force_app_is_clean", lambda: True):
+            result, _ = run_hook("execute/runInTerminal", self.RETRIEVE, base_config())
         self.assertEqual("continue", result)
 
-    def test_dirty_tree_or_disabled_toggle_still_asks(self) -> None:
-        with (
-            patch("scripts.preflight.load_fresh_receipt", lambda *args: {"result": "PASS"}),
-            patch.object(safety, "force_app_is_clean", lambda: False),
-        ):
-            result, _ = run_hook(
-                "execute/runInTerminal",
-                self.RETRIEVE,
-                base_config(autoApproveRetrieveWithReceipt=True),
-            )
+    def test_dirty_tree_still_asks_to_protect_uncommitted_work(self) -> None:
+        # The one remaining hold is data-loss protection, not policy: a retrieve over a
+        # dirty force-app tree silently clobbers uncommitted work.
+        with patch.object(safety, "force_app_is_clean", lambda: False):
+            result, reason = run_hook("execute/runInTerminal", self.RETRIEVE, base_config())
         self.assertEqual("ask", result)
-        with patch("scripts.preflight.load_fresh_receipt", lambda *args: {"result": "PASS"}):
-            result, _ = run_hook(
-                "execute/runInTerminal",
-                self.RETRIEVE,
-                base_config(autoApproveRetrieveWithReceipt=False),
-            )
-        self.assertEqual("ask", result)
+        self.assertIn("uncommitted", reason)
 
     def test_deploy_and_unconfigured_alias_never_inherit_the_receipt(self) -> None:
-        config = base_config(autoApproveRetrieveWithReceipt=True)
-        with (
-            patch("scripts.preflight.load_fresh_receipt", lambda *args: {"result": "PASS"}),
-            patch.object(safety, "force_app_is_clean", lambda: True),
-        ):
+        config = base_config()
+        with patch.object(safety, "force_app_is_clean", lambda: True):
             result, _ = run_hook(
                 "execute/runInTerminal",
                 {"command": "sf project deploy start --target-org dev-sbx"},

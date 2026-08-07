@@ -256,7 +256,7 @@
           "type": "string"
         },
         "autoApproveRetrieveWithReceipt": {
-          "description": "Skip the per-invocation confirmation for `sf project retrieve start` against a read-allowed sandbox while a fresh metadata preflight PASS receipt exists and force-app is clean. Default off.",
+          "description": "RETIRED (owner decision 2026-08-07): retrieve against a configured non-production alias now auto-approves whenever force-app is clean; this toggle is accepted for config compatibility and ignored.",
           "type": "boolean"
         },
         "allowScopedEnumeration": {
