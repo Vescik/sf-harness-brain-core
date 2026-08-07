@@ -11,9 +11,8 @@ import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
-import knowledge_store as store
+from scripts import knowledge_store as store
 
 
 class FamilyRegistryPinTests(unittest.TestCase):
@@ -196,7 +195,9 @@ class IdentityFromEntryPathTests(unittest.TestCase):
     def test_case_twin_paths_disambiguate_by_round_trip(self) -> None:
         lower = store.entry_path("Flow", None, "invoice_flow")
         upper = store.entry_path("Flow", None, "INVOICE_FLOW")
-        self.assertNotEqual(lower, upper)
+        # Compare rendered strings: WindowsPath equality folds case, which is exactly the
+        # collision the case-fold gate exists to catch — the DATA must stay distinct.
+        self.assertNotEqual(lower.as_posix(), upper.as_posix())
         self.assertEqual("Flow:c:invoice_flow", store.identity_from_entry_path(lower))
         self.assertEqual("Flow:c:INVOICE_FLOW", store.identity_from_entry_path(upper))
 
