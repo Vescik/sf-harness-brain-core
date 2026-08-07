@@ -65,7 +65,8 @@ metadata type, namespace, lifecycle state.
      (a bare API name that exists in several namespaces returns `AMBIGUOUS` — pass `--namespace`,
      never pick the top score yourself)
    - free text: `python scripts/knowledge_search.py search --text "<terms>" [--metadata-type <Type>] [--top N]`
-   - typed facets: `--facet field.required=true`, `--facet flow.trigger.object=<Object>`, …
+   - typed facets: `--facet field.required=true`, `--facet flow.trigger.object=<Object>`,
+     `--facet family=objects` (storage family — a navigation grouping, never evidence), …
      (`python scripts/knowledge_search.py capabilities --metadata-type <Type>` lists the valid
      facet names, value types, and operators — do not guess field paths)
    - dependencies: `--relation-anchor <Object.Field|Identity> [--relation-kind writes-field]
