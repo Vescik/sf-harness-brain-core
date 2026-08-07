@@ -1081,3 +1081,31 @@ outside the draft lane is corruption and still fails the check; entry-approve an
 entry-describe reject the sentinel unconditionally. Rejected alternatives: status quo
 (gate red for the whole documentation period) and a --strict dual mode (two semantics for
 one command invite guard/parser-style drift). Commit 8426155.
+
+## 2026-08-07 — Solution Design rebuilt as the advisory loop with one hard gate
+
+The Design Case runtime (18 MCP tools, 20 worker operations, gates G0–G9, concernCoverage,
+rule-map registry, evidence planner, 17-section scaffold — ~13.9k lines) is replaced by the
+loop from `harness-lab` plan 2026-08-06: intake → discovery → plan → execute → verify →
+[iterate ≤ cap] → submit. The runtime now enforces exactly three things prose cannot —
+discovery per subject, counted verify, the iteration stop — and refuses nothing during the
+loop; the single hard gate is human approval at design_submit (digest-bound elicitation).
+
+- Surface: 4 tools (design_open/record/check/submit). Subjects are proposed by pattern
+  extraction from untrusted requirement text and confirmed by the agent; a plan item without
+  a discovery result renders [ungrounded]. Verify checklist = static trigger table
+  (config/solution-design-rule-triggers.json, validated both ways against the 39 instruction
+  rules) + discovery limitations. Iteration: smallest-set measure, stop after 2 rounds
+  without shrink, cap from config (default 3 — owner decision, cost ceiling).
+- D-2 invariant: create/modify/delete on package-namespace metadata resting on an assumption
+  blocks submit, and only submit. Run-242050 elicitation defect closed: a delegating reply
+  ("jak uważasz") returns as an agent decision requiring separate acknowledgement, never as
+  human-attested evidence; empty replies close nothing.
+- Downstream unchanged (H3): record.json stays a schema-valid work record; work_record.py
+  owns post-acceptance lifecycle; the loop writes no handoffs. Case tree persistence
+  (lease + atomic pair commit) carried over.
+- Prose now speaks the same loop the runtime counts ("Do not announce phases" removed from
+  all four locations); guardrail-reviewer keeps design_check; development-assistant and
+  test-strategist record downstream evidence in the work record, not through SD tools.
+- Out of scope, recorded: behavioral runs §10.1/§10.4 (live Copilot, gated on U-3), D-6
+  MP-* rule content (SME work), the measurement campaign (D2).

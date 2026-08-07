@@ -12,9 +12,8 @@ upgrade.
 | Scoped enumeration of configured org aliases (requires `safety.allowScopedEnumeration`) | `salesforce-readonly/review_configured_orgs` | investigator |
 | Composed read-only SOQL incl. record reads (verbatim, Salesforce MCP transport only, unredacted single-source rows) | `salesforce-readonly/review_soql_query` | investigator, design, development, knowledge curation |
 | Salesforce non-production source retrieve into the project (per-invocation human confirmation; the only direct `sf` command not denied) | `sf project retrieve start` guarded terminal command | development only |
-| Design Case state, gates and transitions | `solution-design/*` local stdio MCP (`scripts/solution_design_mcp_server.mjs` over one persistent internal worker) | design, review, development |
-| Governed repository source evidence at an exact commit/blob | `solution-design/design_import_repository_receipt` | design |
-| Human-bound Design Case decisions (answer, candidate decision, writer transfer) | `solution-design/design_request_*` plus native VS Code MCP elicitation | named humans only |
+| Solution Design loop state (four tools: open, record, check, submit) | `solution-design/*` local stdio MCP (`scripts/solution_design_mcp_server.mjs` over one persistent internal worker) | design (guardrail-reviewer holds `design_check` read) |
+| Human approval of a design candidate | the elicitation inside `solution-design/design_submit` (native VS Code MCP elicitation; digest-bound, single-use nonce) | named humans only |
 | Interactive human confirmation | `vscode/askQuestions` | prompts and approval gates |
 | Subagent delegation | `agent` plus explicit `agents` allowlist | Designer, Developer |
 
@@ -57,10 +56,9 @@ and vendor payloads are not exposed to an agent.
 Knowledge-only because the human-bound approval surface this runtime depends on is native VS Code
 MCP elicitation, which the CLI host does not provide.
 
-Model-facing tools: `design_open`, `design_context`, `design_check`, `design_apply`,
-`design_import_repository_receipt`, `design_submit`, `design_start_development`, and the three
-request tools `design_request_human_input`, `design_request_candidate_decision`,
-`design_request_writer_transfer`.
+Model-facing tools — exactly four: `design_open`, `design_record`, `design_check`,
+`design_submit`. The loop runtime advises and never refuses a write; the single hard gate is
+the human elicitation inside `design_submit`.
 
 The request tools carry **no** answer, approval, decision or status field. They initiate an
 elicitation; the client response selects the internal operation. The internal operations —

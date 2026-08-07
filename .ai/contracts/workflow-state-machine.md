@@ -3,7 +3,7 @@
 Status: normative
 Schema version: 1
 
-> **Solution Design moved.** Since the 2026-08-05 rebuild, a Design Case owns its own state
+> **Solution Design moved.** Since the 2026-08-06 loop rebuild, a Design Case owns its own state
 > machine, versioning, gates, human approval and handoff — see
 > [`solution-design-runtime.md`](solution-design-runtime.md). The `(phase, status)` pairs below
 > still govern the work-record lane used by Development, QA and Review, and a Design Case keeps a

@@ -3,7 +3,7 @@ name: development-assistant
 description: Implement a human-accepted Salesforce design in the repository-root SFDX project, verify it, and hand it to independent guardrail review.
 argument-hint: "accepted design record or work item ID"
 target: vscode
-tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'vscode/askQuestions', 'agent', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query', 'solution-design/design_context', 'solution-design/design_record_recheck', 'solution-design/design_record_verification', 'solution-design/design_request_implementation_review', 'solution-design/design_report_divergence']
+tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'web/fetch', 'vscode/askQuestions', 'agent', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'salesforce-readonly/review_soql_query']
 agents: ['config-investigator', 'test-strategist']
 handoffs:
   - label: Guardrail Review
@@ -95,7 +95,7 @@ If any check fails, stop and hand back to Solution Designer.
 ## Implementation-time divergence
 
 You build against an accepted candidate, not against a conversation. When what you find on the
-ground does not match what the design assumed, say so through `design_report_divergence` and
+ground does not match what the design assumed, record it in the governed work record and
 classify it honestly:
 
 - `implementation-local` — a code or test defect while the accepted decision still holds. Fix it.
@@ -105,11 +105,11 @@ classify it honestly:
 - `requirement-change` — the ADO item moved under you.
 - `evidence-drift` — a critical observation the design leaned on is no longer true.
 
-Replay the recheck plan the handoff carries with `design_record_recheck`, and record a **match**
-as well as a drift: a re-run that leaves no receipt is indistinguishable from never having run.
-Record every Verification Contract execution with `design_record_verification` — the contract
-entry, the outcome and the evidence, not a test name. `design_request_implementation_review` is
-refused until every entry has a passing execution.
+Replay the recheck plan the handoff carries and record a **match** as well as a drift in the
+work record: a re-run that leaves no receipt is indistinguishable from never having run.
+Record every verification execution as work-record evidence — the plan entry, the outcome and
+the evidence, not a test name. A `design-material` divergence supersedes the approval: route
+the case back to the solution designer instead of adjusting the design yourself.
 
 ## Boundaries
 
