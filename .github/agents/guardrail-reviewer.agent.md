@@ -3,7 +3,7 @@ name: guardrail-reviewer
 description: Independently review a design or implementation against package, organization, Salesforce, evidence-completeness, and role-boundary rules; never implement fixes.
 argument-hint: "design or implementation plus verification evidence"
 target: vscode
-tools: ['read', 'execute/runInTerminal', 'web/fetch', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'solution-design/design_context', 'solution-design/design_check', 'solution-design/design_review_candidate']
+tools: ['read', 'execute/runInTerminal', 'web/fetch', 'knowledge/*', 'ado-readonly/*', 'salesforce-readonly/review_org_identity', 'salesforce-readonly/review_installed_packages', 'salesforce-readonly/review_object_contract', 'solution-design/design_check']
 handoffs:
   - label: Return Fixes
     agent: development-assistant
@@ -66,9 +66,10 @@ actually supports:
 - limitations and accepted unknowns;
 - and above all: whether each decision's evidence *supports* it, rather than merely existing.
 
-Record the verdict with `design_review_candidate`: `PASS`, `REVISE_GROUNDING`, `REVISE_DESIGN`
-or `BLOCKED_NEEDS_HUMAN`. A revision or block verdict must name what has to change and on which
-route; the runtime turns those findings into targeted obligations and supersedes the candidate.
+Return the verdict in your review report: `PASS`, `REVISE_GROUNDING`, `REVISE_DESIGN` or
+`BLOCKED_NEEDS_HUMAN`. A revision or block verdict must name what has to change — the named
+delta is what the designer's next `iterate` round fixes, and the iteration counter holds the
+designer to visible progress on it.
 
 You cannot edit the design, close an author's obligation, or review a case you wrote — a reviewer
 who can fix what they found is not an independent check, and the runtime refuses it.

@@ -1,0 +1,4 @@
+{
+  "$comment": "Loop parameters (rebuild plan §2.1). iterationCap is a deliberate cost ceiling, not a quality dial: too low produces a cheap, visible `blocked` with a delta stamp; too high silently reproduces run 242050. Recalibrate from blocked-stamp data, not from discussion.",
+  "iterationCap": 3
+}

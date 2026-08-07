@@ -89,15 +89,13 @@
       "path": ".github/agents/knowledge-curator.agent.md"
     },
     {
-      "description": "Own the Design Case — ground the design in evidence, sample record-driven configuration, resolve managed-package constraints, and bring one canonical versioned design to a human decision.",
+      "description": "Run the Solution Design loop — intake, discovery per subject, plan, execute, counted verify, iterate — and bring one candidate design to the single human gate.",
       "handoffs": [
         "guardrail-reviewer"
       ],
       "loads": {
         "contracts": [
-          "solution-design-runtime",
-          "source-authority",
-          "tool-capabilities"
+          "source-authority"
         ],
         "instructions": [
           "managed-package-constraints",
@@ -142,7 +140,7 @@
     {
       "name": "solution-design-runtime",
       "path": ".ai/contracts/solution-design-runtime.md",
-      "summary": "This contract defines the Design Case: one canonical, versioned unit of Solution Design work. It replaces the five-phase narrative Solution Design flow. `scripts/solution_design_core.py` is the single implementation of every rule below; agent-facing text may explain it but never redefines it.",
+      "summary": "This contract defines the Solution Design loop. `scripts/solution_design_core.py` is the single implementation of every rule below; agent-facing text may explain it but never redefines it.",
       "title": "Solution Design Runtime Contract"
     },
     {
@@ -160,7 +158,7 @@
     {
       "name": "workflow-state-machine",
       "path": ".ai/contracts/workflow-state-machine.md",
-      "summary": "> **Solution Design moved.** Since the 2026-08-05 rebuild, a Design Case owns its own state > machine, versioning, gates, human approval and handoff — see > [`solution-design-runtime.md`](solution-design-runtime.md). The `(phase, status)` pairs below > still govern the work-record lane used by Development, QA and Review, and a Design Case keeps a > schema-valid `record.json` so those consumers continue to resolve; but the Design Case's > authority is `record.json.solutionDesign`, its transitions are the runtime's, and `approve` is > not its approval path. Do not read design readiness from the table below.",
+      "summary": "> **Solution Design moved.** Since the 2026-08-06 loop rebuild, a Design Case owns its own state > machine, versioning, gates, human approval and handoff — see > [`solution-design-runtime.md`](solution-design-runtime.md). The `(phase, status)` pairs below > still govern the work-record lane used by Development, QA and Review, and a Design Case keeps a > schema-valid `record.json` so those consumers continue to resolve; but the Design Case's > authority is `record.json.solutionDesign`, its transitions are the runtime's, and `approve` is > not its approval path. Do not read design readiness from the table below.",
       "title": "Governed Work-Record State Machine"
     }
   ],
@@ -378,7 +376,7 @@
     {
       "agent": "solution-designer",
       "argumentHint": "itemId=<ADO ID> | caseId=<Design Case ID> | or a written requirement",
-      "description": "Open or continue a Design Case — an executed evidence loop over one canonical, versioned design whose readiness is computed, not announced.",
+      "description": "Open or continue a Solution Design case — the intake→discovery→plan→execute→verify→iterate loop with one hard gate at human approval.",
       "name": "solution-design",
       "path": ".github/prompts/solution-design.prompt.md"
     },
@@ -477,7 +475,7 @@
       "path": ".github/skills/selected-files-knowledge/SKILL.md"
     },
     {
-      "description": "Design Case workflow — an executed evidence loop whose exit conditions are computed by the Solution Design runtime, with active org sampling, record-driven configuration as a first-class artefact, and a candidate bound to human approval.",
+      "description": "The Solution Design loop — intake, discovery per subject, plan, execute, counted verify, bounded iterate — grounded in Knowledge and the org, with one hard gate at human approval.",
       "name": "solution-design",
       "path": ".github/skills/solution-design/SKILL.md"
     },
@@ -494,16 +492,16 @@
   ],
   "sourceDigests": {
     ".ai/contracts/execution-contract.md": "sha256:b35f0551d24fea7a000489e8d0dcee9797ab0ba42fc0e2dcb9a9bd404782bff9",
-    ".ai/contracts/solution-design-runtime.md": "sha256:78da2f93a464bb75ecfa15bcf4026dabdecf07ee904b04c5ff376e9890c18bcd",
+    ".ai/contracts/solution-design-runtime.md": "sha256:e524cd86d09922375c69cc068ad57785eab1045935ac05b21c47a5f2de9c599f",
     ".ai/contracts/source-authority.md": "sha256:21f45190131347752c36ced221855635b5a60126c11c67fe29b564de446d1af3",
-    ".ai/contracts/tool-capabilities.md": "sha256:3d383726c6e2745c0f9c3e003591a262c6dc595f4805a43b53b0dc4592b0eba7",
-    ".ai/contracts/workflow-state-machine.md": "sha256:34a52bab5ba8cf0292cba28ce8450cf32e2b4fbd7400039a3e33cfa53477b17b",
+    ".ai/contracts/tool-capabilities.md": "sha256:5e2e59b381234c95fbdacdea25e8bae73ea119b04be36a624f29149c9adc84ca",
+    ".ai/contracts/workflow-state-machine.md": "sha256:e5bb2075051daf1a8f75cd8883443b2d18795c02f6e9cf846a90d61eb2380918",
     ".github/agents/config-investigator.agent.md": "sha256:81c8e2314f8aeeb856fe441d53f13399d4cf4edf1bfca3ba4d05ea03204ebc25",
-    ".github/agents/development-assistant.agent.md": "sha256:45a736524c0424485300785ea32874ab664670fd01fe2de62e65aab86d6baa31",
-    ".github/agents/guardrail-reviewer.agent.md": "sha256:d5013d12387ada8c1d744dabcc190dcd148669dcf5c10732d729c5814843a5f4",
+    ".github/agents/development-assistant.agent.md": "sha256:cba08df91a9d1ddb3f402b770a6535276e052ef833fe5060f07531a2674b0428",
+    ".github/agents/guardrail-reviewer.agent.md": "sha256:7fcdee30493ba78f743ab08c267d67694c2500ff1f05662c319ef347b4a24753",
     ".github/agents/knowledge-curator.agent.md": "sha256:bb59ed8b8d87115daf7cc2f06b23746d2c0492ee9bfe2b5b74ed3588d59a9fe4",
-    ".github/agents/solution-designer.agent.md": "sha256:38d0d2df2cd55117e7f6db6f1d5870cd8871600761a2e2057b6c0fa033a905a6",
-    ".github/agents/test-strategist.agent.md": "sha256:3d2d3de404d3cd85307cbe12e8973a9833a1eaac8d3d246a35c3daf4450fadf6",
+    ".github/agents/solution-designer.agent.md": "sha256:10b2c7781fa8e1427ac7a6a4f7e778d7e3c32f498250b0fb367d5b94087b9545",
+    ".github/agents/test-strategist.agent.md": "sha256:c2d27990bfc54d68da7a7812a32f12314ec02120e83dd79dbd6e3f2859988054",
     ".github/instructions/managed-package-constraints.instructions.md": "sha256:f64007cdad680bec3761cd8a5e391a5743201e2dfbc436f140dc0caeca1a6d5e",
     ".github/instructions/organization-principles.instructions.md": "sha256:d8a94ece21b0a2ec4b12b5665054e0817f8f93345a0becf7e36a735be5c82cb5",
     ".github/instructions/salesforce-best-practices.instructions.md": "sha256:ac15eb9952349e9c12b4dbd5ec8f87e9f7cc1536fd12eb0cddd062604ccb6093",
@@ -521,7 +519,7 @@
     ".github/prompts/release-handover.prompt.md": "sha256:723b90811dac3acd2a604baaa9dc5c35ed00640a9920755fefaaecbb01c5f18c",
     ".github/prompts/search-ado.prompt.md": "sha256:e6fa23e465545216101e2e4411b799278c39e335d260a205eca72f57bdc0c5b0",
     ".github/prompts/search-knowledge.prompt.md": "sha256:aa1271386405e133c0584decca944f8704dc358e7997ee4e691cd699132fd5b4",
-    ".github/prompts/solution-design.prompt.md": "sha256:f231dfb6928cc3d8a37e682c7f9353bc0be6ac920b5e7f5e6666c7aa9f8571d8",
+    ".github/prompts/solution-design.prompt.md": "sha256:9119dfafeb6bea0ba38cb69abb4ca055fa05f976e4a50460ec6bbb03011777c1",
     ".github/prompts/sync-test-cases.prompt.md": "sha256:123ac9b75b72602c4fb0e4e5d5cb86aae648b7570feab5c0848fb9d0b3ac3860",
     ".github/prompts/tune-test-case-keywords.prompt.md": "sha256:d11c3e84e713b5ff69ea4e6b9d019d1ce0a6ad04a4ddf774fbdf2e48cf4de32e",
     ".github/skills/adhoc-fix/SKILL.md": "sha256:88ca5e4cd12b6f8d0dbd0a3e0dda788bc3159666e227c3aed4cb34057c89a74e",
@@ -538,10 +536,10 @@
     ".github/skills/search-ado/SKILL.md": "sha256:4c6a1e155d7cf3b2079953837681ebd89e6226b4ff98f8ae30f079640b788cc7",
     ".github/skills/search-knowledge/SKILL.md": "sha256:1fa4c4468d8e8151671f3b73da4c84470498b5c657e63d1c4fecc456765393bb",
     ".github/skills/selected-files-knowledge/SKILL.md": "sha256:8ee8cab59c08e6ff804eb91732e82ca1ae2e007f3274d36b1784dab439b29620",
-    ".github/skills/solution-design/SKILL.md": "sha256:0c4bb65f9d5e2f33c45bc46533b6b7e52749fe65c5cb48f609c90e7c01cb0837",
+    ".github/skills/solution-design/SKILL.md": "sha256:22bdb12d0135e683af6f87e89d3d1c26934dedea871cc476357a14831859c7f4",
     ".github/skills/sync-test-cases/SKILL.md": "sha256:86b1af1a8415d07f548e7160a565933be7dfede396e55341345fe76ffccfe529",
     ".github/skills/tune-test-case-keywords/SKILL.md": "sha256:bf9e6961b03bf3ff00903dcef31c9ccb4ac41cb974bc32e20f4d1e10ae1e3fce",
     "config/repo-map-seed.json": "sha256:d297648de8831ec5f1fa177eec9b89b885bc3791c84c2d03b4718db7c5c880ee"
   },
-  "wordCount": 777
+  "wordCount": 775
 }

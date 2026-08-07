@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
-"""Read-only Design Case diagnostics and test harness.
+"""Read-only Solution Design loop CLI: diagnostics only, no mutation verbs.
 
-This is the public Python entry point and it is **read-only by construction**. It has no
-transition verb, no approval verb and no way to write a case: every mutation goes through the
-MCP runtime and its internal NDJSON worker. That split is the point — the previous architecture
-let an agent type workflow commands, and the rebuild removes that surface rather than guarding
-it.
-
-Verbs:
-
-  check <case-id>        run every computed gate and print the routed gaps
-  context <case-id>      print the current case summary
-  render <case-id>       print design.md as the runtime would regenerate it (does not write)
-  registry               validate the rule applicability registry against the instruction files
-  capabilities           print the active capability manifest and its digest
+Mutations flow exclusively through the MCP server's four tools; this CLI exists for CI and
+operators. `check` prints the advisory gap report, `render` re-renders design.md from state,
+`triggers` validates the H1 rule-trigger table against the live instructions files.
 """
 
 from __future__ import annotations
@@ -25,89 +15,50 @@ from pathlib import Path
 
 try:
     import solution_design_core as core
-    from solution_design_worker import CaseStore, Worker, WorkerError
-except ModuleNotFoundError:  # imported as scripts.solution_design by unit tests
+    import solution_design_worker as worker_module
+except ModuleNotFoundError:
     from scripts import solution_design_core as core
-    from scripts.solution_design_worker import CaseStore, Worker, WorkerError
+    from scripts import solution_design_worker as worker_module
 
-
-HARNESS_ROOT = Path(__file__).resolve().parents[1]
-
-READ_ONLY_COMMANDS = ("check", "context", "render", "registry", "capabilities")
-
-
-def command_check(worker: Worker, case_id: str) -> dict:
-    return worker.op_check({"caseId": case_id})
-
-
-def command_context(worker: Worker, case_id: str) -> dict:
-    return worker.op_context({"caseId": case_id, "view": "all"})
-
-
-def command_render(worker: Worker, case_id: str) -> str:
-    record, design = worker.store.load(case_id)
-    return core.render_generated_sections(design, record["solutionDesign"])
-
-
-def command_registry() -> dict:
-    rule_map = core.load_rule_map()
-    definitions = core.canonical_rule_definitions()
-    problems = core.validate_rule_registry(rule_map, definitions)
-    return {
-        "policyVersion": rule_map["policyVersion"],
-        "canonicalRules": len(definitions),
-        "selectorDriven": len(rule_map["rules"]),
-        "manualApplicability": len(rule_map["manualApplicability"]),
-        "problems": problems,
-    }
-
-
-def command_capabilities() -> dict:
-    manifest = core.load_capabilities()
-    return {
-        "manifestVersion": manifest["manifestVersion"],
-        "gateEvaluatorVersion": manifest["gateEvaluatorVersion"],
-        "capabilityManifestDigest": core.capability_digest(manifest),
-        "concernProfiles": manifest["concernProfiles"],
-        "probeKinds": manifest["probeKinds"],
-        "evidenceSourceTypes": manifest["evidenceSourceTypes"],
-    }
+READ_ONLY_COMMANDS = ("check", "render", "triggers")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--root", default=None, help="workspace root (defaults to this repository)")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for name in ("check", "context", "render"):
+    for name in ("check", "render"):
         sub = subparsers.add_parser(name)
         sub.add_argument("case_id")
-    subparsers.add_parser("registry")
-    subparsers.add_parser("capabilities")
+    subparsers.add_parser("triggers")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
-    root = Path(arguments.root).resolve() if arguments.root else HARNESS_ROOT
+    root = Path(arguments.root).resolve() if arguments.root else Path(worker_module.HARNESS_ROOT)
     try:
-        if arguments.command == "registry":
-            result = command_registry()
-            print(json.dumps(result, indent=2, sort_keys=True))
-            return 1 if result["problems"] else 0
-        if arguments.command == "capabilities":
-            print(json.dumps(command_capabilities(), indent=2, sort_keys=True))
+        if arguments.command == "triggers":
+            table = core.load_rule_triggers()
+            print(json.dumps({
+                "policyVersion": table.get("policyVersion"),
+                "always": len(table.get("always", [])),
+                "matrixCells": len(table.get("byArtefactAction", {})),
+                "neverTriggered": len(table.get("neverTriggered", {})),
+                "outcome": "VALID",
+            }, indent=2, sort_keys=True))
             return 0
-        worker = Worker(root)
+        worker = worker_module.Worker(root)
         if arguments.command == "render":
-            sys.stdout.write(command_render(worker, arguments.case_id))
+            record = worker.store.load(arguments.case_id)
+            state = record["solutionDesign"]
+            sys.stdout.write(core.render_design(state, state.get("prose") or {}))
             return 0
-        handler = {"check": command_check, "context": command_context}[arguments.command]
-        result = handler(worker, arguments.case_id)
-        print(json.dumps(result, indent=2, sort_keys=True))
-        if arguments.command == "check":
-            return 0 if result["result"] == "READY" else 2
+        print(json.dumps(worker.op_check({"caseId": arguments.case_id}), indent=2, sort_keys=True))
         return 0
-    except (WorkerError, core.SolutionDesignError) as exc:
+    except (worker_module.WorkerError, core.SolutionDesignError) as exc:
         print(f"solution-design: {exc}", file=sys.stderr)
         return 1
 
