@@ -86,7 +86,9 @@ never evidence and never a graph relation:
 with families `ui`, `access`, `automation`, `code`, `integration`, `configuration`,
 `reporting`, `shared` — except the `objects` family (`CustomObject`, `CustomField`,
 `ValidationRule`, `RecordType`, `BusinessProcess`, `DuplicateRule`, `MatchingRule`), which
-groups per object:
+groups per object. In Knowledge Search the family is a hard `family` facet like any other
+(`--facet family=objects`) — a navigation filter, never ranked text and never authority
+(owner decisions O-1/O-2, 2026-08-06):
 
 ```text
 .ai/knowledge/artifacts/objects/<ns|c>/<Object>/object.md                       CustomObject

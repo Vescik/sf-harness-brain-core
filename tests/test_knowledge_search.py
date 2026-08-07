@@ -479,6 +479,35 @@ class KnowledgeSearchTests(EntryFixtureMixin, unittest.TestCase):
         with self.assertRaises(search.SearchError):
             self.search(facet=["field.nonsense=1"])
 
+    def test_family_is_a_hard_facet_composed_from_the_storage_dict(self) -> None:
+        # Owner decisions 2026-08-06 (family-search discovery): family filters as a hard
+        # eq-facet sourced from FAMILY_BY_TYPE — and is NEVER ranked text (O-2), so a text
+        # query for the family name alone must not surface entries of that family.
+        self.seed()
+        objects = self.search(facet=["family=objects"])
+        self.assertEqual(
+            {"CustomField:c:HarnessAlphaCase__c.Status__c", "CustomField:c:HarnessBetaOrder__c.Case__c"},
+            set(self.ids(objects)),
+        )
+        automation = self.search(facet=["family=automation"])
+        self.assertEqual(
+            {"Flow:c:HarnessAlphaRouter", "Flow:c:HarnessBetaDispatch"},
+            set(self.ids(automation)),
+        )
+        self.assertIn("facet", automation["excludedCounts"])
+        # Composes with text: only the automation-family hit for this text survives.
+        composed = self.search(text="dispatch", facet=["family=automation"])
+        self.assertEqual(["Flow:c:HarnessBetaDispatch"], self.ids(composed))
+        # An unknown family VALUE is an empty (honest) result, not an error…
+        self.assertEqual([], self.ids(self.search(facet=["family=no-such-family"])))
+        # …and the family name as bare text ranks nothing (O-2: navigation, not semantics).
+        self.assertEqual([], self.ids(self.search(text="automation")))
+
+    def test_manifest_counts_entries_per_family(self) -> None:
+        self.seed()
+        _documents, manifest = search.load_index()
+        self.assertEqual({"automation": 2, "objects": 2}, manifest["familyCounts"])
+
     def test_g10_reference_to_lookup(self) -> None:
         self.seed()
         result = self.search(facet=["field.referenceTo=HarnessAlphaCase__c"])
@@ -708,6 +737,7 @@ class KnowledgeSearchTests(EntryFixtureMixin, unittest.TestCase):
     def test_capabilities_lists_valid_facets_and_operators(self) -> None:
         result = search.run_capabilities(argparse.Namespace(metadata_type="Flow"))
         self.assertIn("flow.trigger.object", result["facets"])
+        self.assertIn("family", result["facets"])
         self.assertNotIn("field.referenceTo", result["facets"])
         self.assertEqual(list(search.FACET_OPERATORS), result["operators"])
         self.assertEqual(["approved-current"], result["defaultStates"])
