@@ -35,9 +35,9 @@ EXPECTED_TOOLS = {
     "knowledge_resolve",
     "knowledge_entry_status",
     "knowledge_explain",
-    "knowledge_tree",
-    "knowledge_feature_drift",
-    "knowledge_feature_dossier",
+    "knowledge_feature_search",
+    "knowledge_feature_context",
+    "knowledge_feature_status",
     "knowledge_edge_health",
     "knowledge_capabilities",
 }
@@ -63,9 +63,9 @@ SERVER_FLAGS = {
     "knowledge_resolve": {"--name", "--path"},
     "knowledge_entry_status": {"--identity"},
     "knowledge_explain": {"--identity", "--top", "--include-heuristic"},
-    "knowledge_tree": {"--feature", "--direction", "--include-heuristic"},
-    "knowledge_feature_drift": {"--feature", "--include-heuristic"},
-    "knowledge_feature_dossier": {"--feature", "--include-heuristic"},
+    "knowledge_feature_search": {"--text", "--artifact-id", "--layer", "--role", "--claim-type", "--top"},
+    "knowledge_feature_context": {"--slug"},
+    "knowledge_feature_status": {"--slug", "--claim"},
     "knowledge_edge_health": set(),
     "knowledge_capabilities": {"--metadata-type"},
 }
@@ -73,8 +73,8 @@ SERVER_FLAGS = {
 # Write-capable subcommands that must exist in the parsers (so the negative pin below can
 # never pass vacuously after a rename) and must never appear in the server allowlist.
 WRITE_SENTINELS = {
-    "knowledge_store.py": {"entry-draft", "entry-approve", "entry-revoke", "entry-org-attach", "feature-propose"},
-    "force_app_knowledge.py": {"feature-crawl"},
+    "knowledge_store.py": {"entry-draft", "entry-approve", "entry-revoke", "entry-org-attach",
+                           "feature-open", "feature-record", "feature-approve"},
 }
 
 PARSERS = {
@@ -158,7 +158,12 @@ class KnowledgeMcpContractTests(unittest.TestCase):
 
     def test_no_write_capable_subcommand_is_reachable(self) -> None:
         allowlist = self.exports["allowlist"]
-        self.assertEqual(allowlist["knowledge_store.py"], ["entry-status"])
+        # The store allowlist carries entry-status plus the three READ-ONLY feature v2
+        # surfaces; every mutation stays behind the guarded executor.
+        self.assertEqual(
+            sorted(allowlist["knowledge_store.py"]),
+            ["entry-status", "feature-context", "feature-search", "feature-verify-citations"],
+        )
         # `inventory` is the missing-inventory self-heal (generated-cache class, like
         # `build`) — reachable by the server, never mapped to a tool.
         self.assertEqual(sorted(allowlist["force_app_knowledge.py"]), ["inventory", "resolve"])

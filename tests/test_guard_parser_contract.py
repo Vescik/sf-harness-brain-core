@@ -175,7 +175,7 @@ class GuardParserContractTests(unittest.TestCase):
         self.assertEqual(
             frozenset({
                 "entry-draft", "entry-describe", "entry-approve", "entry-revoke",
-                "feature-propose", "feature-describe", "feature-approve", "feature-revoke",
+                "feature-open", "feature-record", "feature-approve", "feature-revoke",
                 "entry-org-attach", "entry-org-detach",
             }),
             guard.KNOWLEDGE_STORE_MUTATION_COMMANDS,

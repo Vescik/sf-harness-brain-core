@@ -49,7 +49,7 @@ except ModuleNotFoundError:  # imported as scripts.validate_harness by unit test
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_COUNTS = {"agents": 6, "prompts": 17, "skills": 17, "instructions": 3}
+EXPECTED_COUNTS = {"agents": 6, "prompts": 18, "skills": 18, "instructions": 3}
 # Budget for each grounding subprocess below. entry-check parses and validates every entry at
 # roughly 4.5 ms per entry (measured at 9 000), so a corpus in the low tens of thousands is the
 # constraint here, not the code. Raise this deliberately from a measurement — never to silence a
@@ -248,7 +248,7 @@ def check_required_files(audit: Audit) -> None:
         "schemas/force-app-knowledge-inventory.schema.json",
         "schemas/force-app-knowledge-resolve.schema.json",
         "schemas/knowledge-entry.schema.json",
-        "schemas/knowledge-feature-entry.schema.json",
+        "schemas/knowledge-feature.schema.json",
         "schemas/knowledge-profile-flow.schema.json",
         "schemas/knowledge-profile-customfield.schema.json",
         "schemas/knowledge-profile-apex.schema.json",

@@ -132,9 +132,9 @@ class KnowledgeMcpServerTests(unittest.TestCase):
                 "knowledge_resolve",
                 "knowledge_entry_status",
                 "knowledge_explain",
-                "knowledge_tree",
-                "knowledge_feature_drift",
-                "knowledge_feature_dossier",
+                "knowledge_feature_search",
+                "knowledge_feature_context",
+                "knowledge_feature_status",
                 "knowledge_edge_health",
                 "knowledge_capabilities",
             },
@@ -298,16 +298,18 @@ class KnowledgeMcpServerTests(unittest.TestCase):
             "knowledge_explain", {"identity": PROBE_IDENTITY, "top": 5, "includeHeuristic": True}
         )
         self.assert_parser_accepted(result)
-        # Feature surfaces answer with a domain envelope for an unknown (but well-formed)
-        # slug — never an argparse failure.
-        for name in ("knowledge_tree", "knowledge_feature_drift", "knowledge_feature_dossier"):
-            result = self.client.call(name, {"feature": "no-such-feature"})
-            self.assert_parser_accepted(result)
-        result = self.client.call(
-            "knowledge_tree",
-            {"feature": "no-such-feature", "direction": "outgoing", "includeHeuristic": True},
-        )
-        self.assert_parser_accepted(result)
+        # Feature v2 surfaces: search answers a domain envelope on an empty corpus; the
+        # slug-addressed reads answer a DOMAIN error (no feature file) for an unknown but
+        # well-formed slug — never an argparse failure.
+        result = self.client.call("knowledge_feature_search", {"text": "anything"})
+        self.assertEqual(result["structuredContent"]["outcome"], "SEARCH")
+        for name, extra in (
+            ("knowledge_feature_context", {}),
+            ("knowledge_feature_status", {"claimIds": ["FC-001"]}),
+        ):
+            result = self.client.call(name, {"feature": "no-such-feature", **extra})
+            self.assertEqual("ERROR", result["structuredContent"]["outcome"])
+            self.assertIn("no feature at", result["structuredContent"]["reason"])
 
     def test_resolve_requires_names_or_paths(self) -> None:
         message = self.client.call_error("knowledge_resolve", {})

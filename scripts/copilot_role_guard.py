@@ -133,8 +133,6 @@ FORCE_APP_COMMAND_FLAGS = {
     # Read-only path/name -> component mapping for the selected-files lane; --write only saves
     # the derived view under the ignored .cache/knowledge-proposals/ workspace.
     "resolve": frozenset({"--path", "--name", "--write"}),
-    # Writes only under the ignored .cache/knowledge-proposals/ workspace (evidence-doc F-14).
-    "feature-crawl": frozenset({"--feature", "--anchors", "--depth", "--hub"}),
 }
 
 # One-file Knowledge Entry executor (docs/knowledge-one-file-contract.md v1.1). Reads are
@@ -143,15 +141,15 @@ FORCE_APP_COMMAND_FLAGS = {
 # `ask` for the four approval/revocation commands — its pattern is
 # `(?:entry|feature)-(?:approve|revoke)`, one alternation over both record kinds, because a
 # Feature approval is the same act as an entry approval. The other four commands in
-# KNOWLEDGE_STORE_MUTATION_COMMANDS (entry-draft, entry-describe, feature-propose,
-# feature-describe) write no approval record and are gated by the mutation role alone.
+# KNOWLEDGE_STORE_MUTATION_COMMANDS (entry-draft, entry-describe, feature-open,
+# feature-record) write no approval record and are gated by the mutation role alone.
 # tests/test_guard_parser_contract.py diffs these flags against knowledge_store.build_parser.
 # entry-review only renders a review artifact under output/; it mutates no Knowledge, so it
 # stays outside the mutation set while still being a curator/investigator-shaped action.
 KNOWLEDGE_STORE_MUTATION_COMMANDS = frozenset(
     {"entry-draft", "entry-describe", "entry-approve", "entry-revoke",
      # feature-review / feature-status / feature-check are reads, matching entry-review.
-     "feature-propose", "feature-describe", "feature-approve", "feature-revoke",
+     "feature-open", "feature-record", "feature-approve", "feature-revoke",
      # Org-usage attach/detach (contract §6.6): mutations that deliberately spend NO chat
      # click (owner D-3 2026-08-03, schema-as-instrument) — the verb-partition test asserts
      # they sit in the authoring bucket. Role-narrowed further by ORG_ATTACH_ROLES below.
@@ -185,17 +183,18 @@ KNOWLEDGE_STORE_COMMAND_FLAGS = {
     "entry-verify-citations": frozenset({"--envelope", "--entry-ref"}),
     "entry-org-attach": frozenset({"--identity", "--org", "--probes-file"}),
     "entry-org-detach": frozenset({"--identity", "--org", "--rationale"}),
-    # Feature Entries (contract §13). The boundary rule is human-authored, so propose/describe
-    # are mutations; review/status/check are reads, mirroring the entry-review precedent.
-    "feature-propose": frozenset(
-        {"--slug", "--name", "--anchor", "--hub", "--depth", "--include", "--exclude",
-         "--assurance-floor", "--replace"}
-    ),
-    "feature-describe": frozenset({"--slug", "--purpose-file"}),
+    # Feature Knowledge v2 (contract §13). Interactive authoring writes through open/record,
+    # so both are mutations; review/status/check are reads, mirroring the entry-review
+    # precedent. The operations file is ignored proposal input, never Knowledge.
+    "feature-open": frozenset({"--slug", "--name"}),
+    "feature-record": frozenset({"--slug", "--expected-version", "--operations-file"}),
     "feature-status": frozenset({"--slug"}),
     "feature-review": frozenset({"--slug"}),
     "feature-approve": frozenset({"--feature"}),
     "feature-revoke": frozenset({"--slug", "--rationale"}),
+    "feature-verify-citations": frozenset({"--slug", "--claim", "--envelope"}),
+    "feature-search": frozenset({"--text", "--artifact-id", "--layer", "--role", "--claim-type", "--top"}),
+    "feature-context": frozenset({"--slug"}),
     "feature-check": frozenset(),
 }
 
@@ -229,9 +228,6 @@ KNOWLEDGE_SEARCH_COMMAND_FLAGS = {
     "context": frozenset(
         {"--identity", "--state", "--top", "--include-heuristic", "--direction"}
     ),
-    "tree": frozenset({"--feature", "--state", "--include-heuristic", "--direction"}),
-    "feature-drift": frozenset({"--feature", "--state", "--include-heuristic"}),
-    "feature-dossier": frozenset({"--feature", "--state", "--include-heuristic"}),
     "edge-health": frozenset(),
     "capabilities": frozenset({"--metadata-type"}),
 }
@@ -430,36 +426,6 @@ def force_app_knowledge_command_allowed(parts: list[str], role: str) -> bool:
         return False
     if parts == ["inventory"]:
         return True
-    if parts[0] == "feature-crawl":
-        index = 1
-        seen_feature = False
-        while index < len(parts):
-            token = parts[index]
-            if "=" in token:
-                flag, value = token.split("=", 1)
-                index += 1
-            else:
-                flag, value = token, parts[index + 1] if index + 1 < len(parts) else ""
-                index += 2
-            if flag not in FORCE_APP_COMMAND_FLAGS[parts[0]]:
-                return False
-            if flag == "--feature":
-                if not re.fullmatch(r"[A-Za-z][A-Za-z0-9 _-]{0,79}", value):
-                    return False
-                seen_feature = True
-            elif flag == "--anchors":
-                names = [name.strip() for name in value.split(",") if name.strip()]
-                if not names or len(names) > 10 or not all(
-                    re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", name) for name in names
-                ):
-                    return False
-            elif flag == "--hub":
-                if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", value):
-                    return False
-            elif flag == "--depth":
-                if not value.isdigit() or not 1 <= int(value) <= 3:
-                    return False
-        return seen_feature
     if parts[0] == "resolve":
         # Read-only lexical mapping of paths/names onto inventory components; it never opens
         # the input paths, so validation is argument hygiene, not filesystem authority. The

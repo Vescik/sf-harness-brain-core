@@ -44,39 +44,31 @@ via `git config`). Report it missing from that file and stop rather than improvi
 Return the mode, health counts, selections executed, entry identities touched, skipped items
 with reasons, and outstanding approvals.
 
-## Feature boundaries (contract §13)
+## Feature Knowledge (contract §13)
 
-A feature is a business grouping, so its boundary is authored, not discovered. Measured on a
-20-object package: from one anchor, depth 1 reaches 3 objects, depth 2 reaches 13, depth 4
-saturates at 17 — because every hop expands both along an object's own lookups and along every
-field pointing at it. Depth alone cannot express a feature.
+A Feature is curated, explicit topology — never a recomputed membership. Interactive
+authoring has its own entry point: [/author-feature](author-feature.prompt.md) runs the
+staged conversation (purpose → domain → processing → UI → access → evidence → approval)
+through the [author-feature skill](../skills/author-feature/SKILL.md). From this cockpit you
+only need the surrounding lifecycle:
 
-- `feature <slug>`: propose or revise the rule, then describe and route to approval.
-  - `python scripts/force_app_knowledge.py feature-crawl --feature "<Name>" --anchors <A,B> --depth 1 [--hub <X>]`
-    proposes a starting boundary; present it and let the human decide before writing a rule.
-  - `python scripts/knowledge_store.py feature-propose --slug <slug> --name "<Name>" --anchor <A>
-    [--hub <X>] [--depth N] [--include <Identity>] [--exclude <Identity>]
-    [--assurance-floor source-exact|source-derived-heuristic] [--replace]`
-  - `python scripts/knowledge_store.py feature-describe --slug <slug> --purpose-file <file>` —
-    what the feature IS. No traversal can derive this; it is the part a reviewer actually reads.
-  - `python scripts/knowledge_store.py feature-status [--slug <slug>]` — lanes. Read-only.
-  - `python scripts/knowledge_search.py tree --feature <slug> [--include-heuristic]` — current
-    membership with each node's reason and assurance. Advisory: never approved.
-  - `python scripts/knowledge_search.py feature-dossier --feature <slug> [--include-heuristic]` —
-    render the human-readable dossier from the APPROVED rule: what the feature is, the rule
-    itself, members with why each belongs and how much that reason can be trusted, and the
-    artifacts reached only by inference. The file is a generated view and is never citable.
-  - `python scripts/knowledge_search.py feature-drift --feature <slug>` — what membership did
-    since approval. `changed: "unknown"` means no baseline is available on this machine, which
-    is not the same as "nothing changed".
-  - Approval goes through [approve-knowledge-drafts](../skills/approve-knowledge-drafts/SKILL.md):
-    `feature-review` renders the rule and the prose, and the human confirms
-    `feature-approve --feature Feature:<slug>:sha256:<digest>` in chat.
-  - `python scripts/knowledge_store.py feature-revoke --slug <slug> --rationale "<reason>"`.
-  - `feature-check` is not part of this workflow: `validate_harness.py` runs it as the CI
-    integrity gate over features and their ledger. CI runs it; you do not. If it fails, the
-    failure names the feature file and the contract section — fix that, do not re-run it by hand.
+- `python scripts/knowledge_store.py feature-status [--slug <slug>]` — lanes. Read-only.
+- `python scripts/knowledge_store.py feature-context --slug <slug>` — the approved
+  architecture in one read (never a citation receipt).
+- `python scripts/knowledge_store.py feature-search [--text …] [--layer …] [--artifact-id …]`
+  — discovery over approved features; hits are never citable.
+- `python scripts/knowledge_store.py feature-verify-citations --slug <slug> --claim FC-…`
+  — the ONLY producer of a citable featureRef; claim-scoped, transitively checked against
+  the artifact bindings.
+- Approval goes through [approve-knowledge-drafts](../skills/approve-knowledge-drafts/SKILL.md):
+  `feature-review` renders the full package (topology, claims with authority, binding
+  currency, narrative) and the human confirms
+  `feature-approve --feature Feature:<slug>:sha256:<digest>` in chat.
+- `python scripts/knowledge_store.py feature-revoke --slug <slug> --rationale "<reason>"`.
+- `feature-check` is not part of this workflow: `validate_harness.py` runs it as the CI
+  integrity gate over features and their ledger. CI runs it; you do not.
 
-What approval binds is the RULE and the description — never the member list. Membership depends
-on the package as well as the rule, so storing it would mean every new artifact drifts every
-feature that could contain it, and the reviewer would be re-approving a list they never read.
+What approval binds is the reviewed MODEL and narrative — nodes, relations, claims with
+their authority classes, artifact bindings pinned by digest. Graph traversal only ever
+proposes candidates; a component joins the Feature exclusively through a recorded draft
+operation the reviewer can see.

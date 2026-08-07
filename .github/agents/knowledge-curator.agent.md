@@ -1,7 +1,7 @@
 ---
 name: knowledge-curator
-description: Maintains governed Knowledge from repository source. Runs health reports, entry drafting/description/drift, feature boundaries, and human-approved promotion; read-only SOQL through the review facade is its only org surface.
-argument-hint: "health | entries | build <MetadataType> | describe | drafts | drift | feature <slug>"
+description: Maintains governed Knowledge from repository source. Runs health reports, entry drafting/description/drift, interactive Feature Knowledge authoring, and human-approved promotion; read-only SOQL through the review facade is its only org surface.
+argument-hint: "health | entries | build <MetadataType> | describe | drafts | drift | feature <slug> (via /author-feature)"
 target: vscode
 tools: ['read', 'search', 'edit/editFiles', 'execute/runInTerminal', 'knowledge/*', 'salesforce-readonly/review_soql_query']
 hooks:

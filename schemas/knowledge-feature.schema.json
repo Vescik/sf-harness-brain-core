@@ -1,0 +1,571 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sf-harness-brain-core:knowledge-feature.schema.json",
+  "title": "Feature Knowledge v2",
+  "description": "Contract §13. One canonical, human-approved, citable document describing the complete architecture and meaning of a Feature. Frontmatter is the typed model; the Markdown body is the human narrative. Membership is explicit curated topology — graph traversal proposes candidates, only a draft operation admits a component. Layers are contextual roles and deliberately NOT the canonical storage families (see LAYER_FAMILY_NOTES in scripts/feature_knowledge.py).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "subject",
+    "vocabVersion",
+    "model",
+    "artifactBindings",
+    "limitations",
+    "keywords",
+    "candidateKeywords",
+    "sensitivity",
+    "draft",
+    "lifecycle",
+    "approval"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "kind": {
+      "const": "feature-knowledge"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slug",
+        "name"
+      ],
+      "properties": {
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "maxLength": 60
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      }
+    },
+    "vocabVersion": {
+      "const": "feature-vocab-v1"
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nodes",
+        "relations",
+        "entryPoints",
+        "claims",
+        "unresolved"
+      ],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "maxItems": 300,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "kind",
+              "featureLayer",
+              "role"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "kind": {
+                "enum": [
+                  "artifact",
+                  "business-concept",
+                  "external-system",
+                  "configuration-domain",
+                  "actor"
+                ]
+              },
+              "artifactId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^(?!Feature:)[A-Za-z][A-Za-z0-9]{1,79}:[A-Za-z0-9_]{1,15}:.{1,240}$"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "featureLayer": {
+                "$ref": "#/$defs/layer"
+              },
+              "role": {
+                "$ref": "#/$defs/role"
+              },
+              "roleNote": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "evidenceClaimIds": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "$ref": "#/$defs/claimId"
+                }
+              },
+              "tombstoned": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "relations": {
+          "type": "array",
+          "maxItems": 600,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "from",
+              "to",
+              "kind",
+              "assurance",
+              "explanation"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/relationId"
+              },
+              "from": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "to": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "kind": {
+                "$ref": "#/$defs/relationKind"
+              },
+              "assurance": {
+                "$ref": "#/$defs/assurance"
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "$ref": "#/$defs/bindingRef"
+                }
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 800
+              },
+              "tombstoned": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "entryPoints": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "nodeId",
+              "description"
+            ],
+            "properties": {
+              "nodeId": {
+                "$ref": "#/$defs/nodeId"
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 400
+              }
+            }
+          }
+        },
+        "claims": {
+          "type": "array",
+          "maxItems": 400,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "type",
+              "layer",
+              "authority",
+              "text",
+              "citationPolicy"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/claimId"
+              },
+              "type": {
+                "$ref": "#/$defs/claimType"
+              },
+              "layer": {
+                "$ref": "#/$defs/layer"
+              },
+              "authority": {
+                "$ref": "#/$defs/assurance"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "dependsOn": {
+                "type": "array",
+                "maxItems": 40,
+                "items": {
+                  "$ref": "#/$defs/anyModelId"
+                }
+              },
+              "evidenceRefs": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "$ref": "#/$defs/bindingRef"
+                }
+              },
+              "citationPolicy": {
+                "enum": [
+                  "citable-after-approval",
+                  "never-citable"
+                ]
+              },
+              "tombstoned": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "unresolved": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "question"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/questionId"
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 600
+              },
+              "resolution": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 600
+              },
+              "tombstoned": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "artifactBindings": {
+      "type": "array",
+      "maxItems": 300,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "entryId",
+          "reviewedContentDigest",
+          "factsDigest",
+          "sourceTreeDigest",
+          "profile"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/bindingRef"
+          },
+          "entryId": {
+            "type": "string",
+            "pattern": "^(?!Feature:)[A-Za-z][A-Za-z0-9]{1,79}:[A-Za-z0-9_]{1,15}:.{1,240}$"
+          },
+          "reviewedContentDigest": {
+            "$ref": "#/$defs/sha256"
+          },
+          "factsDigest": {
+            "$ref": "#/$defs/sha256"
+          },
+          "sourceTreeDigest": {
+            "$ref": "#/$defs/sha256"
+          },
+          "profile": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "sections": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "maxLength": 80
+            }
+          },
+          "tombstoned": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "string",
+        "maxLength": 500
+      }
+    },
+    "keywords": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "string",
+        "maxLength": 60
+      }
+    },
+    "candidateKeywords": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "maxLength": 60
+      }
+    },
+    "sensitivity": {
+      "enum": [
+        "public",
+        "internal-sanitized"
+      ]
+    },
+    "draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "idCounters"
+      ],
+      "properties": {
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "idCounters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "FN": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "FR": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "FC": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "FQ": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "FB": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "draft",
+            "approved"
+          ]
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewedContentDigest",
+        "reviewedBy",
+        "reviewedAt",
+        "mechanism"
+      ],
+      "properties": {
+        "reviewedContentDigest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/sha256"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewedBy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 120
+        },
+        "reviewedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mechanism": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 60
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "nodeId": {
+      "type": "string",
+      "pattern": "^FN-[0-9]{3,6}$"
+    },
+    "relationId": {
+      "type": "string",
+      "pattern": "^FR-[0-9]{3,6}$"
+    },
+    "claimId": {
+      "type": "string",
+      "pattern": "^FC-[0-9]{3,6}$"
+    },
+    "questionId": {
+      "type": "string",
+      "pattern": "^FQ-[0-9]{3,6}$"
+    },
+    "bindingRef": {
+      "type": "string",
+      "pattern": "^FB-[0-9]{3,6}$"
+    },
+    "anyModelId": {
+      "type": "string",
+      "pattern": "^F[NRCQB]-[0-9]{3,6}$"
+    },
+    "layer": {
+      "enum": [
+        "domain-data",
+        "business-rules",
+        "processing",
+        "automation",
+        "code",
+        "ui",
+        "access",
+        "integration",
+        "configuration",
+        "reporting",
+        "shared"
+      ]
+    },
+    "role": {
+      "enum": [
+        "aggregate-root",
+        "child-entity",
+        "reference-data",
+        "amount-source",
+        "entry-point",
+        "ui-controller",
+        "ui-view",
+        "orchestrator",
+        "calculation-service",
+        "validation-boundary",
+        "permission-boundary",
+        "integration-endpoint",
+        "configuration-source",
+        "reporting-view",
+        "downstream-consumer",
+        "shared-resource",
+        "actor",
+        "external-system",
+        "other"
+      ]
+    },
+    "relationKind": {
+      "enum": [
+        "contains",
+        "belongs-to",
+        "references",
+        "writes",
+        "reads",
+        "calculates-from",
+        "triggers",
+        "orchestrates",
+        "exposes",
+        "secured-by",
+        "configured-by",
+        "integrates-with",
+        "reports-on",
+        "precedes"
+      ]
+    },
+    "assurance": {
+      "enum": [
+        "source-exact",
+        "human-attested",
+        "org-observed",
+        "source-derived-heuristic",
+        "unresolved"
+      ]
+    },
+    "claimType": {
+      "enum": [
+        "feature-purpose",
+        "feature-boundary",
+        "component-role",
+        "entry-point",
+        "data-relationship",
+        "calculation-lineage",
+        "processing-order",
+        "access-boundary",
+        "integration-contract",
+        "invariant",
+        "known-limitation"
+      ]
+    }
+  }
+}
