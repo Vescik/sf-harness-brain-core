@@ -705,203 +705,93 @@ Reserved for the parity-certification procedure that §10a and §11 gate the del
 v1 repository-claim machinery on. Nothing is specified here yet; the number is held so it
 cannot be silently reused for something else (owner decision D7, 2026-07-25).
 
-## 13. Feature Entries
+## 13. Feature Knowledge (v2)
 
-A **Feature Entry** is a human-approved **boundary rule** plus a human description of what
-the feature is. It is the only Knowledge record in this contract whose subject is not a
-Salesforce artifact, and it is deliberately not an entry: it has no source, no collector, no
-profile, no facts, and it is never citable.
+One canonical, human-approved, citable document per Feature:
+`.ai/knowledge/features/<slug>/feature.md` — typed frontmatter model plus human narrative,
+one approved digest, one review unit. Schema: `schemas/knowledge-feature.schema.json`;
+domain logic: `scripts/feature_knowledge.py`. There is no generated dossier, no
+materialized membership view and no second model file.
 
-**Membership is never approved and never stored.** Membership is a function of the rule AND
-of the package, so storing it would mean every new artifact drifts every feature that could
-contain it, and a reviewer would be re-approving a list they never read. What a human
-approves is the rule and the prose; membership is recomputed on demand from the rule against
-the current index and reported as **advisory**.
+### 13.1 Identity and separation
 
-### 13.1. What a Feature Entry holds
+`Feature:<slug>` — deliberately two segments, so it can never satisfy an Artifact
+`entryRef` (three segments); the three envelope schemas additionally reject `Feature:` by
+lookahead. Feature citations use the distinct `featureRef`
+(`{featureId, reviewedContentDigest, modelDigest, claimIds[]}`); a bare Feature reference
+with no claim selection is not grounding. Features live outside `ARTIFACTS_ROOT`; the
+artifact index, `all_entry_paths()` and `corpus_fingerprint()` never see them. The feature
+ledger is a separate append-only file (`features-ledger.jsonl`), latest-wins by identity.
 
-Schema: `schemas/knowledge-feature-entry.schema.json`, `kind: feature-entry` (the
-discriminator exists for any reader that meets both record shapes).
+### 13.2 The model
 
-| Block | Content |
-|---|---|
-| `subject` | `slug` (the identity, §13.2) and a human `name` |
-| `boundary` | the RULE: `anchors` (≥1), `hubs`, `depth` (0-4), `include`, `exclude`, `membershipAssuranceFloor` |
-| body | `## Purpose` — what the feature IS, written by a human; `<AGENT_…>` sentinels are rejected exactly as in §6.4 |
-| `lifecycle` / `approval` | `draft`/`approved` plus the ledger mirror (§13.5) |
+Frontmatter holds executor-identified topology: `nodes` (artifact / business-concept /
+external-system / configuration-domain / actor; each with a contextual `featureLayer` and
+`role` — layers are navigation vocabulary deliberately distinct from storage families, see
+`LAYER_FAMILY_NOTES`), `relations` (direction, kind, assurance, evidence, explanation),
+`entryPoints`, `claims` (11 types, each with an authority class and a citation policy),
+`unresolved` questions and `artifactBindings` (digest-pinned receipts created only from the
+store's own lane computation — never from search hits or pasted digests). IDs
+(`FN/FR/FC/FQ/FB`) are allocated by the executor from monotonic counters; deletion
+tombstones, never reassigns.
 
-`hubs` are objects kept as an edge target but never expanded through; without them one shared
-object (User, Account, a resource table) drags the whole model in at the next hop. Depth alone
-cannot express a feature: measured on a 20-object package, depth 1 from one anchor reaches 3
-objects, depth 2 reaches 13, and depth 4 saturates at 17, because every hop expands both along
-an object's own lookups and along every field pointing at it. Anchors, hubs and explicit
-include/exclude are what make a boundary a decision rather than a radius.
+**Membership is explicit curated topology.** Graph traversal proposes candidates; a
+component becomes part of the Feature only through a recorded draft operation visible in
+review and included in the approved digest.
 
-`membershipAssuranceFloor` is the weakest edge assurance allowed to *carry* membership
-(§8.1 vocabulary). It is the second thing that stops a rule becoming a dragnet: measured on
-one real boundary, 23 of 29 Apex members joined only through heuristic edges — classes that
-merely mention the object name. Below-floor artifacts are still found, counted and labelled;
-they are not presented as members.
+### 13.3 Authority (the laundering guard)
 
-### 13.2. Identity — `Feature:<slug>`, two segments
+Assurance classes: `source-exact`, `human-attested`, `org-observed`,
+`source-derived-heuristic`, `unresolved`. Human approval is authority for declared business
+semantics only — purpose, boundary, component role, entry point, invariant, limitation. It
+may NOT establish data relationships, calculation lineage, processing order, access
+boundaries or integration contracts: those claim types require repository/org evidence, and
+`validate_feature` rejects a human-attested claim of a source-required type at write time.
+Heuristic and unresolved material is never citable, whatever the document's approval state.
+A `source-exact` claim or relation without an artifact binding is invalid.
 
-Canonical identity is `Feature:<slug>` — **two** segments, where `slug` matches
-`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`, is ≤60 chars, and may not begin with a Windows reserved
-device name.
+### 13.4 Authoring, approval, lifecycle
 
-Two rather than three is a safety decision, not a style one (owner decision D5). Artifact
-identity is `<MetadataType>:<ns|c>:<FullName>` (§3), and `work_record.entry_relative_path`
-unpacks a citation with `identity.split(":", 2)`. A **three**-segment `Feature:…:…` identity
-would satisfy that unpack and resolve to a path under `ARTIFACTS_ROOT` that does not exist —
-a Feature offered as an `entryRef` would fail silently, as a missing file. Two segments cannot
-be unpacked that way, so the same mistake raises immediately.
+Interactive authoring (prompt `/author-feature`, curator role) writes exclusively through
+`feature-open` / `feature-record` (one batch of typed operations from an ignored proposal
+file; optimistic `draft.version` concurrency; fail-closed validation before any write;
+atomic write after every accepted batch — chat is never state). Keywords are validated
+against the approved taxonomy, digest-excluded, exactly like artifact entries.
 
-Four independent things must therefore stay true, and none of them is allowed to be the only
-one:
+Lanes: `draft` / `approved-current` / `not-effective` / `revoked`. A draft's outstanding
+work (unfilled sentinel, empty core sections) is lane `draft` with listed problems, never a
+check failure; an approved document with problems is `not-effective`. `feature-review`
+renders the full package (topology, claims with authority, binding currency, narrative,
+digest-level delta vs the last approved version) and the digest-pinned approve command;
+`feature-approve` re-validates, re-computes and compares the pinned digest, flips lifecycle
+and appends `{reviewedContentDigest, modelDigest, semanticsDigest}` to the feature ledger
+(SAFE-HUMAN-001 asks on it). Any material edit returns the document to draft. Revocation is
+append-only with a rationale.
 
-1. `entryId` in the three envelope schemas (`output-envelope`, `change-record`,
-   `handoff-envelope`) carries an explicit `^(?!Feature:)` lookahead **backstopping** the
-   three-segment pattern — the pattern alone blocks a Feature only incidentally;
-2. `entry_relative_path`'s unpack fails loudly on two segments (above);
-3. Feature files live outside `ARTIFACTS_ROOT` (§13.3), so no reader ever enumerates one as
-   an entry;
-4. a Feature has no `factsDigest`, `sourceTreeDigest` or `profile`, all of which an
-   `entryRef` requires — there is nothing honest to put in those fields.
+### 13.5 Citation and drift
 
-### 13.3. Where the files live, and that they are governed
+`feature-verify-citations` (MCP: `knowledge_feature_status`) is the ONLY producer of a
+citable `featureRef`. Per request it verifies: schema validity, ledger-current approval,
+requested ids exist in the reviewed model, authority permits citation, and the TRANSITIVE
+artifact bindings of the selected claims are current. Verdicts: `current` and `degraded`
+(unrelated evidence drifted) return the receipt; `drifted`, `superseded`, `not-citable`,
+`unknown-id`, `not-approved`, `invalid` and `unknown` do not. Evidence drift never rewrites
+the approved document — it blocks affected citations and surfaces as a repair queue.
 
-```text
-.ai/knowledge/features/<slug>.md
-```
+Deliberate v2.0 simplifications, recorded: no separate feature index (`feature-search` and
+`feature-context` scan the canonical files directly — revisit past ~200 features); no
+`approved-expired` lane (no review window has been adopted); no computed `contested` class
+(mechanically indistinguishable from drift without semantics — drift already blocks the
+citation); no v1 compatibility aliases (git history is rollback).
 
-**Outside `ARTIFACTS_ROOT` by construction**, so `all_entry_paths()` and
-`corpus_fingerprint()` never see a Feature. This keeps a Feature out of the artifact index
-(§13.2 block 3) and keeps feature edits from invalidating the artifact corpus fingerprint.
+### 13.6 The body
 
-Both the feature file and its ledger (§13.4) are **governed record paths**
-(`is_governed_record_path`, matched case-folded per §3): raw edits are denied by the role
-guard and writes happen only through the executor. The *file* needs its own arm, not just the
-ledger — without it an agent could rewrite an approved boundary rule through the ordinary
-write path and the digest pin would never see it, which is a direct breach of "agents never
-self-approve".
-
-The no-reparse-point rule of §3 applies. For single-feature commands it is scoped to the
-features root: a `feature-status --slug` must not walk the entire artifact tree to prove a
-symlink is absent.
-
-### 13.4. The feature ledger is a separate file
-
-```text
-.ai/knowledge/features-ledger.jsonl
-```
-
-Same shape and same append-only rules as §6.1: one JSON line per action, monotonic
-`sequence`, previous lines immutable, written only by the approve/revoke executor, and the
-ledger — not the file's `approval` mirror — is authoritative.
-
-It is a **separate** file from `.ai/knowledge/artifacts-ledger.jsonl` (owner decision D4)
-because the artifact ledger's stamp is folded into every projection's reuse key: a shared file
-would discard the whole artifact index on every feature approval. `feature-check` validates
-this ledger's sequence and orphans exactly as `entry-check` does for the artifact ledger.
-
-An `approve` record carries `{sequence, action, identity, reviewedContentDigest,
-boundaryDigest, semanticsDigest, membershipDigest, reviewedBy, reviewedAt, mechanism,
-chunkId}`; a `revoke` record carries `{sequence, action, identity, rationale, reviewedBy,
-reviewedAt, mechanism}`. `membershipDigest` is a **digest, never a list** — see §13.7.
-
-### 13.5. Approval mechanism
-
-Identical in mechanism to §6, with the review surface adapted to what is actually being
-approved:
-
-1. `feature-propose` writes (or, with `--replace`, rewrites) the rule as a **draft**. An
-   authored description survives a rule change; a rule change never survives as approved.
-2. `feature-describe` writes the `## Purpose` prose from a file and returns the feature to
-   `draft` — the previous approval covered the previous text.
-3. `feature-review` renders the executor-authored review artifact under
-   `output/knowledge-approvals/<chunkId>-feature-review.md`: the rule, field by field, the
-   attested body verbatim, and the digest-pinned approve command. It states in the artifact
-   that the reviewer is approving a rule and a description, **not** a member list.
-4. `feature-approve --feature Feature:<slug>:sha256:<digest>` recomputes at execution time and
-   fails the chunk on any mismatch (TOCTOU closed, §6.2). The safety hook answers `ask` and
-   names what is being approved; the click is recorded as
-   `copilot-chat-entry-confirmation`.
-5. `feature-revoke --slug --rationale` appends a revocation, which is then the latest record.
-
-`reviewedContentDigest` covers exactly `{identity, kind, schemaVersion, boundaryDigest,
-semanticsDigest, sensitivity}`. **Membership is absent from it by construction** — that is
-what makes an approved feature immune to package growth. `boundaryDigest` is taken over the
-canonicalized rule, with `anchors`, `hubs`, `include` and `exclude` sorted and de-duplicated:
-they are sets in meaning, so reordering them is not a re-approval.
-
-Lanes are computed at read time, never trusted from the file (§4), with the same vocabulary
-minus what cannot apply: a Feature has no source fragment, so `approved-drifted`,
-`scope-mismatch` and `unsupported-profile` are unreachable. Only an edit to the rule, an edit
-to the prose, or a ledger move can change a Feature's lane.
-
-### 13.6. `feature-approve` never depends on the index
-
-A governed human approval must not be blocked by a disposable cache. `feature-approve`
-succeeds with a **stale or absent index**, recording `membershipDigest: null` (§13.7). The
-reverse — refusing to record a human's decision because a `.cache/` directory is missing —
-would put a cache in the approval path, which "never authority" forbids.
-
-### 13.7. Membership: recomputed, advisory, and where its baseline lives
-
-Membership is produced by `knowledge_search.py tree --feature <slug>`: a lane-filtered
-traversal from the anchors, honouring hubs, depth, include/exclude and the assurance floor.
-It is **lane-filtered** because postings contain draft, revoked and not-effective entries —
-unfiltered, an approved feature's tree would present drafts as members with citation blocks,
-and the drift baseline would invert (`changed: true` when someone drafts an unrelated entry,
-`changed: false` when a real member is approved).
-
-Because §13 rules a member list out of the ledger, the baseline lives in two places with two
-different jobs:
-
-| Layer | Home | Answers |
-|---|---|---|
-| `membershipDigest` | the ledger `approve` record | **whether** membership changed |
-| identity list | `.cache/knowledge-search/feature-baseline-<slug>.json`, written by `tree` | **what** was added or removed |
-
-The ledger's `membershipDigest` is the membership the approved rule produced against the index
-**at approval time**, or `null` when no index was reachable (§13.6). A digest is not a member
-list and cannot re-approve on drift, which is why it is admissible in a permanent
-human-attributed record where identities the reviewer was told they were not approving are
-not. The `.cache/` identity list is disposable, git-ignored and never authority.
-
-`feature-drift` therefore answers in two layers:
-
-- **`changed` comes from the ledger digest** versus the digest recomputed now. This is
-  portable: it works on a machine that never held the approver's cache, which on a team of
-  per-developer caches is the normal case. If the ledger record's `membershipDigest` is
-  `null`, or the feature is not approved, `changed` is **`"unknown"`** with a gap naming the
-  reason.
-- **added/removed detail comes from the `.cache/` identity list.** An absent or foreign
-  baseline makes the detail unavailable — reported as a gap naming the reason and the remedy —
-  while `changed` still answers from the digest.
-
-**`changed: false` is never reported for an absent baseline.** That inversion — "no baseline"
-read as "nothing moved" — is the entire reason this split exists.
-
-**Truncation answers honestly.** When the membership traversal hits its limits, the result
-reports `truncated: true` and `changedWithinTruncatedPrefix` instead of a bare `changed`
-value. The traversal is deterministic, so a truncated prefix is a real answer about a real
-prefix; `changed: null` on every large feature would make the command useless exactly where
-features matter, and silence is not an option.
-
-A boundary rule that differs from the approved one is reported separately as
-`boundaryRuleChanged` — that is a **re-approval**, not drift.
-
-### 13.8. A generated view is never Knowledge
-
-`tree`, `feature-dossier` and any file they write (`output/feature-dossiers/…`) are
-**generated views**. They are not Knowledge, they are not approved, and they are never
-citable — the member list in them is advisory and the dossier says so in its own first
-paragraph. The crawl-proposal dossier (`force_app_knowledge.py feature-draft`) is a different
-content model again and lives in `.cache/knowledge-proposals/feature-dossiers/…`; each writer
-refuses a file carrying the other's H1 rather than overwriting it. A reader who wants a citable reference is pointed at the executor receipt
-(`knowledge_store.py entry-status --identity <Identity>`), never at a hand-built `entryRef`:
-a projection's digests are content digests and `validate_entry_refs` rejects them outright.
+Sections come from a closed list; the core three — `Purpose and boundary`, `Domain and
+data model`, `Evidence map` — are mandatory and gate approval. A non-applicable section is
+either omitted or carries an explicit reviewed "Not applicable"; silent absence is not
+completeness. The document stores roles, relations and references — never copied
+`typeFacts`, formulas, flow models or source fragments; consumers descend through
+`knowledge_context` for artifact detail.
 
 ## 14. Retrieval output: where the lane guarantee is visible
 

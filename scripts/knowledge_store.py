@@ -598,7 +598,7 @@ def assert_no_reparse_points(root: Path | None = None) -> None:
     """Refuse a symlink/junction anywhere under the tree a command is about to write.
 
     Scoped, because the walk is the command's own cost: a single-file feature-status or
-    feature-propose paying an rglob over a 15 k-entry artifact corpus is a scale defect, and the
+    feature-open paying an rglob over a 15 k-entry artifact corpus is a scale defect, and the
     artifact corpus is not what those commands write anyway. Each caller passes the root it
     governs, so the check still covers every path it can create (§6, R4)."""
 
@@ -2868,42 +2868,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     verify.set_defaults(func=command_entry_verify_citations)
 
-    propose = commands.add_parser("feature-propose", help="write a feature's boundary rule as a draft")
-    propose.add_argument("--slug", required=True)
-    propose.add_argument("--name", required=True)
-    propose.add_argument("--anchor", action="append", default=None)
-    propose.add_argument("--hub", action="append", default=None)
-    propose.add_argument("--depth", type=int, default=1)
-    propose.add_argument("--include", action="append", default=None)
-    propose.add_argument("--exclude", action="append", default=None)
-    propose.add_argument(
-        "--assurance-floor", default="source-exact",
-        choices=["source-exact", "source-derived-heuristic"],
-    )
-    propose.add_argument("--replace", action="store_true")
-    propose.set_defaults(func=command_feature_propose)
+    fopen = commands.add_parser("feature-open", help="create or resume a Feature Knowledge draft")
+    fopen.add_argument("--slug", required=True)
+    fopen.add_argument("--name", default=None)
+    fopen.set_defaults(func=command_feature_open)
 
-    fdescribe = commands.add_parser("feature-describe", help="write what the feature IS")
-    fdescribe.add_argument("--slug", required=True)
-    fdescribe.add_argument("--purpose-file", required=True)
-    fdescribe.set_defaults(func=command_feature_describe)
+    frecord = commands.add_parser("feature-record", help="apply one batch of typed feature operations")
+    frecord.add_argument("--slug", required=True)
+    frecord.add_argument("--expected-version", required=True, type=int)
+    frecord.add_argument("--operations-file", required=True)
+    frecord.set_defaults(func=command_feature_record)
 
     fstatus = commands.add_parser("feature-status", help="lanes for every feature")
     fstatus.add_argument("--slug", default=None)
     fstatus.set_defaults(func=command_feature_status)
 
     freview = commands.add_parser("feature-review", help="render the human review surface")
-    freview.add_argument("--slug", action="append", default=None)
+    freview.add_argument("--slug", action="append", required=True)
     freview.set_defaults(func=command_feature_review)
 
-    fapprove = commands.add_parser("feature-approve", help="digest-pinned approval of boundary rules")
-    fapprove.add_argument("--feature", action="append", default=None)
+    fapprove = commands.add_parser("feature-approve", help="digest-pinned approval of feature knowledge")
+    fapprove.add_argument("--feature", action="append", help="Feature:<slug>:sha256:<digest>")
     fapprove.set_defaults(func=command_feature_approve)
 
     frevoke = commands.add_parser("feature-revoke", help="revoke an approved feature")
     frevoke.add_argument("--slug", required=True)
     frevoke.add_argument("--rationale", required=True)
     frevoke.set_defaults(func=command_feature_revoke)
+
+    fsearch = commands.add_parser("feature-search", help="discovery over approved features")
+    fsearch.add_argument("--text", default=None)
+    fsearch.add_argument("--artifact-id", default=None)
+    fsearch.add_argument("--layer", default=None)
+    fsearch.add_argument("--role", default=None)
+    fsearch.add_argument("--claim-type", default=None)
+    fsearch.add_argument("--top", type=int, default=10)
+    fsearch.set_defaults(func=command_feature_search)
+
+    fcontext = commands.add_parser("feature-context", help="the approved feature architecture in one read")
+    fcontext.add_argument("--slug", required=True)
+    fcontext.set_defaults(func=command_feature_context)
+
+    fverify = commands.add_parser(
+        "feature-verify-citations", help="claim-level citation verdicts and receipts"
+    )
+    fverify.add_argument("--slug", default=None)
+    fverify.add_argument("--claim", action="append", default=None)
+    fverify.add_argument("--envelope", default=None)
+    fverify.set_defaults(func=command_feature_verify_citations)
 
     fcheck = commands.add_parser("feature-check", help="CI validation of features and their ledger")
     fcheck.set_defaults(func=command_feature_check)
@@ -2927,573 +2939,483 @@ def main(argv: list[str] | None = None) -> int:
 # That split is the whole design. Membership is a function of the rule AND of the package,
 # so storing it would mean every new artifact drifts every feature that could contain it,
 # and a reviewer would be re-approving a list they never read. Membership is recomputed on
-# demand and reported as an advisory; `feature-drift` says what moved since approval.
+# demand and reported as an advisory; claim-level drift is feature-verify-citations' job.
 
 
-FEATURE_SLUG_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-FEATURE_SENTINEL = "<AGENT_FEATURE_DESCRIPTION>"
+# --------------------------------------------------------------------------------------
+# Feature Knowledge v2 (contract §13): the curated, citable Feature document.
+# Domain logic lives in scripts/feature_knowledge.py; these commands own I/O and the
+# ledger. The corpus is directories: .ai/knowledge/features/<slug>/feature.md.
+# --------------------------------------------------------------------------------------
 
 
-BOUNDARY_NAME_CLOSEST = 3
-
-
-def source_object_names() -> tuple[set[str], str | None]:
-    """Every component and owning-object name force-app currently holds.
-
-    One cached JSON read, the same source `entry-coverage` uses, deliberately NOT an rglob over
-    the artifact corpus: a single-feature command paying a walk over a 15 k-entry store is the
-    scale defect this module already warns about. Returns the reason instead of raising when the
-    inventory is unavailable — a boundary must still be writable on a machine that has not run
-    `inventory` yet.
-    """
-
-    from scripts.force_app_knowledge import ForceAppKnowledge
-
+def _fk():
     try:
-        inventory = ForceAppKnowledge(ROOT).inventory()
-    except Exception as error:  # noqa: BLE001 - advisory context, never a hard failure
-        return set(), f"unavailable: {error}"
-    names: set[str] = set()
-    for component in inventory.get("components", []):
-        name = component.get("name")
-        if not name:
-            continue
-        names.add(str(name))
-        owner = (component.get("facts") or {}).get("object")
-        if owner:
-            names.add(str(owner))
-        if "." in str(name):
-            names.add(str(name).split(".", 1)[0])
-    return names, None
+        from scripts import feature_knowledge
+    except ImportError:
+        import feature_knowledge
+    return feature_knowledge
 
 
-def resolve_boundary_names(names: list[str]) -> dict[str, Any]:
-    """Advisory: does each name in a boundary rule exist in this workspace's source?
-
-    `feature-propose` stripped whitespace and wrote, so a typo landed inside a rule that a human
-    then approved and a digest then pinned. Worse, an unresolvable name and a name the walk simply
-    never reached produce the SAME silence — measured on the first real store, where a rule
-    declared four hubs, none fired, and nothing distinguished "correct but not reached" from
-    "does not exist".
-
-    Advisory on purpose. A hard gate here would reject an anchor whose object-meta.xml is absent
-    from a fixture, and would couple a pure file write to git and to the inventory schema — the
-    failure `entry-coverage` deliberately soft-handles. The reviewer is told; nothing is refused.
-    """
-
-    import difflib
-
-    known, unavailable = source_object_names()
-    rows: dict[str, Any] = {}
-    for name in sorted({str(item).strip() for item in names if str(item).strip()}):
-        if unavailable:
-            rows[name] = {"status": "unknown", "closest": []}
-            continue
-        if name in known:
-            rows[name] = {"status": "in-source", "closest": []}
-            continue
-        rows[name] = {
-            "status": "not-in-workspace",
-            # A near miss is the typo signal. An exact absence with no near miss is usually a
-            # standard or packaged object, which is a legitimate hub and not an error.
-            "closest": difflib.get_close_matches(name, sorted(known), n=BOUNDARY_NAME_CLOSEST, cutoff=0.8),
-        }
-    return {
-        "names": rows,
-        "basis": unavailable or "force-app inventory",
-        "notInWorkspace": sorted(n for n, row in rows.items() if row["status"] == "not-in-workspace"),
-    }
-
-
-def feature_identity(slug: str) -> str:
-    """`Feature:<slug>` — two segments, deliberately.
-
-    Three segments would match the artifact identity shape closely enough that
-    work_record.entry_relative_path's unpack succeeds and produces a path under
-    ARTIFACTS_ROOT that does not exist. Two segments cannot be unpacked that way, so a
-    Feature offered as an entryRef fails loudly instead of resolving to nothing."""
-
-    return f"Feature:{slug}"
-
-
-def feature_path(slug: str) -> Path:
-    if not FEATURE_SLUG_RE.match(slug):
-        raise StoreError(
-            f"feature slug {slug!r} must be lowercase alphanumeric with single hyphens"
-        )
-    if slug.upper().split("-")[0] in WINDOWS_RESERVED:
-        raise StoreError(f"feature slug {slug!r} starts with a Windows reserved device name")
-    return FEATURES_ROOT / f"{slug}.md"
-
-
-def all_feature_paths() -> list[Path]:
-    return sorted(FEATURES_ROOT.glob("*.md")) if FEATURES_ROOT.exists() else []
-
-
-def canonical_boundary(boundary: dict[str, Any]) -> dict[str, Any]:
-    """The rule in a form whose digest is stable under reordering.
-
-    Anchors and hubs are sets in meaning, so `[A, B]` and `[B, A]` are the same rule and must
-    not produce different digests — otherwise a cosmetic edit would demand re-approval."""
-
-    return {
-        "anchors": sorted(set(boundary.get("anchors") or [])),
-        "hubs": sorted(set(boundary.get("hubs") or [])),
-        "depth": int(boundary.get("depth", 1)),
-        "include": sorted(set(boundary.get("include") or [])),
-        "exclude": sorted(set(boundary.get("exclude") or [])),
-        "membershipAssuranceFloor": boundary.get("membershipAssuranceFloor") or "source-exact",
-    }
-
-
-def boundary_digest(boundary: dict[str, Any]) -> str:
-    return canonical_digest(canonical_boundary(boundary))
-
-
-def feature_reviewed_content_digest(frontmatter: dict[str, Any], body: str) -> str:
-    """What approval binds: the identity, the rule, the prose, the sensitivity.
-
-    Membership is absent by construction — that is what makes an approved feature immune to
-    package growth."""
-
-    return canonical_digest(
-        {
-            "identity": feature_identity(frontmatter["subject"]["slug"]),
-            "kind": "feature-entry",
-            "schemaVersion": frontmatter["schemaVersion"],
-            "boundaryDigest": boundary_digest(frontmatter["boundary"]),
-            "semanticsDigest": semantics_digest(body),
-            "sensitivity": frontmatter["sensitivity"],
-        }
-    )
-
-
-def validate_feature(frontmatter: dict[str, Any], body: str) -> list[str]:
-    problems: list[str] = []
-    schema = load_schema("knowledge-feature-entry.schema.json")
-    from jsonschema import Draft202012Validator
-
-    problems.extend(
-        error.message for error in Draft202012Validator(schema).iter_errors(frontmatter)
-    )
-    if SENTINEL_PATTERN.search(body):
-        problems.append("unfilled <AGENT_...> sentinel present (contract §13)")
-    if "## Purpose" not in body:
-        problems.append("body must carry a '## Purpose' section")
-    return problems
-
-
-def compute_feature_lane(path: Path, latest: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    """Lane for one Feature Entry.
-
-    No source-fragment check: a Feature has no source. Its facts are the human's rule, so the
-    only things that can invalidate it are an edit to that rule, an edit to the prose, or a
-    ledger move."""
-
-    frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
-    slug = frontmatter.get("subject", {}).get("slug", "")
-    identity = feature_identity(slug)
-    result: dict[str, Any] = {
-        "identity": identity,
-        "path": relative_path(path),
-        "problems": validate_feature(frontmatter, body),
-    }
-    if result["problems"] or frontmatter.get("lifecycle", {}).get("state") == "draft":
-        result["lane"] = "draft" if not result["problems"] else "not-effective"
-        result["reviewedContentDigest"] = (
-            feature_reviewed_content_digest(frontmatter, body) if not result["problems"] else None
-        )
-        result["boundaryDigest"] = (
-            boundary_digest(frontmatter["boundary"]) if not result["problems"] else None
-        )
-        return result
-
-    digest = feature_reviewed_content_digest(frontmatter, body)
-    record = latest.get(identity)
-    result["reviewedContentDigest"] = digest
-    result["boundaryDigest"] = boundary_digest(frontmatter["boundary"])
-    if record is None:
-        result["lane"] = "not-effective"
-        result["problems"].append("file claims approved but no ledger record approves it")
-    elif record.get("action") == "revoke":
-        result["lane"] = "revoked"
-    elif record.get("reviewedContentDigest") != digest:
-        result["lane"] = "not-effective"
-        result["problems"].append("content digest does not match the approved ledger record")
-    elif any(
-        frontmatter["approval"].get(field) != record.get(field)
-        for field in ("reviewedBy", "reviewedAt", "mechanism")
-    ):
-        result["lane"] = "not-effective"
-        result["problems"].append("in-file approval provenance mismatches the ledger record")
-    else:
-        result["lane"] = "approved-current"
-    return result
-
-
-def command_feature_propose(args: argparse.Namespace) -> dict[str, Any]:
-    """Write (or replace) a feature's boundary rule as a draft.
-
-    The rule is authored, not discovered. `feature-crawl` proposes a starting point, but what
-    lands here is a human's decision about where the feature ends — which is why depth alone
-    is not enough: on a 20-object package depth 2 already reaches 13 objects."""
-
-    assert_no_reparse_points(FEATURES_ROOT)
-    path = feature_path(args.slug)
-    if path.exists() and not args.replace:
-        raise StoreError(f"{feature_identity(args.slug)} already exists; pass --replace to rewrite its rule")
-    boundary = {
-        "anchors": [item.strip() for item in (args.anchor or []) if item.strip()],
-        "hubs": [item.strip() for item in (args.hub or []) if item.strip()],
-        "depth": int(args.depth),
-        "include": [item.strip() for item in (args.include or []) if item.strip()],
-        "exclude": [item.strip() for item in (args.exclude or []) if item.strip()],
-        "membershipAssuranceFloor": args.assurance_floor,
-    }
-    if not boundary["anchors"]:
-        raise StoreError("a feature boundary needs at least one --anchor")
-    body = f"## Purpose\n\n{FEATURE_SENTINEL}\n"
-    if path.exists():
-        _previous_front, previous_body = split_entry(path.read_text(encoding="utf-8"))
-        if FEATURE_SENTINEL not in previous_body:
-            body = previous_body  # keep an authored description across a rule change
-    frontmatter: dict[str, Any] = {
-        "schemaVersion": 1,
-        "kind": "feature-entry",
-        "subject": {"slug": args.slug, "name": args.name},
-        "boundary": canonical_boundary(boundary),
-        "lifecycle": {"state": "draft", "contentDigest": None},
-        "limitations": [],
-        "keywords": [],
-        "candidateKeywords": [],
-        "sensitivity": "internal-sanitized",
-        "approval": {
-            "reviewedContentDigest": None, "reviewedBy": None,
-            "reviewedAt": None, "mechanism": None,
-        },
-    }
-    digest = feature_reviewed_content_digest(frontmatter, body)
-    frontmatter["lifecycle"]["contentDigest"] = digest
-    atomic_write(path, render_entry(frontmatter, body))
-    return {
-        "outcome": "PROPOSED",
-        "identity": feature_identity(args.slug),
-        "path": relative_path(path),
-        "boundary": frontmatter["boundary"],
-        "boundaryDigest": boundary_digest(frontmatter["boundary"]),
-        "reviewedContentDigest": digest,
-        "describedYet": FEATURE_SENTINEL not in body,
-        "nameResolution": resolve_boundary_names(
-            boundary["anchors"] + boundary["hubs"] + boundary["include"] + boundary["exclude"]
-        ),
-    }
-
-
-def command_feature_describe(args: argparse.Namespace) -> dict[str, Any]:
-    """Write the human description of what the feature IS.
-
-    A boundary rule says which artifacts; it cannot say why they belong together. That is the
-    part no traversal can derive and the part a reviewer is really approving."""
-
-    assert_no_reparse_points(FEATURES_ROOT)
-    path = feature_path(args.slug)
+def _feature_binding_resolver(entry_id: str) -> dict[str, Any]:
+    """A live receipt for an artifact binding — approved-current or refused. Bindings are
+    created only from the store's own lane computation, never assembled from search hits
+    or caller-pasted digests (master plan §9.3)."""
+    parts = (entry_id or "").split(":", 2)
+    if len(parts) != 3:
+        raise StoreError(f"binding target {entry_id!r} is not an Artifact identity")
+    metadata_type, namespace_segment, full_name = parts
+    namespace = None if namespace_segment == "c" else namespace_segment
+    path = entry_path(metadata_type, namespace, full_name)
     if not path.is_file():
-        raise StoreError(f"no feature to describe: {feature_identity(args.slug)}")
-    frontmatter, _previous = split_entry(path.read_text(encoding="utf-8"))
-    description = normalize_body(Path(args.purpose_file).read_text(encoding="utf-8"))
-    if not description.strip():
-        raise StoreError("the description file is empty")
-    if SENTINEL_PATTERN.search(description):
-        raise StoreError("the description still contains an <AGENT_...> sentinel")
-    body = f"## Purpose\n\n{description}"
-    frontmatter["lifecycle"] = {"state": "draft", "contentDigest": None}
-    frontmatter["approval"] = {
-        "reviewedContentDigest": None, "reviewedBy": None, "reviewedAt": None, "mechanism": None,
-    }
-    digest = feature_reviewed_content_digest(frontmatter, body)
-    frontmatter["lifecycle"]["contentDigest"] = digest
-    atomic_write(path, render_entry(frontmatter, body))
+        raise StoreError(f"binding target {entry_id} has no Knowledge Entry")
+    lane = compute_lane(path, ledger_latest(read_ledger()))
+    if lane.get("lane") != "approved-current":
+        raise StoreError(
+            f"binding target {entry_id} is {lane.get('lane')}; only approved-current entries bind"
+        )
     return {
-        "outcome": "DESCRIBED",
-        "identity": feature_identity(args.slug),
-        "reviewedContentDigest": digest,
-        "note": "rewriting a description returns the feature to draft; the previous approval covered the previous text",
+        "reviewedContentDigest": lane["reviewedContentDigest"],
+        "factsDigest": lane["factsDigest"],
+        "sourceTreeDigest": lane["sourceTreeDigest"],
+        "profile": lane["profile"],
+    }
+
+
+def _write_feature(slug: str, frontmatter: dict[str, Any], body: str) -> Path:
+    fk = _fk()
+    path = fk.feature_path(slug)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(path, render_entry(frontmatter, body))
+    return path
+
+
+def _load_feature(slug: str) -> tuple[dict[str, Any], str, Path]:
+    fk = _fk()
+    path = fk.feature_path(slug)
+    if not path.is_file():
+        raise StoreError(f"no feature at {relative_path(path)}; run feature-open first")
+    frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+    return frontmatter, body, path
+
+
+def command_feature_open(args: argparse.Namespace) -> dict[str, Any]:
+    """Create a feature draft, or report the existing one (resume point §12.1)."""
+    fk = _fk()
+    assert_no_reparse_points(FEATURES_ROOT)
+    path = fk.feature_path(args.slug)
+    if path.is_file():
+        frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+        lane = fk.compute_feature_lane(path, ledger_latest(read_ledger(FEATURE_LEDGER_PATH)))
+        return {
+            "outcome": "RESUMED",
+            "identity": fk.feature_identity(args.slug),
+            "path": relative_path(path),
+            "lane": lane["lane"],
+            "draftVersion": frontmatter["draft"]["version"],
+            "problems": lane["problems"],
+        }
+    name = args.name or args.slug.replace("-", " ").title()
+    frontmatter = fk.new_feature_frontmatter(args.slug, name)
+    body = fk.initial_body(name)
+    _write_feature(args.slug, frontmatter, body)
+    return {
+        "outcome": "OPENED",
+        "identity": fk.feature_identity(args.slug),
+        "path": relative_path(path),
+        "draftVersion": 0,
+    }
+
+
+def command_feature_record(args: argparse.Namespace) -> dict[str, Any]:
+    """The single write path for feature content: one batch of typed operations from an
+    ignored proposal file. Fail-closed: a rejected batch changes nothing. Optimistic
+    concurrency on draft.version — a stale writer reloads instead of overwriting."""
+    fk = _fk()
+    assert_no_reparse_points(FEATURES_ROOT)
+    frontmatter, body, path = _load_feature(args.slug)
+    if int(args.expected_version) != int(frontmatter["draft"]["version"]):
+        raise StoreError(
+            f"stale draft version (expected {args.expected_version}, "
+            f"current {frontmatter['draft']['version']}); reload and retry"
+        )
+    operations_path = Path(args.operations_file)
+    if not operations_path.is_file():
+        raise StoreError(f"operations file does not exist: {args.operations_file}")
+    try:
+        payload = json.loads(operations_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise StoreError(f"operations file is not valid JSON: {exc}") from exc
+    operations = payload.get("operations") if isinstance(payload, dict) else None
+    frontmatter, body, applied = fk.apply_operations(
+        frontmatter, body, operations, _feature_binding_resolver
+    )
+    _write_feature(args.slug, frontmatter, body)
+    return {
+        "outcome": "RECORDED",
+        "identity": fk.feature_identity(args.slug),
+        "draftVersion": frontmatter["draft"]["version"],
+        "applied": applied,
     }
 
 
 def command_feature_status(args: argparse.Namespace) -> dict[str, Any]:
+    fk = _fk()
     latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
-    wanted = feature_identity(args.slug) if getattr(args, "slug", None) else None
-    features = []
-    for path in all_feature_paths():
-        lane = compute_feature_lane(path, latest)
-        if wanted and lane["identity"] != wanted:
+    lanes = []
+    for path in fk.all_feature_paths():
+        lane = fk.compute_feature_lane(path, latest)
+        if args.slug and lane["identity"] != fk.feature_identity(args.slug):
             continue
-        features.append(lane)
-    return {"outcome": "STATUS", "features": features, "count": len(features)}
-
-
-def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
-    """Render what a human must read before approving, and the digest-pinned command."""
-
-    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
-    wanted = {feature_identity(slug) for slug in (args.slug or [])}
-    resolved = []
-    skipped = []
-    for path in all_feature_paths():
-        lane = compute_feature_lane(path, latest)
-        if wanted and lane["identity"] not in wanted:
-            continue
-        if lane["problems"]:
-            skipped.append({"identity": lane["identity"], "reasons": lane["problems"]})
-            continue
-        # D7: an explicit --slug is a request to RE-render — the remedy `feature-approve` and
-        # `feature-drift` both prescribe when no membershipDigest could be pinned. Only a bare
-        # sweep skips the already-approved, and it must say so rather than answer with silence.
-        if lane["lane"] == "approved-current" and not wanted:
-            skipped.append({"identity": lane["identity"],
-                            "reasons": ["already approved-current; name it with --slug to re-render"]})
-            continue
-        frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
-        resolved.append((lane["identity"], frontmatter, body, lane["reviewedContentDigest"]))
-    if not resolved:
-        return {"outcome": "NOTHING_TO_REVIEW", "skipped": skipped}
-    chunk_id = canonical_digest(sorted((identity, digest) for identity, _f, _b, digest in resolved))[7:19]
-    lines = [f"# Feature approval review — chunk {chunk_id}", "",
-             f"Features: {len(resolved)}", "",
-             "You are approving a BOUNDARY RULE and a description — not a member list. Membership "
-             "is recomputed from the rule, so adding an artifact to the package cannot change what "
-             "you approved here. `feature-drift` reports what membership did afterwards.", ""]
-    for identity, frontmatter, body, digest in resolved:
-        boundary = frontmatter["boundary"]
-        lines += [
-            f"## {identity}", "",
-            f"- name: {frontmatter['subject']['name']}",
-            f"- digest: `{digest}`",
-            f"- anchors: {', '.join(boundary['anchors']) or '(none)'}",
-            f"- hubs (kept as targets, never expanded): {', '.join(boundary['hubs']) or '(none)'}",
-            f"- depth: {boundary['depth']}",
-            f"- explicit include: {', '.join(boundary['include']) or '(none)'}",
-            f"- explicit exclude: {', '.join(boundary['exclude']) or '(none)'}",
-            f"- membership assurance floor: {boundary['membershipAssuranceFloor']}",
-        ]
-        # Every name in the rule is about to be pinned by a digest, and nothing checked that any
-        # of them exists: `feature-propose` strips whitespace and writes. An unresolvable name and
-        # a name the walk never reached look identical in every other output.
-        resolution = resolve_boundary_names(
-            boundary["anchors"] + boundary["hubs"] + boundary["include"] + boundary["exclude"]
-        )
-        absent = resolution["notInWorkspace"]
-        if resolution["basis"].startswith("unavailable"):
-            lines.append(
-                f"- name check: NOT RUN ({resolution['basis']}) — no name in this rule was verified"
-            )
-        elif absent:
-            lines.append("- name check: the following are NOT in this workspace's force-app source:")
-            for name in absent:
-                closest = resolution["names"][name]["closest"]
-                lines.append(
-                    f"    - `{name}`"
-                    + (f" — did you mean {', '.join(f'`{item}`' for item in closest)}?" if closest
-                       else " (no near match; expected for a standard or packaged object)")
-                )
-        else:
-            lines.append("- name check: every name in this rule resolves to force-app source")
-        lines += ["", "### Attested body (exactly what approval covers)", "", body.strip(), ""]
-    REVIEW_ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
-    artifact = REVIEW_ARTIFACT_ROOT / f"{chunk_id}-feature-review.md"
-    atomic_write(artifact, "\n".join(lines) + "\n")
-    command = "python scripts/knowledge_store.py feature-approve " + " ".join(
-        f"--feature {identity}:{digest}" for identity, _f, _b, digest in resolved
-    )
-    return {
-        "outcome": "REVIEW_READY",
-        "chunkId": chunk_id,
-        "reviewArtifact": relative_path(artifact),
-        "features": [identity for identity, _f, _b, _d in resolved],
-        "approveCommand": command,
-        "skipped": skipped,
-    }
-
-
-def approval_membership_digest(boundary: dict[str, Any]) -> dict[str, Any]:
-    """The digest of the membership this rule produces right now, and what qualifies it.
-
-    §6 lets the approval record pin a `membershipDigest` and nothing more — a digest is not a
-    member list and cannot re-approve on drift, which is the whole reason the identity list
-    lives in the disposable `.cache/` instead. Without this pin `feature-drift` could only ever
-    answer "unknown", which is what shipped.
-
-    The digest is None rather than an exception when no index is reachable: §6 requires
-    feature-approve to succeed with a stale or absent index, because a governed human approval
-    must not be blocked by a disposable cache. Null is legible downstream — `feature-drift`
-    reports `changed: "unknown"` with the reason and never `false`.
-
-    Truncation is carried out with it (§6 correction 3). The traversal is deterministic, so a
-    digest over a truncated prefix is a real answer — but only if it is named as one at the
-    moment it is pinned, rather than discovered later by whoever compares against it.
-
-    The parameters are the BASELINE's, not a caller's: a digest is only comparable with one
-    recomputed the same way, so the incoming traversal, the drift depth limit, the default
-    established lane and the rule's own assurance floor are fixed here to match what
-    `feature-drift` recomputes."""
-
-    try:  # local import: the index reader, and knowledge_search imports this module
-        from scripts import knowledge_search
-    except ModuleNotFoundError:  # invoked as `python scripts/knowledge_store.py`
-        import knowledge_search  # type: ignore
-    try:
-        documents, _manifest = knowledge_search.load_index()
-        membership = knowledge_search.compute_membership(
-            documents,
-            boundary,
-            allowed=documents.lane_ids(knowledge_search.ESTABLISHED_STATES),
-            include_heuristic=False,
-            direction=knowledge_search.BASELINE_DIRECTION,
-            depth_limit=knowledge_search.DEPTH_LIMITS["drift"],
-        )
-    except knowledge_search.SearchError as error:
-        return {"membershipDigest": None, "unreachable": str(error), "limitsHit": [], "laneExcludedCount": 0}
-    return {
-        "membershipDigest": membership["membershipDigest"],
-        "unreachable": None,
-        "limitsHit": membership["limitsHit"],
-        "laneExcludedCount": membership["laneExcluded"]["count"],
-    }
-
-
-def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
-    assert_no_reparse_points(FEATURES_ROOT)
-    pins: dict[str, str] = {}
-    for raw in args.feature or []:
-        identity, _, digest = raw.rpartition(":sha256:")
-        if not identity or not digest:
-            raise StoreError(f"malformed pin {raw!r}; expected Feature:<slug>:sha256:<digest>")
-        pins[identity] = f"sha256:{digest}"
-    if not pins:
-        raise StoreError("at least one --feature Feature:<slug>:sha256:<digest> pin is required")
-    reviewer = reviewer_identity()
-    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
-    resolved = []
-    for identity, pinned in sorted(pins.items()):
-        slug = identity.split(":", 1)[1] if identity.startswith("Feature:") else ""
-        path = feature_path(slug)
-        if not path.is_file():
-            raise StoreError(f"{identity}: no such feature")
-        lane = compute_feature_lane(path, latest)
-        if lane["problems"]:
-            raise StoreError(f"{identity}: not approvable — {'; '.join(lane['problems'])}")
-        if lane["reviewedContentDigest"] != pinned:
-            raise StoreError(
-                f"{identity}: pinned digest does not match current content — re-render the review "
-                "rather than retrying with a fresh digest"
-            )
-        resolved.append((identity, path, lane))
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    chunk_id = canonical_digest(sorted(pins.items()))[7:19]
-    records = []
-    unpinned: list[str] = []
-    truncated: list[str] = []
-    lane_dropped: list[str] = []
-    for identity, path, lane in resolved:
-        frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
-        membership = approval_membership_digest(frontmatter["boundary"])
-        membership_digest = membership["membershipDigest"]
-        if membership["unreachable"]:
-            unpinned.append(f"{identity}: {membership['unreachable']}")
-        elif membership["limitsHit"]:
-            truncated.append(f"{identity}: {', '.join(membership['limitsHit'])}")
-        if membership["laneExcludedCount"]:
-            lane_dropped.append(f"{identity}: {membership['laneExcludedCount']} artifact(s)")
-        frontmatter["lifecycle"] = {"state": "approved", "contentDigest": lane["reviewedContentDigest"]}
-        frontmatter["approval"] = {
-            "reviewedContentDigest": lane["reviewedContentDigest"],
-            "reviewedBy": reviewer, "reviewedAt": now,
-            "mechanism": "copilot-chat-entry-confirmation",
-        }
-        atomic_write(path, render_entry(frontmatter, body))
-        records.append({
-            "action": "approve", "identity": identity,
-            "reviewedContentDigest": lane["reviewedContentDigest"],
-            "boundaryDigest": lane["boundaryDigest"],
-            "semanticsDigest": semantics_digest(body),
-            # A digest, never a list: it says WHETHER membership moved, and cannot re-approve
-            # the artifacts it summarises. The list `feature-drift` needs to say WHICH moved is
-            # written to `.cache/` by `tree`. Null when no index was reachable at approval time.
-            "membershipDigest": membership_digest,
-            "reviewedBy": reviewer, "reviewedAt": now,
-            "mechanism": "copilot-chat-entry-confirmation", "chunkId": chunk_id,
-        })
-    append_ledger(records, FEATURE_LEDGER_PATH)
-    result = {
-        "outcome": "APPROVED", "chunkId": chunk_id,
-        "approved": [record["identity"] for record in records], "reviewedBy": reviewer,
-        "note": "the ledger records the boundary and membership digests, never a member list",
-    }
-    gaps: list[str] = []
-    if unpinned:
-        # Approval is not blocked by a missing cache, but the consequence has to be visible at
-        # the moment it is incurred rather than discovered later as a `changed: "unknown"`.
-        gaps.append(
-            "No membershipDigest could be pinned for " + "; ".join(unpinned)
-            + ". `feature-drift` will answer changed: \"unknown\" — never false — until the "
-            "feature is re-approved against a reachable index (`knowledge_search.py build`)."
-        )
-    if truncated:
-        gaps.append(
-            "The membership traversal hit its limits for " + "; ".join(truncated)
-            + ", so the pinned digest covers a deterministic PREFIX of the membership rather "
-            "than all of it, and `feature-drift` will answer "
-            "`changedWithinTruncatedPrefix` instead of `changed`."
-        )
-    if lane_dropped:
-        gaps.append(
-            "The lifecycle lane filter removed reached artifact(s) from the membership the "
-            "pinned digest covers — " + "; ".join(lane_dropped)
-            + ". The digest is honest for the established lanes; it simply does not include "
-            "them. `tree --feature <slug>` names them under `laneExcluded`."
-        )
-    if gaps:
-        result["gaps"] = gaps
-    return result
-
-
-def command_feature_revoke(args: argparse.Namespace) -> dict[str, Any]:
-    assert_no_reparse_points(FEATURES_ROOT)
-    identity = feature_identity(args.slug)
-    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
-    if identity not in latest or latest[identity].get("action") == "revoke":
-        raise StoreError(f"{identity}: nothing to revoke")
-    reviewer = reviewer_identity()
-    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    append_ledger([{
-        "action": "revoke", "identity": identity, "rationale": args.rationale,
-        "reviewedBy": reviewer, "reviewedAt": now,
-        "mechanism": "copilot-chat-entry-confirmation",
-    }], FEATURE_LEDGER_PATH)
-    return {"outcome": "REVOKED", "identity": identity, "rationale": args.rationale}
+        lanes.append(lane)
+    return {"outcome": "STATUS", "features": lanes}
 
 
 def command_feature_check(args: argparse.Namespace) -> dict[str, Any]:
-    """CI integrity gate over the feature corpus and its ledger."""
-
+    """CI gate. F-3 posture from day one: a DRAFT's outstanding work (sentinel, empty core
+    sections) is counted as awaitingWork, never a failure; an APPROVED document with
+    problems, a duplicate identity, or a ledger approval with no file fails."""
+    fk = _fk()
     assert_no_reparse_points(FEATURES_ROOT)
-    records = read_ledger(FEATURE_LEDGER_PATH)
-    latest = ledger_latest(records)
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
     problems: list[str] = []
     seen: dict[str, str] = {}
-    for path in all_feature_paths():
-        lane = compute_feature_lane(path, latest)
-        problems.extend(f"{lane['path']}: {problem}" for problem in lane["problems"])
-        if lane["identity"] in seen:
-            problems.append(f"identity {lane['identity']} resolves to two files")
-        seen[lane["identity"]] = lane["path"]
-    for identity in latest:
-        if identity not in seen:
-            problems.append(f"ledger approves {identity} but no feature file round-trips to it")
+    awaiting_work = 0
+    for path in fk.all_feature_paths():
+        lane = fk.compute_feature_lane(path, latest)
+        identity = lane["identity"]
+        if identity in seen:
+            problems.append(f"identity {identity} resolves to two files: {seen[identity]} and {lane['path']}")
+        seen[identity] = lane["path"]
+        if lane["lane"] == "draft":
+            awaiting_work += 1 if lane["problems"] else 0
+            continue
+        for problem in lane["problems"]:
+            problems.append(f"{lane['path']}: {problem}")
+    for identity, record in latest.items():
+        if record.get("action") == "approve" and identity not in seen:
+            problems.append(f"ledger approves {identity} but no feature file exists")
     if problems:
         raise StoreError("feature-check failed:\n- " + "\n- ".join(problems))
-    return {"outcome": "PASS", "features": len(seen), "ledgerRecords": len(records)}
+    return {
+        "outcome": "PASS",
+        "features": len(seen),
+        "awaitingWork": awaiting_work,
+        "ledgerRecords": len(read_ledger(FEATURE_LEDGER_PATH)),
+    }
+
+
+def command_feature_review(args: argparse.Namespace) -> dict[str, Any]:
+    """Render the exact human review package (§16.1) and the digest-pinned approve command.
+    The semantic delta against the last approved version is digest-level (changed /
+    unchanged per model and narrative) — the store keeps no prior approved copy."""
+    fk = _fk()
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
+    rendered = []
+    pins = []
+    for slug in args.slug:
+        frontmatter, body, path = _load_feature(slug)
+        problems = fk.validate_feature(frontmatter, body)
+        identity = fk.feature_identity(slug)
+        record = latest.get(identity) or {}
+        digest = None if problems else fk.feature_reviewed_content_digest(frontmatter, body)
+        model = frontmatter["model"]
+        live = lambda items: [i for i in items if not i.get("tombstoned")]
+        lines = [
+            f"# Feature review — {identity}", "",
+            f"- name: {frontmatter['subject']['name']}",
+            f"- reviewedContentDigest: {digest or 'BLOCKED (see problems)'}",
+            f"- modelDigest: {fk.model_digest(frontmatter)}",
+            f"- vs last approved: model "
+            + ("unchanged" if record.get("modelDigest") == fk.model_digest(frontmatter) else "CHANGED")
+            + ", narrative "
+            + ("unchanged" if record.get("semanticsDigest") == semantics_digest(body) else "CHANGED"),
+            f"- nodes {len(live(model['nodes']))}, relations {len(live(model['relations']))}, "
+            f"claims {len(live(model['claims']))}, bindings {len(live(frontmatter['artifactBindings']))}, "
+            f"open questions {sum(1 for q in live(model['unresolved']) if not q.get('resolution'))}",
+            "",
+        ]
+        if problems:
+            lines += ["## Blocking problems", ""] + [f"- {p}" for p in problems] + [""]
+        lines += ["## Claims under approval", ""]
+        for claim in live(model["claims"]):
+            lines.append(
+                f"- {claim['id']} [{claim['type']}/{claim['authority']}/{claim['citationPolicy']}] "
+                f"{claim['text']}"
+            )
+        lines += ["", "## Topology under approval", ""]
+        for node in live(model["nodes"]):
+            lines.append(
+                f"- {node['id']} [{node['featureLayer']}/{node['role']}] "
+                f"{node.get('artifactId') or node.get('name') or ''}"
+            )
+        for relation in live(model["relations"]):
+            lines.append(
+                f"- {relation['id']} {relation['from']} -{relation['kind']}-> {relation['to']} "
+                f"[{relation['assurance']}] {relation['explanation']}"
+            )
+        for entry_point in model["entryPoints"]:
+            lines.append(f"- entry point: {entry_point['nodeId']} — {entry_point['description']}")
+        lines += ["", "## Artifact bindings (current?)", ""]
+        for binding in live(frontmatter["artifactBindings"]):
+            try:
+                receipt = _feature_binding_resolver(binding["entryId"])
+                current = receipt["reviewedContentDigest"] == binding["reviewedContentDigest"]
+                lines.append(
+                    f"- {binding['id']} {binding['entryId']}: "
+                    + ("current" if current else "DRIFTED (re-bind before approval)")
+                )
+            except StoreError as exc:
+                lines.append(f"- {binding['id']} {binding['entryId']}: UNAVAILABLE ({exc})")
+        lines += ["", "## Heuristic / unresolved (never citable)", ""]
+        for claim in live(model["claims"]):
+            if claim["authority"] in ("source-derived-heuristic", "unresolved"):
+                lines.append(f"- {claim['id']}: {claim['text']}")
+        lines += ["", "## Narrative under approval", "", body.strip()]
+        rendered.append((slug, digest, "\n".join(lines) + "\n"))
+        if digest:
+            pins.append(f"{identity}:{digest}")
+    chunk_source = canonical_digest([pin for pin in pins] or [slug for slug in args.slug])
+    chunk_id = chunk_source[7:19]
+    review_path = REVIEW_ARTIFACT_ROOT / f"{chunk_id}-feature-review.md"
+    review_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(review_path, "\n\n".join(text for _, _, text in rendered))
+    result: dict[str, Any] = {
+        "outcome": "REVIEW",
+        "chunkId": chunk_id,
+        "reviewArtifact": relative_path(review_path),
+    }
+    if pins:
+        result["approveCommand"] = (
+            "python scripts/knowledge_store.py feature-approve "
+            + " ".join(f'--feature "{pin}"' for pin in pins)
+        )
+    blocked = [slug for slug, digest, _ in rendered if not digest]
+    if blocked:
+        result["blocked"] = blocked
+    return result
+
+
+def command_feature_approve(args: argparse.Namespace) -> dict[str, Any]:
+    """Digest-pinned human approval (§16.2). Every §16.2 condition that is mechanical is
+    enforced here; the human's confirmation click is the one thing this command cannot
+    manufacture (SAFE-HUMAN-001 hook asks on it)."""
+    fk = _fk()
+    assert_no_reparse_points(FEATURES_ROOT)
+    if not LOCAL_CONFIG.is_file():
+        raise StoreError("config/harness.local.json with knowledge.chatReviewer is required for approval")
+    reviewer = json.loads(LOCAL_CONFIG.read_text(encoding="utf-8")).get("knowledge", {}).get("chatReviewer")
+    if not reviewer:
+        raise StoreError("knowledge.chatReviewer is not configured")
+    pins: dict[str, str] = {}
+    for raw in args.feature or []:
+        identity, separator, digest = raw.partition(":sha256:")
+        if not separator or not identity.startswith("Feature:"):
+            raise StoreError(f"--feature must be Feature:<slug>:sha256:<digest>, got {raw!r}")
+        pins[identity] = "sha256:" + digest
+    if not pins:
+        raise StoreError("at least one --feature Feature:<slug>:sha256:<digest> pin is required")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entries = []
+    for identity, pinned in pins.items():
+        slug = identity.split(":", 1)[1]
+        frontmatter, body, path = _load_feature(slug)
+        problems = fk.validate_feature(frontmatter, body)
+        if problems:
+            raise StoreError(f"{identity}: validation failed: " + "; ".join(problems[:5]))
+        digest = fk.feature_reviewed_content_digest(frontmatter, body)
+        if digest != pinned:
+            raise StoreError(
+                f"{identity}: digest pin mismatch (pinned {pinned[:20]}…, recomputed {digest[:20]}…)"
+            )
+        frontmatter["lifecycle"]["state"] = "approved"
+        frontmatter["approval"] = {
+            "reviewedContentDigest": digest,
+            "reviewedBy": reviewer,
+            "reviewedAt": now,
+            "mechanism": "copilot-chat-entry-confirmation",
+        }
+        _write_feature(slug, frontmatter, body)
+        entries.append({
+            "action": "approve",
+            "identity": identity,
+            "reviewedContentDigest": digest,
+            "modelDigest": fk.model_digest(frontmatter),
+            "semanticsDigest": semantics_digest(body),
+            "reviewedBy": reviewer,
+            "reviewedAt": now,
+            "mechanism": "copilot-chat-entry-confirmation",
+        })
+    append_ledger(entries, FEATURE_LEDGER_PATH)
+    return {"outcome": "APPROVED", "features": len(entries)}
+
+
+
+
+def command_feature_search(args: argparse.Namespace) -> dict[str, Any]:
+    """Discovery over APPROVED features — a direct scan of the canonical files (deliberate
+    v2.0 simplification: the corpus is dozens of documents, not thousands of entries; no
+    index generation, no cache to go stale — revisit past ~200 features). Results are
+    never citable; cite through feature-verify-citations."""
+    fk = _fk()
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
+    needle = (args.text or "").lower()
+    hits = []
+    draft_count = 0
+    for path in fk.all_feature_paths():
+        lane = fk.compute_feature_lane(path, latest)
+        if lane["lane"] != "approved-current":
+            draft_count += lane["lane"] == "draft"
+            continue
+        frontmatter, body = split_entry(path.read_text(encoding="utf-8"))
+        model = frontmatter["model"]
+        live = lambda items: [i for i in items if not i.get("tombstoned")]
+        nodes = live(model["nodes"])
+        claims = live(model["claims"])
+        if args.artifact_id and not any(n.get("artifactId") == args.artifact_id for n in nodes):
+            continue
+        if args.layer and not any(n["featureLayer"] == args.layer for n in nodes):
+            continue
+        if args.role and not any(n["role"] == args.role for n in nodes):
+            continue
+        if args.claim_type and not any(c["type"] == args.claim_type for c in claims):
+            continue
+        haystack = " ".join(
+            [frontmatter["subject"]["name"], " ".join(frontmatter.get("keywords", [])),
+             " ".join(c["text"] for c in claims), body]
+        ).lower()
+        if needle and needle not in haystack:
+            continue
+        hits.append({
+            "featureId": lane["identity"],
+            "name": frontmatter["subject"]["name"],
+            "layers": sorted({n["featureLayer"] for n in nodes}),
+            "nodeCount": len(nodes),
+            "claimCount": len(claims),
+            "entryPoints": [ep["nodeId"] for ep in model["entryPoints"]],
+        })
+        if len(hits) >= max(1, int(args.top or 10)):
+            break
+    return {"outcome": "SEARCH", "hits": hits, "draftCount": draft_count,
+            "note": "hits are discovery only and never citable; cite via feature-verify-citations"}
+
+
+def command_feature_context(args: argparse.Namespace) -> dict[str, Any]:
+    """The approved Feature architecture in one read (§14.2). Not a citation receipt."""
+    fk = _fk()
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
+    frontmatter, body, path = _load_feature(args.slug)
+    lane = fk.compute_feature_lane(path, latest)
+    if lane["lane"] != "approved-current":
+        return {"outcome": "NOT_APPROVED", "lane": lane["lane"], "problems": lane["problems"],
+                "note": "drafts are excluded from consumer reads; finish and approve first"}
+    model = frontmatter["model"]
+    live = lambda items: [i for i in items if not i.get("tombstoned")]
+    sections = fk._body_sections(body)
+    binding_health = {}
+    for binding in live(frontmatter["artifactBindings"]):
+        try:
+            receipt = _feature_binding_resolver(binding["entryId"])
+            binding_health[binding["id"]] = (
+                "current" if receipt["reviewedContentDigest"] == binding["reviewedContentDigest"]
+                else "drifted"
+            )
+        except StoreError:
+            binding_health[binding["id"]] = "unknown"
+    return {
+        "outcome": "CONTEXT",
+        "featureId": lane["identity"],
+        "name": frontmatter["subject"]["name"],
+        "purposeAndBoundary": sections.get("Purpose and boundary", ""),
+        "businessJourney": sections.get("Business journey", ""),
+        "nodes": live(model["nodes"]),
+        "relations": live(model["relations"]),
+        "entryPoints": model["entryPoints"],
+        "claims": [
+            {k: c.get(k) for k in ("id", "type", "layer", "authority", "text", "citationPolicy")}
+            for c in live(model["claims"])
+        ],
+        "unresolved": [q for q in live(model["unresolved"]) if not q.get("resolution")],
+        "limitations": frontmatter.get("limitations", []),
+        "bindingHealth": binding_health,
+        "modelDigest": lane["modelDigest"],
+        "reviewedContentDigest": lane["reviewedContentDigest"],
+        "note": "context is not a citation receipt; cite via feature-verify-citations",
+    }
+
+
+def command_feature_verify_citations(args: argparse.Namespace) -> dict[str, Any]:
+    """Read-only claim-level verdicts (§10.3). Direct mode (--slug --claim) verifies and
+    PRODUCES the citable receipt; envelope mode verifies every stored featureRef including
+    its pinned digests."""
+    fk = _fk()
+    latest = ledger_latest(read_ledger(FEATURE_LEDGER_PATH))
+    if bool(args.envelope) == bool(args.slug):
+        raise StoreError("feature-verify-citations requires exactly one of --envelope or --slug")
+    results = []
+    if args.slug:
+        frontmatter, body, _path = _load_feature(args.slug)
+        identity = fk.feature_identity(args.slug)
+        verdict = fk.verify_feature_citations(
+            frontmatter, body, latest.get(identity), list(args.claim or []),
+            _feature_binding_resolver,
+        )
+        results.append({"featureId": identity, **verdict})
+    else:
+        envelope_path = Path(args.envelope)
+        if not envelope_path.is_absolute():
+            envelope_path = ROOT / envelope_path
+        try:
+            envelope_path.resolve().relative_to(ROOT)
+        except ValueError as exc:
+            raise StoreError(f"envelope path escapes repository root: {args.envelope}") from exc
+        if not envelope_path.is_file():
+            raise StoreError(f"envelope file does not exist: {args.envelope}")
+        try:
+            envelope = json.loads(envelope_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise StoreError(f"envelope is not valid JSON: {exc}") from exc
+        for reference in envelope.get("featureRefs") or []:
+            slug = str(reference.get("featureId", "")).partition(":")[2]
+            try:
+                frontmatter, body, _path = _load_feature(slug)
+            except StoreError:
+                results.append({"featureId": reference.get("featureId"), "verdict": "missing"})
+                continue
+            verdict = fk.verify_feature_citations(
+                frontmatter, body, latest.get(reference.get("featureId")),
+                list(reference.get("claimIds") or []), _feature_binding_resolver,
+                requested_digests={
+                    "reviewedContentDigest": reference.get("reviewedContentDigest"),
+                    "modelDigest": reference.get("modelDigest"),
+                },
+            )
+            results.append({"featureId": reference.get("featureId"), **verdict})
+    counts = {"ok": 0, "warning": 0, "invalid": 0}
+    for row in results:
+        if row["verdict"] == "current":
+            counts["ok"] += 1
+        elif row["verdict"] == "degraded":
+            counts["warning"] += 1
+        else:
+            counts["invalid"] += 1
+    return {"outcome": "VERIFIED", "citationCount": len(results), "counts": counts,
+            "citations": results}
+
+
+def command_feature_revoke(args: argparse.Namespace) -> dict[str, Any]:
+    fk = _fk()
+    assert_no_reparse_points(FEATURES_ROOT)
+    frontmatter, body, path = _load_feature(args.slug)
+    identity = fk.feature_identity(args.slug)
+    if not args.rationale:
+        raise StoreError("a revocation requires --rationale")
+    append_ledger(
+        [{"action": "revoke", "identity": identity, "rationale": args.rationale,
+          "revokedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}],
+        FEATURE_LEDGER_PATH,
+    )
+    return {"outcome": "REVOKED", "identity": identity}
 
 
 if __name__ == "__main__":

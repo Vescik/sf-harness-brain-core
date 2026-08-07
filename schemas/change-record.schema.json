@@ -194,6 +194,14 @@
     "solutionDesign": {
       "type": "object",
       "description": "Design Case structured state. Validated against schemas/solution-design-state.schema.json by the Solution Design runtime, which is its only authority; the change record deliberately keeps it opaque rather than restating those definitions."
+    },
+    "featureRefs": {
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "$ref": "#/$defs/featureRef"
+      },
+      "description": "Claim-scoped Feature Knowledge citations; verified by knowledge_store.py feature-verify-citations. Optional everywhere entryRefs are optional."
     }
   },
   "$defs": {
@@ -1002,6 +1010,41 @@
         }
       },
       "description": "SAFE-CLAIM-001 v2 grounding for intended repository-source state (docs/knowledge-one-file-contract.md par 6.2/par 8). Additive: claimRef/evidenceRef grammar untouched."
+    },
+    "featureRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "featureId",
+        "reviewedContentDigest",
+        "modelDigest",
+        "claimIds"
+      ],
+      "properties": {
+        "featureId": {
+          "type": "string",
+          "pattern": "^Feature:[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "description": "Feature Knowledge identity `Feature:<slug>` (contract par 13). Deliberately two segments so it can never satisfy an Artifact entryRef; the two reference kinds are distinct and never interchangeable."
+        },
+        "reviewedContentDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "modelDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "claimIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 40,
+          "items": {
+            "type": "string",
+            "pattern": "^F[RC]-[0-9]{3,6}$"
+          },
+          "description": "Exact approved claim/relation/node ids being cited. A bare Feature reference with no claim selection is not grounding."
+        }
+      }
     }
   }
 }

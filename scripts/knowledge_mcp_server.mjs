@@ -51,13 +51,15 @@ export const SUBCOMMAND_ALLOWLIST = Object.freeze({
     "impact",
     "build",
     "explain",
-    "tree",
-    "feature-drift",
-    "feature-dossier",
     "edge-health",
     "capabilities",
   ]),
-  "knowledge_store.py": Object.freeze(["entry-status"]),
+  "knowledge_store.py": Object.freeze([
+    "entry-status",
+    "feature-search",
+    "feature-context",
+    "feature-verify-citations",
+  ]),
   // `inventory` is spawnable by the missing-inventory self-heal alone — no tool maps to
   // it. Like `build`, it writes only the gitignored generated cache.
   "force_app_knowledge.py": Object.freeze(["resolve", "inventory"]),
@@ -70,9 +72,9 @@ export const TOOL_EXECUTORS = Object.freeze({
   knowledge_resolve: Object.freeze({ script: "force_app_knowledge.py", subcommand: "resolve" }),
   knowledge_entry_status: Object.freeze({ script: "knowledge_store.py", subcommand: "entry-status" }),
   knowledge_explain: Object.freeze({ script: "knowledge_search.py", subcommand: "explain" }),
-  knowledge_tree: Object.freeze({ script: "knowledge_search.py", subcommand: "tree" }),
-  knowledge_feature_drift: Object.freeze({ script: "knowledge_search.py", subcommand: "feature-drift" }),
-  knowledge_feature_dossier: Object.freeze({ script: "knowledge_search.py", subcommand: "feature-dossier" }),
+  knowledge_feature_search: Object.freeze({ script: "knowledge_store.py", subcommand: "feature-search" }),
+  knowledge_feature_context: Object.freeze({ script: "knowledge_store.py", subcommand: "feature-context" }),
+  knowledge_feature_status: Object.freeze({ script: "knowledge_store.py", subcommand: "feature-verify-citations" }),
   knowledge_edge_health: Object.freeze({ script: "knowledge_search.py", subcommand: "edge-health" }),
   knowledge_capabilities: Object.freeze({ script: "knowledge_search.py", subcommand: "capabilities" }),
 });
@@ -238,54 +240,64 @@ export const TOOL_DEFINITIONS = Object.freeze([
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   {
-    name: "knowledge_tree",
-    title: "Current membership of an approved feature boundary",
+    name: "knowledge_feature_search",
+    title: "Search approved Feature Knowledge",
     description:
-      "Walk an approved feature's boundary rule and report current membership. " +
-      "direction=outgoing is exploratory only — the approved membership digest is defined " +
-      "on the incoming traversal.",
+      "Discovery over APPROVED features by text, layer, artifact identity, role or claim " +
+      "type. Results are discovery only and never citable — cite specific claims through " +
+      "knowledge_feature_status.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["feature"],
       properties: {
-        feature: { type: "string", maxLength: MAX_STRING_INPUT, description: FEATURE_HINT },
-        direction: { type: "string", enum: ["incoming", "outgoing"], description: "Traversal direction (default incoming)." },
-        includeHeuristic: { type: "boolean", description: "Also traverse heuristic edges." },
+        text: { type: "string", maxLength: MAX_STRING_INPUT },
+        artifactId: { type: "string", maxLength: MAX_STRING_INPUT, description: IDENTITY_HINT },
+        layer: { type: "string", maxLength: 40 },
+        role: { type: "string", maxLength: 40 },
+        claimType: { type: "string", maxLength: 40 },
+        top: { type: "integer", minimum: 1, maximum: 40 },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   {
-    name: "knowledge_feature_drift",
-    title: "Feature membership drift since approval",
+    name: "knowledge_feature_context",
+    title: "The approved Feature architecture in one read",
     description:
-      "What a feature's membership did since its boundary was approved — additions, " +
-      "losses, and lane changes against the approved digest.",
+      "Purpose and boundary, layered nodes and roles, relations, entry points, claims " +
+      "with authority, binding health, unresolved gaps, limitations and the model digest. " +
+      "The context is NOT a citation receipt — cite through knowledge_feature_status.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
       required: ["feature"],
       properties: {
         feature: { type: "string", maxLength: MAX_STRING_INPUT, description: FEATURE_HINT },
-        includeHeuristic: { type: "boolean", description: "Also traverse heuristic edges." },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
   {
-    name: "knowledge_feature_dossier",
-    title: "Feature dossier rendered from the approved boundary",
+    name: "knowledge_feature_status",
+    title: "The only producer of citable featureRefs",
     description:
-      "Render a feature dossier from its approved boundary rule: members, lanes, and " +
-      "the evidence trail. Read-only rendering; nothing is written.",
+      "Claim-level verification of one or more approved Feature claims/relations: " +
+      "authority, transitive artifact-binding currency and document lane. Returns the " +
+      "citable featureRef receipt when the verdict is current or degraded; ambiguous or " +
+      "missing ids fail explicitly.",
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["feature"],
+      required: ["feature", "claimIds"],
       properties: {
         feature: { type: "string", maxLength: MAX_STRING_INPUT, description: FEATURE_HINT },
-        includeHeuristic: { type: "boolean", description: "Also traverse heuristic edges." },
+        claimIds: {
+          type: "array",
+          minItems: 1,
+          maxItems: 40,
+          items: { type: "string", maxLength: 12 },
+          description: "Exact FC-/FR- ids to cite; a bare feature reference is not grounding.",
+        },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
@@ -398,6 +410,24 @@ function argvForTool(name, input) {
   }
   if (name === "knowledge_entry_status") {
     argv.push(`--identity=${input.identity}`);
+    return argv;
+  }
+  if (name === "knowledge_feature_search") {
+    if (input.text !== undefined) argv.push(`--text=${input.text}`);
+    if (input.artifactId !== undefined) argv.push(`--artifact-id=${input.artifactId}`);
+    if (input.layer !== undefined) argv.push(`--layer=${input.layer}`);
+    if (input.role !== undefined) argv.push(`--role=${input.role}`);
+    if (input.claimType !== undefined) argv.push(`--claim-type=${input.claimType}`);
+    if (input.top !== undefined) argv.push(`--top=${input.top}`);
+    return argv;
+  }
+  if (name === "knowledge_feature_context") {
+    argv.push(`--slug=${input.feature}`);
+    return argv;
+  }
+  if (name === "knowledge_feature_status") {
+    argv.push(`--slug=${input.feature}`);
+    for (const value of input.claimIds ?? []) argv.push(`--claim=${value}`);
     return argv;
   }
   if (input.identity !== undefined) argv.push(`--identity=${input.identity}`);

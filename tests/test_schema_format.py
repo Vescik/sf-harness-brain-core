@@ -73,12 +73,26 @@ class FeatureEntryCitationBoundaryTests(unittest.TestCase):
             with self.subTest(schema=name):
                 self.assertIn("§13", self.entry_id_schema(name)["description"])
 
-    def test_feature_entry_schema_cites_the_governing_section(self) -> None:
+    def test_feature_schema_cites_the_governing_section(self) -> None:
         schema = json.loads(
-            (ROOT / "schemas/knowledge-feature-entry.schema.json").read_text(encoding="utf-8")
+            (ROOT / "schemas/knowledge-feature.schema.json").read_text(encoding="utf-8")
         )
         self.assertIn("§13", schema["description"])
-        self.assertIn("§13", schema["properties"]["subject"]["properties"]["slug"]["description"])
+
+    def test_feature_ref_is_claim_scoped_in_every_envelope(self) -> None:
+        for name in ENVELOPE_SCHEMAS:
+            with self.subTest(schema=name):
+                schema = json.loads((ROOT / f"schemas/{name}").read_text(encoding="utf-8"))
+                defs = schema.get("$defs") or schema.get("definitions")
+                ref = defs["featureRef"]
+                self.assertEqual(1, ref["properties"]["claimIds"]["minItems"])
+                validator = Draft202012Validator(ref)
+                self.assertTrue(list(validator.iter_errors({
+                    "featureId": "Feature:invoice-finance",
+                    "reviewedContentDigest": "sha256:" + "a" * 64,
+                    "modelDigest": "sha256:" + "b" * 64,
+                    "claimIds": [],
+                })))
 
     def test_every_shipped_reference_to_contract_section_13_resolves(self) -> None:
         contract = (ROOT / "docs/knowledge-one-file-contract.md").read_text(encoding="utf-8")
@@ -86,7 +100,7 @@ class FeatureEntryCitationBoundaryTests(unittest.TestCase):
         # §12 is held for parity certification (D7) so the number cannot be reused silently.
         self.assertIn("12", headings)
         self.assertIn("13", headings)
-        self.assertIn("Feature Entries", contract)
+        self.assertIn("Feature Knowledge", contract)
         # The section is load-bearing because shipped refusals send a reader to it; if nothing
         # cites it any more, this assertion is the place to notice.
         citing = [
